@@ -225,7 +225,7 @@ impl UdsTransport {
         #[cfg(target_os = "android")]
         let path = "/dev/socket/api-daemon";
         #[cfg(not(target_os = "android"))]
-        let path = "/tmp/api-daemon-socket";
+        let path = "/Users/fabrice/dev/capyloon/api-daemon-socket";
 
         let (transport, mut recv_stream) = match UnixStream::connect(path) {
             Ok(stream) => {

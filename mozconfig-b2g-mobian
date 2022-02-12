@@ -7,6 +7,7 @@ ac_add_options --enable-linker=lld
 ac_add_options --enable-application=b2g
 ac_add_options --with-app-basename=b2g
 ac_add_options --enable-default-toolkit=cairo-gtk3-wayland
+ac_add_options --disable-updater
 
 # We can't have nice things yet.
 ac_add_options --disable-sandbox
@@ -37,4 +38,3 @@ fi
 
 mk_add_options AUTOCLOBBER=1
 
-export MOZ_REQUIRE_SIGNING=
