@@ -12,11 +12,11 @@ use nsstring::{nsACString, nsCString};
 use parking_lot::Mutex;
 use std::ffi::CString;
 use std::ops::DerefMut;
-use xpcom::{interfaces::nsIB2gLinuxHal, RefPtr};
+use xpcom::{interfaces::{nsIB2gLinuxHal, nsIPrefService}, RefPtr};
 
 // Helper functions to get a char pref with a default value.
 fn fallible_get_char_pref(name: &str, default_value: &str) -> Result<nsCString, nsresult> {
-    if let Some(pref_service) = xpcom::services::get_PrefService() {
+    if let Ok(pref_service) = xpcom::components::Preferences::service::<nsIPrefService>() {
         let branch = xpcom::getter_addrefs(|p| {
             // Safe because:
             //  * `null` is explicitly allowed per documentation
