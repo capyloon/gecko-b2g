@@ -65,6 +65,7 @@ includes_list=$(mktemp)
 
 # Copy the system libraries to the sysroot
 tee "${libraries_list}" << EOF
+out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/audiopolicy-aidl-cpp.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/android.hardware.gnss@1.0.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/android.hardware.gnss@1.1.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/android.hardware.gnss@2.0.so
@@ -89,10 +90,10 @@ out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/android.hardware.
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/android.hardware.wifi.supplicant@1.2.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/android.system.wifi.keystore@1.0.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/binder_b2g_stub.so
-out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/binder_b2g_connectivity_interface-cpp.so
-out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/binder_b2g_system_interface-cpp.so
-out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/binder_b2g_telephony_interface-cpp.so
-out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/binder_b2g_remotesimunlock_interface-cpp.so
+out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/binder_b2g_connectivity_interface-V1-cpp.so
+out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/binder_b2g_system_interface-V1-cpp.so
+out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/binder_b2g_telephony_interface-V1-cpp.so
+out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/binder_b2g_remotesimunlock_interface-V1-cpp.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/dnsresolver_aidl_interface-V2-cpp.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libaudioclient.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libbase.so
@@ -113,7 +114,6 @@ out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libmedia_omx.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libmedia.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libmediadrm.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libmtp.so
-out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libnetdbpf.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libstagefright_foundation.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libstagefright_omx.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libstagefright.so
@@ -122,28 +122,53 @@ out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libsync.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libsysutils.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libui.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libutils.so
-out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libvold_binder_shared.so
-out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libwificond_ipc_shared.so
-out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/netd_aidl_interface-V2-cpp.so
+out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libinput.so
+out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libaudiopolicymanagerdefault.so
+out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libaudiopolicyservice.so
+out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libactivitymanager_aidl.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/netd_event_listener_interface-V1-cpp.so
+out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/netd_aidl_interface-V2-cpp.so
+out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/netd_aidl_interface-V10-cpp.so
+out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/oemnetd_aidl_interface-cpp.so
+out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/audiopolicy-aidl-cpp.so
+out/target/product/${GONK_PRODUCT_NAME}/apex/com.android.tethering/lib${BINSUFFIX}/libnetworkstats.so
 EOF
+
+# is not available in aosp 13.
+# system/netd/libnetdbpf/include
+# system/netd/libnetdutils/include
+# out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/netd_event_listener_interface-V1-cpp.so
+# out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libnetdbpf.so
 
 copy_to_sysroot "${libraries_list}" "libs"
 
 # Store the system includes in the sysroot
 sed 's/$/\//' > "${includes_list}" << EOF
+external/fmtlib/include
 frameworks/av/camera/include
+frameworks/av/drm/libmediadrm/interface
+frameworks/av/drm/libmediadrm/include
 frameworks/av/include
 frameworks/av/media/libaudioclient/include
+frameworks/av/media/libaudiofoundation/include
+frameworks/av/media/liberror/include
 frameworks/av/media/libmedia/aidl
 frameworks/av/media/libmedia/include
 frameworks/av/media/libstagefright/foundation/include
 frameworks/av/media/libstagefright/include
+frameworks/av/media/libmediahelper/include
+frameworks/av/media/libmediametrics/include
 frameworks/av/media/mtp
+frameworks/libs/net/common/native/bpf_syscall_wrappers/include
+frameworks/libs/net/common/native/bpf_headers/include
 frameworks/native/headers/media_plugin
+frameworks/native/include
 frameworks/native/include/gui
 frameworks/native/include/media/openmax
 frameworks/native/libs/binder/include
+frameworks/native/libs/binder/include_activitymanager
+frameworks/native/libs/binder/ndk/include_cpp
+frameworks/native/libs/binder/ndk/include_ndk
 frameworks/native/libs/gui/include
 frameworks/native/libs/math/include
 frameworks/native/libs/nativebase/include
@@ -158,43 +183,64 @@ hardware/libhardware/include
 hardware/libhardware_legacy/include
 system/bpf/libbpf_android/include
 system/connectivity
-system/core/base/include
 system/core/libcutils/include
-system/core/liblog/include
 system/core/libprocessgroup/include
 system/core/libsuspend/include
 system/core/libsync/include
 system/core/libsystem/include
 system/core/libsysutils/include
 system/core/libutils/include
+system/libbase/include
 system/libfmq/include
+system/libfmq/base
 system/libhidl/base/include
 system/libhidl/transport/include
 system/libhidl/transport/token/1.0/utils/include
+system/logging/liblog/include
 system/media/audio/include
 system/media/camera/include
-system/netd/libnetdbpf/include
-system/netd/libnetdutils/include
+packages/modules/Connectivity/service-t/native/libs/libnetworkstats/include
 EOF
 
 # Store the generated AIDL headers in the sysroot
 sed 's/$/\//' >> "${includes_list}" << EOF
-out/soong/.intermediates/frameworks/av/camera/libcamera_client/android_${ARCH_FOLDER}_core_shared/gen/aidl
-out/soong/.intermediates/frameworks/av/media/libaudioclient/libaudioclient/android_${ARCH_FOLDER}_core_shared/gen/aidl
-out/soong/.intermediates/frameworks/av/media/libmedia/libmedia_omx/android_${ARCH_FOLDER}_core_shared/gen/aidl
-out/soong/.intermediates/gonk-misc/gonk-binder/binder_b2g_connectivity_interface-cpp-source/gen/include
-out/soong/.intermediates/gonk-misc/gonk-binder/binder_b2g_system_interface-cpp-source/gen/include
-out/soong/.intermediates/gonk-misc/gonk-binder/binder_b2g_telephony_interface-cpp-source/gen/include
-out/soong/.intermediates/gonk-misc/gonk-binder/binder_b2g_remotesimunlock_interface-cpp-source/gen/include
-out/soong/.intermediates/system/connectivity/wificond/libwificond_ipc/android_${ARCH_FOLDER}_core_static/gen/aidl
-out/soong/.intermediates/system/netd/resolv/dnsresolver_aidl_interface-V2-cpp-source/gen/include
-out/soong/.intermediates/system/netd/server/netd_aidl_interface-V2-cpp-source/gen/include
-out/soong/.intermediates/system/netd/server/netd_event_listener_interface-V1-cpp-source/gen/include
-out/soong/.intermediates/system/vold/libvold_binder_shared/android_${ARCH_FOLDER}_core_shared/gen/aidl
+out/soong/.intermediates/frameworks/av/camera/libcamera_client/android_${ARCH_FOLDER}_shared_cfi/gen/aidl
+out/soong/.intermediates/frameworks/av/media/libaudioclient/libaudioclient/android_${ARCH_FOLDER}_static_cfi/gen/aidl
+out/soong/.intermediates/frameworks/av/media/libmedia/libmedia_omx/android_${ARCH_FOLDER}_shared_cfi/gen/aidl
+out/soong/.intermediates/frameworks/av/media/libaudioclient/audiopolicy-types-aidl-cpp-source/gen/include
+out/soong/.intermediates/frameworks/av/media/libaudioclient/spatializer-aidl-cpp-source/gen/include
+out/soong/.intermediates/frameworks/av/media/libaudioclient/audioflinger-aidl-cpp-source/gen/include
+out/soong/.intermediates/frameworks/av/media/libaudioclient/audiopolicy-aidl-cpp-source/gen/include
+out/soong/.intermediates/frameworks/av/media/libaudioclient/audioclient-types-aidl-cpp-source/gen/include
+out/soong/.intermediates/frameworks/av/media/libaudioclient/effect-aidl-cpp-source/gen/include
+out/soong/.intermediates/frameworks/av/media/libshmem/shared-file-region-aidl-cpp-source/gen/include
+out/soong/.intermediates/frameworks/av/av-types-aidl-cpp-source/gen/include
+out/soong/.intermediates/frameworks/base/core/java/libincremental_aidl-cpp/android_${ARCH_FOLDER}_static/gen/aidl
+out/soong/.intermediates/frameworks/base/media/android.media.audio.common.types-V1-cpp-source/gen/include
+out/soong/.intermediates/frameworks/libs/net/common/netd/netd_event_listener_interface-V1-cpp-source/gen/include
+out/soong/.intermediates/frameworks/libs/net/common/netd/netd_aidl_interface-V10-cpp-source/gen/include
+out/soong/.intermediates/frameworks/native/libs/binder/libactivitymanager_aidl/android_${ARCH_FOLDER}_static/gen/aidl
+out/soong/.intermediates/frameworks/native/libs/gui/libgui_aidl_static/android_${ARCH_FOLDER}_static/gen/aidl
+out/soong/.intermediates/frameworks/native/libs/gui/libgui/android_${ARCH_FOLDER}_shared/gen/aidl
+out/soong/.intermediates/frameworks/native/libs/gui/libgui_window_info_static/android_${ARCH_FOLDER}_static_lto-thin/gen/aidl
+out/soong/.intermediates/frameworks/native/libs/permission/framework-permission-aidl-cpp-source/gen/include
+out/soong/.intermediates/gonk-misc/gonk-binder/binder_b2g_connectivity_interface-V1-cpp-source/gen/include
+out/soong/.intermediates/gonk-misc/gonk-binder/binder_b2g_system_interface-V1-cpp-source/gen/include
+out/soong/.intermediates/gonk-misc/gonk-binder/binder_b2g_telephony_interface-V1-cpp-source/gen/include
+out/soong/.intermediates/gonk-misc/gonk-binder/binder_b2g_remotesimunlock_interface-V1-cpp-source/gen/include
+out/soong/.intermediates/packages/modules/DnsResolver/dnsresolver_aidl_interface-V2-cpp-source/gen/include
+out/soong/.intermediates/system/netd/server/oemnetd_aidl_interface-cpp-source/gen/include
+out/soong/.intermediates/system/vold/libvold_binder/android_${ARCH_FOLDER}_static/gen/aidl
 EOF
+
+# out/soong/.intermediates/frameworks/base/media/audio_common-aidl-cpp-source/gen/include
+# out/soong/.intermediates/system/netd/server/netd_event_listener_interface-V1-cpp-source/gen/include
+# oemnetd_aidl_interface-cpp/        oemnetd_aidl_interface-cpp-source/
 
 # Store the generated HIDL headers in the sysroot
 sed 's/$/\//' >> "${includes_list}" << EOF
+out/soong/.intermediates/hardware/interfaces/drm/1.0/android.hardware.drm@1.0_genc++_headers/gen
+out/soong/.intermediates/hardware/interfaces/drm/1.1/android.hardware.drm@1.1_genc++_headers/gen
 out/soong/.intermediates/hardware/interfaces/gnss/1.0/android.hardware.gnss@1.0_genc++_headers/gen
 out/soong/.intermediates/hardware/interfaces/gnss/1.1/android.hardware.gnss@1.1_genc++_headers/gen
 out/soong/.intermediates/hardware/interfaces/gnss/2.0/android.hardware.gnss@2.0_genc++_headers/gen
@@ -202,6 +248,7 @@ out/soong/.intermediates/hardware/interfaces/gnss/measurement_corrections/1.0/an
 out/soong/.intermediates/hardware/interfaces/gnss/visibility_control/1.0/android.hardware.gnss.visibility_control@1.0_genc++_headers/gen
 out/soong/.intermediates/hardware/interfaces/graphics/bufferqueue/1.0/android.hardware.graphics.bufferqueue@1.0_genc++_headers/gen
 out/soong/.intermediates/hardware/interfaces/graphics/bufferqueue/2.0/android.hardware.graphics.bufferqueue@2.0_genc++_headers/gen
+out/soong/.intermediates/hardware/interfaces/graphics/common/aidl/android.hardware.graphics.common-V3-ndk-source/gen/include
 out/soong/.intermediates/hardware/interfaces/graphics/common/1.0/android.hardware.graphics.common@1.0_genc++_headers/gen
 out/soong/.intermediates/hardware/interfaces/graphics/common/1.1/android.hardware.graphics.common@1.1_genc++_headers/gen
 out/soong/.intermediates/hardware/interfaces/graphics/common/1.2/android.hardware.graphics.common@1.2_genc++_headers/gen
@@ -232,7 +279,9 @@ EOF
 
 copy_to_sysroot "${includes_list}" "include"
 
-if test -z "$DISABLE_OEMHOOK"; then
+if test -n "$DISABLE_OEMHOOK"; then
+    echo "OEM hook is disabled by DISABLE_OEMHOOK"
+else
     # Put HIDL headers and libraries of OEM hook into sysroot
     rsync --times --no-relative --copy-links \
         "${src}/out/target/product/${GONK_PRODUCT_NAME}/system/product/lib${BINSUFFIX}/vendor.qti.hardware.radio.qcrilhook@1.0.so" \
@@ -240,6 +289,10 @@ if test -z "$DISABLE_OEMHOOK"; then
     rsync --times --no-relative --copy-links -r \
         "${src}/out/soong/.intermediates/vendor/qcom/proprietary/commonsys-intf/telephony/interfaces/hal/qcrilhook/1.0/vendor.qti.hardware.radio.qcrilhook@1.0_genc++_headers/gen/" \
         "${dest}/b2g-sysroot/include/"
-else
-    echo "OEM hook is disabled by DISABLE_OEMHOOK"
 fi
+
+rsync ${src}/packages/modules/Connectivity/bpf_progs/bpf_shared.h ${dest}/b2g-sysroot/include/
+rsync ${src}/system/netd/include/mainline/XtBpfProgLocations.h  ${dest}/b2g-sysroot/include/
+rsync ${src}/out/soong/.intermediates/system/vold/libvold_binder/android_arm64_armv8-2a_cortex-a55_static/libvold_binder.a ${dest}/b2g-sysroot/libs/
+
+echo "/* All the logging code is now in the NDK sysroot/usr/include/android/log.h */" > ${dest}/b2g-sysroot/include/log/log_id.h

@@ -75,7 +75,9 @@ status_t BnMediaHTTPConnection::onTransact(uint32_t code, const Parcel& data,
       if (size > memory->size()) {
         size = memory->size();
       }
-      ssize_t len = readAt(offset, memory->pointer(), size);
+      // FIXME: These are now deprecated and are left here for backward-compatibility
+      // ssize_t len = readAt(offset, memory->pointer(), size);
+      ssize_t len = 0;
       reply->writeNoException();
       reply->writeInt32(len);
       return NO_ERROR;

@@ -241,7 +241,8 @@ GonkDisplayP::GonkDisplayP()
     // dequeueBuffer() / queueBuffer(). We connect it here for use
     // later or it will be failed to queue buffers.
     Surface* surface = static_cast<Surface*>(mBootAnimSTClient.get());
-    static sp<IProducerListener> listener = new DummyProducerListener();
+    // FIXME
+    static sp<IProducerListener> listener; // = new DummyProducerListener();
     surface->connect(NATIVE_WINDOW_API_CPU, listener);
   }
 
@@ -280,7 +281,8 @@ GonkDisplayP::GonkDisplayP()
         // dequeueBuffer() / queueBuffer(). We connect it here for use
         // later or it will be failed to queue buffers.
         Surface* surface = static_cast<Surface*>(mExtSTClient.get());
-        static sp<IProducerListener> listener = new DummyProducerListener();
+        // FIXME
+        static sp<IProducerListener> listener; // = new DummyProducerListener();
         surface->connect(NATIVE_WINDOW_API_CPU, listener);
       }
     } else {

@@ -11,6 +11,8 @@ def Libxul_defines():
     LIBRARY_DEFINES["IMPL_LIBXUL"] = True
     if not CONFIG["JS_SHARED_LIBRARY"]:
         LIBRARY_DEFINES["STATIC_EXPORTABLE_JS_API"] = True
+    if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gonk":
+        LIBRARY_DEFINES["DO_NOT_CHECK_MANUAL_BINDER_INTERFACES"] = True
 
 
 @template
@@ -19,6 +21,11 @@ def AOSPSharedObjects(*sharedobjects):
         path = CONFIG["GONK_PATH"] + "/libs/" + so + ".so"
         LDFLAGS += [path]
 
+@template
+def AOSPStaticObjects(*staticobjects):
+    for s in staticobjects:
+        path = CONFIG["GONK_PATH"] + "/libs/" + s + ".a"
+        LDFLAGS += [path]
 
 @template
 def Libxul(name, output_category=None):
@@ -123,11 +130,15 @@ def Libxul(name, output_category=None):
         SYMBOLS_FILE = "!symverscript"
 
     if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gonk":
+        LDFLAGS += ["-v"]
         OS_LIBS += [
+            "activitymanager_aidl",
             "android",
             "audioclient",
+            "audiopolicyservice",
             "base",
             "binder",
+            "c",
             "camera_client",
             "cutils",
             "dl",
@@ -139,12 +150,13 @@ def Libxul(name, output_category=None):
             "hidlmemory",
             "hidltransport",
             "hwbinder",
+            "input",
             "log",
             "media",
             "media_helper",
             "mtp",
             "nativewindow",
-            "netdbpf",
+            "networkstats",
             "stagefright",
             "stagefright_foundation",
             "stagefright_omx",
@@ -154,10 +166,12 @@ def Libxul(name, output_category=None):
             "sysutils",
             "ui",
             "utils",
-            "vold_binder_shared",
-            "wificond_ipc_shared",
         ]
+        # "netdbpf",
+        # "vold_binder_shared",
+        # "wificond_ipc_shared",
         AOSPSharedObjects(
+            "audiopolicy-aidl-cpp",
             "android.hardware.gnss@1.0",
             "android.hardware.graphics.composer@2.1",
             "android.hardware.graphics.composer@2.2",
@@ -178,14 +192,19 @@ def Libxul(name, output_category=None):
             "android.hardware.wifi.supplicant@1.1",
             "android.hardware.wifi.supplicant@1.2",
             "android.system.wifi.keystore@1.0",
-            "binder_b2g_connectivity_interface-cpp",
+            "binder_b2g_connectivity_interface-V1-cpp",
             "binder_b2g_stub",
-            "binder_b2g_system_interface-cpp",
-            "binder_b2g_telephony_interface-cpp",
-            "binder_b2g_remotesimunlock_interface-cpp",
+            "binder_b2g_system_interface-V1-cpp",
+            "binder_b2g_telephony_interface-V1-cpp",
+            "binder_b2g_remotesimunlock_interface-V1-cpp",
             "dnsresolver_aidl_interface-V2-cpp",
             "netd_aidl_interface-V2-cpp",
+            "netd_aidl_interface-V10-cpp",
             "netd_event_listener_interface-V1-cpp",
+            "oemnetd_aidl_interface-cpp",
+        )
+        AOSPStaticObjects(
+            "libvold_binder",
         )
         if CONFIG["ANDROID_VERSION"] >= "29":
             AOSPSharedObjects(

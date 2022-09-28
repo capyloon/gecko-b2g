@@ -466,7 +466,11 @@ def check_compiler(compiler, language, target):
         elif target.os in OS_preprocessor_checks and (
             not info.os or info.os != target.os
         ):
-            flags.append("--target=%s" % target.toolchain)
+            if target.os == "Android":
+                # TODO: Don't hardcode the API level.
+                flags.append("--target=%s33" % target.toolchain)
+            else:
+                flags.append("--target=%s" % target.toolchain)
             has_target = True
 
     if not has_target and (not info.cpu or info.cpu != target.cpu):
@@ -1303,8 +1307,8 @@ def compiler(
 
         # Recent clang defaults to compiler-rt, but we want libgcc for compat
         # with the older NDKs we use.
-        if host_or_target.os == "Android":
-            flags.append("--rtlib=libgcc")
+        # if host_or_target.os == "Android":
+        #    flags.append("--rtlib=libgcc")
 
         return namespace(
             wrapper=wrapper,
@@ -1688,10 +1692,7 @@ def linker_ldflags(
                 )
             )
     if android_platform:
-        flags.append("-L{}/usr/lib".format(android_platform))
-        flags.append("-Wl,--rpath-link={}/usr/lib".format(android_platform))
-        flags.append("--sysroot")
-        flags.append(android_platform)
+        flags.append("-Wl,--rpath-link={}".format(android_platform))
 
     # Gonk specific flags
     # LDFLAGS="-L$gonkdir/libs -Wl,-rpath-link=$gonkdir/libs $LDFLAGS"

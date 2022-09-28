@@ -147,8 +147,11 @@ def android_platform(target, android_version, ndk):
     else:
         platform_version = android_version
 
+    # Example: $HOME/.mozbuild/android-ndk-r25b/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/30/
+    # TODO: don´t hardcode host OS.
+
     platform_dir = os.path.join(
-        ndk, "platforms", "android-%s" % platform_version, "arch-%s" % target_dir_name
+        ndk, "toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib", "%s-linux-android" % target.cpu, "%s" % platform_version
     )
 
     if not isdir(platform_dir):
@@ -172,10 +175,11 @@ def android_sysroot(android_platform, ndk, target):
 
     # NDK r15 has both unified and non-unified headers, but we only support
     # non-unified for that NDK, so look for that first.
+    # TODO: don't hardcode host OS.
     search_dirs = [
         # (<if this directory exists>, <return this directory>)
-        (os.path.join(android_platform, "usr", "include"), android_platform),
-        (os.path.join(ndk, "sysroot"), os.path.join(ndk, "sysroot")),
+        # (os.path.join(android_platform, "usr", "include"), android_platform),
+        (os.path.join(ndk, "toolchains/llvm/prebuilt/linux-x86_64/sysroot"), os.path.join(ndk, "toolchains/llvm/prebuilt/linux-x86_64/sysroot")),
     ]
 
     for test_dir, sysroot_dir in search_dirs:
@@ -200,9 +204,10 @@ def android_system(android_platform, ndk, target):
 
     # NDK r15 has both unified and non-unified headers, but we only support
     # non-unified for that NDK, so look for that first.
+    # TODO: don't hardcode host OS.
     search_dirs = [
         os.path.join(android_platform, "usr", "include"),
-        os.path.join(ndk, "sysroot", "usr", "include", target.toolchain),
+        os.path.join(ndk, "toolchains", "llvm", "prebuilt", "linux-x86_64", "sysroot", "usr", "include", target.toolchain),
     ]
 
     for system_dir in search_dirs:
@@ -376,7 +381,6 @@ def extra_toolchain_flags(
         android_system,
         "-isystem",
         os.path.join(android_sysroot, "usr", "include"),
-        "--gcc-toolchain={}".format(toolchain_dir),
         "-D__ANDROID_API__=%d" % android_version,
     ]
     return flags

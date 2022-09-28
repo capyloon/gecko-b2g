@@ -1264,6 +1264,31 @@ class FlashlightListener : public BnCameraServiceListener {
     return Status::ok();
   }
 
+  Status onPhysicalCameraStatusChanged(int32_t status, const ::android::String16& cameraId, const ::android::String16& physicalCameraId) override {
+    // do nothing
+    return Status::ok();
+  }
+
+  Status onCameraOpened(const ::android::String16& cameraId, const ::android::String16& clientPackageId) {
+    // do nothing
+    return Status::ok();
+  }
+
+  Status onCameraClosed(const ::android::String16& cameraId) {
+    // do nothing
+    return Status::ok();
+  }
+
+  Status onTorchStrengthLevelChanged(const ::android::String16& cameraId, int32_t newTorchStrength) {
+    // do nothing
+    return Status::ok();
+  }
+
+#if 0
+  virtual ::android::binder::Status onTorchStatusChanged(int32_t status, const ::android::String16& cameraId) = 0;
+  virtual ::android::binder::Status onCameraAccessPrioritiesChanged() = 0;
+#endif
+
   Status onTorchStatusChanged(int32_t status,
                               const String16& cameraId) override {
     AutoMutex l(mLock);

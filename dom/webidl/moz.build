@@ -461,10 +461,6 @@ WEBIDL_FILES = [
     "BrowserElementDictionaries.webidl",
     "Cache.webidl",
     "CacheStorage.webidl",
-    "CameraCapabilities.webidl",
-    "CameraControl.webidl",
-    "CameraManager.webidl",
-    "CameraUtil.webidl",
     "CancelContentJSOptions.webidl",
     "CanvasCaptureMediaStream.webidl",
     "CanvasRenderingContext2D.webidl",
@@ -1181,10 +1177,6 @@ GENERATED_EVENTS_WEBIDL_FILES = [
     "AddonEvent.webidl",
     "AnimationPlaybackEvent.webidl",
     "BlobEvent.webidl",
-    "CameraClosedEvent.webidl",
-    "CameraConfigurationEvent.webidl",
-    "CameraFacesDetectedEvent.webidl",
-    "CameraStateChangeEvent.webidl",
     "CaretStateChangedEvent.webidl",
     "CloseEvent.webidl",
     "DeviceLightEvent.webidl",
@@ -1408,6 +1400,18 @@ if CONFIG["MOZ_B2G_RIL"]:
         "TelephonyCoverageLosingEvent.webidl",
         "TtyModeReceivedEvent.webidl",
         "VoicemailEvent.webidl",
+    ]
+
+if CONFIG["MOZ_B2G_CAMERA"]:
+    WEBIDL_FILES += [
+        "CameraClosedEvent.webidl",
+        "CameraConfigurationEvent.webidl",
+        "CameraFacesDetectedEvent.webidl",
+        "CameraStateChangeEvent.webidl",
+        "CameraCapabilities.webidl",
+        "CameraControl.webidl",
+        "CameraManager.webidl",
+        "CameraUtil.webidl",
     ]
 
 if CONFIG["MOZ_B2G_FM"]:

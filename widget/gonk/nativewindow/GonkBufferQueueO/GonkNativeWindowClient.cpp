@@ -543,7 +543,8 @@ int GonkNativeWindowClient::dispatchSetSidebandStream(va_list args) {
 int GonkNativeWindowClient::connect(int api) {
   ATRACE_CALL();
   ALOGV("GonkNativeWindowClient::connect");
-  static sp<IProducerListener> listener = new DummyProducerListener();
+  // FIXME
+  static sp<IProducerListener> listener; // = new DummyProducerListener();
   Mutex::Autolock lock(mMutex);
   IGraphicBufferProducer::QueueBufferOutput output;
   int err = mGraphicBufferProducer->connect(listener, api, true, &output);

@@ -6,7 +6,9 @@
 #include "MediaCodecProxy.h"
 #include <OMX_IVCommon.h>
 #include <gui/Surface.h>
-#include <media/ICrypto.h>
+// FIXME
+#include <mediadrm/ICrypto.h>
+// #include <media/ICrypto.h>
 #include "GonkAudioDecoderManager.h"
 #include "VideoUtils.h"
 #include "nsTArray.h"

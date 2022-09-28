@@ -19,7 +19,8 @@
 
 #include "SpriteController.h"
 
-#include <ui/DisplayInfo.h>
+// FIXME: need to confirm if this is the right one.
+#include <ui/DynamicDisplayInfo.h>
 #include "Input.h"
 #include <utils/BitSet.h>
 #include <utils/RefBase.h>
@@ -29,6 +30,15 @@
 #include <SkBitmap.h>
 
 namespace android {
+
+// FIXME
+// #include <input/DisplayViewport.h>
+enum {
+    DISPLAY_ORIENTATION_0 = 0,
+    DISPLAY_ORIENTATION_90 = 1,
+    DISPLAY_ORIENTATION_180 = 2,
+    DISPLAY_ORIENTATION_270 = 3
+};
 
 /**
  * Interface for tracking a mouse / touch pad pointer and touch pad spots.

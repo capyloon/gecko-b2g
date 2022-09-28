@@ -282,8 +282,9 @@ void AudioManager::HandleAudioFlingerDied() {
   // Restore device connection states
   SetAllDeviceConnectionStates();
 
-  // Restore call state
-  AudioSystem::setPhoneState(static_cast<audio_mode_t>(mPhoneState));
+// FIXME
+//   // Restore call state
+//   AudioSystem::setPhoneState(static_cast<audio_mode_t>(mPhoneState));
 
   // Restore master volume
   AudioSystem::setMasterVolume(1.0);
@@ -301,7 +302,8 @@ void AudioManager::HandleAudioFlingerDied() {
   mIsVolumeInited = true;
   MaybeUpdateVolumeSettingToDatabase(true);
 
-  AudioSystem::setAssistantUid(AUDIO_UID_INVALID);
+// FIXME
+//  AudioSystem::setAssistantUid(AUDIO_UID_INVALID);
 
   AudioSystem::setForceUse(AUDIO_POLICY_FORCE_FOR_SYSTEM,
                            AUDIO_POLICY_FORCE_SYSTEM_ENFORCED);
@@ -582,9 +584,11 @@ static void SetDeviceConnectionStateInternal(bool aIsConnected,
   auto device = static_cast<audio_devices_t>(aDevice);
   auto state = aIsConnected ? AUDIO_POLICY_DEVICE_STATE_AVAILABLE
                             : AUDIO_POLICY_DEVICE_STATE_UNAVAILABLE;
-
+// FIXME
+#if 0
   AudioSystem::setDeviceConnectionState(device, state, aDeviceAddress.get(), "",
                                         AUDIO_FORMAT_DEFAULT);
+#endif
 }
 
 uint32_t AudioManager::GetSpecificVolumeCount() {
@@ -879,7 +883,8 @@ AudioManager::AudioManager()
 
 void AudioManager::Init() {
   // Register AudioSystem callbacks.
-  AudioSystem::setErrorCallback(BinderDeadCallback);
+// FIXME
+//  AudioSystem::setErrorCallback(BinderDeadCallback);
   AudioSystem::addAudioPortCallback(mAudioPortCallbackHolder->Callback());
 
   // Gecko only control stream volume not master so set to default value
@@ -890,7 +895,8 @@ void AudioManager::Init() {
   // prevent AudioPolicyService from treating us as assistant app and
   // incorrectly muting our audio input because we don't meet some criteria of
   // assistant app.
-  AudioSystem::setAssistantUid(AUDIO_UID_INVALID);
+// FIXME
+//  AudioSystem::setAssistantUid(AUDIO_UID_INVALID);
 
   // If this is not set, AUDIO_STREAM_ENFORCED_AUDIBLE will be mapped to
   // AUDIO_STREAM_MUSIC inside AudioPolicyManager.
@@ -990,7 +996,8 @@ void AudioManager::Init() {
 AudioManager::~AudioManager() {
   MOZ_ASSERT(!sAudioManager);
 
-  AudioSystem::setErrorCallback(nullptr);
+// FIXME
+//  AudioSystem::setErrorCallback(nullptr);
   AudioSystem::removeAudioPortCallback(mAudioPortCallbackHolder->Callback());
   hal::UnregisterSwitchObserver(hal::SWITCH_HEADPHONES, mObserver.get());
   hal::UnregisterSwitchObserver(hal::SWITCH_LINEOUT, mObserver.get());
@@ -1113,9 +1120,12 @@ AudioManager::SetPhoneState(int32_t aState) {
                          IntToString<int32_t>(aState).get());
   }
 
+// FIXME
+#if 0
   if (AudioSystem::setPhoneState(static_cast<audio_mode_t>(aState))) {
     return NS_ERROR_FAILURE;
   }
+#endif
 
   MaybeUpdateVolumeSettingToDatabase();
   mPhoneState = aState;
@@ -1488,10 +1498,15 @@ void AudioManager::MaybeUpdateVolumeSettingToDatabase(bool aForce) {
 }
 
 uint32_t AudioManager::GetDevicesForStream(int32_t aStream) {
+// FIXME
+#if 0
   audio_devices_t devices = AudioSystem::getDevicesForStream(
       static_cast<audio_stream_type_t>(aStream));
 
   return static_cast<uint32_t>(devices);
+#else
+  return 0;
+#endif
 }
 
 uint32_t AudioManager::GetDeviceForStream(int32_t aStream) {
@@ -1617,6 +1632,8 @@ nsresult AudioManager::VolumeStreamState::SetVolumeIndexToActiveDevices(
     return NS_OK;
   }
 
+// FIXME
+#if 0
   // AudioPolicyManager::setStreamVolumeIndex() set volumes of all active
   // devices for stream.
   nsresult rv;
@@ -1624,6 +1641,7 @@ nsresult AudioManager::VolumeStreamState::SetVolumeIndexToActiveDevices(
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
+#endif
 
   return NS_OK;
 }
@@ -1692,8 +1710,11 @@ nsresult AudioManager::VolumeStreamState::SetVolumeIndex(uint32_t aIndex,
     mDevicesWithVolumeChange |= aDevice;
   }
 
+// FIXME
+#if 0
   rv = AudioSystem::setStreamVolumeIndex(
       static_cast<audio_stream_type_t>(mStreamType), aIndex, aDevice);
+#endif
 
   // when changing music volume,  also set FMradio volume.Just for SPRD FMradio.
   if ((AUDIO_STREAM_MUSIC == mStreamType) && mManager.IsFmOutConnected()) {

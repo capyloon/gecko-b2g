@@ -9,10 +9,14 @@
 
 #include "nsITrafficStats.h"
 #include "nsString.h"
+// FIXME
+#if 1
 #include "bpf/BpfUtils.h"
 #include "netdbpf/BpfNetworkStats.h"
 
-using android::bpf::Stats;
+// using android::bpf
+using ::Stats;
+#endif
 
 namespace mozilla {
 

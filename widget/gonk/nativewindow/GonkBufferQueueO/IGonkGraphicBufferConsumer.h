@@ -24,7 +24,10 @@
 #include <utils/RefBase.h>
 #include <utils/Timers.h>
 
+#include <gui/OccupancyTracker.h>
 #include <binder/IInterface.h>
+#include <binder/SafeInterface.h>
+
 #include <ui/Rect.h>
 
 #include "mozilla/RefPtr.h"
@@ -47,6 +50,8 @@ class NativeHandle;
 
 class IGonkGraphicBufferConsumer : public IInterface {
  public:
+  DECLARE_META_INTERFACE(GonkGraphicBufferConsumer);
+
   // public facing structure for BufferSlot
   class BufferItem : public Flattenable<BufferItem> {
     friend class Flattenable<BufferItem>;
@@ -311,8 +316,33 @@ class IGonkGraphicBufferConsumer : public IInterface {
   // Return of a value other than NO_ERROR means an unknown error has occurred.
   virtual status_t setTransformHint(uint32_t hint) = 0;
 
+// FIXME
+#if 1
   // Retrieve the sideband buffer stream, if any.
-  virtual sp<NativeHandle> getSidebandStream() const = 0;
+  virtual status_t getSidebandStream(sp<NativeHandle>* outStream) const = 0;
+
+    // Retrieves any stored segments of the occupancy history of this BufferQueue and clears them.
+    // Optionally closes out the pending segment if forceFlush is true.
+    virtual status_t getOccupancyHistory(bool forceFlush,
+                                         std::vector<OccupancyTracker::Segment>* outHistory) = 0;
+
+    // discardFreeBuffers releases all currently-free buffers held by the BufferQueue, in order to
+    // reduce the memory consumption of the BufferQueue to the minimum possible without
+    // discarding data.
+    // The consumer invoking this method is responsible for calling getReleasedBuffers() after this
+    // call to free up any of its locally cached buffers.
+    virtual status_t discardFreeBuffers() = 0;
+
+    // dump state into a string
+    virtual status_t dumpState(const String8& prefix, String8* outResult) const = 0;
+
+    // Provide backwards source compatibility
+    void dumpState(String8& result, const char* prefix) {
+        String8 returned;
+        dumpState(String8(prefix), &returned);
+        result.append(returned);
+    }
+#endif
 
   // dump state into a string
   virtual void dumpToString(String8& result, const char* prefix) const = 0;
@@ -323,16 +353,16 @@ class IGonkGraphicBufferConsumer : public IInterface {
 
   virtual int getSlotFromTextureClientLocked(
       mozilla::layers::TextureClient* client) const = 0;
-
- public:
-  DECLARE_META_INTERFACE(GonkGraphicBufferConsumer);
 };
 
 // ----------------------------------------------------------------------------
 
 class BnGonkGraphicBufferConsumer
-    : public BnInterface<IGonkGraphicBufferConsumer> {
+    : public SafeBnInterface<IGonkGraphicBufferConsumer> {
  public:
+    BnGonkGraphicBufferConsumer()
+          : SafeBnInterface<IGonkGraphicBufferConsumer>("BnGonkGraphicBufferConsumer") {}
+
   virtual status_t onTransact(uint32_t code, const Parcel& data, Parcel* reply,
                               uint32_t flags = 0);
 };

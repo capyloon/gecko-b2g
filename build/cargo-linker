@@ -26,6 +26,9 @@
 #
 # $@ is doubly quoted for the eval. See bug 1418598.
 
+echo "ZZZZ MOZ_CARGO_WRAP_LD=${MOZ_CARGO_WRAP_LD}"
+echo "ZZZZ MOZ_CARGO_WRAP_LDFLAGS=${MOZ_CARGO_WRAP_LDFLAGS}"
+
 WRAP_LD=${MOZ_CARGO_WRAP_LD}
 for opt; do
   case "$opt" in

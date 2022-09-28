@@ -15,7 +15,6 @@ UNIFIED_SOURCES += [
 DIRS += [
     "activities",
     "alarm",
-    "camera",
     "devicestorage",
     "externalapi",
     "flipmanager",
@@ -50,6 +49,10 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gonk":
         "speakermanager",
         "time",
     ]
+
+# FIXME:  system/connectivity/wificond is not available
+if CONFIG["MOZ_B2G_CAMERA"]:
+    DIRS += ["camera"]
 
 if CONFIG["HAS_KOOST_MODULES"]:
     DIRS += [

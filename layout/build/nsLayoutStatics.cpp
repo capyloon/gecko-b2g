@@ -250,7 +250,9 @@ nsresult nsLayoutStatics::Initialize() {
 
   CacheObserver::Init();
 
+#ifdef MOZ_B2G_CAMERA
   CameraPreferences::Initialize();
+#endif
 
   IMEStateManager::Init();
 
@@ -401,7 +403,9 @@ void nsLayoutStatics::Shutdown() {
 
   CacheObserver::Shutdown();
 
+#ifdef MOZ_B2G_CAMERA
   CameraPreferences::Shutdown();
+#endif
 
   PromiseDebugging::Shutdown();
 

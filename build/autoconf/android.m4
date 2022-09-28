@@ -12,8 +12,8 @@ case "$target" in
 
     # clang will do any number of interesting things with host tools unless we tell
     # it to use the NDK tools.
-    extra_opts="--gcc-toolchain=$(dirname $(dirname $TOOLCHAIN_PREFIX))"
-    CPPFLAGS="$extra_opts -D__ANDROID_API__=$android_version $CPPFLAGS"
+    extra_opts=""
+    CPPFLAGS="$extra_opts $CPPFLAGS"
     ASFLAGS="$extra_opts $ASFLAGS"
     LDFLAGS="$extra_opts $LDFLAGS"
 
@@ -48,8 +48,10 @@ AC_DEFUN([MOZ_ANDROID_STLPORT],
 
 if test "$OS_TARGET" = "Android"; then
     if test -z "$STLPORT_LIBS"; then
-        # android-ndk-r8b and later
-        cxx_libs="$android_ndk/sources/cxx-stl/llvm-libc++/libs/$ANDROID_CPU_ARCH"
+        # android-ndk-r25b
+        # Example: $android_ndk/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/
+        # TODO: don't hardcode host and target
+        cxx_libs="$android_ndk/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android"
         # NDK r12 removed the arm/thumb library split and just made
         # everything thumb by default.  Attempt to compensate.
         if test "$MOZ_THUMB2" = 1 -a -d "$cxx_libs/thumb"; then
@@ -57,10 +59,11 @@ if test "$OS_TARGET" = "Android"; then
         fi
 
         if ! test -e "$cxx_libs/libc++_static.a"; then
-            AC_MSG_ERROR([Couldn't find path to llvm-libc++ in the android ndk])
+            AC_MSG_ERROR(["Couldn't find path to llvm-libc++ in the android ndk at $cxx_libs"])
         fi
 
-        STLPORT_LIBS="-L$cxx_libs -lc++_static"
+        # See https://developer.android.com/ndk/guides/cpp-support#use_clang_directly
+        STLPORT_LIBS="-static-libstdc++ -lc++_static"
         # NDK r12 split the libc++ runtime libraries into pieces.
         for lib in c++abi unwind android_support; do
             if test -e "$cxx_libs/lib${lib}.a"; then

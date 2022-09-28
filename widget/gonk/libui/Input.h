@@ -17,6 +17,9 @@
 #ifndef _ANDROIDFW_INPUT_H
 #define _ANDROIDFW_INPUT_H
 
+// FIXME: define to avoid dupicate 
+#define _LIBINPUT_INPUT_H
+
 /**
  * Native input event structures.
  */
