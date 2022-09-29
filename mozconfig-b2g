@@ -167,3 +167,4 @@ ac_add_options --disable-b2g-camera
 ac_add_options --disable-b2g-mediadrm
 ac_add_options --disable-necko-wifi
 ac_add_options --disable-accessibility
+ac_add_options --disable-wifi-support
