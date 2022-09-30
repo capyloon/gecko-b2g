@@ -885,7 +885,9 @@ void AudioManager::Init() {
   // Register AudioSystem callbacks.
 // FIXME
 //  AudioSystem::setErrorCallback(BinderDeadCallback);
-  AudioSystem::addAudioPortCallback(mAudioPortCallbackHolder->Callback());
+
+ // FIXME: Android 13 port: workaround crash
+// AudioSystem::addAudioPortCallback(mAudioPortCallbackHolder->Callback());
 
   // Gecko only control stream volume not master so set to default value
   // directly.

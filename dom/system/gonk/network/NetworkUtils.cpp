@@ -544,6 +544,8 @@ NativeNetworkConfig makeNativeNetworkConfig(int netId, NativeNetworkType network
 void NetworkUtils::createNetwork(CommandChain* aChain,
                                  CommandCallback aCallback,
                                  NetworkResultOptions& aResult) {
+  // FIXME: crash workaround
+  return;
   // FIXME: interface change.
   const auto& config = makeNativeNetworkConfig(GET_FIELD(mNetId), NativeNetworkType::PHYSICAL,
                                                INetd::PERMISSION_NONE, false, false);

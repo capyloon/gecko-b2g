@@ -208,7 +208,7 @@ GonkDisplayP::GonkDisplayP()
   (void)mPowerModule;
 
   ALOGI("created native window\n");
-  native_gralloc_initialize(1);
+  native_gralloc_initialize(0);
 
   mPower = IPower::getService();
   if (mPower == nullptr) {
