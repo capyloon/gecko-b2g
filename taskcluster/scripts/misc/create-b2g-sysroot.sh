@@ -122,6 +122,7 @@ out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libsync.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libsysutils.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libui.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libutils.so
+out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libvold_binder_shared.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libinput.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libaudiopolicymanagerdefault.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libaudiopolicyservice.so
@@ -230,7 +231,7 @@ out/soong/.intermediates/gonk-misc/gonk-binder/binder_b2g_telephony_interface-V1
 out/soong/.intermediates/gonk-misc/gonk-binder/binder_b2g_remotesimunlock_interface-V1-cpp-source/gen/include
 out/soong/.intermediates/packages/modules/DnsResolver/dnsresolver_aidl_interface-V2-cpp-source/gen/include
 out/soong/.intermediates/system/netd/server/oemnetd_aidl_interface-cpp-source/gen/include
-out/soong/.intermediates/system/vold/libvold_binder/android_${ARCH_FOLDER}_static/gen/aidl
+out/soong/.intermediates/system/vold/libvold_binder_shared/android_${ARCH_FOLDER}_shared/gen/aidl
 EOF
 
 # out/soong/.intermediates/frameworks/base/media/audio_common-aidl-cpp-source/gen/include
@@ -293,6 +294,5 @@ fi
 
 rsync ${src}/packages/modules/Connectivity/bpf_progs/bpf_shared.h ${dest}/b2g-sysroot/include/
 rsync ${src}/system/netd/include/mainline/XtBpfProgLocations.h  ${dest}/b2g-sysroot/include/
-rsync ${src}/out/soong/.intermediates/system/vold/libvold_binder/android_arm64_armv8-2a_cortex-a55_static/libvold_binder.a ${dest}/b2g-sysroot/libs/
 
 echo "/* All the logging code is now in the NDK sysroot/usr/include/android/log.h */" > ${dest}/b2g-sysroot/include/log/log_id.h
