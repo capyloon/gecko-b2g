@@ -334,6 +334,8 @@ void GonkDisplayP::CreateVirtualDisplaySurface(
 }
 
 void GonkDisplayP::SetEnabled(bool enabled) {
+  // FIXME: crash with aosp-13
+  return;
   android::Mutex::Autolock lock(mPrimaryScreenLock);
   if (enabled) {
     if (!mExtFBEnabled) {
