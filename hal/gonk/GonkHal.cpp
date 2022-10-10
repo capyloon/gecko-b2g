@@ -194,16 +194,20 @@ VibratorRunnable::Run() {
   // condvar onto another thread.  Better just to be chill about small errors in
   // the timing here.
 
+  // Get a handle to the HIDL vibrator service.
+  auto vibrator = android::hardware::vibrator::V1_0::IVibrator::getService();
+
   while (!sShuttingDown) {
     if (mIndex < mPattern.Length()) {
       uint32_t duration = mPattern[mIndex];
-      // Get a handle to the HIDL vibrator service.
-      auto vibrator =
-          android::hardware::vibrator::V1_0::IVibrator::getService();
-      if ((mPattern.Length() == 1) && (duration == 0)) {
-        vibrator->off();
-      } else if (mIndex % 2 == 0) {
-        vibrator->on(duration);
+      if (vibrator) {
+        if ((mPattern.Length() == 1) && (duration == 0)) {
+          vibrator->off();
+        } else if (mIndex % 2 == 0) {
+          vibrator->on(duration);
+        }
+      } else {
+        printf_stderr("Failed to run vibration pattern: vibrator == nullptr");
       }
       mIndex++;
       mMonitor.Wait(TimeDuration::FromMilliseconds(duration));
