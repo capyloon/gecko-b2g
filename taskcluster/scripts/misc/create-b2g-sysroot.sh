@@ -4,6 +4,10 @@ set -x -e -v
 src="${1-.}"
 dest="${2-.}"
 
+# This is a broken symlink that prevents rsync from doing its job.
+# Using --exclude still fails with a "symlink has no referent" error.
+mv ${src}/frameworks/native/include/private/binder /tmp/broken_binder_symlink
+
 # Copy the contents of the files & directories in the first argument to the
 # sysroot using the second argument as the destination folder. File
 # creation/modification timestamps are preserved.
@@ -296,3 +300,6 @@ rsync ${src}/packages/modules/Connectivity/bpf_progs/bpf_shared.h ${dest}/b2g-sy
 rsync ${src}/system/netd/include/mainline/XtBpfProgLocations.h  ${dest}/b2g-sysroot/include/
 
 echo "/* All the logging code is now in the NDK sysroot/usr/include/android/log.h */" > ${dest}/b2g-sysroot/include/log/log_id.h
+
+# Restore the broken symlink
+mv /tmp/broken_binder_symlink ${src}/frameworks/native/include/private/binder
