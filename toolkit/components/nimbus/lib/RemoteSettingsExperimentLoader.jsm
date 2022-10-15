@@ -15,6 +15,10 @@ const { XPCOMUtils } = ChromeUtils.importESModule(
 
 const lazy = {};
 
+ChromeUtils.defineESModuleGetters(lazy, {
+  JsonSchema: "resource://gre/modules/JsonSchema.sys.mjs",
+});
+
 XPCOMUtils.defineLazyModuleGetters(lazy, {
   ASRouterTargeting: "resource://activity-stream/lib/ASRouterTargeting.jsm",
   TargetingContext: "resource://messaging-system/targeting/Targeting.jsm",
@@ -22,7 +26,6 @@ XPCOMUtils.defineLazyModuleGetters(lazy, {
   RemoteSettings: "resource://services-settings/remote-settings.js",
   CleanupManager: "resource://normandy/lib/CleanupManager.jsm",
   NimbusFeatures: "resource://nimbus/ExperimentAPI.jsm",
-  JsonSchema: "resource://gre/modules/JsonSchema.jsm",
 });
 
 XPCOMUtils.defineLazyGetter(lazy, "log", () => {
@@ -126,7 +129,18 @@ class _RemoteSettingsExperimentLoader {
     return this.manager.studiesEnabled;
   }
 
-  async init() {
+  /**
+   * Initialize the loader, updating recipes from Remote Settings.
+   *
+   * @param {Object} options            additional options.
+   * @param {bool}   options.forceSync  force Remote Settings to sync recipe collection
+   *                                    before updating recipes; throw if sync fails.
+   * @return {Promise}                  which resolves after initialization and recipes
+   *                                    are updated.
+   */
+  async init(options = {}) {
+    const { forceSync = false } = options;
+
     if (this._initialized || !this.enabled || !this.studiesEnabled) {
       return;
     }
@@ -135,7 +149,7 @@ class _RemoteSettingsExperimentLoader {
     lazy.CleanupManager.addCleanupHandler(() => this.uninit());
     this._initialized = true;
 
-    await this.updateRecipes();
+    await this.updateRecipes(undefined, { forceSync });
   }
 
   uninit() {
@@ -203,12 +217,18 @@ class _RemoteSettingsExperimentLoader {
 
   /**
    * Get all recipes from remote settings
-   * @param {string} trigger What caused the update to occur?
+   * @param {string} trigger   What caused the update to occur?
+   * @param {Object} options            additional options.
+   * @param {bool}   options.forceSync  force Remote Settings to sync recipe collection
+   *                                    before updating recipes; throw if sync fails.
+   * @return {Promise}                  which resolves after recipes are updated.
    */
-  async updateRecipes(trigger) {
+  async updateRecipes(trigger, options = {}) {
     if (this._updating || !this._initialized) {
       return;
     }
+
+    const { forceSync = false } = options;
 
     // Since this method is async, the enabled pref could change between await
     // points. We don't want to half validate experiments, so we cache this to
@@ -223,6 +243,21 @@ class _RemoteSettingsExperimentLoader {
 
     let recipes;
     let loadingError = false;
+
+    if (forceSync) {
+      try {
+        await this.remoteSettingsClient.sync({
+          trigger: "RemoteSettingsExperimentLoader",
+        });
+      } catch (e) {
+        lazy.log.debug(
+          "Error forcing sync of recipes from remote settings.",
+          e
+        );
+        Cu.reportError(e);
+        throw e;
+      }
+    }
 
     try {
       recipes = await this.remoteSettingsClient.get({
@@ -253,6 +288,21 @@ class _RemoteSettingsExperimentLoader {
 
     if (recipes && !loadingError) {
       for (const r of recipes) {
+        if (r.appId !== "firefox-desktop") {
+          // Skip over recipes not intended for desktop. Experimenter publishes
+          // recipes into a collection per application (desktop goes to
+          // `nimbus-desktop-experiments`) but all preview experiments share the
+          // same collection (`nimbus-preview`).
+          //
+          // This is *not* the same as `lazy.APP_ID` which is used to
+          // distinguish between desktop Firefox and the desktop background
+          // updater.
+          continue;
+        }
+
+        const validateFeatures =
+          validationEnabled && !r.featureValidationOptOut;
+
         if (validationEnabled) {
           let validation = recipeValidator.validate(r);
           if (!validation.valid) {
@@ -301,7 +351,7 @@ class _RemoteSettingsExperimentLoader {
 
         let type = r.isRollout ? "rollout" : "experiment";
 
-        if (validationEnabled) {
+        if (validateFeatures) {
           const result = await this._validateBranches(r, validatorCache);
           if (!result.valid) {
             if (result.invalidBranchSlugs.length) {
@@ -515,7 +565,7 @@ class _RemoteSettingsExperimentLoader {
       description: manifest.description,
       type: "object",
       properties: {},
-      additionalProperties: false,
+      additionalProperties: true,
     };
 
     for (const [varName, desc] of Object.entries(manifest.variables)) {

@@ -165,7 +165,7 @@
         </toolbarbutton>
       </toolbaritem>
       <toolbarspring cui-areatype="toolbar" class="chromeclass-toolbar-additional"/>
-      <toolbaritem id="urlbar-container" persist="width"
+      <toolbaritem id="urlbar-container"
                    removable="false"
                    class="chromeclass-location" overflows="false">
         <toolbartabstop/>
@@ -354,6 +354,7 @@
               <hbox id="reader-mode-button"
                     class="urlbar-page-action"
                     role="button"
+                    data-l10n-id="reader-view-enter-button"
                     hidden="true"
                     tooltip="dynamic-shortcut-tooltip"
                     onclick="AboutReaderParent.buttonClick(event);">
@@ -434,15 +435,6 @@
       </toolbarbutton>
     </hbox>
 
-    <toolbarbutton id="unified-extensions-button"
-                   class="toolbarbutton-1"
-                   data-l10n-id="unified-extensions-button"
-                   hidden="true"
-                   onkeypress="gUnifiedExtensions.togglePanel(event)"
-                   onmousedown="gUnifiedExtensions.togglePanel(event)"
-                   overflows="false"
-                   removable="false" />
-
     <toolbarbutton id="nav-bar-overflow-button"
                    class="toolbarbutton-1 chromeclass-toolbar-additional overflow-button"
                    skipintoolbarset="true"
@@ -451,6 +443,15 @@
         <image class="toolbarbutton-animatable-image"/>
       </box>
     </toolbarbutton>
+
+    <toolbarbutton id="unified-extensions-button"
+                   class="toolbarbutton-1"
+                   data-l10n-id="unified-extensions-button"
+                   hidden="true"
+                   onkeypress="gUnifiedExtensions.togglePanel(event)"
+                   onmousedown="gUnifiedExtensions.togglePanel(event)"
+                   overflows="false"
+                   removable="false"/>
 
     <toolbaritem id="PanelUI-button"
                  removable="false">

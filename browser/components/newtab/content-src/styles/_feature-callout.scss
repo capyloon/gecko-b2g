@@ -87,11 +87,21 @@ $max-z-index: 2147483647;
           .steps {
             align-self: baseline;
             margin: -38px 30px -30px;
+            padding-block: 0;
           }
 
           .dismiss-button {
             margin-block: 25px -45px;
             z-index: 1;
+
+            @media (prefers-contrast) {
+              background-color: var(--in-content-button-background);
+
+              &:hover {
+                background-color: var(--in-content-primary-button-background);
+                color: var(--in-content-primary-button-text-color);
+              }
+            }
           }
         }
       }
@@ -115,6 +125,16 @@ $max-z-index: 2147483647;
 
           &:hover {
             background-color: var(--in-content-button-background-hover);
+          }
+
+          @media (prefers-contrast) {
+            color: var(--in-content-button-text-color);
+            border: 1px solid var(--in-content-button-border-color);
+
+            &:hover {
+              background-color: var(--in-content-primary-button-background);
+              color: var(--in-content-primary-button-text-color);
+            }
           }
         }
 
@@ -206,6 +226,32 @@ $max-z-index: 2147483647;
   // start arrow foreground
   &.arrow-inline-start::before {
     border-bottom: $arrow-border;
+    border-inline-start: $arrow-border;
+  }
+
+  // top-end arrow positioning
+  &.arrow-top-end::before,
+  &.arrow-top-end::after {
+    top: -$arrow-inset-size;
+    inset-inline-end: $arrow-inset-size;
+  }
+
+  // top-end arrow foreground
+  &.arrow-top-end::before {
+    border-top: $arrow-border;
+    border-inline-start: $arrow-border;
+  }
+
+  // top-start arrow positioning
+  &.arrow-top-start::before,
+  &.arrow-top-start::after {
+    top: -$arrow-inset-size;
+    inset-inline-start: $arrow-inset-size;
+  }
+
+  // top-start arrow foreground
+  &.arrow-top-start::before {
+    border-top: $arrow-border;
     border-inline-start: $arrow-border;
   }
 }

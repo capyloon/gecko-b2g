@@ -52,6 +52,7 @@ class DeviceManagerDx final {
   static void Shutdown();
 
   DeviceManagerDx();
+  ~DeviceManagerDx();
 
   static DeviceManagerDx* Get() { return sInstance; }
 
@@ -172,7 +173,7 @@ class DeviceManagerDx final {
 
   bool LoadD3D11();
   bool LoadDcomp();
-  void ReleaseD3D11();
+  void ReleaseD3D11() MOZ_REQUIRES(mDeviceLock);
 
   // Call GetDeviceRemovedReason on each device until one returns
   // a failure.

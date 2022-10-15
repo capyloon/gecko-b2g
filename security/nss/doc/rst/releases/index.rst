@@ -8,6 +8,8 @@ Releases
    :glob:
    :hidden:
 
+   nss_3_84.rst
+   nss_3_83.rst
    nss_3_82.rst
    nss_3_81.rst
    nss_3_80.rst
@@ -40,8 +42,8 @@ Releases
 
 .. note::
 
-   **NSS 3.82** is the latest version of NSS.
-   Complete release notes are available here: :ref:`mozilla_projects_nss_nss_3_82_release_notes`
+   **NSS 3.84** is the latest version of NSS.
+   Complete release notes are available here: :ref:`mozilla_projects_nss_nss_3_84_release_notes`
 
    **NSS 3.79.1** is the latest ESR version of NSS.
    Complete release notes are available here: :ref:`mozilla_projects_nss_nss_3_79_1_release_notes`
@@ -49,10 +51,7 @@ Releases
 
 .. container::
 
-   Changes in 3.82 included in this release:
+   Changes in 3.84 included in this release:
 
-   - Bug 1330271 - check for null template in sec_asn1{d,e}_push_state
-   - Bug 1735925 - QuickDER: Forbid NULL tags with non-zero length
-   - Bug 1784724 - Initialize local variables in TlsConnectTestBase::ConnectAndCheckCipherSuite
-   - Bug 1784191 - Cast the result of GetProcAddress
-   - Bug 1681099 - pk11wrap: Tighten certificate lookup based on PKCS #11 URI
+   - Bug 1791699 - Bump minimum NSPR version to 4.35.
+   - Bug 1792103 - Add a flag to disable building libnssckbi.

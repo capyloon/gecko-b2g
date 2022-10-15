@@ -38,7 +38,6 @@
 #include "nsString.h"
 #include "nsUnicharUtils.h"
 #include "nsIStringEnumerator.h"
-#include "nsMemory.h"
 #include "nsIStreamListener.h"
 #include "nsIMIMEService.h"
 #include "nsILoadGroup.h"
@@ -260,7 +259,7 @@ static nsresult GetDownloadDirectory(nsIFile** _directory,
               "chrome://mozapps/locale/downloads/downloads.properties",
               getter_AddRefs(downloadBundle));
           if (NS_SUCCEEDED(rv)) {
-            rv = downloadBundle->GetStringFromName("DownloadsFolder",
+            rv = downloadBundle->GetStringFromName("downloadsFolder",
                                                    downloadLocalized);
           }
           if (NS_FAILED(rv)) {
@@ -2008,11 +2007,13 @@ bool nsExternalAppHandler::IsDownloadSpam(nsIChannel* aChannel) {
     if (capability == nsIPermissionManager::PROMPT_ACTION) {
       nsCOMPtr<nsIObserverService> observerService =
           mozilla::services::GetObserverService();
+      RefPtr<BrowsingContext> browsingContext;
+      loadInfo->GetBrowsingContext(getter_AddRefs(browsingContext));
 
       nsAutoCString cStringURI;
       loadInfo->TriggeringPrincipal()->GetPrePath(cStringURI);
       observerService->NotifyObservers(
-          nullptr, "blocked-automatic-download",
+          browsingContext, "blocked-automatic-download",
           NS_ConvertASCIItoUTF16(cStringURI.get()).get());
       // FIXME: In order to escape memory leaks, currently we cancel blocked
       // downloads. This is temporary solution, because download data should be
@@ -3652,7 +3653,10 @@ void nsExternalHelperAppService::SanitizeFileName(nsAString& aFileName,
           nextChar = '_';
         }
 
-        lastNonTrimmable = int32_t(outFileName.Length()) + 1;
+        // Don't truncate surrogate pairs in the middle.
+        lastNonTrimmable =
+            int32_t(outFileName.Length()) +
+            (NS_IS_HIGH_SURROGATE(H_SURROGATE(nextChar)) ? 2 : 1);
       }
     }
 

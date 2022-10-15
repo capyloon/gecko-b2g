@@ -34,13 +34,13 @@ add_task(async function() {
     const { require } = ChromeUtils.import(
       "resource://devtools/shared/loader/Loader.jsm"
     );
-    const {
-      TargetActorRegistry,
-    } = require("devtools/server/actors/targets/target-actor-registry.jsm");
+    const { TargetActorRegistry } = ChromeUtils.import(
+      "resource://devtools/server/actors/targets/target-actor-registry.jsm"
+    );
     const {
       getResourceWatcher,
       TYPES,
-    } = require("devtools/server/actors/resources/index");
+    } = require("resource://devtools/server/actors/resources/index.js");
 
     // Retrieve the target actor instance and its watcher for console messages
     const targetActor = TargetActorRegistry.getTopLevelTargetActorForContext(
@@ -74,7 +74,7 @@ add_task(async function() {
     const {
       getResourceWatcher,
       TYPES,
-    } = require("devtools/server/actors/resources/index");
+    } = require("resource://devtools/server/actors/resources/index.js");
 
     ok(
       content._testTargetActor && !content._testTargetActor.actorID,

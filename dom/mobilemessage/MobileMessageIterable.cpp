@@ -52,41 +52,32 @@ nsPIDOMWindowInner* MobileMessageIterable::GetParentObject() const {
   return mParent;
 }
 
-void MobileMessageIterable::InitAsyncIterator(itrType* aIterator, ErrorResult& aError) {
-  mIterator = aIterator;
-  UniquePtr<IteratorData> data(new IteratorData());
-  aIterator->SetData((void*)data.release());
-}
-
-void MobileMessageIterable::DestroyAsyncIterator(itrType* aIterator) {
-  if (mIterator == aIterator) {
-    auto data = reinterpret_cast<IteratorData*>(aIterator->GetData());
-    delete data;
-    mIterator = nullptr;
-  }
-}
-
-already_AddRefed<Promise> MobileMessageIterable::GetNextPromise(
-    JSContext* aCx, itrType* aIterator, ErrorResult& aRv) {
+already_AddRefed<Promise> MobileMessageIterable::GetNextIterationResult(
+    Iterator* aIterator, ErrorResult& aRv) {
   RefPtr<Promise> promise = Promise::Create(mParent->AsGlobal(), aRv);
   if (NS_WARN_IF(aRv.Failed())) {
     return nullptr;
   }
 
+  AutoJSAPI jsapi;
+  if (NS_WARN_IF(!jsapi.Init(mParent))) {
+    return nullptr;
+  }
+
+  JSContext* cx = jsapi.cx();
+
+  if (!mIterator) {
+    mIterator = aIterator;
+  }
+
   if (mIterator != aIterator) {
-    JS::Rooted<JS::Value> value(aCx);
+    JS::Rooted<JS::Value> value(cx);
     Unused << ToJSValue(
-        aCx,
+        cx,
         NS_LITERAL_STRING_FROM_CSTRING("Mobilemessage iteration has started."),
         &value);
     promise->MaybeReject(value);
     return promise.forget();
-  }
-
-  auto data = reinterpret_cast<IteratorData*>(aIterator->GetData());
-  if (!data) {
-    aRv.Throw(NS_ERROR_FAILURE);
-    return nullptr;
   }
 
   if (mPendingResults.Length()) {
@@ -121,19 +112,21 @@ already_AddRefed<Promise> MobileMessageIterable::GetNextPromise(
       }
     }
 
-    JS::Rooted<JS::Value> value(aCx);
-    Unused << ToJSValue(aCx, result, &value);
-    iterator_utils::ResolvePromiseWithKeyOrValue(aCx, promise, value, aRv);
+    JS::Rooted<JS::Value> value(cx);
+    Unused << ToJSValue(cx, result, &value);
+    promise->MaybeResolve(value);
     mPendingResults.RemoveElementAt(mPendingResults.Length() - 1);
     return promise.forget();
   }
 
   if (mDone) {
     LOG_DEBUG("Mobilemessage iteration has been done");
-    iterator_utils::ResolvePromiseForFinished(aCx, promise, aRv);
+    iterator_utils::ResolvePromiseForFinished(promise);
     return promise.forget();
   }
-  data->mPromises.InsertElementAt(0, promise);
+
+  IteratorData& data = mIterator->Data();
+  data.mPromises.InsertElementAt(0, promise);
   mContinueCallback->HandleContinue();
   return promise.forget();
 }
@@ -144,12 +137,8 @@ void MobileMessageIterable::FireSuccess() {
     return;
   }
 
-  auto data = reinterpret_cast<IteratorData*>(mIterator->GetData());
-  if (!data) {
-    LOG_ERROR("no data.");
-    return;
-  }
-  auto promise = data->mPromises.PopLastElement();
+  IteratorData& data = mIterator->Data();
+  auto promise = data.mPromises.PopLastElement();
   if (!promise) {
     LOG_ERROR("no promise to resolve.");
     return;
@@ -197,9 +186,7 @@ void MobileMessageIterable::FireSuccess() {
   JSContext* cx = jsapi.cx();
   JS::Rooted<JS::Value> value(cx);
   Unused << ToJSValue(cx, result, &value);
-
-  ErrorResult rv;
-  iterator_utils::ResolvePromiseWithKeyOrValue(cx, promise, value, rv);
+  promise->MaybeResolve(value);
   mPendingResults.RemoveElementAt(mPendingResults.Length() - 1);
 }
 
@@ -209,12 +196,8 @@ void MobileMessageIterable::FireError(const nsAString& aReason) {
     return;
   }
 
-  auto data = reinterpret_cast<IteratorData*>(mIterator->GetData());
-  if (!data) {
-    LOG_ERROR("no data.");
-    return;
-  }
-  auto promise = data->mPromises.PopLastElement();
+  IteratorData& data = mIterator->Data();
+  auto promise = data.mPromises.PopLastElement();
   if (!promise) {
     LOG_ERROR("no promise to resolve.");
     return;
@@ -238,26 +221,14 @@ void MobileMessageIterable::FireDone() {
     return;
   }
 
-  auto data = reinterpret_cast<IteratorData*>(mIterator->GetData());
-  if (!data) {
-    LOG_ERROR("no data.");
-    return;
-  }
-
-  auto promise = data->mPromises.PopLastElement();
+  IteratorData& data = mIterator->Data();
+  auto promise = data.mPromises.PopLastElement();
   if (!promise) {
     LOG_ERROR("no promise to resolve.");
     return;
   }
 
-  AutoJSAPI jsapi;
-  if (NS_WARN_IF(!jsapi.Init(mParent))) {
-    return;
-  }
-
-  JSContext* cx = jsapi.cx();
-  ErrorResult rv;
-  iterator_utils::ResolvePromiseForFinished(cx, promise, rv);
+  iterator_utils::ResolvePromiseForFinished(promise);
   LOG_DEBUG("Iteration complete, resolve next() with undefined.");
 }
 

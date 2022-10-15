@@ -34,12 +34,8 @@ namespace dom {
 namespace gonk {
 
 class AudioPortCallbackHolder;
+class AudioSettingsObserver;
 class VolumeCurves;
-class VolumeInitCallback;
-class VolumeSetCallback;
-class VolumeAddObserverCallback;
-class VolumeRemoveObserverCallback;
-class VolumeSettingsObserver;
 
 class AudioManager final : public nsIAudioManager, public nsIObserver {
  public:
@@ -123,7 +119,6 @@ class AudioManager final : public nsIAudioManager, public nsIObserver {
   nsresult SetStreamVolumeIndex(int32_t aStream, uint32_t aIndex);
   nsresult GetStreamVolumeIndex(int32_t aStream, uint32_t* aIndex);
 
-  uint32_t GetSpecificVolumeCount();
   uint32_t GetDevicesForStream(int32_t aStream);
   uint32_t GetDeviceForStream(int32_t aStream);
   uint32_t GetDeviceForFm();
@@ -144,6 +139,10 @@ class AudioManager final : public nsIAudioManager, public nsIObserver {
 
   float mFmContentVolume = 1.0f;
 
+  bool mMasterMono = false;
+
+  float mMasterBalance = 0.5f;
+
   void HandleBluetoothStatusChanged(nsISupports* aSubject, const char* aTopic,
                                     const nsCString aAddress);
 
@@ -156,13 +155,15 @@ class AudioManager final : public nsIAudioManager, public nsIObserver {
   // called directly.
   void SetFmMuted(bool aMuted);
 
-  // We store the volume setting in the database, these are related functions.
-  void InitVolumeFromDatabase();
-  void MaybeUpdateVolumeSettingToDatabase(bool aForce = false);
-
-  // Promise functions.
-  void InitDeviceVolumeSucceeded();
-  void InitDeviceVolumeFailed(const char* aError);
+  // We store the audio setting in the database, these are related functions.
+  void ReadAudioSettings();
+  void ReadAudioSettingsFinished();
+  void MaybeWriteVolumeSettings(bool aForce = false);
+  void OnAudioSettingChanged(const nsAString& aName, const nsAString& aValue);
+  nsresult ParseVolumeSetting(const nsAString& aName, const nsAString& aValue,
+                              int32_t* aStream, uint32_t* aDevice,
+                              uint32_t* aVolIndex);
+  nsTArray<nsString> AudioSettingNames(bool aInitializing);
 
   void UpdateHeadsetConnectionState(hal::SwitchState aState);
   void UpdateDeviceConnectionState(bool aIsConnected, uint32_t aDevice,
@@ -179,16 +180,12 @@ class AudioManager final : public nsIAudioManager, public nsIObserver {
   ~AudioManager();
   void Init();
 
-  RefPtr<VolumeInitCallback> mVolumeInitCallback;
-  RefPtr<VolumeSetCallback> mVolumeSetCallback;
-  RefPtr<VolumeAddObserverCallback> mVolumeAddObserverCallback;
-  RefPtr<VolumeRemoveObserverCallback> mVolumeRemoveObserverCallback;
-  RefPtr<VolumeSettingsObserver> mVolumeSettingsObserver;
+  RefPtr<AudioSettingsObserver> mAudioSettingsObserver;
 
-  friend class VolumeInitCallback;
-  friend class VolumeStreamState;
+  friend class AudioSettingsGetCallback;
+  friend class AudioSettingsObserver;
   friend class GonkAudioPortCallback;
-  friend class VolumeSettingsObserver;
+  friend class VolumeStreamState;
 };
 
 } /* namespace gonk */

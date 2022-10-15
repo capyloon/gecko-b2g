@@ -113,7 +113,7 @@ this.VideoControlsWidget = class {
     this.impl.onPrefChange(prefName, prefValue);
   }
 
-  // If you change this, also change SEEK_TIME_SECS in PictureInPictureChild.jsm
+  // If you change this, also change SEEK_TIME_SECS in PictureInPictureChild.sys.mjs
   static SEEK_TIME_SECS = 5;
 
   static isPictureInPictureVideo(someVideo) {
@@ -2925,7 +2925,7 @@ this.VideoControlsImplWidget = class {
                   <span class="pip-icon"></span>
                   <span class="pip-label" data-l10n-id="videocontrols-picture-in-picture-toggle-label2"></span>
                 </span>
-                <div class="pip-explainer clickable" data-l10n-id="videocontrols-picture-in-picture-explainer2"></div>
+                <div class="pip-explainer clickable" data-l10n-id="videocontrols-picture-in-picture-explainer3"></div>
               </div>
               <div class="pip-icon clickable"></div>
             </button>
@@ -3431,7 +3431,7 @@ this.NoControlsDesktopImplWidget = class {
                   <span class="pip-icon"></span>
                   <span class="pip-label" data-l10n-id="videocontrols-picture-in-picture-toggle-label2"></span>
                 </span>
-                <div class="pip-explainer clickable" data-l10n-id="videocontrols-picture-in-picture-explainer2"></div>
+                <div class="pip-explainer clickable" data-l10n-id="videocontrols-picture-in-picture-explainer3"></div>
               </div>
               <div class="pip-icon"></div>
             </button>

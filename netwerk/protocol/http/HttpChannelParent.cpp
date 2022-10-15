@@ -1011,6 +1011,9 @@ static ResourceTimingStructArgs GetTimingAttributes(HttpBaseChannel* aChannel) {
 
   aChannel->GetCacheReadEnd(&timeStamp);
   args.cacheReadEnd() = timeStamp;
+
+  aChannel->GetTransactionPending(&timeStamp);
+  args.transactionPending() = timeStamp;
   return args;
 }
 
@@ -1224,6 +1227,19 @@ HttpChannelParent::OnStartRequest(nsIRequest* aRequest) {
       multiPartID.valueOr(0) == 0) {
     LOG(("HttpChannelParent::SendOnStartRequestSent\n"));
     Unused << SendOnStartRequestSent();
+  }
+
+  if (!args.timing().domainLookupEnd().IsNull() &&
+      !args.timing().connectStart().IsNull()) {
+    nsCString protocolVersion;
+    mChannel->GetProtocolVersion(protocolVersion);
+    uint32_t classOfServiceFlags = 0;
+    mChannel->GetClassFlags(&classOfServiceFlags);
+    Telemetry::AccumulateTimeDelta(
+        Telemetry::NETWORK_DNS_END_TO_CONNECT_START_MS,
+        protocolVersion + "_"_ns +
+            ClassOfService::ToString(classOfServiceFlags),
+        args.timing().domainLookupEnd(), args.timing().connectStart());
   }
 
   return rv;
@@ -1799,13 +1815,11 @@ nsresult HttpChannelParent::OpenAlternativeOutputStream(
 }
 
 already_AddRefed<nsITransportSecurityInfo> HttpChannelParent::SecurityInfo() {
-  nsCOMPtr<nsISupports> secInfoSupp;
-  mChannel->GetSecurityInfo(getter_AddRefs(secInfoSupp));
-  if (!secInfoSupp) {
+  if (!mChannel) {
     return nullptr;
   }
-  nsCOMPtr<nsITransportSecurityInfo> securityInfo(
-      do_QueryInterface(secInfoSupp));
+  nsCOMPtr<nsITransportSecurityInfo> securityInfo;
+  mChannel->GetSecurityInfo(getter_AddRefs(securityInfo));
   return securityInfo.forget();
 }
 

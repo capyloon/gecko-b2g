@@ -175,7 +175,7 @@
 #include "util/WindowsWrapper.h"
 #include "vm/ArgumentsObject.h"
 #include "vm/Compression.h"
-#include "vm/ErrorContext.h"
+#include "vm/ErrorContext.h"  // AutoReportFrontendContext
 #include "vm/ErrorObject.h"
 #include "vm/ErrorReporting.h"
 #include "vm/HelperThreads.h"
@@ -988,7 +988,7 @@ enum class CompileUtf8 {
 
 [[nodiscard]] static bool RunFile(JSContext* cx, const char* filename,
                                   FILE* file, CompileUtf8 compileMethod,
-                                  bool compileOnly) {
+                                  bool compileOnly, bool fullParse) {
   SkipUTF8BOM(file);
 
   int64_t t1 = PRMJ_Now();
@@ -999,8 +999,13 @@ enum class CompileUtf8 {
     options.setIntroductionType("js shell file")
         .setFileAndLine(filename, 1)
         .setIsRunOnce(true)
-        .setNoScriptRval(true)
-        .setEagerDelazificationStrategy(defaultDelazificationMode);
+        .setNoScriptRval(true);
+
+    if (fullParse) {
+      options.setForceFullParse();
+    } else {
+      options.setEagerDelazificationStrategy(defaultDelazificationMode);
+    }
 
     if (compileMethod == CompileUtf8::DontInflate) {
       script = JS::CompileUtf8File(cx, options, file);
@@ -1596,6 +1601,8 @@ static bool AddIntlExtras(JSContext* cx, unsigned argc, Value* vp) {
 }
 
 enum FileKind {
+  PreludeScript,    // UTF-8 script, fully-parsed, to avoid conflicting
+                    // configurations.
   FileScript,       // UTF-8, directly parsed as such
   FileScriptUtf16,  // FileScript, but inflate to UTF-16 before parsing
   FileModule,
@@ -1631,18 +1638,26 @@ static void ReportCantOpenErrorUnknownEncoding(JSContext* cx,
   }
   AutoCloseFile autoClose(file);
 
+  bool fullParse = false;
   if (!forceTTY && !isatty(fileno(file))) {
     // It's not interactive - just execute it.
     switch (kind) {
+      case PreludeScript:
+        fullParse = true;
+        if (!RunFile(cx, filename, file, CompileUtf8::DontInflate, compileOnly,
+                     fullParse)) {
+          return false;
+        }
+        break;
       case FileScript:
-        if (!RunFile(cx, filename, file, CompileUtf8::DontInflate,
-                     compileOnly)) {
+        if (!RunFile(cx, filename, file, CompileUtf8::DontInflate, compileOnly,
+                     fullParse)) {
           return false;
         }
         break;
       case FileScriptUtf16:
         if (!RunFile(cx, filename, file, CompileUtf8::InflateToUtf16,
-                     compileOnly)) {
+                     compileOnly, fullParse)) {
           return false;
         }
         break;
@@ -2414,7 +2429,7 @@ static bool Evaluate(JSContext* cx, unsigned argc, Value* vp) {
       return false;
     }
 
-    MainThreadErrorContext ec(cx);
+    AutoReportFrontendContext ec(cx);
     if (!SetSourceOptions(cx, &ec, script->scriptSource(), displayURL,
                           sourceMapURL)) {
       return false;
@@ -4840,7 +4855,7 @@ static bool ParseModule(JSContext* cx, unsigned argc, Value* vp) {
     return false;
   }
 
-  MainThreadErrorContext ec(cx);
+  AutoReportFrontendContext ec(cx);
   RootedObject module(
       cx, frontend::CompileModule(cx, &ec, cx->stackLimitForCurrentPrincipal(),
                                   options, srcBuf));
@@ -4969,7 +4984,7 @@ static bool InstantiateModuleStencil(JSContext* cx, uint32_t argc, Value* vp) {
   }
 
   /* Prepare the CompilationStencil for decoding. */
-  MainThreadErrorContext ec(cx);
+  AutoReportFrontendContext ec(cx);
   Rooted<frontend::CompilationInput> input(cx,
                                            frontend::CompilationInput(options));
   if (!input.get().initForModule(cx, &ec)) {
@@ -5028,7 +5043,7 @@ static bool InstantiateModuleStencilXDR(JSContext* cx, uint32_t argc,
   }
 
   /* Prepare the CompilationStencil for decoding. */
-  MainThreadErrorContext ec(cx);
+  AutoReportFrontendContext ec(cx);
   Rooted<frontend::CompilationInput> input(cx,
                                            frontend::CompilationInput(options));
   if (!input.get().initForModule(cx, &ec)) {
@@ -5044,11 +5059,13 @@ static bool InstantiateModuleStencilXDR(JSContext* cx, uint32_t argc,
     return false;
   }
   if (!succeeded) {
+    ec.clearAutoReport();
     JS_ReportErrorASCII(cx, "Decoding failure");
     return false;
   }
 
   if (!stencil.isModule()) {
+    ec.clearAutoReport();
     JS_ReportErrorASCII(cx,
                         "instantiateModuleStencilXDR: Module stencil expected");
     return false;
@@ -5297,7 +5314,7 @@ static bool DumpAST(JSContext* cx, const JS::ReadOnlyCompileOptions& options,
                     js::frontend::ParseGoal goal) {
   using namespace js::frontend;
 
-  MainThreadErrorContext ec(cx);
+  AutoReportFrontendContext ec(cx);
   Parser<FullParseHandler, Unit> parser(
       cx, &ec, cx->stackLimitForCurrentPrincipal(), options, units, length,
       /* foldConstants = */ false, compilationState,
@@ -5349,7 +5366,7 @@ template <typename Unit>
     return false;
   }
 
-  MainThreadErrorContext ec(cx);
+  AutoReportFrontendContext ec(cx);
   js::frontend::NoScopeBindingCache scopeCache;
   UniquePtr<frontend::ExtensibleCompilationStencil> stencil;
   if (goal == frontend::ParseGoal::Script) {
@@ -5522,7 +5539,7 @@ static bool FrontendTest(JSContext* cx, unsigned argc, Value* vp,
             return false;
           }
 
-          MainThreadErrorContext ec(cx);
+          AutoReportFrontendContext ec(cx);
           Rooted<frontend::CompilationInput> input(
               cx, frontend::CompilationInput(options));
           UniquePtr<frontend::ExtensibleCompilationStencil> stencil;
@@ -5532,6 +5549,7 @@ static bool FrontendTest(JSContext* cx, unsigned argc, Value* vp,
             return false;
           }
           if (!stencil) {
+            ec.clearAutoReport();
             JS_ReportErrorASCII(cx, "SmooshMonkey failed to parse");
             return false;
           }
@@ -5574,7 +5592,7 @@ static bool FrontendTest(JSContext* cx, unsigned argc, Value* vp,
     return true;
   }
 
-  MainThreadErrorContext ec(cx);
+  AutoReportFrontendContext ec(cx);
   Rooted<frontend::CompilationInput> input(cx,
                                            frontend::CompilationInput(options));
   if (goal == frontend::ParseGoal::Script) {
@@ -5657,7 +5675,7 @@ static bool SyntaxParse(JSContext* cx, unsigned argc, Value* vp) {
   const char16_t* chars = stableChars.twoByteRange().begin().get();
   size_t length = scriptContents->length();
 
-  MainThreadErrorContext ec(cx);
+  AutoReportFrontendContext ec(cx);
   Rooted<frontend::CompilationInput> input(cx,
                                            frontend::CompilationInput(options));
   if (!input.get().initForGlobal(cx, &ec)) {
@@ -5680,14 +5698,14 @@ static bool SyntaxParse(JSContext* cx, unsigned argc, Value* vp) {
   }
 
   bool succeeded = parser.parse();
-  if (cx->isExceptionPending()) {
+  if (ec.hadErrors()) {
     return false;
   }
 
   if (!succeeded && !parser.hadAbortedSyntaxParse()) {
     // If no exception is posted, either there was an OOM or a language
     // feature unhandled by the syntax parser was encountered.
-    MOZ_ASSERT(cx->runtime()->hadOutOfMemory);
+    MOZ_ASSERT(ec.hadOutOfMemory());
     return false;
   }
 
@@ -10335,6 +10353,18 @@ static bool OptionFailure(const char* option, const char* str) {
   return false;
 }
 
+template <typename... Ts>
+auto minVal(Ts... args);
+template <typename T>
+auto minVal(T a) {
+  return a;
+}
+
+template <typename T, typename... Ts>
+auto minVal(T a, Ts... args) {
+  return std::min(a, minVal(args...));
+}
+
 [[nodiscard]] static bool ProcessArgs(JSContext* cx, OptionParser* op) {
   ShellContext* sc = GetShellContext(cx);
 
@@ -10406,6 +10436,7 @@ static bool OptionFailure(const char* option, const char* str) {
 
   MultiStringRange filePaths = op->getMultiStringOption('f');
   MultiStringRange utf16FilePaths = op->getMultiStringOption('u');
+  MultiStringRange preludePaths = op->getMultiStringOption('p');
   MultiStringRange codeChunks = op->getMultiStringOption('e');
   MultiStringRange modulePaths = op->getMultiStringOption('m');
 
@@ -10424,15 +10455,28 @@ static bool OptionFailure(const char* option, const char* str) {
     return Process(cx, nullptr, forceTTY, FileScript);
   }
 
-  while (!filePaths.empty() || !utf16FilePaths.empty() || !codeChunks.empty() ||
+  while (!preludePaths.empty() || !filePaths.empty() ||
+         !utf16FilePaths.empty() || !codeChunks.empty() ||
          !modulePaths.empty()) {
+    size_t ppArgno = preludePaths.empty() ? SIZE_MAX : preludePaths.argno();
     size_t fpArgno = filePaths.empty() ? SIZE_MAX : filePaths.argno();
     size_t ufpArgno =
         utf16FilePaths.empty() ? SIZE_MAX : utf16FilePaths.argno();
     size_t ccArgno = codeChunks.empty() ? SIZE_MAX : codeChunks.argno();
     size_t mpArgno = modulePaths.empty() ? SIZE_MAX : modulePaths.argno();
+    size_t minArgno = minVal(ppArgno, fpArgno, ufpArgno, ccArgno, mpArgno);
 
-    if (fpArgno < ufpArgno && fpArgno < ccArgno && fpArgno < mpArgno) {
+    if (ppArgno == minArgno) {
+      char* path = preludePaths.front();
+      if (!Process(cx, path, false, PreludeScript)) {
+        return false;
+      }
+
+      preludePaths.popFront();
+      continue;
+    }
+
+    if (fpArgno == minArgno) {
       char* path = filePaths.front();
       if (!Process(cx, path, false, FileScript)) {
         return false;
@@ -10442,7 +10486,7 @@ static bool OptionFailure(const char* option, const char* str) {
       continue;
     }
 
-    if (ufpArgno < fpArgno && ufpArgno < ccArgno && ufpArgno < mpArgno) {
+    if (ufpArgno == minArgno) {
       char* path = utf16FilePaths.front();
       if (!Process(cx, path, false, FileScriptUtf16)) {
         return false;
@@ -10452,12 +10496,13 @@ static bool OptionFailure(const char* option, const char* str) {
       continue;
     }
 
-    if (ccArgno < fpArgno && ccArgno < ufpArgno && ccArgno < mpArgno) {
+    if (ccArgno == minArgno) {
       const char* code = codeChunks.front();
 
+      // Command line scripts are always parsed with full-parse to evaluate
+      // conditions which might filter code coverage conditions.
       JS::CompileOptions opts(cx);
-      opts.setFileAndLine("-e", 1).setEagerDelazificationStrategy(
-          defaultDelazificationMode);
+      opts.setFileAndLine("-e", 1).setForceFullParse();
 
       JS::SourceText<Utf8Unit> srcBuf;
       if (!srcBuf.init(cx, code, strlen(code), JS::SourceOwnership::Borrowed)) {
@@ -10477,7 +10522,7 @@ static bool OptionFailure(const char* option, const char* str) {
       continue;
     }
 
-    MOZ_ASSERT(mpArgno < fpArgno && mpArgno < ufpArgno && mpArgno < ccArgno);
+    MOZ_ASSERT(mpArgno == minArgno);
 
     char* path = modulePaths.front();
     if (!Process(cx, path, false, FileModule)) {
@@ -11430,6 +11475,7 @@ int main(int argc, char** argv) {
           "File path to run, inflating the file's UTF-8 contents to UTF-16 and "
           "then parsing that") ||
       !op.addMultiStringOption('m', "module", "PATH", "Module path to run") ||
+      !op.addMultiStringOption('p', "prelude", "PATH", "Prelude path to run") ||
       !op.addMultiStringOption('e', "execute", "CODE", "Inline code to run") ||
       !op.addStringOption('\0', "selfhosted-xdr-path", "[filename]",
                           "Read/Write selfhosted script data from/to the given "

@@ -2652,9 +2652,8 @@ static void StreamCategories(SpliceableJSONWriter& aWriter) {
 
 static void StreamMarkerSchema(SpliceableJSONWriter& aWriter) {
   // Get an array view with all registered marker-type-specific functions.
-  Span<const base_profiler_markers_detail::Streaming::MarkerTypeFunctions>
-      markerTypeFunctionsArray =
-          base_profiler_markers_detail::Streaming::MarkerTypeFunctionsArray();
+  base_profiler_markers_detail::Streaming::LockedMarkerTypeFunctionsList
+      markerTypeFunctionsArray;
   // List of streamed marker names, this is used to spot duplicates.
   std::set<std::string> names;
   // Stream the display schema for each different one. (Duplications may come
@@ -2741,6 +2740,25 @@ static PreRecordedMetaInformation PreRecordMetaInformation() {
       info.mHttpOscpu.AppendInt(minor);
       info.mHttpOscpu.AppendLiteral(".");
       info.mHttpOscpu.AppendInt(bugfix);
+    } else
+#endif
+#if defined(GP_OS_windows)
+      // On Windows, the http "oscpu" is capped at Windows 10, so we need to get
+      // the real OS version directly.
+      OSVERSIONINFO ovi = {sizeof(OSVERSIONINFO)};
+    if (GetVersionEx(&ovi)) {
+      info.mHttpOscpu.AppendLiteral("Windows ");
+      // The major version returned for Windows 11 is 10, but we can
+      // identify it from the build number.
+      info.mHttpOscpu.AppendInt(
+          ovi.dwBuildNumber >= 22000 ? 11 : int32_t(ovi.dwMajorVersion));
+      info.mHttpOscpu.AppendLiteral(".");
+      info.mHttpOscpu.AppendInt(int32_t(ovi.dwMinorVersion));
+#  if defined(_ARM64_)
+      info.mHttpOscpu.AppendLiteral(" Arm64");
+#  endif
+      info.mHttpOscpu.AppendLiteral("; build=");
+      info.mHttpOscpu.AppendInt(int32_t(ovi.dwBuildNumber));
     } else
 #endif
     {

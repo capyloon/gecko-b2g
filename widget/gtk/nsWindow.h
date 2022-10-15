@@ -222,6 +222,7 @@ class nsWindow final : public nsBaseWidget {
   gboolean OnExposeEvent(cairo_t* cr);
   gboolean OnConfigureEvent(GtkWidget* aWidget, GdkEventConfigure* aEvent);
   void OnMap();
+  void OnUnmap();
   void OnUnrealize();
   void OnSizeAllocate(GtkAllocation* aAllocation);
   void OnDeleteEvent();
@@ -282,6 +283,7 @@ class nsWindow final : public nsBaseWidget {
   nsIFrame* GetFrame() const;
   nsWindow* GetEffectiveParent();
   bool IsDestroyed() const { return mIsDestroyed; }
+  bool IsMapped() const { return mIsMapped; }
   bool IsPopup() const;
   bool IsWaylandPopup() const;
   bool IsPIPWindow() const { return mIsPIPWindow; };
@@ -545,6 +547,9 @@ class nsWindow final : public nsBaseWidget {
 
   // The actual size mode that's in effect.
   nsSizeMode mSizeMode = nsSizeMode_Normal;
+  // The last size mode we've requested. This might not match mSizeMode if
+  // there's a request to change the size mode in progress.
+  nsSizeMode mLastSizeModeRequest = nsSizeMode_Normal;
   nsSizeMode mLastSizeModeBeforeFullscreen = nsSizeMode_Normal;
 
   float mAspectRatio = 0.0f;
@@ -557,6 +562,8 @@ class nsWindow final : public nsBaseWidget {
   // OnSizeAllocate() might change mBounds.Size().
   LayoutDeviceIntSize mLastSizeRequest;
   LayoutDeviceIntPoint mClientOffset;
+  // Indicates a new size that still needs to be dispatched.
+  LayoutDeviceIntSize mNeedsDispatchSize = LayoutDeviceIntSize(-1, -1);
 
   // This field omits duplicate scroll events caused by GNOME bug 726878.
   guint32 mLastScrollEventTime = GDK_CURRENT_TIME;
@@ -615,8 +622,6 @@ class nsWindow final : public nsBaseWidget {
 
   // Has this widget been destroyed yet?
   bool mIsDestroyed : 1;
-  // Does WindowResized need to be called on listeners?
-  bool mNeedsDispatchResized : 1;
   // mIsShown tracks requested visible status from browser perspective, i.e.
   // if the window should be visible or now.
   bool mIsShown : 1;
@@ -840,18 +845,21 @@ class nsWindow final : public nsBaseWidget {
       nsTArray<nsIWidget*>* aLayoutWidgetHierarchy);
   void CloseAllPopupsBeforeRemotePopup();
   void WaylandPopupHideClosedPopups();
-  void WaylandPopupMove();
   void WaylandPopupPrepareForMove();
+  void WaylandPopupMoveImpl();
+  void WaylandPopupMovePlain(int aX, int aY);
   bool WaylandPopupRemoveNegativePosition(int* aX = nullptr, int* aY = nullptr);
-  bool WaylandPopupCheckAndGetAnchor(GdkRectangle* aPopupAnchor);
-  bool WaylandPopupAnchorAdjustForParentPopup(GdkRectangle* aPopupAnchor);
+  bool WaylandPopupCheckAndGetAnchor(GdkRectangle* aPopupAnchor,
+                                     GdkPoint* aOffset);
+  bool WaylandPopupAnchorAdjustForParentPopup(GdkRectangle* aPopupAnchor,
+                                              GdkPoint* aOffset);
   nsWindow* WaylandPopupGetTopmostWindow();
   bool IsPopupInLayoutPopupChain(nsTArray<nsIWidget*>* aLayoutWidgetHierarchy,
                                  bool aMustMatchParent);
   void WaylandPopupMarkAsClosed();
   void WaylandPopupRemoveClosedPopups();
   void WaylandPopupSetDirectPosition();
-  bool WaylandPopupFitsToplevelWindow();
+  bool WaylandPopupFitsToplevelWindow(bool aMove);
   const WaylandPopupMoveToRectParams WaylandPopupGetPositionFromLayout();
   void WaylandPopupPropagateChangesToLayout(bool aMove, bool aResize);
   nsWindow* WaylandPopupFindLast(nsWindow* aPopup);

@@ -3,7 +3,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 ---
 job-defaults:
-    worker-type: b-linux-xlarge
+    worker-type: b-linux-xlarge-gcp
     worker:
         max-run-time: 7200
     run:
@@ -14,7 +14,7 @@ linux64-clang-5.0:
     description: "Clang 5.0 toolchain build"
     treeherder:
         symbol: TL(clang-5.0)
-    worker-type: b-linux-large
+    worker-type: b-linux-large-gcp
     run:
         script: build-clang.sh
         arguments:
@@ -36,12 +36,15 @@ linux64-clang-14-mingw-x86:
     description: "MinGW-Clang 14 x86 toolchain build"
     treeherder:
         symbol: TMW(clang-14-x86)
-    worker-type: b-linux
+    worker-type: b-linux-gcp
     run:
         script: build-clang-mingw.sh
         arguments:
             - 'x86'
-        toolchain-alias: linux64-clang-mingw-x86
+        toolchain-alias:
+            by-project:
+                toolchains: null
+                default: linux64-clang-mingw-x86
         toolchain-artifact: public/build/clangmingw.tar.zst
     fetches:
         fetch:
@@ -57,12 +60,15 @@ linux64-clang-14-mingw-x64:
     treeherder:
         symbol: TMW(clang-14-x64)
         tier: 1
-    worker-type: b-linux
+    worker-type: b-linux-gcp
     run:
         script: build-clang-mingw.sh
         arguments:
             - 'x64'
-        toolchain-alias: linux64-clang-mingw-x64
+        toolchain-alias:
+            by-project:
+                toolchains: null
+                default: linux64-clang-mingw-x64
         toolchain-artifact: public/build/clangmingw.tar.zst
     fetches:
         fetch:
@@ -89,7 +95,9 @@ linux64-clang-14-stage1:
             - 'build/build-clang/clang-14.json'
             - 'build/build-clang/1stage.json'
         toolchain-alias:
-            - linux64-clang-toolchain
+            by-project:
+                toolchains: null
+                default: linux64-clang-toolchain
         toolchain-artifact: public/build/clang.tar.zst
     fetches:
         fetch:
@@ -154,13 +162,15 @@ linux64-clang-14:
         local-toolchain: true
     treeherder:
         symbol: TL(clang-14)
-    worker-type: b-linux
+    worker-type: b-linux-gcp
     worker:
         max-run-time: 600
     run:
         script: repack-clang.sh
         toolchain-alias:
-            - linux64-clang
+            by-project:
+                toolchains: null
+                default: linux64-clang
         toolchain-artifact: public/build/clang.tar.zst
     fetches:
         toolchain:
@@ -183,7 +193,7 @@ macosx64-clang-14-raw:
     description: "Clang 14 toolchain build"
     treeherder:
         symbol: TM(clang-14-raw)
-    worker-type: b-linux-large
+    worker-type: b-linux-large-gcp
     worker:
         max-run-time: 3600
     run:
@@ -215,14 +225,17 @@ macosx64-clang-14:
         local-toolchain: true
     treeherder:
         symbol: TM(clang-14)
-    worker-type: b-linux
+    worker-type: b-linux-gcp
     worker:
         max-run-time: 600
     run:
         script: repack-clang.sh
         toolchain-alias:
-            - macosx64-clang
-            - macosx64-clang-toolchain
+            by-project:
+                toolchains: null
+                default:
+                    - macosx64-clang
+                    - macosx64-clang-toolchain
         toolchain-artifact: public/build/clang.tar.zst
     fetches:
         toolchain:
@@ -245,7 +258,7 @@ macosx64-aarch64-clang-14-raw:
     description: "Clang 14 toolchain build"
     treeherder:
         symbol: TM(clang-14-aarch64-raw)
-    worker-type: b-linux-large
+    worker-type: b-linux-large-gcp
     worker:
         env:
             OSX_ARCH: arm64
@@ -279,12 +292,15 @@ macosx64-aarch64-clang-14:
         local-toolchain: true
     treeherder:
         symbol: TM(clang-14-aarch64)
-    worker-type: b-linux
+    worker-type: b-linux-gcp
     worker:
         max-run-time: 600
     run:
         script: repack-clang.sh
-        toolchain-alias: macosx64-aarch64-clang
+        toolchain-alias:
+            by-project:
+                toolchains: null
+                default: macosx64-aarch64-clang
         toolchain-artifact: public/build/clang.tar.zst
     fetches:
         toolchain:
@@ -318,7 +334,10 @@ win64-clang-14-stage1:
             - 'build/build-clang/win64.json'
             - 'build/build-clang/clang-14.json'
             - 'build/build-clang/1stage.json'
-        toolchain-alias: win64-clang-toolchain
+        toolchain-alias:
+            by-project:
+                toolchains: null
+                default: win64-clang-toolchain
         toolchain-artifact: public/build/clang.tar.zst
     fetches:
         fetch:
@@ -364,12 +383,15 @@ win64-clang-14:
         local-toolchain: true
     treeherder:
         symbol: TW64(clang-14)
-    worker-type: b-linux
+    worker-type: b-linux-gcp
     worker:
         max-run-time: 600
     run:
         script: repack-clang.sh
-        toolchain-alias: win64-clang
+        toolchain-alias:
+            by-project:
+                toolchains: null
+                default: win64-clang
         toolchain-artifact: public/build/clang.tar.zst
     fetches:
         toolchain:
@@ -394,11 +416,15 @@ linux64-clang-trunk-mingw-x86:
         cached_task: false
     treeherder:
         symbol: TMW(clang-trunk-x86)
-    worker-type: b-linux
+    worker-type: b-linux-gcp
     run:
         script: build-clang-mingw.sh
         arguments:
             - 'x86'
+        toolchain-alias:
+            by-project:
+                toolchains: linux64-clang-mingw-x86
+                default: null
         toolchain-artifact: public/build/clangmingw.tar.zst
     fetches:
         fetch:
@@ -416,11 +442,15 @@ linux64-clang-trunk-mingw-x64:
     treeherder:
         symbol: TMW(clang-trunk-x64)
         tier: 1
-    worker-type: b-linux
+    worker-type: b-linux-gcp
     run:
         script: build-clang-mingw.sh
         arguments:
             - 'x64'
+        toolchain-alias:
+            by-project:
+                toolchains: linux64-clang-mingw-x64
+                default: null
         toolchain-artifact: public/build/clangmingw.tar.zst
     fetches:
         fetch:
@@ -448,6 +478,10 @@ linux64-clang-trunk-stage1:
             - 'build/build-clang/linux64.json'
             - 'build/build-clang/clang-trunk.json'
             - 'build/build-clang/1stage.json'
+        toolchain-alias:
+            by-project:
+                toolchains: linux64-clang-toolchain
+                default: null
         toolchain-artifact: public/build/clang.tar.zst
     fetches:
         fetch:
@@ -516,11 +550,15 @@ linux64-clang-trunk:
         cached_task: false
     treeherder:
         symbol: TL(clang-trunk)
-    worker-type: b-linux
+    worker-type: b-linux-gcp
     worker:
         max-run-time: 600
     run:
         script: repack-clang.sh
+        toolchain-alias:
+            by-project:
+                toolchains: linux64-clang
+                default: null
         toolchain-artifact: public/build/clang.tar.zst
     fetches:
         toolchain:
@@ -545,7 +583,7 @@ macosx64-clang-trunk-raw:
         cached_task: false
     treeherder:
         symbol: TM(clang-trunk-raw)
-    worker-type: b-linux-large
+    worker-type: b-linux-large-gcp
     worker:
         max-run-time: 3600
     run:
@@ -577,11 +615,17 @@ macosx64-clang-trunk:
         cached_task: false
     treeherder:
         symbol: TM(clang-trunk)
-    worker-type: b-linux
+    worker-type: b-linux-gcp
     worker:
         max-run-time: 600
     run:
         script: repack-clang.sh
+        toolchain-alias:
+            by-project:
+                toolchains:
+                    - macosx64-clang
+                    - macosx64-clang-toolchain
+                default: null
         toolchain-artifact: public/build/clang.tar.zst
     fetches:
         toolchain:
@@ -606,7 +650,7 @@ macosx64-aarch64-clang-trunk-raw:
         cached_task: false
     treeherder:
         symbol: TM(clang-trunk-aarch64-raw)
-    worker-type: b-linux-large
+    worker-type: b-linux-large-gcp
     worker:
         env:
             OSX_ARCH: arm64
@@ -640,11 +684,15 @@ macosx64-aarch64-clang-trunk:
         cached_task: false
     treeherder:
         symbol: TM(clang-trunk-aarch64)
-    worker-type: b-linux
+    worker-type: b-linux-gcp
     worker:
         max-run-time: 600
     run:
         script: repack-clang.sh
+        toolchain-alias:
+            by-project:
+                toolchains: macosx64-aarch64-clang
+                default: null
         toolchain-artifact: public/build/clang.tar.zst
     fetches:
         toolchain:
@@ -680,6 +728,10 @@ win64-clang-trunk-stage1:
             - 'build/build-clang/win64.json'
             - 'build/build-clang/clang-trunk.json'
             - 'build/build-clang/1stage.json'
+        toolchain-alias:
+            by-project:
+                toolchains: win64-clang-toolchain
+                default: null
         toolchain-artifact: public/build/clang.tar.zst
     fetches:
         fetch:
@@ -727,11 +779,15 @@ win64-clang-trunk:
         cached_task: false
     treeherder:
         symbol: TW64(clang-trunk)
-    worker-type: b-linux
+    worker-type: b-linux-gcp
     worker:
         max-run-time: 600
     run:
         script: repack-clang.sh
+        toolchain-alias:
+            by-project:
+                toolchains: win64-clang
+                default: null
         toolchain-artifact: public/build/clang.tar.zst
     fetches:
         toolchain:

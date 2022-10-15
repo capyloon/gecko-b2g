@@ -226,10 +226,12 @@ const SpecialMessageActions = {
     const window = browser.ownerGlobal;
     switch (action.type) {
       case "SHOW_MIGRATION_WIZARD":
-        lazy.MigrationUtils.showMigrationWizard(window, [
-          lazy.MigrationUtils.MIGRATION_ENTRYPOINT_NEWTAB,
-          action.data?.source,
-        ]);
+        Services.tm.dispatchToMainThread(() =>
+          lazy.MigrationUtils.showMigrationWizard(window, [
+            lazy.MigrationUtils.MIGRATION_ENTRYPOINT_NEWTAB,
+            action.data?.source,
+          ])
+        );
         break;
       case "OPEN_PRIVATE_BROWSER_WINDOW":
         // Forcefully open about:privatebrowsing
@@ -305,13 +307,16 @@ const SpecialMessageActions = {
         });
         break;
       case "SHOW_FIREFOX_ACCOUNTS":
+        if (!(await lazy.FxAccounts.canConnectAccount())) {
+          break;
+        }
         const data = action.data;
         const url = await lazy.FxAccounts.config.promiseConnectAccountURI(
           (data && data.entrypoint) || "snippets",
           (data && data.extraParams) || {}
         );
-        // We want to replace the current tab.
-        window.openLinkIn(url, "current", {
+        // Use location provided; if not specified, replace the current tab.
+        window.openLinkIn(url, data.where || "current", {
           private: false,
           triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal(
             {}
