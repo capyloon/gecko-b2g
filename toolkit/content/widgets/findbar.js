@@ -7,8 +7,8 @@
 // This is loaded into chrome windows with the subscript loader. Wrap in
 // a block to prevent accidentally leaking globals onto `window`.
 {
-  const { AppConstants } = ChromeUtils.import(
-    "resource://gre/modules/AppConstants.jsm"
+  const { AppConstants } = ChromeUtils.importESModule(
+    "resource://gre/modules/AppConstants.sys.mjs"
   );
 
   const PREFS_TO_OBSERVE_BOOL = new Map([
@@ -1071,7 +1071,12 @@
           statusL10nId = "";
           break;
       }
-      document.l10n.setAttributes(this._findStatusDesc, statusL10nId);
+      if (statusL10nId) {
+        document.l10n.setAttributes(this._findStatusDesc, statusL10nId);
+      } else {
+        delete this._findStatusDesc.dataset.l10nId;
+        this._findStatusDesc.textContent = "";
+      }
     }
 
     updateControlState(result, findPrevious) {

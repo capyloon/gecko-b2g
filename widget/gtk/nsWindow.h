@@ -295,6 +295,7 @@ class nsWindow final : public nsBaseWidget {
                          const LayoutDeviceIntPoint& aRefPoint, guint aTime);
   static void UpdateDragStatus(GdkDragContext* aDragContext,
                                nsIDragService* aDragService);
+  void SetDragSource(GdkDragContext* aSourceDragContext);
 
   WidgetEventTime GetWidgetEventTime(guint32 aEventTime);
   mozilla::TimeStamp GetEventTimeStamp(guint32 aEventTime);
@@ -458,6 +459,10 @@ class nsWindow final : public nsBaseWidget {
   void ClearRenderingQueue();
 
   bool ApplyEnterLeaveMutterWorkaround();
+
+  void NotifyOcclusionState(mozilla::widget::OcclusionState aState) override;
+
+  static nsWindow* GetWindow(GdkWindow* window);
 
  protected:
   virtual ~nsWindow();
@@ -978,6 +983,7 @@ class nsWindow final : public nsBaseWidget {
   xdg_activation_token_v1* mXdgToken = nullptr;
 #endif
   mozilla::widget::WindowSurfaceProvider mSurfaceProvider;
+  GdkDragContext* mSourceDragContext = nullptr;
 };
 
 #endif /* __nsWindow_h__ */

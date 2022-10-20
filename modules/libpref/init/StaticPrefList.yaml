@@ -2287,9 +2287,11 @@
   mirror: always
 
 # Whether the above pref has any effect at all.
+# Make sure cases like bug 1795380 work before trying to turn this off. See
+# bug 1680721 for some other context that might be relevant.
 - name: dom.delay.block_external_protocol_in_iframes.enabled
   type: bool
-  value: @IS_NOT_NIGHTLY_BUILD@
+  value: true
   mirror: always
 
 # HTML <dialog> element
@@ -2772,10 +2774,11 @@
   value: false
   mirror: always
 
-# Whether we perform a more strict alignment with vsync for input events
-- name: dom.input_events.strict_input_vsync_alignment
-  type: bool
-  value: true
+# The maximum time (milliseconds) we reserve for handling input events in each
+# frame.
+- name: dom.input_event_queue.duration.max
+  type: uint32_t
+  value: 8
   mirror: always
 
 # Enable not moving the cursor to end when a text input or textarea has .value
@@ -3146,7 +3149,7 @@
 # Is support for import maps (<script type="importmap">) enabled for content?
 - name: dom.importMaps.enabled
   type: bool
-  value: false
+  value: true
   mirror: always
 
 # Whether we disable triggering mutation events for changes to style
@@ -3308,7 +3311,7 @@
 # element's style.
 - name: dom.picture_source_dimension_attributes.enabled
   type: bool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
 
 # Is support for Element.requestPointerLock enabled?
@@ -4605,11 +4608,7 @@
 # Whether the WebMIDI API is enabled
 - name: dom.webmidi.enabled
   type: bool
-#if !defined(MOZ_WIDGET_ANDROID) && defined(EARLY_BETA_OR_EARLIER)
-  value: true
-#else
-  value: false
-#endif
+  value: @IS_NOT_ANDROID@
   mirror: always
 
 # midi permission is addon-gated
@@ -5794,11 +5793,7 @@
 
 - name: gfx.color_management.enablev4
   type: RelaxedAtomicBool
-#if defined(XP_MACOSX) || defined(NIGHTLY_BUILD)
   value: true
-#else
-  value: false
-#endif
   mirror: always
 
 # 0 = Off, 1 = Full, 2 = Tagged Images Only.
@@ -9672,7 +9667,7 @@
 # using the IPC actor within the Utility process rather than the RDD process.
 # When it is set to true, then the utility process will take precedence over RDD
 # to perform audio decoding.
-# TODO: Android: Bug 1767930
+# TODO: Enabling for Isolated Processes builds on Android
 - name: media.utility-process.enabled
   type: RelaxedAtomicBool
 #if defined(XP_WIN)
@@ -9680,6 +9675,8 @@
 #elif defined(XP_MACOSX)
   value: true
 #elif defined(XP_LINUX) && !defined(ANDROID)
+  value: true
+#elif defined(ANDROID) && !defined(MOZ_ANDROID_CONTENT_SERVICE_ISOLATED_PROCESS)
   value: true
 #elif defined(XP_OPENBSD)
   value: true
@@ -12993,13 +12990,13 @@
 # The script-src-attr and script-src-elem directive
 - name: security.csp.script-src-attr-elem.enabled
   type: bool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
 
 # The style-src-attr and style-src-elem directive
 - name: security.csp.style-src-attr-elem.enabled
   type: bool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
 
 # No way to enable on Android, Bug 1552602

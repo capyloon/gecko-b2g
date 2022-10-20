@@ -19,10 +19,6 @@ if CONFIG["COMPILE_ENVIRONMENT"]:
 
 DEFINES["MOZ_APP_VERSION"] = '"%s"' % CONFIG["MOZ_APP_VERSION"]
 
-for var in ("MOZ_BACKGROUNDTASKS",):
-    if CONFIG[var]:
-        DEFINES[var] = True
-
 LOCAL_INCLUDES += [
     "/xpcom/build",
     "/xpcom/threads",
@@ -127,7 +123,7 @@ EXTRA_JS_MODULES += [
 ]
 
 EXTRA_JS_MODULES.backgroundtasks += [
-    "pings/BackgroundTask_pingsender.jsm",
+    "pings/BackgroundTask_pingsender.sys.mjs",
 ]
 
 if CONFIG["OS_ARCH"] == "WINNT":

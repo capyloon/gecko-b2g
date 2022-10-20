@@ -10,8 +10,8 @@ const { Troubleshoot } = ChromeUtils.importESModule(
 const { ResetProfile } = ChromeUtils.importESModule(
   "resource://gre/modules/ResetProfile.sys.mjs"
 );
-const { AppConstants } = ChromeUtils.import(
-  "resource://gre/modules/AppConstants.jsm"
+const { AppConstants } = ChromeUtils.importESModule(
+  "resource://gre/modules/AppConstants.sys.mjs"
 );
 
 ChromeUtils.defineModuleGetter(
@@ -1049,7 +1049,7 @@ var snapshotFormatters = {
 
     // Codec decode/encode support information (inc. HW accel)
     // Currently supported on Windows with Linux/OS X support under development
-    if (AppConstants.platform == "win") {
+    if (AppConstants.platform == "win" || AppConstants.platform == "macosx") {
       insertBasicInfo("media-codec-support-info", data.codecSupportInfo);
     }
   },

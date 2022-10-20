@@ -10,18 +10,16 @@ const BROWSER_TOOLBOX_WINDOW_URL =
   "chrome://devtools/content/framework/browser-toolbox/window.html";
 const CHROME_DEBUGGER_PROFILE_NAME = "chrome_debugger_profile";
 
-const {
+import {
   require,
   useDistinctSystemPrincipalLoader,
   releaseDistinctSystemPrincipalLoader,
-} = ChromeUtils.import("resource://devtools/shared/loader/Loader.jsm");
+} from "resource://devtools/shared/loader/Loader.sys.mjs";
 
 const { Subprocess } = ChromeUtils.import(
   "resource://gre/modules/Subprocess.jsm"
 );
-const { AppConstants } = ChromeUtils.import(
-  "resource://gre/modules/AppConstants.jsm"
-);
+import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};

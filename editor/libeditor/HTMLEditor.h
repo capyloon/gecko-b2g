@@ -11,7 +11,6 @@
 #include "mozilla/EditorBase.h"
 #include "mozilla/EditorForwards.h"
 #include "mozilla/ErrorResult.h"
-#include "mozilla/JoinSplitNodeDirection.h"
 #include "mozilla/ManualNAC.h"
 #include "mozilla/Result.h"
 #include "mozilla/dom/BlobImpl.h"
@@ -607,20 +606,6 @@ class HTMLEditor final : public EditorBase,
   }
 
   /**
-   * Get split/join node(s) direction for **this** instance.
-   */
-  [[nodiscard]] SplitNodeDirection GetSplitNodeDirection() const {
-    return MOZ_LIKELY(mUseGeckoTraditionalJoinSplitBehavior)
-               ? SplitNodeDirection::LeftNodeIsNewOne
-               : SplitNodeDirection::RightNodeIsNewOne;
-  }
-  [[nodiscard]] JoinNodesDirection GetJoinNodesDirection() const {
-    return MOZ_LIKELY(mUseGeckoTraditionalJoinSplitBehavior)
-               ? JoinNodesDirection::LeftNodeIntoRightNode
-               : JoinNodesDirection::RightNodeIntoLeftNode;
-  }
-
-  /**
    * Modifies the table containing the selection according to the
    * activation of an inline table editing UI element
    * @param aUIAnonymousElement [IN] the inline table editing UI element
@@ -1032,7 +1017,10 @@ class HTMLEditor final : public EditorBase,
    * XXX I think that `IsSelectionEditable()` is better name, but it's already
    *     in `EditorBase`...
    */
-  Result<EditActionResult, nsresult> CanHandleHTMLEditSubAction() const;
+  enum class CheckSelectionInReplacedElement { Yes, OnlyWhenNotInSameNode };
+  Result<EditActionResult, nsresult> CanHandleHTMLEditSubAction(
+      CheckSelectionInReplacedElement aCheckSelectionInReplacedElement =
+          CheckSelectionInReplacedElement::Yes) const;
 
   /**
    * EnsureCaretNotAfterInvisibleBRElement() makes sure that caret is NOT after
@@ -2654,6 +2642,12 @@ class HTMLEditor final : public EditorBase,
   MOZ_CAN_RUN_SCRIPT nsresult OnDocumentModified();
 
  protected:  // Called by helper classes.
+  /**
+   * Get split/join node(s) direction for **this** instance.
+   */
+  [[nodiscard]] inline SplitNodeDirection GetSplitNodeDirection() const;
+  [[nodiscard]] inline JoinNodesDirection GetJoinNodesDirection() const;
+
   MOZ_CAN_RUN_SCRIPT void OnStartToHandleTopLevelEditSubAction(
       EditSubAction aTopLevelEditSubAction,
       nsIEditor::EDirection aDirectionOfTopLevelEditSubAction,
@@ -4552,7 +4546,8 @@ class HTMLEditor final : public EditorBase,
                             // RemoveEmptyInclusiveAncestorInlineElements,
                             // mComposerUpdater, mHasBeforeInputBeenCanceled
   friend class JoinNodesTransaction;  // DidJoinNodesTransaction, DoJoinNodes,
-                                      // DoSplitNode, RangeUpdaterRef
+                                      // DoSplitNode, GetJoinNodesDirection,
+                                      // RangeUpdaterRef
   friend class ListElementSelectionState;      // CollectEditTargetNodes,
                                                // CollectNonEditableNodes
   friend class ListItemElementSelectionState;  // CollectEditTargetNodes,
@@ -4566,7 +4561,8 @@ class HTMLEditor final : public EditorBase,
                                            // CollectNonEditableNodes,
                                            // CollectTableChildren
   friend class SlurpBlobEventListener;     // BlobReader
-  friend class SplitNodeTransaction;       // DoJoinNodes, DoSplitNode
+  friend class SplitNodeTransaction;       // DoJoinNodes, DoSplitNode,
+                                           // GetSplitNodeDirection
   friend class TransactionManager;  // DidDoTransaction, DidRedoTransaction,
                                     // DidUndoTransaction
   friend class

@@ -1165,6 +1165,10 @@ pub struct Device {
     /// at draw call time, neither of which is desirable.
     #[cfg(debug_assertions)]
     shader_is_ready: bool,
+
+    // count created/deleted textures to report in the profiler.
+    pub textures_created: u32,
+    pub textures_deleted: u32,
 }
 
 /// Contains the parameters necessary to bind a draw target.
@@ -1797,7 +1801,7 @@ impl Device {
         // On Mali-G78 devices with a driver version v1.r36p0 we have seen that invalidating render
         // targets can result in image corruption, perhaps due to subsequent reuses of the render
         // target not correctly reinitializing them to a valid state. See bug 1787520.
-        if renderer_name.starts_with("Mali-G78") {
+        if renderer_name.starts_with("Mali-G78") || renderer_name.starts_with("Mali-G710") {
             match parse_mali_version(&version_string) {
                 Some(version) if version >= (1, 36, 0) => supports_render_target_invalidate = false,
                 _ => {}
@@ -1894,6 +1898,9 @@ impl Device {
 
             #[cfg(debug_assertions)]
             shader_is_ready: false,
+
+            textures_created: 0,
+            textures_deleted: 0,
         }
     }
 
@@ -2089,6 +2096,9 @@ impl Device {
         {
             self.shader_is_ready = false;
         }
+
+        self.textures_created = 0;
+        self.textures_deleted = 0;
 
         // If our profiler state has changed, apply or remove the profiling
         // wrapper from our GL context.
@@ -2602,6 +2612,8 @@ impl Device {
             }
         }
 
+        self.textures_created += 1;
+
         texture
     }
 
@@ -2937,6 +2949,8 @@ impl Device {
                 *bound_texture = 0;
             }
         }
+
+        self.textures_deleted += 1;
 
         // Disarm the assert in Texture::drop().
         texture.id = 0;

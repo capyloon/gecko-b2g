@@ -4,12 +4,12 @@
 
 "use strict";
 
-const { require } = ChromeUtils.import(
-  "resource://devtools/shared/loader/Loader.jsm"
+const { require } = ChromeUtils.importESModule(
+  "resource://devtools/shared/loader/Loader.sys.mjs"
 );
 const {
   withCommonPathPrefixRemoved,
-} = require("devtools/client/performance-new/utils");
+} = require("resource://devtools/client/performance-new/utils.js");
 
 add_task(function test() {
   info(

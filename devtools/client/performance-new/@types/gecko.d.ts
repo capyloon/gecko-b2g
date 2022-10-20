@@ -22,15 +22,15 @@ declare namespace MockedExports {
    */
   interface KnownModules {
     Services: typeof import("Services");
-    "resource://gre/modules/AppConstants.jsm": typeof import("resource://gre/modules/AppConstants.jsm");
+    "resource://gre/modules/AppConstants.sys.mjs": typeof import("resource://gre/modules/AppConstants.sys.mjs");
     "resource:///modules/CustomizableUI.jsm": typeof import("resource:///modules/CustomizableUI.jsm");
     "resource:///modules/CustomizableWidgets.jsm": typeof import("resource:///modules/CustomizableWidgets.jsm");
-    "resource://devtools/shared/loader/Loader.jsm": typeof import("resource://devtools/shared/loader/Loader.jsm");
+    "resource://devtools/shared/loader/Loader.sys.mjs": typeof import("resource://devtools/shared/loader/Loader.sys.mjs");
     "resource://devtools/client/performance-new/popup/background.jsm.js": typeof import("resource://devtools/client/performance-new/popup/background.jsm.js");
     "resource://devtools/shared/loader/browser-loader.js": any;
-    "resource://devtools/client/performance-new/popup/menu-button.jsm.js": typeof import("devtools/client/performance-new/popup/menu-button.jsm.js");
-    "resource://devtools/client/performance-new/typescript-lazy-load.jsm.js": typeof import("devtools/client/performance-new/typescript-lazy-load.jsm.js");
-    "resource://devtools/client/performance-new/popup/panel.jsm.js": typeof import("devtools/client/performance-new/popup/panel.jsm.js");
+    "resource://devtools/client/performance-new/popup/menu-button.jsm.js": typeof import("resource://devtools/client/performance-new/popup/menu-button.jsm.js");
+    "resource://devtools/client/performance-new/typescript-lazy-load.jsm.js": typeof import("resource://devtools/client/performance-new/typescript-lazy-load.jsm.js");
+    "resource://devtools/client/performance-new/popup/panel.jsm.js": typeof import("resource://devtools/client/performance-new/popup/panel.jsm.js");
     "resource://devtools/client/performance-new/symbolication.jsm.js": typeof import("resource://devtools/client/performance-new/symbolication.jsm.js");
     "resource:///modules/PanelMultiView.jsm": typeof import("resource:///modules/PanelMultiView.jsm");
   }
@@ -46,7 +46,9 @@ declare namespace MockedExports {
      * Then add the file path to the KnownModules above.
      */
     import: <S extends keyof KnownModules>(module: S) => KnownModules[S];
+    importESModule: <S extends keyof KnownModules>(module: S) => KnownModules[S];
     defineModuleGetter: (target: any, variable: string, path: string) => void;
+    defineESModuleGetters: (target: any, mappings: any) => void;
   }
 
   interface MessageManager {
@@ -198,7 +200,7 @@ declare namespace MockedExports {
     decorate: (target: object) => void;
   };
 
-  const AppConstantsJSM: {
+  const AppConstantsSYSMJS: {
     AppConstants: {
       platform: string;
     };
@@ -221,7 +223,7 @@ declare namespace MockedExports {
   const CustomizableWidgetsJSM: any;
   const PanelMultiViewJSM: any;
 
-  const LoaderJSM: {
+  const LoaderESM: {
     require: (path: string) => any;
   };
 
@@ -300,27 +302,27 @@ interface PathUtilsInterface {
   isAbsolute: (path: string) => boolean;
 }
 
-declare module "devtools/client/shared/vendor/react" {
+declare module "resource://devtools/client/shared/vendor/react.js" {
   import * as React from "react";
   export = React;
 }
 
-declare module "devtools/client/shared/vendor/react-dom-factories" {
+declare module "resource://devtools/client/shared/vendor/react-dom-factories.js" {
   import * as ReactDomFactories from "react-dom-factories";
   export = ReactDomFactories;
 }
 
-declare module "devtools/client/shared/vendor/redux" {
+declare module "resource://devtools/client/shared/vendor/redux.js" {
   import * as Redux from "redux";
   export = Redux;
 }
 
-declare module "devtools/client/shared/vendor/react-redux" {
+declare module "resource://devtools/client/shared/vendor/react-redux.js" {
   import * as ReactRedux from "react-redux";
   export = ReactRedux;
 }
 
-declare module "devtools/shared/event-emitter2" {
+declare module "resource://devtools/shared/event-emitter2.js" {
   export = MockedExports.EventEmitter;
 }
 
@@ -332,8 +334,8 @@ declare module "ChromeUtils" {
   export = ChromeUtils;
 }
 
-declare module "resource://gre/modules/AppConstants.jsm" {
-  export = MockedExports.AppConstantsJSM;
+declare module "resource://gre/modules/AppConstants.sys.mjs" {
+  export = MockedExports.AppConstantsSYSMJS;
 }
 
 declare module "resource://gre/modules/WebChannel.jsm" {
@@ -362,8 +364,8 @@ declare module "resource:///modules/PanelMultiView.jsm" {
   export = MockedExports.PanelMultiViewJSM;
 }
 
-declare module "resource://devtools/shared/loader/Loader.jsm" {
-  export = MockedExports.LoaderJSM;
+declare module "resource://devtools/shared/loader/Loader.sys.mjs" {
+  export = MockedExports.LoaderESM;
 }
 
 declare var ChromeUtils: MockedExports.ChromeUtils;

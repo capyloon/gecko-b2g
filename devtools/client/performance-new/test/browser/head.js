@@ -14,14 +14,14 @@ registerCleanupFunction(() => {
 /**
  * Allow tests to use "require".
  */
-const { require } = ChromeUtils.import(
-  "resource://devtools/shared/loader/Loader.jsm"
+const { require } = ChromeUtils.importESModule(
+  "resource://devtools/shared/loader/Loader.sys.mjs"
 );
 
 {
   const {
     getEnvironmentVariable,
-  } = require("devtools/client/performance-new/browser");
+  } = require("resource://devtools/client/performance-new/browser.js");
 
   if (getEnvironmentVariable("MOZ_PROFILER_SHUTDOWN")) {
     throw new Error(

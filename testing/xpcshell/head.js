@@ -44,8 +44,8 @@ var _XPCSHELL_PROCESS;
 let _Services = Services;
 _register_modules_protocol_handler();
 
-let { AppConstants: _AppConstants } = ChromeUtils.import(
-  "resource://gre/modules/AppConstants.jsm"
+let { AppConstants: _AppConstants } = ChromeUtils.importESModule(
+  "resource://gre/modules/AppConstants.sys.mjs"
 );
 
 let { PromiseTestUtils: _PromiseTestUtils } = ChromeUtils.import(
@@ -127,6 +127,8 @@ if (runningInParent && "mozIAsyncHistory" in Ci) {
 // crashreporter component.
 try {
   if (runningInParent && "@mozilla.org/toolkit/crash-reporter;1" in Cc) {
+    // Intentially access the crash reporter service directly for this.
+    // eslint-disable-next-line mozilla/use-services
     let crashReporter = Cc["@mozilla.org/toolkit/crash-reporter;1"].getService(
       Ci.nsICrashReporter
     );
@@ -400,8 +402,8 @@ function _setupDevToolsServer(breakpointFiles, callback) {
 
   let require;
   try {
-    ({ require } = ChromeUtils.import(
-      "resource://devtools/shared/loader/Loader.jsm"
+    ({ require } = ChromeUtils.importESModule(
+      "resource://devtools/shared/loader/Loader.sys.mjs"
     ));
   } catch (e) {
     throw new Error(
@@ -1328,6 +1330,8 @@ function do_get_profile(notifyProfileAfterChange = false) {
 
   // We need to update the crash events directory when the profile changes.
   if (runningInParent && "@mozilla.org/toolkit/crash-reporter;1" in Cc) {
+    // Intentially access the crash reporter service directly for this.
+    // eslint-disable-next-line mozilla/use-services
     let crashReporter = Cc["@mozilla.org/toolkit/crash-reporter;1"].getService(
       Ci.nsICrashReporter
     );

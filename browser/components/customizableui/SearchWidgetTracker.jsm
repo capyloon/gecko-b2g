@@ -11,8 +11,8 @@
 
 var EXPORTED_SYMBOLS = ["SearchWidgetTracker"];
 
-const { AppConstants } = ChromeUtils.import(
-  "resource://gre/modules/AppConstants.jsm"
+const { AppConstants } = ChromeUtils.importESModule(
+  "resource://gre/modules/AppConstants.sys.mjs"
 );
 
 const lazy = {};
@@ -118,6 +118,7 @@ const SearchWidgetTracker = {
         win.document.getElementById(WIDGET_ID) ||
         win.gNavToolbox.palette.querySelector("#" + WIDGET_ID);
       searchbar.removeAttribute("width");
+      searchbar.style.removeProperty("width");
     }
   },
 

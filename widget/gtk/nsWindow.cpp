@@ -1417,8 +1417,9 @@ void nsWindow::WaylandPopupHierarchyHideByLayout(
   // Hide all popups which are not in layout popup chain
   nsWindow* popup = mWaylandPopupNext;
   while (popup) {
-    // Tooltips are not tracked in layout chain
-    if (!popup->mPopupClosed && popup->mPopupType != ePopupTypeTooltip) {
+    // Don't check closed popups and drag source popups and tooltips.
+    if (!popup->mPopupClosed && popup->mPopupType != ePopupTypeTooltip &&
+        !popup->mSourceDragContext) {
       if (!popup->IsPopupInLayoutPopupChain(aLayoutWidgetHierarchy,
                                             /* aMustMatchParent */ false)) {
         LOG("  hidding popup [%p]", popup);
@@ -1890,8 +1891,8 @@ void nsWindow::UpdateWaylandPopupHierarchy() {
         return false;
       }
       if (!popup->WaylandPopupIsFirst() &&
-          !mWaylandPopupPrev->WaylandPopupIsFirst() &&
-          !mWaylandPopupPrev->mPopupUseMoveToRect) {
+          !popup->mWaylandPopupPrev->WaylandPopupIsFirst() &&
+          !popup->mWaylandPopupPrev->mPopupUseMoveToRect) {
         // We can't use move-to-rect if there are more parents of
         // wl_subsurface popups types.
         //
@@ -4085,6 +4086,15 @@ void nsWindow::OnUnmap() {
   // untill OnUnrealize is called.
   mIsMapped = false;
 
+  if (mSourceDragContext) {
+    static auto sGtkDragCancel =
+        (void (*)(GdkDragContext*))dlsym(RTLD_DEFAULT, "gtk_drag_cancel");
+    if (sGtkDragCancel) {
+      sGtkDragCancel(mSourceDragContext);
+      mSourceDragContext = nullptr;
+    }
+  }
+
 #ifdef MOZ_WAYLAND
   // wl_surface owned by mContainer is going to be deleted.
   // Make sure we don't paint to it on Wayland.
@@ -5250,6 +5260,7 @@ void nsWindow::OnScaleChanged() {
 void nsWindow::DispatchDragEvent(EventMessage aMsg,
                                  const LayoutDeviceIntPoint& aRefPoint,
                                  guint aTime) {
+  LOGDRAG("nsWindow::DispatchDragEvent");
   WidgetDragEvent event(true, aMsg, this);
 
   InitDragEvent(event);
@@ -5266,7 +5277,7 @@ void nsWindow::OnDragDataReceivedEvent(GtkWidget* aWidget,
                                        GtkSelectionData* aSelectionData,
                                        guint aInfo, guint aTime,
                                        gpointer aData) {
-  LOGDRAG("nsWindow::OnDragDataReceived(%p)\n", (void*)this);
+  LOGDRAG("nsWindow::OnDragDataReceived");
 
   RefPtr<nsDragService> dragService = nsDragService::GetInstance();
   nsDragService::AutoEventLoop loop(dragService);
@@ -7440,6 +7451,7 @@ void nsWindow::HideWindowChrome(bool aShouldHide) {
 
 bool nsWindow::CheckForRollup(gdouble aMouseX, gdouble aMouseY, bool aIsWheel,
                               bool aAlwaysRollup) {
+  LOG("nsWindow::CheckForRollup() aAlwaysRollup %d", aAlwaysRollup);
   nsIRollupListener* rollupListener = GetActiveRollupListener();
   nsCOMPtr<nsIWidget> rollupWidget;
   if (rollupListener) {
@@ -7553,13 +7565,11 @@ MOZ_CAN_RUN_SCRIPT static void WaylandDragWorkaround(GdkEventButton* aEvent) {
 
 static nsWindow* get_window_for_gtk_widget(GtkWidget* widget) {
   gpointer user_data = g_object_get_data(G_OBJECT(widget), "nsWindow");
-
   return static_cast<nsWindow*>(user_data);
 }
 
 static nsWindow* get_window_for_gdk_window(GdkWindow* window) {
   gpointer user_data = g_object_get_data(G_OBJECT(window), "nsWindow");
-
   return static_cast<nsWindow*>(user_data);
 }
 
@@ -8347,6 +8357,20 @@ void nsWindow::InitDragEvent(WidgetDragEvent& aEvent) {
   KeymapWrapper::InitInputEvent(aEvent, modifierState);
 }
 
+static LayoutDeviceIntPoint GetWindowDropPosition(nsWindow* aWindow, int aX,
+                                                  int aY) {
+  // Workaround for Bug 1710344
+  // Caused by Gtk issue https://gitlab.gnome.org/GNOME/gtk/-/issues/4437
+  if (aWindow->IsWaylandPopup()) {
+    int tx = 0, ty = 0;
+    gdk_window_get_position(aWindow->GetToplevelGdkWindow(), &tx, &ty);
+    aX += tx;
+    aY += ty;
+  }
+  LOGDRAG("WindowDropPosition [%d, %d]", aX, aY);
+  return aWindow->GdkPointToDevicePixels({aX, aY});
+}
+
 gboolean WindowDragMotionHandler(GtkWidget* aWidget,
                                  GdkDragContext* aDragContext, gint aX, gint aY,
                                  guint aTime) {
@@ -8365,25 +8389,14 @@ gboolean WindowDragMotionHandler(GtkWidget* aWidget,
   if (!innerMostWindow) {
     innerMostWindow = window;
   }
-
-  // Workaround for Bug 1710344
-  // Caused by Gtk issue https://gitlab.gnome.org/GNOME/gtk/-/issues/4437
-  if (innerMostWindow->IsWaylandPopup()) {
-    int tx = 0, ty = 0;
-    gdk_window_get_position(innerMostWindow->GetToplevelGdkWindow(), &tx, &ty);
-    retx += tx;
-    rety += ty;
-  }
-
-  LayoutDeviceIntPoint point =
-      innerMostWindow->GdkPointToDevicePixels({retx, rety});
-  LOGDRAG("WindowDragMotionHandler nsWindow %p coords [%d, %d]\n",
-          innerMostWindow.get(), retx, rety);
+  LOGDRAG("WindowDragMotionHandler target nsWindow [%p]",
+          innerMostWindow.get());
 
   RefPtr<nsDragService> dragService = nsDragService::GetInstance();
   nsDragService::AutoEventLoop loop(dragService);
-  if (!dragService->ScheduleMotionEvent(innerMostWindow, aDragContext, point,
-                                        aTime)) {
+  if (!dragService->ScheduleMotionEvent(
+          innerMostWindow, aDragContext,
+          GetWindowDropPosition(innerMostWindow, retx, rety), aTime)) {
     return FALSE;
   }
   return TRUE;
@@ -8453,22 +8466,12 @@ gboolean WindowDragDropHandler(GtkWidget* aWidget, GdkDragContext* aDragContext,
     innerMostWindow = window;
   }
 
-  int tx = 0, ty = 0;
-  // Workaround for Bug 1710344
-  // Caused by Gtk issue https://gitlab.gnome.org/GNOME/gtk/-/issues/4437
-  if (innerMostWindow->IsWaylandPopup()) {
-    gdk_window_get_position(innerWindow, &tx, &ty);
-  }
-
-  LayoutDeviceIntPoint point =
-      window->GdkPointToDevicePixels({retx + tx, rety + ty});
-  LOGDRAG("WindowDragDropHandler nsWindow %p coords [%d,%d]\n",
-          innerMostWindow.get(), retx, rety);
-
+  LOGDRAG("WindowDragDropHandler nsWindow [%p]", innerMostWindow.get());
   RefPtr<nsDragService> dragService = nsDragService::GetInstance();
   nsDragService::AutoEventLoop loop(dragService);
-  return dragService->ScheduleDropEvent(innerMostWindow, aDragContext, point,
-                                        aTime);
+  return dragService->ScheduleDropEvent(
+      innerMostWindow, aDragContext,
+      GetWindowDropPosition(innerMostWindow, retx, rety), aTime);
 }
 
 static gboolean drag_drop_event_cb(GtkWidget* aWidget,
@@ -9752,6 +9755,10 @@ LayoutDeviceIntSize nsWindow::GetMozContainerSize() {
   return size;
 }
 
+nsWindow* nsWindow::GetWindow(GdkWindow* window) {
+  return get_window_for_gdk_window(window);
+}
+
 void nsWindow::ClearRenderingQueue() {
   LOG("nsWindow::ClearRenderingQueue()");
 
@@ -9798,4 +9805,25 @@ bool nsWindow::ApplyEnterLeaveMutterWorkaround() {
     return true;
   }
   return false;
+}
+
+void nsWindow::NotifyOcclusionState(mozilla::widget::OcclusionState aState) {
+  if (mWindowType != eWindowType_toplevel) {
+    return;
+  }
+
+  bool isFullyOccluded = aState == mozilla::widget::OcclusionState::OCCLUDED;
+  if (mIsFullyOccluded == isFullyOccluded) {
+    return;
+  }
+  mIsFullyOccluded = isFullyOccluded;
+
+  LOG("nsWindow::NotifyOcclusionState() mIsFullyOccluded %d", mIsFullyOccluded);
+  if (mWidgetListener) {
+    mWidgetListener->OcclusionStateChanged(mIsFullyOccluded);
+  }
+}
+
+void nsWindow::SetDragSource(GdkDragContext* aSourceDragContext) {
+  mSourceDragContext = aSourceDragContext;
 }

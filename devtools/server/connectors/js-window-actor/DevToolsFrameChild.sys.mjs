@@ -2,12 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { EventEmitter } = ChromeUtils.import(
-  "resource://gre/modules/EventEmitter.jsm"
-);
-const Loader = ChromeUtils.import(
-  "resource://devtools/shared/loader/Loader.jsm"
-);
+import { EventEmitter } from "resource://gre/modules/EventEmitter.sys.mjs";
+import * as Loader from "resource://devtools/shared/loader/Loader.sys.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};

@@ -10,12 +10,15 @@ const { FxAccounts } = ChromeUtils.import(
 );
 const { Weave } = ChromeUtils.import("resource://services-sync/main.js");
 
+ChromeUtils.defineESModuleGetters(this, {
+  EventEmitter: "resource://gre/modules/EventEmitter.sys.mjs",
+});
+
 XPCOMUtils.defineLazyModuleGetters(this, {
-  EventEmitter: "resource://gre/modules/EventEmitter.jsm",
   FxAccountsPairingFlow: "resource://gre/modules/FxAccountsPairing.jsm",
 });
-const { require } = ChromeUtils.import(
-  "resource://devtools/shared/loader/Loader.jsm"
+const { require } = ChromeUtils.importESModule(
+  "resource://devtools/shared/loader/Loader.sys.mjs"
 );
 const QR = require("devtools/shared/qrcode/index");
 

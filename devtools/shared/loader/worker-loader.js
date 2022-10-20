@@ -420,7 +420,9 @@ addDebuggerToGlobal(globalThis);
       subScriptLoader.loadSubScript(url, sandbox);
     };
 
-    const Timer = ChromeUtils.import("resource://gre/modules/Timer.jsm");
+    const Timer = ChromeUtils.importESModule(
+      "resource://gre/modules/Timer.sys.mjs"
+    );
 
     const setImmediate = function(callback) {
       Timer.setTimeout(callback, 0);
@@ -505,6 +507,7 @@ this.worker = new WorkerDebuggerLoader({
     atob: this.atob,
     Services: Object.create(null),
     ChromeUtils,
+    DebuggerNotificationObserver,
 
     // The following APIs rely on the use of Components, and the worker debugger
     // does not provide alternative definitions for them. Consequently, they are
@@ -520,7 +523,6 @@ this.worker = new WorkerDebuggerLoader({
   modules: {
     Debugger,
     xpcInspector,
-    DebuggerNotificationObserver,
   },
   paths: {
     // ⚠ DISCUSSION ON DEV-DEVELOPER-TOOLS REQUIRED BEFORE MODIFYING ⚠

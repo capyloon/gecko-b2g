@@ -31,9 +31,8 @@ const DEVTOOLS_POLICY_DISABLED_PREF = "devtools.policy.disabled";
 
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
-const { AppConstants } = ChromeUtils.import(
-  "resource://gre/modules/AppConstants.jsm"
-);
+import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
+
 const lazy = {};
 ChromeUtils.defineModuleGetter(
   lazy,
@@ -45,20 +44,14 @@ ChromeUtils.defineModuleGetter(
   "CustomizableWidgets",
   "resource:///modules/CustomizableWidgets.jsm"
 );
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "PrivateBrowsingUtils",
-  "resource://gre/modules/PrivateBrowsingUtils.jsm"
-);
+ChromeUtils.defineESModuleGetters(lazy, {
+  PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
+  WebChannel: "resource://gre/modules/WebChannel.sys.mjs",
+});
 ChromeUtils.defineModuleGetter(
   lazy,
   "ProfilerMenuButton",
   "resource://devtools/client/performance-new/popup/menu-button.jsm.js"
-);
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "WebChannel",
-  "resource://gre/modules/WebChannel.jsm"
 );
 ChromeUtils.defineModuleGetter(
   lazy,
@@ -69,8 +62,8 @@ ChromeUtils.defineModuleGetter(
 // We don't want to spend time initializing the full loader here so we create
 // our own lazy require.
 XPCOMUtils.defineLazyGetter(lazy, "Telemetry", function() {
-  const { require } = ChromeUtils.import(
-    "resource://devtools/shared/loader/Loader.jsm"
+  const { require } = ChromeUtils.importESModule(
+    "resource://devtools/shared/loader/Loader.sys.mjs"
   );
   // eslint-disable-next-line no-shadow
   const Telemetry = require("devtools/client/shared/telemetry");
@@ -834,8 +827,8 @@ DevToolsStartup.prototype = {
     }
 
     this.initialized = true;
-    const { require } = ChromeUtils.import(
-      "resource://devtools/shared/loader/Loader.jsm"
+    const { require } = ChromeUtils.importESModule(
+      "resource://devtools/shared/loader/Loader.sys.mjs"
     );
     // Ensure loading main devtools module that hooks up into browser UI
     // and initialize all devtools machinery.
@@ -983,7 +976,9 @@ DevToolsStartup.prototype = {
     const {
       useDistinctSystemPrincipalLoader,
       releaseDistinctSystemPrincipalLoader,
-    } = ChromeUtils.import("resource://devtools/shared/loader/Loader.jsm");
+    } = ChromeUtils.importESModule(
+      "resource://devtools/shared/loader/Loader.sys.mjs"
+    );
 
     try {
       // Create a separate loader instance, so that we can be sure to receive

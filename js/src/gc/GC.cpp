@@ -382,7 +382,6 @@ GCRuntime::GCRuntime(JSRuntime* rt)
       heapState_(JS::HeapState::Idle),
       stats_(this),
       marker(rt),
-      barrierTracer(rt),
       sweepingTracer(rt),
       fullGCRequested(false),
       helperThreadRatio(TuningDefaults::HelperThreadRatio),
@@ -2851,6 +2850,9 @@ void GCRuntime::finishCollection() {
   for (GCZonesIter zone(this); !zone.done(); zone.next()) {
     zone->changeGCState(Zone::Finished, Zone::NoGC);
     zone->notifyObservingDebuggers();
+    for (RealmsInZoneIter realm(zone); !realm.done(); realm.next()) {
+      realm->clearAllocatedDuringGC();
+    }
   }
 
 #ifdef JS_GC_ZEAL

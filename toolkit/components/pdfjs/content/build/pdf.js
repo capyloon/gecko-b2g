@@ -1332,7 +1332,7 @@ async function _fetchDocument(worker, source, pdfDataRangeTransport, docId) {
 
   const workerId = await worker.messageHandler.sendWithPromise("GetDocRequest", {
     docId,
-    apiVersion: '3.0.200',
+    apiVersion: '3.0.239',
     data: source.data,
     password: source.password,
     disableAutoFetch: source.disableAutoFetch,
@@ -3069,11 +3069,11 @@ class WorkerTransport {
   }
 
   async startCleanup(keepLoadedFonts = false) {
-    await this.messageHandler.sendWithPromise("Cleanup", null);
-
     if (this.destroyed) {
       return;
     }
+
+    await this.messageHandler.sendWithPromise("Cleanup", null);
 
     for (const page of this.#pageCache.values()) {
       const cleanupSuccessful = page.cleanup();
@@ -3351,9 +3351,9 @@ class InternalRenderTask {
 
 }
 
-const version = '3.0.200';
+const version = '3.0.239';
 exports.version = version;
-const build = '348665934';
+const build = 'ba3a0e104';
 exports.build = build;
 
 /***/ }),
@@ -3676,6 +3676,32 @@ class AnnotationEditor {
     const [parentWidth, parentHeight] = this.parent.viewportBaseDimensions;
     this.div.style.width = `${100 * width / parentWidth}%`;
     this.div.style.height = `${100 * height / parentHeight}%`;
+  }
+
+  fixDims() {
+    const {
+      style
+    } = this.div;
+    const {
+      height,
+      width
+    } = style;
+    const widthPercent = width.endsWith("%");
+    const heightPercent = height.endsWith("%");
+
+    if (widthPercent && heightPercent) {
+      return;
+    }
+
+    const [parentWidth, parentHeight] = this.parent.viewportBaseDimensions;
+
+    if (!widthPercent) {
+      style.width = `${100 * parseFloat(width) / parentWidth}%`;
+    }
+
+    if (!heightPercent) {
+      style.height = `${100 * parseFloat(height) / parentHeight}%`;
+    }
   }
 
   getInitialTranslation() {
@@ -4342,6 +4368,10 @@ class AnnotationEditorUIManager {
   }
 
   registerEditorTypes(types) {
+    if (this.#editorTypes) {
+      return;
+    }
+
     this.#editorTypes = types;
 
     for (const editorType of this.#editorTypes) {
@@ -4569,9 +4599,7 @@ class AnnotationEditorUIManager {
   }
 
   delete() {
-    if (this.#activeEditor) {
-      this.#activeEditor.commitOrRemove();
-    }
+    this.commitOrRemove();
 
     if (!this.hasSelection) {
       return;
@@ -4596,6 +4624,10 @@ class AnnotationEditorUIManager {
       undo,
       mustExec: true
     });
+  }
+
+  commitOrRemove() {
+    this.#activeEditor?.commitOrRemove();
   }
 
   #selectEditors(editors) {
@@ -6835,8 +6867,7 @@ class CanvasGraphics {
 
     if ((img.bitmap || img.data) && img.count > 1) {
       const mainKey = img.bitmap || img.data.buffer;
-      const withoutTranslation = currentTransform.slice(0, 4);
-      cacheKey = JSON.stringify(isPatternFill ? withoutTranslation : [withoutTranslation, fillColor]);
+      cacheKey = JSON.stringify(isPatternFill ? currentTransform : [currentTransform.slice(0, 4), fillColor]);
       cache = this._cachedBitmapsMap.get(mainKey);
 
       if (!cache) {
@@ -10331,10 +10362,9 @@ class AnnotationEditorLayer {
       _freetext.FreeTextEditor.initialize(options.l10n);
 
       _ink.InkEditor.initialize(options.l10n);
-
-      options.uiManager.registerEditorTypes([_freetext.FreeTextEditor, _ink.InkEditor]);
     }
 
+    options.uiManager.registerEditorTypes([_freetext.FreeTextEditor, _ink.InkEditor]);
     this.#uiManager = options.uiManager;
     this.annotationStorage = options.annotationStorage;
     this.pageIndex = options.pageIndex;
@@ -10704,6 +10734,7 @@ class AnnotationEditorLayer {
   }
 
   update(parameters) {
+    this.#uiManager.commitOrRemove();
     this.viewport = parameters.viewport;
     this.setDimensions();
     this.updateMode();
@@ -10767,9 +10798,11 @@ var _editor = __w_pdfjs_require__(4);
 class FreeTextEditor extends _editor.AnnotationEditor {
   #boundEditorDivBlur = this.editorDivBlur.bind(this);
   #boundEditorDivFocus = this.editorDivFocus.bind(this);
+  #boundEditorDivInput = this.editorDivInput.bind(this);
   #boundEditorDivKeydown = this.editorDivKeydown.bind(this);
   #color;
   #content = "";
+  #editorDivId = `${this.id}-editor`;
   #hasAlreadyBeenCommitted = false;
   #fontSize;
   static _freeTextDefaultContent = "";
@@ -10891,14 +10924,14 @@ class FreeTextEditor extends _editor.AnnotationEditor {
     this.parent.setEditingState(false);
     this.parent.updateToolbar(_util.AnnotationEditorType.FREETEXT);
     super.enableEditMode();
-    this.enableEditing();
     this.overlayDiv.classList.remove("enabled");
     this.editorDiv.contentEditable = true;
     this.div.draggable = false;
+    this.div.removeAttribute("aria-activedescendant");
     this.editorDiv.addEventListener("keydown", this.#boundEditorDivKeydown);
     this.editorDiv.addEventListener("focus", this.#boundEditorDivFocus);
     this.editorDiv.addEventListener("blur", this.#boundEditorDivBlur);
-    this.parent.div.classList.remove("freeTextEditing");
+    this.editorDiv.addEventListener("input", this.#boundEditorDivInput);
   }
 
   disableEditMode() {
@@ -10908,13 +10941,14 @@ class FreeTextEditor extends _editor.AnnotationEditor {
 
     this.parent.setEditingState(true);
     super.disableEditMode();
-    this.disableEditing();
     this.overlayDiv.classList.add("enabled");
     this.editorDiv.contentEditable = false;
+    this.div.setAttribute("aria-activedescendant", this.#editorDivId);
     this.div.draggable = true;
     this.editorDiv.removeEventListener("keydown", this.#boundEditorDivKeydown);
     this.editorDiv.removeEventListener("focus", this.#boundEditorDivFocus);
     this.editorDiv.removeEventListener("blur", this.#boundEditorDivBlur);
+    this.editorDiv.removeEventListener("input", this.#boundEditorDivInput);
     this.div.focus();
     this.isEditing = false;
     this.parent.div.classList.add("freeTextEditing");
@@ -11018,6 +11052,10 @@ class FreeTextEditor extends _editor.AnnotationEditor {
     this.isEditing = false;
   }
 
+  editorDivInput(event) {
+    this.parent.div.classList.toggle("freeTextEditing", this.isEmpty());
+  }
+
   disableEditing() {
     this.editorDiv.setAttribute("role", "comment");
     this.editorDiv.removeAttribute("aria-multiline");
@@ -11043,7 +11081,7 @@ class FreeTextEditor extends _editor.AnnotationEditor {
     super.render();
     this.editorDiv = document.createElement("div");
     this.editorDiv.className = "internal";
-    this.editorDiv.setAttribute("id", `${this.id}-editor`);
+    this.editorDiv.setAttribute("id", this.#editorDivId);
     this.enableEditing();
 
     FreeTextEditor._l10nPromise.get("editor_free_text2_aria_label").then(msg => this.editorDiv?.setAttribute("aria-label", msg));
@@ -11145,6 +11183,7 @@ var _pdfjsFitCurve = __w_pdfjs_require__(23);
 var _tools = __w_pdfjs_require__(5);
 
 const RESIZER_SIZE = 16;
+const TIME_TO_WAIT_BEFORE_FIXING_DIMS = 100;
 
 class InkEditor extends _editor.AnnotationEditor {
   #aspectRatio = 0;
@@ -11584,10 +11623,19 @@ class InkEditor extends _editor.AnnotationEditor {
   }
 
   #createObserver() {
+    let timeoutId = null;
     this.#observer = new ResizeObserver(entries => {
       const rect = entries[0].contentRect;
 
       if (rect.width && rect.height) {
+        if (timeoutId !== null) {
+          clearTimeout(timeoutId);
+        }
+
+        timeoutId = setTimeout(() => {
+          this.fixDims();
+          timeoutId = null;
+        }, TIME_TO_WAIT_BEFORE_FIXING_DIMS);
         this.setDimensions(rect.width, rect.height);
       }
     });
@@ -13161,15 +13209,18 @@ class WidgetAnnotationElement extends AnnotationElement {
     const fontSize = this.data.defaultAppearanceData.fontSize || DEFAULT_FONT_SIZE;
     const style = element.style;
     let computedFontSize;
+    const BORDER_SIZE = 2;
+
+    const roundToOneDecimal = x => Math.round(10 * x) / 10;
 
     if (this.data.multiLine) {
-      const height = Math.abs(this.data.rect[3] - this.data.rect[1]);
+      const height = Math.abs(this.data.rect[3] - this.data.rect[1] - BORDER_SIZE);
       const numberOfLines = Math.round(height / (_util.LINE_FACTOR * fontSize)) || 1;
       const lineHeight = height / numberOfLines;
-      computedFontSize = Math.min(fontSize, Math.round(lineHeight / _util.LINE_FACTOR));
+      computedFontSize = Math.min(fontSize, roundToOneDecimal(lineHeight / _util.LINE_FACTOR));
     } else {
-      const height = Math.abs(this.data.rect[3] - this.data.rect[1]);
-      computedFontSize = Math.min(fontSize, Math.round(height / _util.LINE_FACTOR));
+      const height = Math.abs(this.data.rect[3] - this.data.rect[1] - BORDER_SIZE);
+      computedFontSize = Math.min(fontSize, roundToOneDecimal(height / _util.LINE_FACTOR));
     }
 
     style.fontSize = `calc(${computedFontSize}px * var(--scale-factor))`;
@@ -15772,8 +15823,8 @@ var _svg = __w_pdfjs_require__(29);
 
 var _xfa_layer = __w_pdfjs_require__(27);
 
-const pdfjsVersion = '3.0.200';
-const pdfjsBuild = '348665934';
+const pdfjsVersion = '3.0.239';
+const pdfjsBuild = 'ba3a0e104';
 ;
 })();
 

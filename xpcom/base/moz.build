@@ -28,7 +28,6 @@ XPIDL_SOURCES += [
 if CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
     XPIDL_SOURCES += [
         "nsIMacPreferencesReader.idl",
-        "nsIMacUtils.idl",
     ]
     EXPORTS += [
         "nsObjCExceptions.h",
@@ -78,7 +77,6 @@ EXPORTS += [
     "nsINIParser.h",
     "nsInterfaceRequestorAgg.h",
     "nsISizeOf.h",
-    "nsISupportsBase.h",
     "nsISupportsImpl.h",
     "nsISupportsUtils.h",
     "nsIWeakReferenceUtils.h",
@@ -269,6 +267,3 @@ LOCAL_INCLUDES += [
 
 if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
     CXXFLAGS += CONFIG["MOZ_GTK3_CFLAGS"]
-
-if CONFIG["MOZ_BACKGROUNDTASKS"]:
-    DEFINES["MOZ_BACKGROUNDTASKS"] = True

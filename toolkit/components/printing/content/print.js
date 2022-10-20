@@ -13,11 +13,9 @@ ChromeUtils.defineModuleGetter(
   "DownloadPaths",
   "resource://gre/modules/DownloadPaths.jsm"
 );
-ChromeUtils.defineModuleGetter(
-  this,
-  "DeferredTask",
-  "resource://gre/modules/DeferredTask.jsm"
-);
+ChromeUtils.defineESModuleGetters(this, {
+  DeferredTask: "resource://gre/modules/DeferredTask.sys.mjs",
+});
 
 const PDF_JS_URI = "resource://pdf.js/web/viewer.html";
 const INPUT_DELAY_MS = Cu.isInAutomation ? 100 : 500;
@@ -33,7 +31,9 @@ var logger = (function() {
   const getMaxLogLevel = () =>
     Services.prefs.getBoolPref("print.debug", false) ? "all" : "warn";
 
-  let { ConsoleAPI } = ChromeUtils.import("resource://gre/modules/Console.jsm");
+  let { ConsoleAPI } = ChromeUtils.importESModule(
+    "resource://gre/modules/Console.sys.mjs"
+  );
   // Create a new instance of the ConsoleAPI so we can control the maxLogLevel with a pref.
   let _logger = new ConsoleAPI({
     prefix: "printUI",
@@ -355,9 +355,7 @@ var PrintEventHandler = {
     await new Promise(resolve => window.requestAnimationFrame(resolve));
 
     // Now that we're showing the form, select the destination select.
-    window.focus();
-    let fm = Services.focus;
-    fm.setFocus(document.getElementById("printer-picker"), fm.FLAG_SHOWRING);
+    document.getElementById("printer-picker").focus({ focusVisible: true });
 
     await initialPreviewDone;
   },

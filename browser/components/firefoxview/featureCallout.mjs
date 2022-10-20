@@ -11,6 +11,12 @@ const lazy = {};
 XPCOMUtils.defineLazyModuleGetters(lazy, {
   AboutWelcomeParent: "resource:///actors/AboutWelcomeParent.jsm",
   ASRouter: "resource://activity-stream/lib/ASRouter.jsm",
+  PageEventManager: "resource://activity-stream/lib/PageEventManager.jsm",
+});
+
+XPCOMUtils.defineLazyGetter(lazy, "pageEventManager", () => {
+  window.pageEventManager = new lazy.PageEventManager(document);
+  return window.pageEventManager;
 });
 
 // When expanding the use of Feature Callout
@@ -48,10 +54,12 @@ async function _handlePrefChange() {
     READY = false;
     const container = document.getElementById(CONTAINER_ID);
     container?.classList.add("hidden");
+    window.pageEventManager?.clear();
     // wait for fade out transition
     setTimeout(async () => {
       await _loadConfig();
       container?.remove();
+      _removePositionListeners();
       await _renderCallout();
     }, TRANSITION_MS);
   }
@@ -329,6 +337,8 @@ function _positionCallout() {
 function _addPositionListeners() {
   if (!LISTENERS_REGISTERED) {
     window.addEventListener("resize", _positionCallout);
+    const parentEl = document.querySelector(CURRENT_SCREEN?.parent_selector);
+    parentEl?.addEventListener("toggle", _positionCallout);
     LISTENERS_REGISTERED = true;
   }
 }
@@ -336,6 +346,8 @@ function _addPositionListeners() {
 function _removePositionListeners() {
   if (LISTENERS_REGISTERED) {
     window.removeEventListener("resize", _positionCallout);
+    const parentEl = document.querySelector(CURRENT_SCREEN?.parent_selector);
+    parentEl?.removeEventListener("toggle", _positionCallout);
     LISTENERS_REGISTERED = false;
   }
 }
@@ -370,6 +382,7 @@ function _endTour() {
   // We don't want focus events that happen during teardown to effect
   // SAVED_ACTIVE_ELEMENT
   window.removeEventListener("focus", focusHandler, { capture: true });
+  window.pageEventManager?.clear();
 
   READY = false;
   // wait for fade out transition
@@ -377,7 +390,6 @@ function _endTour() {
   container?.classList.add("hidden");
   setTimeout(() => {
     container?.remove();
-    _removePositionListeners();
     RENDER_OBSERVER?.disconnect();
 
     // Put the focus back to the last place the user focused outside of the
@@ -452,6 +464,7 @@ async function _renderCallout() {
     // This results in rendering the Feature Callout
     await _addScriptsAndRender(container);
     _observeRender(container);
+    _addPositionListeners();
   }
 }
 /**
@@ -473,6 +486,9 @@ async function showFeatureCallout(messageId) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           READY = true;
+          _attachPageEventListeners(
+            CURRENT_SCREEN?.content?.page_event_listeners
+          );
           _positionCallout();
           let container = document.getElementById(CONTAINER_ID);
           container.focus();
@@ -488,9 +504,9 @@ async function showFeatureCallout(messageId) {
 
   _addCalloutLinkElements();
   // Add handlers for repositioning callout
-  _addPositionListeners();
   _setupWindowFunctions();
 
+  window.pageEventManager?.clear();
   READY = false;
   const container = document.getElementById(CONTAINER_ID);
   container?.remove();
@@ -528,6 +544,98 @@ function focusHandler(e) {
   // then we'll put the focus back here where the user left it once we exit
   // the feature callout series.
   SAVED_ACTIVE_ELEMENT = document.activeElement;
+}
+
+/**
+ * For each member of the screen's page_event_listeners array, add a listener.
+ * @param {Array<PageEventListener>} listeners An array of listeners to set up
+ *
+ * @typedef {Object} PageEventListener
+ * @property {PageEventListenerParams} params Event listener parameters
+ * @property {PageEventListenerAction} action Sent when the event fires
+ *
+ * @typedef {Object} PageEventListenerParams See PageEventManager.jsm
+ * @property {String} type Event type string e.g. `click`
+ * @property {String} selectors Target selector, e.g. `tag.class, #id[attr]`
+ * @property {PageEventListenerOptions} [options] addEventListener options
+ *
+ * @typedef {Object} PageEventListenerOptions
+ * @property {Boolean} [capture] Use event capturing phase?
+ * @property {Boolean} [once] Remove listener after first event?
+ * @property {Boolean} [preventDefault] Prevent default action?
+ *
+ * @typedef {Object} PageEventListenerAction Action sent to AboutWelcomeParent
+ * @property {String} [type] Action type, e.g. `OPEN_URL`
+ * @property {Object} [data] Extra data, properties depend on action type
+ * @property {Boolean} [dismiss] Dismiss screen after performing action?
+ */
+function _attachPageEventListeners(listeners) {
+  listeners?.forEach(({ params, action }) =>
+    lazy.pageEventManager[params.options?.once ? "once" : "on"](
+      params,
+      event => {
+        _handlePageEventAction(action, event);
+        if (params.options?.preventDefault) {
+          event.preventDefault?.();
+        }
+      }
+    )
+  );
+}
+
+/**
+ * Perform an action in response to a page event.
+ * @param {PageEventListenerAction} action
+ * @param {Event} event Triggering event
+ */
+function _handlePageEventAction(action, event) {
+  window.AWSendEventTelemetry?.({
+    event: "PAGE_EVENT",
+    event_context: {
+      action: action.type ?? (action.dismiss ? "DISMISS" : ""),
+      reason: event.type?.toUpperCase(),
+      source: _getUniqueElementIdentifier(event.target),
+      page: document.location.href,
+    },
+    message_id: CONFIG?.id.toUpperCase(),
+  });
+  if (action.type) {
+    window.AWSendToParent("SPECIAL_ACTION", action);
+  }
+  if (action.dismiss) {
+    _endTour();
+  }
+}
+
+/**
+ * For a given element, calculate a unique string that identifies it.
+ * @param {Element} target Element to calculate the selector for
+ * @returns {String} Computed event target selector, e.g. `button#next`
+ */
+function _getUniqueElementIdentifier(target) {
+  let source;
+  if (Element.isInstance(target)) {
+    source = target.localName;
+    if (target.className) {
+      source += `.${[...target.classList].join(".")}`;
+    }
+    if (target.id) {
+      source += `#${target.id}`;
+    }
+    if (target.attributes.length) {
+      source += `${[...target.attributes]
+        .filter(attr => ["is", "role", "open"].includes(attr.name))
+        .map(attr => `[${attr.name}="${attr.value}"]`)
+        .join("")}`;
+    }
+    if (document.querySelectorAll(source).length > 1) {
+      let uniqueAncestor = target.closest(`[id]:not(:scope, :root, body)`);
+      if (uniqueAncestor) {
+        source = `${_getUniqueElementIdentifier(uniqueAncestor)} > ${source}`;
+      }
+    }
+  }
+  return source;
 }
 
 window.addEventListener("DOMContentLoaded", () => {

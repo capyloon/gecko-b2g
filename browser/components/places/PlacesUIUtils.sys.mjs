@@ -5,18 +5,15 @@
 
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
-const { clearTimeout, setTimeout } = ChromeUtils.import(
-  "resource://gre/modules/Timer.jsm"
-);
-const { AppConstants } = ChromeUtils.import(
-  "resource://gre/modules/AppConstants.jsm"
-);
+import { clearTimeout, setTimeout } from "resource://gre/modules/Timer.sys.mjs";
+import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   PlacesTransactions: "resource://gre/modules/PlacesTransactions.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
+  PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
   PromiseUtils: "resource://gre/modules/PromiseUtils.sys.mjs",
 });
 
@@ -26,7 +23,6 @@ XPCOMUtils.defineLazyModuleGetters(lazy, {
   MigrationUtils: "resource:///modules/MigrationUtils.jsm",
   OpenInTabsUtils: "resource:///modules/OpenInTabsUtils.jsm",
   PluralForm: "resource://gre/modules/PluralForm.jsm",
-  PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm",
   Weave: "resource://services-sync/main.js",
 });
 
@@ -966,11 +962,11 @@ export var PlacesUIUtils = {
 
     let browserWindow = getBrowserWindow(aWindow);
     var urls = [];
-    let skipMarking =
+    let isPrivate =
       browserWindow && lazy.PrivateBrowsingUtils.isWindowPrivate(browserWindow);
     for (let item of aItemsToOpen) {
       urls.push(item.uri);
-      if (skipMarking) {
+      if (isPrivate) {
         continue;
       }
 
@@ -997,11 +993,16 @@ export var PlacesUIUtils = {
       );
       args.appendElement(stringsToLoad);
 
+      let features = "chrome,dialog=no,all";
+      if (isPrivate) {
+        features += ",private";
+      }
+
       browserWindow = Services.ww.openWindow(
         aWindow,
         AppConstants.BROWSER_CHROME_URL,
         null,
-        "chrome,dialog=no,all",
+        features,
         args
       );
       return;
@@ -1119,6 +1120,12 @@ export var PlacesUIUtils = {
         } else {
           this.markPageAsTyped(aNode.uri);
         }
+      } else {
+        // This is a targeted fix for bug 1792163, where it was discovered
+        // that if you open the Library from a Private Browsing window, and then
+        // use the "Open in New Window" context menu item to open a new window,
+        // that the window will open under the wrong icon on the Windows taskbar.
+        aPrivate = true;
       }
 
       const isJavaScriptURL = aNode.uri.startsWith("javascript:");

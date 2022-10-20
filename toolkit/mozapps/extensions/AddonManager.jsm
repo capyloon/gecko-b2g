@@ -17,8 +17,8 @@ if ("@mozilla.org/xre/app-info;1" in Cc) {
   }
 }
 
-const { AppConstants } = ChromeUtils.import(
-  "resource://gre/modules/AppConstants.jsm"
+const { AppConstants } = ChromeUtils.importESModule(
+  "resource://gre/modules/AppConstants.sys.mjs"
 );
 
 const MOZ_COMPATIBILITY_NIGHTLY = ![
@@ -1835,6 +1835,16 @@ var AddonManagerInternal = {
       );
     }
 
+    // Block install from null principal.
+    // /!\ We need to do this check before checking if this is a remote origin iframe,
+    // otherwise isThirdPartyPrincipal might throw.
+    if (aInstallingPrincipal.isNullPrincipal) {
+      throw Components.Exception(
+        `SitePermsAddons can't be installed from sandboxed subframes`,
+        Cr.NS_ERROR_INVALID_ARG
+      );
+    }
+
     // Block install from remote origin iframe
     if (
       aBrowser &&
@@ -1842,13 +1852,6 @@ var AddonManagerInternal = {
     ) {
       throw Components.Exception(
         `SitePermsAddons can't be installed from cross origin subframes`,
-        Cr.NS_ERROR_INVALID_ARG
-      );
-    }
-
-    if (aInstallingPrincipal.scheme !== "https") {
-      throw Components.Exception(
-        `SitePermsAddons can only be installed from secure origins`,
         Cr.NS_ERROR_INVALID_ARG
       );
     }
