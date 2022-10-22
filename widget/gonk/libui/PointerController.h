@@ -19,8 +19,6 @@
 
 #include "SpriteController.h"
 
-// FIXME: need to confirm if this is the right one.
-#include <ui/DynamicDisplayInfo.h>
 #include "Input.h"
 #include <utils/BitSet.h>
 #include <utils/RefBase.h>
