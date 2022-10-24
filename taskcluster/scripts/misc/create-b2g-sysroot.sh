@@ -6,7 +6,7 @@ dest="${2-.}"
 
 # This is a broken symlink that prevents rsync from doing its job.
 # Using --exclude still fails with a "symlink has no referent" error.
-mv ${src}/frameworks/native/include/private/binder /tmp/broken_binder_symlink
+mv ${src}/frameworks/native/include/private/binder ${src}/out/broken_binder_symlink
 
 # Copy the contents of the files & directories in the first argument to the
 # sysroot using the second argument as the destination folder. File
@@ -137,6 +137,7 @@ out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/netd_aidl_interfa
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/oemnetd_aidl_interface-cpp.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/audiopolicy-aidl-cpp.so
 out/target/product/${GONK_PRODUCT_NAME}/apex/com.android.tethering/lib${BINSUFFIX}/libnetworkstats.so
+out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libwificond_ipc_shared.so
 EOF
 
 # is not available in aosp 13.
@@ -236,6 +237,7 @@ out/soong/.intermediates/gonk-misc/gonk-binder/binder_b2g_remotesimunlock_interf
 out/soong/.intermediates/packages/modules/DnsResolver/dnsresolver_aidl_interface-V2-cpp-source/gen/include
 out/soong/.intermediates/system/netd/server/oemnetd_aidl_interface-cpp-source/gen/include
 out/soong/.intermediates/system/vold/libvold_binder_shared/android_${ARCH_FOLDER}_shared/gen/aidl
+out/soong/.intermediates/system/connectivity/wificond/libwificond_ipc/android_${ARCH_FOLDER}_static/gen/aidl
 EOF
 
 # out/soong/.intermediates/frameworks/base/media/audio_common-aidl-cpp-source/gen/include
@@ -298,8 +300,9 @@ fi
 
 rsync ${src}/packages/modules/Connectivity/bpf_progs/bpf_shared.h ${dest}/b2g-sysroot/include/
 rsync ${src}/system/netd/include/mainline/XtBpfProgLocations.h  ${dest}/b2g-sysroot/include/
+rsync ${src}/out/soong/.intermediates/system/vold/libvold_binder/android_${ARCH_FOLDER}_static/libvold_binder.a ${dest}/b2g-sysroot/libs/
 
 echo "/* All the logging code is now in the NDK sysroot/usr/include/android/log.h */" > ${dest}/b2g-sysroot/include/log/log_id.h
 
 # Restore the broken symlink
-mv /tmp/broken_binder_symlink ${src}/frameworks/native/include/private/binder
+mv ${src}/out/broken_binder_symlink ${src}/frameworks/native/include/private/binder

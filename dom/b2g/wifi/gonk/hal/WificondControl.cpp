@@ -22,16 +22,16 @@ using ::android::defaultServiceManager;
 using ::android::IBinder;
 using ::android::interface_cast;
 using ::android::String16;
-using ::android::net::wifi::IApInterfaceEventCallback;
-using ::android::net::wifi::IPnoScanEvent;
-using ::android::net::wifi::IScanEvent;
+using ::android::net::wifi::nl80211::IApInterfaceEventCallback;
+using ::android::net::wifi::nl80211::IPnoScanEvent;
+using ::android::net::wifi::nl80211::IScanEvent;
 
 using namespace mozilla::dom::wifi;
 
 static const char* CTL_START_PROPERTY = "ctl.start";
 static const char* CTL_STOP_PROPERTY = "ctl.stop";
 static const char* SUPPLICANT_SERVICE_NAME = "wpa_supplicant";
-static const char* WIFICOND_SERVICE_NAME = "wificond";
+static const char* WIFICOND_SERVICE_NAME = "wifinl80211";
 static const int32_t WIFICOND_POLL_DELAY = 500000;
 static const int32_t WIFICOND_RETRY_COUNT = 20;
 
@@ -258,7 +258,7 @@ Result_t WificondControl::InitiateScanEvent(
   }
   if (!mScanner
            ->subscribeScanEvents(
-               android::interface_cast<android::net::wifi::IScanEvent>(
+               android::interface_cast<android::net::wifi::nl80211::IScanEvent>(
                    mScanEventService))
            .isOk()) {
     WIFI_LOGE(LOG_TAG, "subscribe scan event failed");
@@ -266,7 +266,7 @@ Result_t WificondControl::InitiateScanEvent(
   }
   if (!mScanner
            ->subscribePnoScanEvents(
-               android::interface_cast<android::net::wifi::IPnoScanEvent>(
+               android::interface_cast<android::net::wifi::nl80211::IPnoScanEvent>(
                    mPnoScanEventService))
            .isOk()) {
     WIFI_LOGE(LOG_TAG, "subscribe pno scan event failed");
@@ -322,7 +322,7 @@ Result_t WificondControl::SetupApIface(
 
   bool success = false;
   mApInterface->registerCallback(
-      android::interface_cast<android::net::wifi::IApInterfaceEventCallback>(
+      android::interface_cast<android::net::wifi::nl80211::IApInterfaceEventCallback>(
           mSoftapEventService),
       &success);
   return CHECK_SUCCESS(success);
@@ -452,24 +452,24 @@ Result_t WificondControl::GetChannelsForBand(uint32_t aBandMask,
     return nsIWifiResult::ERROR_INVALID_INTERFACE;
   }
 
-  std::unique_ptr<std::vector<int32_t>> channels;
+  std::optional<std::vector<int32_t>> channels;
   if (aBandMask & nsIScanSettings::BAND_2_4_GHZ) {
     mWificond->getAvailable2gChannels(&channels);
-    if (channels != nullptr) {
+    if (channels.has_value()) {
       aChannels.insert(aChannels.end(), (*channels).begin(), (*channels).end());
     }
   }
 
   if (aBandMask & nsIScanSettings::BAND_5_GHZ) {
     mWificond->getAvailable5gNonDFSChannels(&channels);
-    if (channels != nullptr) {
+    if (channels.has_value()) {
       aChannels.insert(aChannels.end(), (*channels).begin(), (*channels).end());
     }
   }
 
   if (aBandMask & nsIScanSettings::BAND_5_GHZ_DFS) {
     mWificond->getAvailableDFSChannels(&channels);
-    if (channels != nullptr) {
+    if (channels.has_value()) {
       aChannels.insert(aChannels.end(), (*channels).begin(), (*channels).end());
     }
   }
@@ -495,8 +495,11 @@ Result_t WificondControl::GetSoftapStations(uint32_t& aNumStations) {
     return nsIWifiResult::ERROR_INVALID_INTERFACE;
   }
 
-  int32_t stations;
-  mApInterface->getNumberOfAssociatedStations(&stations);
-  aNumStations = (stations < 0) ? 0 : stations;
-  return CHECK_SUCCESS(stations >= 0);
+
+  // TODO: FIXME
+  // int32_t stations;
+  //mApInterface->getNumberOfAssociatedStations(&stations);
+  //aNumStations = (stations < 0) ? 0 : stations;
+  //return CHECK_SUCCESS(stations >= 0);
+  return nsIWifiResult::SUCCESS;
 }

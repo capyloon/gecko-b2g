@@ -191,7 +191,7 @@ Result_t WifiHal::InitWifiInterface() {
     mWifi->registerEventCallback(
         this, [&](const WifiStatus& status) { response = status; });
     if (response.code != WifiStatusCode::SUCCESS) {
-      WIFI_LOGE(LOG_TAG, "registerEventCallback failed: %d, reason: %s",
+      WIFI_LOGE(LOG_TAG, "registerEventCallback failed: code=%d, reason='%s'",
                 response.code, response.description.c_str());
       mWifi = nullptr;
       return nsIWifiResult::ERROR_COMMAND_FAILED;

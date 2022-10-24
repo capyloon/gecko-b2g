@@ -138,12 +138,3 @@ android::binder::Status PnoScanEventService::OnPnoScanFailed() {
   INVOKE_CALLBACK(gCallback, event, iface);
   return android::binder::Status::ok();
 }
-
-android::binder::Status PnoScanEventService::OnPnoScanOverOffloadStarted() {
-  return android::binder::Status::ok();
-}
-
-android::binder::Status PnoScanEventService::OnPnoScanOverOffloadFailed(
-    int32_t reason) {
-  return android::binder::Status::ok();
-}
