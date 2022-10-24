@@ -334,13 +334,13 @@ void GonkDisplayP::CreateVirtualDisplaySurface(
 }
 
 void GonkDisplayP::SetEnabled(bool enabled) {
-  // FIXME: crash with aosp-13
-  return;
   android::Mutex::Autolock lock(mPrimaryScreenLock);
   if (enabled) {
     if (!mExtFBEnabled) {
       autosuspend_disable();
-      mPower->setInteractive(true);
+      if (mPower) {
+        mPower->setInteractive(true);
+      }
 
       if (mHwc && mEnableHWCPower) {
         SetHwcPowerMode(enabled);
@@ -370,7 +370,9 @@ void GonkDisplayP::SetEnabled(bool enabled) {
       }
 
       autosuspend_enable();
-      mPower->setInteractive(false);
+      if (mPower) {
+        mPower->setInteractive(false);
+      }
     }
     mFBEnabled = enabled;
   }
