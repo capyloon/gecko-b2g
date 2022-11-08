@@ -864,17 +864,12 @@ var GMPProvider = {
   },
 
   observe(subject, topic, data) {
-<<<<<<< HEAD
     if (
       (topic == FIRST_CONTENT_PROCESS_TOPIC ||
-        topic == "force-gmp-provider-startup") &&
-      !GMPProvider._configured
+       topic == "force-gmp-provider-startup") &&
+       !GMPProvider._configured
     ) {
-      AddonManagerPrivate.registerProvider(GMPProvider, ["plugin"]);
-=======
-    if (topic == FIRST_CONTENT_PROCESS_TOPIC) {
       lazy.AddonManagerPrivate.registerProvider(GMPProvider, ["plugin"]);
->>>>>>> next
       Services.obs.notifyObservers(null, "gmp-provider-registered");
 
       Services.obs.removeObserver(this, FIRST_CONTENT_PROCESS_TOPIC);
