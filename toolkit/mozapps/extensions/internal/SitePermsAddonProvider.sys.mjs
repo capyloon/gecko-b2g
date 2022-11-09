@@ -9,6 +9,7 @@ import {
   SITEPERMS_ADDON_TYPE,
   isGatedPermissionType,
   isKnownPublicSuffix,
+  isPrincipalInSitePermissionsBlocklist,
 } from "resource://gre/modules/addons/siteperms-addon-utils.sys.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
@@ -20,6 +21,18 @@ XPCOMUtils.defineLazyModuleGetters(lazy, {
   AddonManager: "resource://gre/modules/AddonManager.jsm",
   AddonManagerPrivate: "resource://gre/modules/AddonManager.jsm",
 });
+XPCOMUtils.defineLazyGetter(
+  lazy,
+  "addonsBundle",
+  () => new Localization(["toolkit/about/aboutAddons.ftl"], true)
+);
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "SITEPERMS_ADDON_PROVIDER_ENABLED",
+  SITEPERMS_ADDON_PROVIDER_PREF,
+  false
+);
 
 const FIRST_CONTENT_PROCESS_TOPIC = "ipc:first-content-process-created";
 const SITEPERMS_ADDON_ID_SUFFIX = "@siteperms.mozilla.org";
@@ -103,8 +116,9 @@ class SitePermsAddonWrapper {
   }
 
   get name() {
-    // TODO: Localize this string (See Bug 1790313).
-    return `Site Permissions for ${this.principal.host}`;
+    return lazy.addonsBundle.formatValueSync("addon-sitepermission-host", {
+      host: this.principal.host,
+    });
   }
 
   get creator() {}
@@ -419,6 +433,10 @@ const SitePermsAddonProvider = {
       return;
     }
 
+    if (isPrincipalInSitePermissionsBlocklist(permission.principal)) {
+      return;
+    }
+
     const { siteOriginNoSuffix } = permission.principal;
 
     // Install origin cannot be on a known etld (e.g. github.io).
@@ -482,7 +500,9 @@ const SitePermsAddonProvider = {
   },
 
   shutdown() {
-    Services.obs.removeObserver(this, "perm-changed");
+    if (this._initPromise) {
+      Services.obs.removeObserver(this, "perm-changed");
+    }
     this.wrappersMapByOrigin.clear();
     this._initPromise = null;
   },
@@ -540,7 +560,7 @@ const SitePermsAddonProvider = {
   },
 
   get isEnabled() {
-    return Services.prefs.getBoolPref(SITEPERMS_ADDON_PROVIDER_PREF, false);
+    return lazy.SITEPERMS_ADDON_PROVIDER_ENABLED;
   },
 
   observe(subject, topic, data) {

@@ -3162,7 +3162,8 @@ void CanvasRenderingContext2D::ArcTo(double aX1, double aY1, double aX2,
   }
 
   // Check for colinearity
-  dir = (p2.x - p1.x) * (p0.y - p1.y) + (p2.y - p1.y) * (p1.x - p0.x);
+  dir = (p2.x.value - p1.x.value) * (p0.y.value - p1.y.value) +
+        (p2.y.value - p1.y.value) * (p1.x.value - p0.x.value);
   if (dir == 0) {
     LineTo(p1.x, p1.y);
     return;
@@ -3446,6 +3447,7 @@ static void SerializeFontForCanvas(const StyleFontFamilyList& aList,
   // font-weight is serialized as a number
   if (!aStyle.weight.IsNormal()) {
     aUsedFont.AppendFloat(aStyle.weight.ToFloat());
+    aUsedFont.Append(" ");
   }
 
   // font-stretch is serialized using CSS Fonts 3 keywords, not percentages.
@@ -3525,15 +3527,16 @@ bool CanvasRenderingContext2D::SetFontInternalDisconnected(
   // TODO: For workers, should we be passing a language? Where from?
 
   // TODO: Cache fontGroups in the Worker (use an nsFontCache?)
-  gfxFontGroup* fontGroup = gfxPlatform::GetPlatform()->CreateFontGroup(
-      nullptr,           // aPresContext
-      list,              // aFontFamilyList
-      &fontStyle,        // aStyle
-      language,          // aLanguage
-      explicitLanguage,  // aExplicitLanguage
-      nullptr,           // aTextPerf
-      fontFaceSetImpl,   // aUserFontSet
-      1.0);              // aDevToCssSize
+  gfxFontGroup* fontGroup =
+      new gfxFontGroup(nullptr,           // aPresContext
+                       list,              // aFontFamilyList
+                       &fontStyle,        // aStyle
+                       language,          // aLanguage
+                       explicitLanguage,  // aExplicitLanguage
+                       nullptr,           // aTextPerf
+                       fontFaceSetImpl,   // aUserFontSet
+                       1.0,               // aDevToCssSize
+                       StyleFontVariantEmoji::Normal);
   CurrentState().fontGroup = fontGroup;
   SerializeFontForCanvas(list, fontStyle, CurrentState().font);
   CurrentState().fontFont = nsFont(StyleFontFamily{list, false, false},
@@ -3842,7 +3845,7 @@ struct MOZ_STACK_CLASS CanvasBidiProcessor final
     bool verticalRun = mTextRun->IsVertical();
     RefPtr<gfxPattern> pattern;
 
-    float& inlineCoord = verticalRun ? point.y : point.x;
+    float& inlineCoord = verticalRun ? point.y.value : point.x.value;
     inlineCoord += aXOffset;
 
     // offset is given in terms of left side of string
@@ -4326,10 +4329,10 @@ gfxFontGroup* CanvasRenderingContext2D::GetCurrentFontStyle() {
       gfxFloat devToCssSize = gfxFloat(perDevPixel) / gfxFloat(perCSSPixel);
       const auto* sans =
           Servo_FontFamily_Generic(StyleGenericFontFamily::SansSerif);
-      fontGroup = gfxPlatform::GetPlatform()->CreateFontGroup(
+      fontGroup = new gfxFontGroup(
           presContext, sans->families, &style, language, explicitLanguage,
           presContext ? presContext->GetTextPerfMetrics() : nullptr, nullptr,
-          devToCssSize);
+          devToCssSize, StyleFontVariantEmoji::Normal);
       if (fontGroup) {
         CurrentState().font = kDefaultFontStyle;
       } else {
@@ -4728,7 +4731,8 @@ static Matrix ComputeRotationMatrix(gfxFloat aRotatedWidth,
         Matrix::Translation(-aRotatedWidth / 2.0, -aRotatedHeight / 2.0);
   }
 
-  Matrix rotation = Matrix::Rotation(gfx::Float(aDegrees / 180.0 * M_PI));
+  auto angle = static_cast<double>(aDegrees) / 180.0 * M_PI;
+  Matrix rotation = Matrix::Rotation(static_cast<gfx::Float>(angle));
   Matrix shiftLeftTopToOrigin =
       Matrix::Translation(aRotatedWidth / 2.0, aRotatedHeight / 2.0);
   return shiftVideoCenterToOrigin * rotation * shiftLeftTopToOrigin;
@@ -5962,7 +5966,8 @@ void CanvasPath::ArcTo(double aX1, double aY1, double aX2, double aY2,
   }
 
   // Check for colinearity
-  dir = (p2.x - p1.x) * (p0.y - p1.y) + (p2.y - p1.y) * (p1.x - p0.x);
+  dir = (p2.x.value - p1.x.value) * (p0.y.value - p1.y.value) +
+        (p2.y.value - p1.y.value) * (p1.x.value - p0.x.value);
   if (dir == 0) {
     LineTo(p1.x, p1.y);
     return;

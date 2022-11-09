@@ -15,6 +15,8 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   NimbusFeatures: "resource://nimbus/ExperimentAPI.jsm",
 });
 
+const { TELEMETRY_SCALARS } = UrlbarProviderQuickSuggest;
+
 const SUGGESTIONS = [
   {
     id: 1,
@@ -78,7 +80,7 @@ add_setup(async function() {
  * Adds a test task that runs the given callback with each suggestion in
  * `SUGGESTIONS`.
  *
- * @param {function} fn
+ * @param {Function} fn
  *   The callback function. It's passed the current suggestion.
  */
 function add_suggestions_task(fn) {
@@ -199,27 +201,25 @@ async function doImpressionTest({
     });
 
     let scalars = {
-      [QuickSuggestTestUtils.SCALARS.IMPRESSION]: index + 1,
+      [TELEMETRY_SCALARS.IMPRESSION]: index + 1,
     };
     if (isBestMatch) {
       if (isSponsored) {
         scalars = {
           ...scalars,
-          [QuickSuggestTestUtils.SCALARS.IMPRESSION_SPONSORED_BEST_MATCH]:
-            index + 1,
+          [TELEMETRY_SCALARS.IMPRESSION_SPONSORED_BEST_MATCH]: index + 1,
         };
       } else {
         scalars = {
           ...scalars,
-          [QuickSuggestTestUtils.SCALARS.IMPRESSION_NONSPONSORED_BEST_MATCH]:
-            index + 1,
+          [TELEMETRY_SCALARS.IMPRESSION_NONSPONSORED_BEST_MATCH]: index + 1,
         };
       }
     }
     QuickSuggestTestUtils.assertScalars(scalars);
     QuickSuggestTestUtils.assertEvents([
       {
-        category: QuickSuggestTestUtils.TELEMETRY_EVENT_CATEGORY,
+        category: QuickSuggest.TELEMETRY_EVENT_CATEGORY,
         method: "engagement",
         object: "impression_only",
         extra: {
@@ -492,24 +492,21 @@ async function doClickTest({
     });
 
     let scalars = {
-      [QuickSuggestTestUtils.SCALARS.IMPRESSION]: index + 1,
-      [QuickSuggestTestUtils.SCALARS.CLICK]: index + 1,
+      [TELEMETRY_SCALARS.IMPRESSION]: index + 1,
+      [TELEMETRY_SCALARS.CLICK]: index + 1,
     };
     if (isBestMatch) {
       if (isSponsored) {
         scalars = {
           ...scalars,
-          [QuickSuggestTestUtils.SCALARS.IMPRESSION_SPONSORED_BEST_MATCH]:
-            index + 1,
-          [QuickSuggestTestUtils.SCALARS.CLICK_SPONSORED_BEST_MATCH]: index + 1,
+          [TELEMETRY_SCALARS.IMPRESSION_SPONSORED_BEST_MATCH]: index + 1,
+          [TELEMETRY_SCALARS.CLICK_SPONSORED_BEST_MATCH]: index + 1,
         };
       } else {
         scalars = {
           ...scalars,
-          [QuickSuggestTestUtils.SCALARS.IMPRESSION_NONSPONSORED_BEST_MATCH]:
-            index + 1,
-          [QuickSuggestTestUtils.SCALARS.CLICK_NONSPONSORED_BEST_MATCH]:
-            index + 1,
+          [TELEMETRY_SCALARS.IMPRESSION_NONSPONSORED_BEST_MATCH]: index + 1,
+          [TELEMETRY_SCALARS.CLICK_NONSPONSORED_BEST_MATCH]: index + 1,
         };
       }
     }
@@ -518,7 +515,7 @@ async function doClickTest({
     let match_type = isBestMatch ? "best-match" : "firefox-suggest";
     QuickSuggestTestUtils.assertEvents([
       {
-        category: QuickSuggestTestUtils.TELEMETRY_EVENT_CATEGORY,
+        category: QuickSuggest.TELEMETRY_EVENT_CATEGORY,
         method: "engagement",
         object: "click",
         extra: {
@@ -591,12 +588,12 @@ add_task(async function click_beforeSearchSuggestions() {
       });
       // Arrow down to the quick suggest result and press Enter.
       QuickSuggestTestUtils.assertScalars({
-        [QuickSuggestTestUtils.SCALARS.IMPRESSION]: index + 1,
-        [QuickSuggestTestUtils.SCALARS.CLICK]: index + 1,
+        [TELEMETRY_SCALARS.IMPRESSION]: index + 1,
+        [TELEMETRY_SCALARS.CLICK]: index + 1,
       });
       QuickSuggestTestUtils.assertEvents([
         {
-          category: QuickSuggestTestUtils.TELEMETRY_EVENT_CATEGORY,
+          category: QuickSuggest.TELEMETRY_EVENT_CATEGORY,
           method: "engagement",
           object: "click",
           extra: {
@@ -702,28 +699,26 @@ async function doHelpTest({ suggestion, useKeyboard, isBestMatch = false }) {
   await helpLoadPromise;
   Assert.equal(
     gBrowser.currentURI.spec,
-    QuickSuggestTestUtils.LEARN_MORE_URL,
+    QuickSuggest.HELP_URL,
     "Help URL loaded"
   );
 
   let scalars = {
-    [QuickSuggestTestUtils.SCALARS.IMPRESSION]: index + 1,
-    [QuickSuggestTestUtils.SCALARS.HELP]: index + 1,
+    [TELEMETRY_SCALARS.IMPRESSION]: index + 1,
+    [TELEMETRY_SCALARS.HELP]: index + 1,
   };
   if (isBestMatch) {
     if (isSponsored) {
       scalars = {
         ...scalars,
-        [QuickSuggestTestUtils.SCALARS.IMPRESSION_SPONSORED_BEST_MATCH]:
-          index + 1,
-        [QuickSuggestTestUtils.SCALARS.HELP_SPONSORED_BEST_MATCH]: index + 1,
+        [TELEMETRY_SCALARS.IMPRESSION_SPONSORED_BEST_MATCH]: index + 1,
+        [TELEMETRY_SCALARS.HELP_SPONSORED_BEST_MATCH]: index + 1,
       };
     } else {
       scalars = {
         ...scalars,
-        [QuickSuggestTestUtils.SCALARS.IMPRESSION_NONSPONSORED_BEST_MATCH]:
-          index + 1,
-        [QuickSuggestTestUtils.SCALARS.HELP_NONSPONSORED_BEST_MATCH]: index + 1,
+        [TELEMETRY_SCALARS.IMPRESSION_NONSPONSORED_BEST_MATCH]: index + 1,
+        [TELEMETRY_SCALARS.HELP_NONSPONSORED_BEST_MATCH]: index + 1,
       };
     }
   }
@@ -732,7 +727,7 @@ async function doHelpTest({ suggestion, useKeyboard, isBestMatch = false }) {
   let match_type = isBestMatch ? "best-match" : "firefox-suggest";
   QuickSuggestTestUtils.assertEvents([
     {
-      category: QuickSuggestTestUtils.TELEMETRY_EVENT_CATEGORY,
+      category: QuickSuggest.TELEMETRY_EVENT_CATEGORY,
       method: "engagement",
       object: "help",
       extra: {
@@ -773,7 +768,7 @@ add_task(async function enableToggled() {
     UrlbarPrefs.set("suggest.quicksuggest.nonsponsored", enabled);
     QuickSuggestTestUtils.assertEvents([
       {
-        category: QuickSuggestTestUtils.TELEMETRY_EVENT_CATEGORY,
+        category: QuickSuggest.TELEMETRY_EVENT_CATEGORY,
         method: "enable_toggled",
         object: enabled ? "enabled" : "disabled",
       },
@@ -816,7 +811,7 @@ add_task(async function sponsoredToggled() {
     UrlbarPrefs.set("suggest.quicksuggest.sponsored", enabled);
     QuickSuggestTestUtils.assertEvents([
       {
-        category: QuickSuggestTestUtils.TELEMETRY_EVENT_CATEGORY,
+        category: QuickSuggest.TELEMETRY_EVENT_CATEGORY,
         method: "sponsored_toggled",
         object: enabled ? "enabled" : "disabled",
       },
@@ -859,7 +854,7 @@ add_task(async function dataCollectionToggled() {
     UrlbarPrefs.set("quicksuggest.dataCollection.enabled", enabled);
     QuickSuggestTestUtils.assertEvents([
       {
-        category: QuickSuggestTestUtils.TELEMETRY_EVENT_CATEGORY,
+        category: QuickSuggest.TELEMETRY_EVENT_CATEGORY,
         method: "data_collect_toggled",
         object: enabled ? "enabled" : "disabled",
       },
@@ -956,7 +951,7 @@ add_task(async function bestmatchLearnMore() {
   link.scrollIntoView();
   const onLearnMoreOpenedByClick = BrowserTestUtils.waitForNewTab(
     gBrowser,
-    QuickSuggestTestUtils.BEST_MATCH_LEARN_MORE_URL
+    QuickSuggest.HELP_URL
   );
   await BrowserTestUtils.synthesizeMouseAtCenter(
     "#" + learnMoreLinkId,
@@ -977,7 +972,7 @@ add_task(async function bestmatchLearnMore() {
   link.focus();
   const onLearnMoreOpenedByKey = BrowserTestUtils.waitForNewTab(
     gBrowser,
-    QuickSuggestTestUtils.BEST_MATCH_LEARN_MORE_URL
+    QuickSuggest.HELP_URL
   );
   await BrowserTestUtils.synthesizeKey(
     "KEY_Enter",
@@ -1042,100 +1037,123 @@ add_task(async function nimbusExposure() {
   });
 });
 
-// The "firefox-suggest-update" notification should cause TelemetryEnvironment
-// to re-cache the `suggest.quicksuggest` prefs.
-add_task(async function telemetryEnvironmentUpdateNotification() {
-  // Make sure the prefs don't have user values that would mask the default
-  // values set below.
+// Simulates the race on startup between telemetry environment initialization
+// and the initial update of the Suggest scenario. After startup is done,
+// telemetry environment should record the correct values for startup prefs.
+add_task(async function telemetryEnvironmentOnStartup() {
   await QuickSuggestTestUtils.setScenario(null);
-  UrlbarPrefs.clear("suggest.quicksuggest.nonsponsored");
-  UrlbarPrefs.clear("suggest.quicksuggest.sponsored");
 
-  // Check the initial defaults.
-  let defaults = Services.prefs.getDefaultBranch("browser.urlbar.");
-  Assert.ok(
-    defaults.getBoolPref("suggest.quicksuggest.nonsponsored"),
-    "suggest.quicksuggest.nonsponsored is true initially"
-  );
-  Assert.ok(
-    defaults.getBoolPref("suggest.quicksuggest.sponsored"),
-    "suggest.quicksuggest.sponsored is true initially"
-  );
+  // Restart telemetry environment so we know it's watching its default set of
+  // prefs.
+  await TelemetryEnvironment.testCleanRestart().onInitialized();
 
-  // Tell TelemetryEnvironment to clear its pref cache and stop observing prefs.
-  await TelemetryEnvironment.testWatchPreferences(new Map());
+  // Get the prefs that UrlbarPrefs sets when the Suggest scenario is updated on
+  // startup. They're the union of the prefs exposed in the UI and the prefs
+  // that are set on the default branch per scenario.
+  let prefs = [
+    ...new Set([
+      ...Object.values(UrlbarPrefs.FIREFOX_SUGGEST_UI_PREFS_BY_VARIABLE),
+      ...Object.values(UrlbarPrefs.FIREFOX_SUGGEST_DEFAULT_PREFS)
+        .map(valuesByPrefName => Object.keys(valuesByPrefName))
+        .flat(),
+    ]),
+  ];
 
-  // Set the prefs to false. They should remain absent in TelemetryEnvironment.
-  defaults.setBoolPref("suggest.quicksuggest.nonsponsored", false);
-  defaults.setBoolPref("suggest.quicksuggest.sponsored", false);
-  Assert.ok(
-    !(
-      "browser.urlbar.suggest.quicksuggest.nonsponsored" in
+  // Not all of the prefs are recorded in telemetry environment. Filter in the
+  // ones that are.
+  prefs = prefs.filter(
+    p =>
+      `browser.urlbar.${p}` in
       TelemetryEnvironment.currentEnvironment.settings.userPrefs
-    ),
-    "suggest.quicksuggest.nonsponsored not in TelemetryEnvironment"
-  );
-  Assert.ok(
-    !(
-      "browser.urlbar.suggest.quicksuggest.sponsored" in
-      TelemetryEnvironment.currentEnvironment.settings.userPrefs
-    ),
-    "suggest.quicksuggest.sponsored not in TelemetryEnvironment"
   );
 
-  // Send the notification. TelemetryEnvironment should record the current
+  info("Got startup prefs: " + JSON.stringify(prefs));
+
+  // Sanity check the expected prefs. This isn't strictly necessary since we
+  // programmatically get the prefs above, but it's an extra layer of defense,
+  // for example in case we accidentally filtered out some expected prefs above.
+  // If this fails, you might have added a startup pref but didn't update this
+  // array here.
+  Assert.deepEqual(
+    prefs.sort(),
+    [
+      "quicksuggest.dataCollection.enabled",
+      "suggest.quicksuggest.nonsponsored",
+      "suggest.quicksuggest.sponsored",
+    ],
+    "Expected startup prefs"
+  );
+
+  // Make sure the prefs don't have user values that would mask the default
   // values.
-  Services.obs.notifyObservers(null, "firefox-suggest-update");
-  Assert.strictEqual(
-    TelemetryEnvironment.currentEnvironment.settings.userPrefs[
-      "browser.urlbar.suggest.quicksuggest.nonsponsored"
-    ],
-    false,
-    "suggest.quicksuggest.nonsponsored is false in TelemetryEnvironment"
-  );
-  Assert.strictEqual(
-    TelemetryEnvironment.currentEnvironment.settings.userPrefs[
-      "browser.urlbar.suggest.quicksuggest.sponsored"
-    ],
-    false,
-    "suggest.quicksuggest.sponsored is false in TelemetryEnvironment"
+  for (let p of prefs) {
+    UrlbarPrefs.clear(p);
+  }
+
+  // Build a map of default values.
+  let defaultValues = Object.fromEntries(
+    prefs.map(p => [p, UrlbarPrefs.get(p)])
   );
 
-  // Set the prefs to true. TelemetryEnvironment should keep the old values.
-  defaults.setBoolPref("suggest.quicksuggest.nonsponsored", true);
-  defaults.setBoolPref("suggest.quicksuggest.sponsored", true);
-  Assert.strictEqual(
-    TelemetryEnvironment.currentEnvironment.settings.userPrefs[
-      "browser.urlbar.suggest.quicksuggest.nonsponsored"
-    ],
-    false,
-    "suggest.quicksuggest.nonsponsored remains false in TelemetryEnvironment"
-  );
-  Assert.strictEqual(
-    TelemetryEnvironment.currentEnvironment.settings.userPrefs[
-      "browser.urlbar.suggest.quicksuggest.sponsored"
-    ],
-    false,
-    "suggest.quicksuggest.sponsored remains false in TelemetryEnvironment"
-  );
+  // Now simulate startup. Restart telemetry environment but don't wait for it
+  // to finish before calling `updateFirefoxSuggestScenario()`. This simulates
+  // startup where telemetry environment's initialization races the intial
+  // update of the Suggest scenario.
+  let environmentInitPromise = TelemetryEnvironment.testCleanRestart().onInitialized();
 
-  // Send the notification again. TelemetryEnvironment should record the new
+  // Update the scenario and force the startup prefs to take on values that are
+  // the inverse of what they are now.
+  await UrlbarPrefs.updateFirefoxSuggestScenario({
+    isStartup: true,
+    scenario: "online",
+    defaultPrefs: {
+      online: Object.fromEntries(
+        Object.entries(defaultValues).map(([p, value]) => [p, !value])
+      ),
+    },
+  });
+
+  // At this point telemetry environment should be done initializing since
+  // `updateFirefoxSuggestScenario()` waits for it, but await our promise now.
+  await environmentInitPromise;
+
+  // TelemetryEnvironment should have cached the new values.
+  for (let [p, value] of Object.entries(defaultValues)) {
+    let expected = !value;
+    Assert.strictEqual(
+      TelemetryEnvironment.currentEnvironment.settings.userPrefs[
+        `browser.urlbar.${p}`
+      ],
+      expected,
+      `Check 1: ${p} is ${expected} in TelemetryEnvironment`
+    );
+  }
+
+  // Simulate another startup and set all prefs back to their original default
   // values.
-  Services.obs.notifyObservers(null, "firefox-suggest-update");
-  Assert.strictEqual(
-    TelemetryEnvironment.currentEnvironment.settings.userPrefs[
-      "browser.urlbar.suggest.quicksuggest.nonsponsored"
-    ],
-    true,
-    "suggest.quicksuggest.nonsponsored is false in TelemetryEnvironment"
-  );
-  Assert.strictEqual(
-    TelemetryEnvironment.currentEnvironment.settings.userPrefs[
-      "browser.urlbar.suggest.quicksuggest.sponsored"
-    ],
-    true,
-    "suggest.quicksuggest.sponsored is false in TelemetryEnvironment"
-  );
+  environmentInitPromise = TelemetryEnvironment.testCleanRestart().onInitialized();
+
+  await UrlbarPrefs.updateFirefoxSuggestScenario({
+    isStartup: true,
+    scenario: "online",
+    defaultPrefs: {
+      online: defaultValues,
+    },
+  });
+
+  await environmentInitPromise;
+
+  // TelemetryEnvironment should have cached the new (original) values.
+  for (let [p, value] of Object.entries(defaultValues)) {
+    let expected = value;
+    Assert.strictEqual(
+      TelemetryEnvironment.currentEnvironment.settings.userPrefs[
+        `browser.urlbar.${p}`
+      ],
+      expected,
+      `Check 2: ${p} is ${expected} in TelemetryEnvironment`
+    );
+  }
 
   await TelemetryEnvironment.testCleanRestart().onInitialized();
 });
@@ -1144,7 +1162,7 @@ add_task(async function telemetryEnvironmentUpdateNotification() {
  * Adds a search engine that provides suggestions, calls your callback, and then
  * removes the engine.
  *
- * @param {function} callback
+ * @param {Function} callback
  *   Your callback function.
  */
 async function withSuggestions(callback) {

@@ -238,6 +238,7 @@ trait PrivateMatchMethods: TElement {
         let inputs = CascadeInputs {
             rules: Some(without_transition_rules),
             visited_rules: primary_style.visited_rules().cloned(),
+            flags: primary_style.flags.for_cascade_inputs(),
         };
 
         // Actually `PseudoElementResolution` doesn't really matter.
@@ -906,7 +907,7 @@ pub trait MatchMethods: TElement {
         let is_container = !new_primary_style
             .get_box()
             .clone_container_type()
-            .is_empty();
+            .is_normal();
         if is_root || is_container {
             let new_font_size = new_primary_style.get_font().clone_font_size();
             let old_font_size = old_styles

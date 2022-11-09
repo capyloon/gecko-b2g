@@ -12,6 +12,12 @@ const { FeatureGate } = ChromeUtils.import(
   "resource://featuregates/FeatureGate.jsm"
 );
 
+const lazy = {};
+
+ChromeUtils.defineESModuleGetters(lazy, {
+  PlacesDBUtils: "resource://gre/modules/PlacesDBUtils.sys.mjs",
+});
+
 // We use a list of prefs for display to make sure we only show prefs that
 // are useful for support and won't compromise the user's privacy.  Note that
 // entries are *prefixes*: for example, "accessibility." applies to all prefs
@@ -451,8 +457,9 @@ var dataProviders = {
     let Subprocess;
     try {
       // Subprocess is not available in all builds
-      Subprocess = ChromeUtils.import("resource://gre/modules/Subprocess.jsm")
-        .Subprocess;
+      Subprocess = ChromeUtils.importESModule(
+        "resource://gre/modules/Subprocess.sys.mjs"
+      ).Subprocess;
     } catch (ex) {
       done({});
       return;
@@ -483,6 +490,13 @@ var dataProviders = {
           Services.prefs.prefIsLocked(name)
       )
     );
+  },
+
+  places: async function places(done) {
+    const data = AppConstants.MOZ_PLACES
+      ? await lazy.PlacesDBUtils.getEntitiesStatsAndCounts()
+      : [];
+    done(data);
   },
 
   printingPreferences: function printingPreferences(done) {
@@ -979,6 +993,9 @@ if (AppConstants.MOZ_SANDBOX) {
         sandboxSettings.effectiveContentSandboxLevel;
       data.contentWin32kLockdownState =
         sandboxSettings.contentWin32kLockdownStateString;
+      data.supportSandboxGpuLevel = Services.prefs.getIntPref(
+        "security.sandbox.gpu.level"
+      );
     }
 
     done(data);

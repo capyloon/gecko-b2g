@@ -12,52 +12,6 @@
   );
 
   class MozDialog extends MozXULElement {
-    constructor() {
-      super();
-
-      this.attachShadow({ mode: "open" });
-
-      document.addEventListener(
-        "keypress",
-        event => {
-          if (event.keyCode == KeyEvent.DOM_VK_RETURN) {
-            this._hitEnter(event);
-          } else if (
-            event.keyCode == KeyEvent.DOM_VK_ESCAPE &&
-            !event.defaultPrevented
-          ) {
-            this.cancelDialog();
-          }
-        },
-        { mozSystemGroup: true }
-      );
-
-      if (AppConstants.platform == "macosx") {
-        document.addEventListener(
-          "keypress",
-          event => {
-            if (event.key == "." && event.metaKey) {
-              this.cancelDialog();
-            }
-          },
-          true
-        );
-      } else {
-        this.addEventListener("focus", this, true);
-        this.shadowRoot.addEventListener("focus", this, true);
-      }
-
-      // listen for when window is closed via native close buttons
-      window.addEventListener("close", event => {
-        if (!this.cancelDialog()) {
-          event.preventDefault();
-        }
-      });
-
-      // for things that we need to initialize after onload fires
-      window.addEventListener("load", event => this.postLoadInit(event));
-    }
-
     static get observedAttributes() {
       return super.observedAttributes.concat("subdialog");
     }
@@ -117,7 +71,7 @@
       <html:link rel="stylesheet" href="chrome://global/skin/button.css"/>
       <html:link rel="stylesheet" href="chrome://global/skin/dialog.css"/>
       ${this.hasAttribute("subdialog") ? this.inContentStyle : ""}
-      <vbox class="box-inherit dialog-content-box" part="content-box" flex="1">
+      <vbox class="box-inherit" part="content-box">
         <html:slot></html:slot>
       </vbox>
       ${buttons}`;
@@ -127,6 +81,11 @@
       if (this.delayConnectedCallback()) {
         return;
       }
+      if (this.hasConnected) {
+        return;
+      }
+      this.hasConnected = true;
+      this.attachShadow({ mode: "open" });
 
       document.documentElement.setAttribute("role", "dialog");
 
@@ -147,6 +106,50 @@
 
       window.moveToAlertPosition = this.moveToAlertPosition;
       window.centerWindowOnScreen = this.centerWindowOnScreen;
+
+      document.addEventListener(
+        "keypress",
+        event => {
+          if (event.keyCode == KeyEvent.DOM_VK_RETURN) {
+            this._hitEnter(event);
+          } else if (
+            event.keyCode == KeyEvent.DOM_VK_ESCAPE &&
+            !event.defaultPrevented
+          ) {
+            this.cancelDialog();
+          }
+        },
+        { mozSystemGroup: true }
+      );
+
+      if (AppConstants.platform == "macosx") {
+        document.addEventListener(
+          "keypress",
+          event => {
+            if (event.key == "." && event.metaKey) {
+              this.cancelDialog();
+            }
+          },
+          true
+        );
+      } else {
+        this.addEventListener("focus", this, true);
+        this.shadowRoot.addEventListener("focus", this, true);
+      }
+
+      // listen for when window is closed via native close buttons
+      window.addEventListener("close", event => {
+        if (!this.cancelDialog()) {
+          event.preventDefault();
+        }
+      });
+
+      // Call postLoadInit for things that we need to initialize after onload.
+      if (document.readyState == "complete") {
+        this._postLoadInit();
+      } else {
+        window.addEventListener("load", event => this._postLoadInit());
+      }
     }
 
     set buttons(val) {
@@ -210,7 +213,7 @@
         }
         return 0;
       })();
-      window.sizeToContentConstrained(prefWidth, 0);
+      window.sizeToContentConstrained({ prefWidth });
     }
 
     moveToAlertPosition() {
@@ -325,21 +328,31 @@
       }
     }
 
-    postLoadInit(aEvent) {
+    async _postLoadInit() {
       this._setInitialFocusIfNeeded();
-
-      try {
-        const defaultButton = this.getButton(this.defaultButton);
-        if (defaultButton) {
-          window.notifyDefaultButtonLoaded(defaultButton);
-        }
-      } catch (e) {}
-
       if (this._l10nButtons.length) {
-        document.l10n.translateElements(this._l10nButtons).then(() => {
-          this._sizeToPreferredSize();
-        });
+        await document.l10n.translateElements(this._l10nButtons);
       }
+      this._sizeToPreferredSize();
+      await this._snapCursorToDefaultButtonIfNeeded();
+    }
+
+    // This snaps the cursor to the default button rect on windows, when
+    // SPI_GETSNAPTODEFBUTTON is set.
+    async _snapCursorToDefaultButtonIfNeeded() {
+      const defaultButton = this.getButton(this.defaultButton);
+      if (!defaultButton) {
+        return;
+      }
+      try {
+        // FIXME(emilio, bug 1797624): This setTimeout() ensures enough time
+        // has passed so that the dialog vertical margin has been set by the
+        // front-end. For subdialogs, cursor positioning should probably be
+        // done by the opener instead, once the dialog is positioned.
+        await new Promise(r => setTimeout(r, 0));
+        await window.promiseDocumentFlushed(() => {});
+        window.notifyDefaultButtonLoaded(defaultButton);
+      } catch (e) {}
     }
 
     _configureButtons(aButtons) {

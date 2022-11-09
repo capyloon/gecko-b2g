@@ -24,6 +24,7 @@
 #include "nsCRT.h"
 #include "nsComponentManagerUtils.h"  // do_CreateInstance
 #include "nsHttpBasicAuth.h"
+#include "nsHttpChannel.h"
 #include "nsHttpChunkedDecoder.h"
 #include "nsHttpDigestAuth.h"
 #include "nsHttpHandler.h"
@@ -411,7 +412,7 @@ void nsHttpTransaction::OnPendingQueueInserted(
   }
 
   // Don't create mHttp3BackupTimer if HTTPS RR is in play.
-  if (mConnInfo->IsHttp3() && !mOrigConnInfo) {
+  if (mConnInfo->IsHttp3() && !mOrigConnInfo && !mConnInfo->GetWebTransport()) {
     // Backup timer should only be created once.
     if (!mHttp3BackupTimerCreated) {
       CreateAndStartTimer(mHttp3BackupTimer, this,
@@ -434,6 +435,13 @@ nsresult nsHttpTransaction::AsyncRead(nsIStreamListener* listener,
   transactionPump.forget(pump);
   MutexAutoLock lock(mLock);
   mEarlyHintObserver = do_QueryInterface(listener);
+
+  RefPtr<nsHttpChannel> httpChannel = do_QueryObject(listener);
+  if (httpChannel) {
+    mWebTransportSessionEventListener =
+        httpChannel->GetWebTransportSessionEventListener();
+  }
+
   return NS_OK;
 }
 
@@ -751,6 +759,7 @@ nsresult nsHttpTransaction::ReadSegments(nsAHttpSegmentReader* reader,
 
   if (m0RTTInProgress && (mEarlyDataDisposition == EARLY_NONE) &&
       NS_SUCCEEDED(rv) && (*countRead > 0)) {
+    LOG(("mEarlyDataDisposition = EARLY_SENT"));
     mEarlyDataDisposition = EARLY_SENT;
   }
 
@@ -1350,6 +1359,7 @@ void nsHttpTransaction::Close(nsresult reason) {
   {
     MutexAutoLock lock(mLock);
     mEarlyHintObserver = nullptr;
+    mWebTransportSessionEventListener = nullptr;
   }
 
   if (!mClosed) {
@@ -2178,6 +2188,29 @@ nsresult nsHttpTransaction::HandleContentStart() {
 
     // check if this is a no-content response
     switch (mResponseHead->Status()) {
+      case 200: {
+        if (!mIsForWebTransport) {
+          break;
+        }
+        RefPtr<Http3WebTransportSession> wtSession =
+            mConnection->GetWebTransportSession(this);
+        if (wtSession) {
+          nsCOMPtr<WebTransportSessionEventListener> webTransportListener;
+          {
+            MutexAutoLock lock(mLock);
+            webTransportListener = mWebTransportSessionEventListener;
+          }
+          if (webTransportListener) {
+            webTransportListener->OnSessionReadyInternal(wtSession);
+            wtSession->SetWebTransportSessionEventListener(
+                webTransportListener);
+          }
+        }
+        mWebTransportSessionEventListener = nullptr;
+      }
+        // Fall through to WebSocket cases (nsHttpTransaction behaviar is the
+        // same):
+        [[fallthrough]];
       case 101:
         mPreserveStream = true;
         [[fallthrough]];  // to other no content cases:
@@ -2920,6 +2953,7 @@ void nsHttpTransaction::GetNetworkAddresses(NetAddr& self, NetAddr& peer,
 }
 
 bool nsHttpTransaction::Do0RTT() {
+  LOG(("nsHttpTransaction::Do0RTT"));
   mEarlyDataWasAvailable = true;
   if (mRequestHead->IsSafeMethod() && !mDoNotTryEarlyData &&
       (!mConnection || !mConnection->IsProxyConnectInProgress())) {
@@ -3475,6 +3509,10 @@ void nsHttpTransaction::CollectTelemetryForUploads() {
 void nsHttpTransaction::GetHashKeyOfConnectionEntry(nsACString& aResult) {
   MutexAutoLock lock(mLock);
   aResult.Assign(mHashKeyOfConnectionEntry);
+}
+
+void nsHttpTransaction::SetIsForWebTransport(bool aIsForWebTransport) {
+  mIsForWebTransport = aIsForWebTransport;
 }
 
 }  // namespace mozilla::net

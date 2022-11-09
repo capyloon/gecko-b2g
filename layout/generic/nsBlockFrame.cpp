@@ -2544,7 +2544,7 @@ void nsBlockFrame::ReparentFloats(nsIFrame* aFirstFrame,
                  "CollectFloats should've removed that bit");
       ReparentFrame(f, aOldParent, this);
     }
-    mFloats.AppendFrames(nullptr, list);
+    mFloats.AppendFrames(nullptr, std::move(list));
   }
 }
 
@@ -2881,9 +2881,7 @@ void nsBlockFrame::ReflowDirtyLines(BlockReflowState& aState) {
         // Immediately fragment for page-name. It is possible we could break
         // out of the loop right here, but this should make it more similar to
         // what happens when reflow causes fragmentation.
-        keepGoing = false;
-        PushLines(aState, line.prev());
-        aState.mReflowStatus.SetIncomplete();
+        PushTruncatedLine(aState, line, &keepGoing);
       } else {
         // Reflow the dirty line. If it's an incremental reflow, then force
         // it to invalidate the dirty area if necessary
@@ -3162,7 +3160,7 @@ void nsBlockFrame::ReflowDirtyLines(BlockReflowState& aState) {
                    "Incorrect aState.mPrevChild before inserting line at end");
 
       // Shift pulledLine's frames into our mFrames list.
-      mFrames.AppendFrames(nullptr, pulledFrames);
+      mFrames.AppendFrames(nullptr, std::move(pulledFrames));
 
       // Add line to our line list, and set its last child as our new prev-child
       line = mLines.before_insert(LinesEnd(), pulledLine);
@@ -3907,13 +3905,10 @@ void nsBlockFrame::ReflowBlockFrame(BlockReflowState& aState,
       // *it* to be pushed in its entirety.)
       aState.mBCoord = startingBCoord;
       aState.mPrevBEndMargin = incomingMargin;
-      *aKeepReflowGoing = false;
       if (ShouldAvoidBreakInside(aState.mReflowInput)) {
-        aState.mReflowStatus.SetInlineLineBreakBeforeAndReset();
-        aLine->MarkDirty();
+        SetBreakBeforeStatusBeforeLine(aState, aLine, aKeepReflowGoing);
       } else {
-        PushLines(aState, aLine.prev());
-        aState.mReflowStatus.SetIncomplete();
+        PushTruncatedLine(aState, aLine, aKeepReflowGoing);
       }
       return;
     }
@@ -4155,13 +4150,10 @@ void nsBlockFrame::ReflowBlockFrame(BlockReflowState& aState,
 
     if (frameReflowStatus.IsInlineBreakBefore()) {
       // None of the child block fits.
-      *aKeepReflowGoing = false;
       if (ShouldAvoidBreakInside(aState.mReflowInput)) {
-        aState.mReflowStatus.SetInlineLineBreakBeforeAndReset();
-        aLine->MarkDirty();
+        SetBreakBeforeStatusBeforeLine(aState, aLine, aKeepReflowGoing);
       } else {
-        PushLines(aState, aLine.prev());
-        aState.mReflowStatus.SetIncomplete();
+        PushTruncatedLine(aState, aLine, aKeepReflowGoing);
       }
     } else {
       // Note: line-break-after a block is a nop
@@ -4235,8 +4227,7 @@ void nsBlockFrame::ReflowBlockFrame(BlockReflowState& aState,
               mLines.after_insert(aLine, line);
             }
 
-            PushLines(aState, aLine);
-            aState.mReflowStatus.SetIncomplete();
+            PushTruncatedLine(aState, aLine.next(), aKeepReflowGoing);
 
             // If we need to reflow the continuation of the block child,
             // then we'd better reflow our continuation
@@ -4262,7 +4253,6 @@ void nsBlockFrame::ReflowBlockFrame(BlockReflowState& aState,
                 }
               }
             }
-            *aKeepReflowGoing = false;
 
             // The block-end margin for a block is only applied on the last
             // flow block. Since we just continued the child block frame,
@@ -4331,15 +4321,11 @@ void nsBlockFrame::ReflowBlockFrame(BlockReflowState& aState,
           // If it's our very first line *or* we're not at the top of the page
           // and we have page-break-inside:avoid, then we need to be pushed to
           // our parent's next-in-flow.
-          aState.mReflowStatus.SetInlineLineBreakBeforeAndReset();
-          // When we reflow in the new position, we need to reflow this
-          // line again.
-          aLine->MarkDirty();
+          SetBreakBeforeStatusBeforeLine(aState, aLine, aKeepReflowGoing);
         } else {
           // Push the line that didn't fit and any lines that follow it
           // to our next-in-flow.
-          PushLines(aState, aLine.prev());
-          aState.mReflowStatus.SetIncomplete();
+          PushTruncatedLine(aState, aLine, aKeepReflowGoing);
         }
       }
     }
@@ -4431,6 +4417,15 @@ void nsBlockFrame::ReflowInlineFrames(BlockReflowState& aState,
       } while (LineReflowStatus::RedoNoPull == lineReflowStatus);
     } while (LineReflowStatus::RedoMoreFloats == lineReflowStatus);
   } while (LineReflowStatus::RedoNextBand == lineReflowStatus);
+}
+
+void nsBlockFrame::SetBreakBeforeStatusBeforeLine(BlockReflowState& aState,
+                                                  LineIterator aLine,
+                                                  bool* aKeepReflowGoing) {
+  aState.mReflowStatus.SetInlineLineBreakBeforeAndReset();
+  // Reflow the line again when we reflow at our new position.
+  aLine->MarkDirty();
+  *aKeepReflowGoing = false;
 }
 
 void nsBlockFrame::PushTruncatedLine(BlockReflowState& aState,
@@ -5184,10 +5179,7 @@ bool nsBlockFrame::PlaceLine(BlockReflowState& aState,
   if (!aState.mReflowStatus.IsFullyComplete() &&
       ShouldAvoidBreakInside(aState.mReflowInput)) {
     aLine->AppendFloats(std::move(aState.mCurrentLineFloats));
-    aState.mReflowStatus.SetInlineLineBreakBeforeAndReset();
-    // Reflow the line again when we reflow at our new position.
-    aLine->MarkDirty();
-    *aKeepReflowGoing = false;
+    SetBreakBeforeStatusBeforeLine(aState, aLine, aKeepReflowGoing);
     return true;
   }
 
@@ -5198,8 +5190,7 @@ bool nsBlockFrame::PlaceLine(BlockReflowState& aState,
     NS_ASSERTION(aState.mCurrentLine == aLine, "oops");
     if (ShouldAvoidBreakInside(aState.mReflowInput)) {
       // All our content doesn't fit, start on the next page.
-      aState.mReflowStatus.SetInlineLineBreakBeforeAndReset();
-      *aKeepReflowGoing = false;
+      SetBreakBeforeStatusBeforeLine(aState, aLine, aKeepReflowGoing);
     } else {
       // Push aLine and all of its children and anything else that
       // follows to our next-in-flow.
@@ -5274,7 +5265,7 @@ void nsBlockFrame::PushLines(BlockReflowState& aState,
 #endif
       // Push the floats onto the front of the overflow out-of-flows list
       nsAutoOOFFrameList oofs(this);
-      oofs.mList.InsertFrames(nullptr, nullptr, floats);
+      oofs.mList.InsertFrames(nullptr, nullptr, std::move(floats));
     }
 
     // overflow lines can already exist in some cases, in particular,
@@ -5298,7 +5289,8 @@ void nsBlockFrame::PushLines(BlockReflowState& aState,
                      "unexpected line frames");
       }
       nsFrameList pushedFrames = mFrames.TakeFramesAfter(lineBeforeLastFrame);
-      overflowLines->mFrames.InsertFrames(nullptr, nullptr, pushedFrames);
+      overflowLines->mFrames.InsertFrames(nullptr, nullptr,
+                                          std::move(pushedFrames));
 
       overflowLines->mLines.splice(overflowLines->mLines.begin(), mLines,
                                    overBegin, LinesEnd());
@@ -5375,7 +5367,7 @@ bool nsBlockFrame::DrainOverflowLines() {
         }
         if (!ocContinuations.IsEmpty()) {
           if (nsFrameList* eoc = GetExcessOverflowContainers()) {
-            eoc->InsertFrames(nullptr, nullptr, ocContinuations);
+            eoc->InsertFrames(nullptr, nullptr, std::move(ocContinuations));
           } else {
             SetExcessOverflowContainers(std::move(ocContinuations));
           }
@@ -5397,10 +5389,10 @@ bool nsBlockFrame::DrainOverflowLines() {
           }
         }
         ReparentFrames(oofs.mList, prevBlock, this);
-        mFloats.InsertFrames(nullptr, nullptr, oofs.mList);
+        mFloats.InsertFrames(nullptr, nullptr, std::move(oofs.mList));
         if (!pushedFloats.IsEmpty()) {
           nsFrameList* pf = EnsurePushedFloats();
-          pf->InsertFrames(nullptr, nullptr, pushedFloats);
+          pf->InsertFrames(nullptr, nullptr, std::move(pushedFloats));
         }
       }
 
@@ -5413,7 +5405,7 @@ bool nsBlockFrame::DrainOverflowLines() {
       // margins marked dirty also.
 
       // Prepend the overflow frames/lines to our principal list.
-      mFrames.InsertFrames(nullptr, nullptr, overflowLines->mFrames);
+      mFrames.InsertFrames(nullptr, nullptr, std::move(overflowLines->mFrames));
       mLines.splice(mLines.begin(), overflowLines->mLines);
       NS_ASSERTION(overflowLines->mLines.empty(), "splice should empty list");
       delete overflowLines;
@@ -5444,11 +5436,11 @@ bool nsBlockFrame::DrainSelfOverflowList() {
       }
 #endif
       // The overflow floats go after our regular floats.
-      mFloats.AppendFrames(nullptr, oofs.mList);
+      mFloats.AppendFrames(nullptr, std::move(oofs).mList);
     }
   }
   if (!ourOverflowLines->mLines.empty()) {
-    mFrames.AppendFrames(nullptr, ourOverflowLines->mFrames);
+    mFrames.AppendFrames(nullptr, std::move(ourOverflowLines->mFrames));
     mLines.splice(mLines.end(), ourOverflowLines->mLines);
   }
 
@@ -5548,7 +5540,7 @@ void nsBlockFrame::DrainPushedFloats() {
   if (prevBlock) {
     AutoFrameListPtr list(PresContext(), prevBlock->RemovePushedFloats());
     if (list && list->NotEmpty()) {
-      mFloats.InsertFrames(this, nullptr, *list);
+      mFloats.InsertFrames(this, nullptr, std::move(*list));
     }
   }
 }
@@ -5617,8 +5609,7 @@ nsFrameList* nsBlockFrame::GetOverflowOutOfFlows() const {
   return result;
 }
 
-// This takes ownership of the frames
-void nsBlockFrame::SetOverflowOutOfFlows(const nsFrameList& aList,
+void nsBlockFrame::SetOverflowOutOfFlows(nsFrameList&& aList,
                                          nsFrameList* aPropValue) {
   MOZ_ASSERT(
       HasAnyStateBits(NS_BLOCK_HAS_OVERFLOW_OUT_OF_FLOWS) == !!aPropValue,
@@ -5636,10 +5627,10 @@ void nsBlockFrame::SetOverflowOutOfFlows(const nsFrameList& aList,
   } else if (HasAnyStateBits(NS_BLOCK_HAS_OVERFLOW_OUT_OF_FLOWS)) {
     NS_ASSERTION(aPropValue == GetProperty(OverflowOutOfFlowsProperty()),
                  "prop value mismatch");
-    *aPropValue = aList;
+    *aPropValue = std::move(aList);
   } else {
     SetProperty(OverflowOutOfFlowsProperty(),
-                new (PresShell()) nsFrameList(aList));
+                new (PresShell()) nsFrameList(std::move(aList)));
     AddStateBits(NS_BLOCK_HAS_OVERFLOW_OUT_OF_FLOWS);
   }
 }
@@ -5704,14 +5695,14 @@ nsFrameList* nsBlockFrame::RemovePushedFloats() {
 //////////////////////////////////////////////////////////////////////
 // Frame list manipulation routines
 
-void nsBlockFrame::AppendFrames(ChildListID aListID, nsFrameList& aFrameList) {
+void nsBlockFrame::AppendFrames(ChildListID aListID, nsFrameList&& aFrameList) {
   if (aFrameList.IsEmpty()) {
     return;
   }
   if (aListID != kPrincipalList) {
     if (kFloatList == aListID) {
       DrainSelfPushedFloats();  // ensure the last frame is in mFloats
-      mFloats.AppendFrames(nullptr, aFrameList);
+      mFloats.AppendFrames(nullptr, std::move(aFrameList));
       return;
     }
     MOZ_ASSERT(kNoReflowPrincipalList == aListID, "unexpected child list");
@@ -5744,7 +5735,7 @@ void nsBlockFrame::AppendFrames(ChildListID aListID, nsFrameList& aFrameList) {
     GetParent()->AddStateBits(NS_STATE_SVG_TEXT_CORRESPONDENCE_DIRTY);
   }
 
-  AddFrames(aFrameList, lastKid, nullptr);
+  AddFrames(std::move(aFrameList), lastKid, nullptr);
   if (aListID != kNoReflowPrincipalList) {
     PresShell()->FrameNeedsReflow(
         this, IntrinsicDirty::TreeChange,
@@ -5754,14 +5745,14 @@ void nsBlockFrame::AppendFrames(ChildListID aListID, nsFrameList& aFrameList) {
 
 void nsBlockFrame::InsertFrames(ChildListID aListID, nsIFrame* aPrevFrame,
                                 const nsLineList::iterator* aPrevFrameLine,
-                                nsFrameList& aFrameList) {
+                                nsFrameList&& aFrameList) {
   NS_ASSERTION(!aPrevFrame || aPrevFrame->GetParent() == this,
                "inserting after sibling frame with different parent");
 
   if (aListID != kPrincipalList) {
     if (kFloatList == aListID) {
       DrainSelfPushedFloats();  // ensure aPrevFrame is in mFloats
-      mFloats.InsertFrames(this, aPrevFrame, aFrameList);
+      mFloats.InsertFrames(this, aPrevFrame, std::move(aFrameList));
       return;
     }
     MOZ_ASSERT(kNoReflowPrincipalList == aListID, "unexpected child list");
@@ -5780,7 +5771,7 @@ void nsBlockFrame::InsertFrames(ChildListID aListID, nsIFrame* aPrevFrame,
   printf("\n");
 #endif
 
-  AddFrames(aFrameList, aPrevFrame, aPrevFrameLine);
+  AddFrames(std::move(aFrameList), aPrevFrame, aPrevFrameLine);
   if (aListID != kNoReflowPrincipalList) {
     PresShell()->FrameNeedsReflow(
         this, IntrinsicDirty::TreeChange,
@@ -5841,7 +5832,7 @@ static bool ShouldPutNextSiblingOnNewLine(nsIFrame* aLastFrame) {
   return false;
 }
 
-void nsBlockFrame::AddFrames(nsFrameList& aFrameList, nsIFrame* aPrevSibling,
+void nsBlockFrame::AddFrames(nsFrameList&& aFrameList, nsIFrame* aPrevSibling,
                              const nsLineList::iterator* aPrevSiblingLine) {
   // Clear our line cursor, since our lines may change.
   ClearLineCursors();
@@ -5949,7 +5940,7 @@ void nsBlockFrame::AddFrames(nsFrameList& aFrameList, nsIFrame* aPrevSibling,
     lineList->front()->SetInvalidateTextRuns(true);
   }
   const nsFrameList::Slice& newFrames =
-      frames->InsertFrames(nullptr, aPrevSibling, aFrameList);
+      frames->InsertFrames(nullptr, aPrevSibling, std::move(aFrameList));
 
   // Walk through the new frames being added and update the line data
   // structures to fit.
@@ -7489,9 +7480,9 @@ void nsBlockFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
 }
 
 void nsBlockFrame::SetInitialChildList(ChildListID aListID,
-                                       nsFrameList& aChildList) {
+                                       nsFrameList&& aChildList) {
   if (kFloatList == aListID) {
-    mFloats.SetFrames(aChildList);
+    mFloats = std::move(aChildList);
   } else if (kPrincipalList == aListID) {
 #ifdef DEBUG
     // The only times a block that is an anonymous box is allowed to have a
@@ -7520,9 +7511,9 @@ void nsBlockFrame::SetInitialChildList(ChildListID aListID,
                  "NS_BLOCK_HAS_FIRST_LETTER_STYLE state out of sync");
 #endif
 
-    AddFrames(aChildList, nullptr, nullptr);
+    AddFrames(std::move(aChildList), nullptr, nullptr);
   } else {
-    nsContainerFrame::SetInitialChildList(aListID, aChildList);
+    nsContainerFrame::SetInitialChildList(aListID, std::move(aChildList));
   }
 }
 

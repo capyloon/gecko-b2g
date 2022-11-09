@@ -289,9 +289,23 @@ EOF
 
 copy_to_sysroot "${includes_list}" "include"
 
-if test -n "$DISABLE_OEMHOOK"; then
-    echo "OEM hook is disabled by DISABLE_OEMHOOK"
+
+lib_c="${src}/out/target/product/${GONK_PRODUCT_NAME}/system/apex/com.android.runtime.release/lib${BINSUFFIX}/bionic/libc.so"
+if test -f ${lib_c}; then
+    rsync --times --no-relative --copy-links \
+        "${lib_c}" \
+        "${dest}/b2g-sysroot/libs/"
+elif test -f "${src}/out/target/product/${GONK_PRODUCT_NAME}/apex/com.android.runtime/lib${BINSUFFIX}/bionic/libc.so"; then
+    rsync --times --no-relative --copy-links \
+        "${src}/out/target/product/${GONK_PRODUCT_NAME}/apex/com.android.runtime/lib${BINSUFFIX}/bionic/libc.so" \
+        "${dest}/b2g-sysroot/libs/"
 else
+    rsync --times --no-relative --copy-links \
+        "${src}/out/target/product/${GONK_PRODUCT_NAME}/obj/SHARED_LIBRARIES/libc_intermediates/libc.so" \
+        "${dest}/b2g-sysroot/libs/"
+fi
+
+if test -z "$DISABLE_OEMHOOK"; then
     # Put HIDL headers and libraries of OEM hook into sysroot
     rsync --times --no-relative --copy-links \
         "${src}/out/target/product/${GONK_PRODUCT_NAME}/system/product/lib${BINSUFFIX}/vendor.qti.hardware.radio.qcrilhook@1.0.so" \

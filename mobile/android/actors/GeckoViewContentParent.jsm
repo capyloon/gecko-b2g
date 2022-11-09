@@ -5,8 +5,8 @@
 
 var EXPORTED_SYMBOLS = ["GeckoViewContentParent"];
 
-const { GeckoViewUtils } = ChromeUtils.import(
-  "resource://gre/modules/GeckoViewUtils.jsm"
+const { GeckoViewUtils } = ChromeUtils.importESModule(
+  "resource://gre/modules/GeckoViewUtils.sys.mjs"
 );
 
 const { GeckoViewActorParent } = ChromeUtils.import(
@@ -16,11 +16,9 @@ const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const lazy = {};
 
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "SessionHistory",
-  "resource://gre/modules/sessionstore/SessionHistory.jsm"
-);
+ChromeUtils.defineESModuleGetters(lazy, {
+  SessionHistory: "resource://gre/modules/sessionstore/SessionHistory.sys.mjs",
+});
 
 const { debug, warn } = GeckoViewUtils.initLogging("GeckoViewContentParent");
 

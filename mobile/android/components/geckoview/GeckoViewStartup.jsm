@@ -5,22 +5,16 @@
 
 var EXPORTED_SYMBOLS = ["GeckoViewStartup"];
 
-const { XPCOMUtils } = ChromeUtils.importESModule(
-  "resource://gre/modules/XPCOMUtils.sys.mjs"
-);
-const { GeckoViewUtils } = ChromeUtils.import(
-  "resource://gre/modules/GeckoViewUtils.jsm"
+const { GeckoViewUtils } = ChromeUtils.importESModule(
+  "resource://gre/modules/GeckoViewUtils.sys.mjs"
 );
 
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   ActorManagerParent: "resource://gre/modules/ActorManagerParent.sys.mjs",
+  EventDispatcher: "resource://gre/modules/Messaging.sys.mjs",
   Preferences: "resource://gre/modules/Preferences.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  EventDispatcher: "resource://gre/modules/Messaging.jsm",
 });
 
 const { debug, warn } = GeckoViewUtils.initLogging("Startup");

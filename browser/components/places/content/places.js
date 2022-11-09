@@ -13,6 +13,7 @@ var { XPCOMUtils } = ChromeUtils.importESModule(
 );
 ChromeUtils.defineESModuleGetters(this, {
   BookmarkJSONUtils: "resource://gre/modules/BookmarkJSONUtils.sys.mjs",
+  MigrationUtils: "resource:///modules/MigrationUtils.sys.mjs",
   PlacesBackups: "resource://gre/modules/PlacesBackups.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
 });
@@ -31,11 +32,7 @@ XPCOMUtils.defineLazyScriptGetter(
 var { AppConstants } = ChromeUtils.importESModule(
   "resource://gre/modules/AppConstants.sys.mjs"
 );
-ChromeUtils.defineModuleGetter(
-  this,
-  "MigrationUtils",
-  "resource:///modules/MigrationUtils.jsm"
-);
+
 ChromeUtils.defineModuleGetter(
   this,
   "DownloadUtils",
@@ -595,7 +592,7 @@ var PlacesOrganizer = {
   /**
    * Called when a menuitem is selected from the restore menu.
    *
-   * @param {object} aMenuItem
+   * @param {object} aMenuItem The menuitem that was selected.
    */
   async onRestoreMenuItemClick(aMenuItem) {
     let backupName = aMenuItem.getAttribute("value");
@@ -819,6 +816,9 @@ var PlacesOrganizer = {
 var PlacesSearchBox = {
   /**
    * The Search text field
+   *
+   * @see {@link https://searchfox.org/mozilla-central/source/toolkit/content/widgets/search-textbox.js}
+   * @returns {HTMLInputElement}
    */
   get searchFilter() {
     return document.getElementById("searchFilter");
@@ -940,6 +940,8 @@ var PlacesSearchBox = {
 
   /**
    * Gets/sets the active collection from the dropdown menu.
+   *
+   * @returns {string}
    */
   get filterCollection() {
     return this.searchFilter.getAttribute("collection");
@@ -969,6 +971,8 @@ var PlacesSearchBox = {
 
   /**
    * Gets or sets the text shown in the Places Search Box
+   *
+   * @returns {string}
    */
   get value() {
     return this.searchFilter.value;
@@ -1164,6 +1168,7 @@ var ViewMenu = {
    * Set up the content of the view menu.
    *
    * @param {object} event
+   *   The event that invoked this function
    */
   populateSortMenu: function VM_populateSortMenu(event) {
     this.fillWithColumns(
@@ -1427,7 +1432,8 @@ var ContentArea = {
   /**
    * Options for the current view.
    *
-   * @see ContentTree.viewOptions for supported options and default values.
+   * @see {@link ContentTree.viewOptions} for supported options and default values.
+   * @returns {{showDetailsPane: boolean;toolbarSet: string;}}
    */
   get currentViewOptions() {
     // Use ContentTree options as default.

@@ -29,3 +29,7 @@ if [ -n "$MOZ_SAFE_BROWSING" ]; then
 fi
 
 ac_add_options --enable-forkserver
+
+ac_add_options --enable-wasm-function-references
+ac_add_options --enable-wasm-gc
+

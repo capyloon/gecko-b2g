@@ -27,6 +27,7 @@ ChromeUtils.defineESModuleGetters(this, {
   LightweightThemeConsumer:
     "resource://gre/modules/LightweightThemeConsumer.sys.mjs",
   Log: "resource://gre/modules/Log.sys.mjs",
+  MigrationUtils: "resource:///modules/MigrationUtils.sys.mjs",
   NewTabUtils: "resource://gre/modules/NewTabUtils.sys.mjs",
   PictureInPicture: "resource://gre/modules/PictureInPicture.sys.mjs",
   PlacesTransactions: "resource://gre/modules/PlacesTransactions.sys.mjs",
@@ -70,7 +71,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   HomePage: "resource:///modules/HomePage.jsm",
   LoginHelper: "resource://gre/modules/LoginHelper.jsm",
   LoginManagerParent: "resource://gre/modules/LoginManagerParent.jsm",
-  MigrationUtils: "resource:///modules/MigrationUtils.jsm",
   NetUtil: "resource://gre/modules/NetUtil.jsm",
   OpenInTabsUtils: "resource:///modules/OpenInTabsUtils.jsm",
   PageActions: "resource:///modules/PageActions.jsm",
@@ -663,6 +663,7 @@ var gInitialPages = [
   "about:sessionrestore",
   "about:welcome",
   "about:welcomeback",
+  "chrome://browser/content/blanktab.html",
 ];
 
 function isInitialPage(url) {
@@ -2534,6 +2535,7 @@ var gBrowserInit = {
     gSync.uninit();
 
     gExtensionsNotifications.uninit();
+    gUnifiedExtensions.uninit();
 
     try {
       gBrowser.removeProgressListener(window.XULBrowserWindow);
@@ -2946,9 +2948,9 @@ function openLocation(event) {
   );
 }
 
-function BrowserOpenTab(event) {
-  let where = "tab";
+function BrowserOpenTab({ event, url = BROWSER_NEW_TAB_URL } = {}) {
   let relatedToCurrent = false;
+  let where = "tab";
 
   if (event) {
     where = whereToOpenLink(event, false, true);
@@ -2979,7 +2981,7 @@ function BrowserOpenTab(event) {
   Services.obs.notifyObservers(
     {
       wrappedJSObject: new Promise(resolve => {
-        openTrustedLinkIn(BROWSER_NEW_TAB_URL, where, {
+        openTrustedLinkIn(url, where, {
           relatedToCurrent,
           resolveOnNewTabCreated: resolve,
         });
@@ -3642,8 +3644,8 @@ var browserDragAndDrop = {
     return Services.droppedLinkHandler.getTriggeringPrincipal(aEvent);
   },
 
-  getCSP(aEvent) {
-    return Services.droppedLinkHandler.getCSP(aEvent);
+  getCsp(aEvent) {
+    return Services.droppedLinkHandler.getCsp(aEvent);
   },
 
   validateURIsForDrop(aEvent, aURIs) {
@@ -3736,7 +3738,7 @@ var newTabButtonObserver = {
 
     let where = aEvent.shiftKey ? "tabshifted" : "tab";
     let triggeringPrincipal = browserDragAndDrop.getTriggeringPrincipal(aEvent);
-    let csp = browserDragAndDrop.getCSP(aEvent);
+    let csp = browserDragAndDrop.getCsp(aEvent);
     for (let link of links) {
       if (link.url) {
         let data = await UrlbarUtils.getShortcutOrURIAndPostData(link.url);
@@ -3773,7 +3775,7 @@ var newWindowButtonObserver = {
     }
 
     let triggeringPrincipal = browserDragAndDrop.getTriggeringPrincipal(aEvent);
-    let csp = browserDragAndDrop.getCSP(aEvent);
+    let csp = browserDragAndDrop.getCsp(aEvent);
     for (let link of links) {
       if (link.url) {
         let data = await UrlbarUtils.getShortcutOrURIAndPostData(link.url);
@@ -6739,7 +6741,9 @@ function setToolbarVisibility(
           }
         }
         isVisible =
-          !!currentURI && BookmarkingUI.isOnNewTabPage({ currentURI });
+          !!currentURI &&
+          (BookmarkingUI.isOnNewTabPage({ currentURI }) ||
+            currentURI?.spec == "chrome://browser/content/blanktab.html");
         break;
     }
   }
@@ -9078,8 +9082,7 @@ const SafeBrowsingNotificationBox = {
  */
 class TabDialogBox {
   static _containerFor(browser) {
-    // Return the .browserContainer
-    return browser.parentNode.parentNode;
+    return browser.closest(".browserContainer, .webextension-popup-stack");
   }
 
   constructor(browser) {
@@ -9983,6 +9986,13 @@ var FirefoxViewHandler = {
         this.button?.setAttribute("aria-selected", e.target == this.tab);
         this._recordViewIfTabSelected();
         this._onTabForegrounded();
+        if (e.target == this.tab) {
+          // If Fx View is opened, add temporary style to make first available tab focusable
+          gBrowser.visibleTabs[0].style["-moz-user-focus"] = "normal";
+        } else {
+          // When Fx View is closed, remove temporary -moz-user-focus style from first available tab
+          gBrowser.visibleTabs[0].style.removeProperty("-moz-user-focus");
+        }
         break;
       case "TabClose":
         this.tab = null;

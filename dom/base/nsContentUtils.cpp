@@ -56,6 +56,7 @@
 #include "jsfriendapi.h"
 #include "mozAutoDocUpdate.h"
 #include "mozIDOMWindow.h"
+#include "nsIOService.h"
 #include "mozilla/AlreadyAddRefed.h"
 #include "mozilla/ArrayIterator.h"
 #include "mozilla/ArrayUtils.h"
@@ -4866,11 +4867,11 @@ void nsContentUtils::UnregisterShutdownObserver(nsIObserver* aObserver) {
 /* static */
 bool nsContentUtils::HasNonEmptyAttr(const nsIContent* aContent,
                                      int32_t aNameSpaceID, nsAtom* aName) {
-  static Element::AttrValuesArray strings[] = {nsGkAtoms::_empty, nullptr};
+  static AttrArray::AttrValuesArray strings[] = {nsGkAtoms::_empty, nullptr};
   return aContent->IsElement() &&
          aContent->AsElement()->FindAttrValueIn(aNameSpaceID, aName, strings,
                                                 eCaseMatters) ==
-             Element::ATTR_VALUE_NO_MATCH;
+             AttrArray::ATTR_VALUE_NO_MATCH;
 }
 
 /* static */
@@ -7365,15 +7366,25 @@ bool nsContentUtils::IsNodeInEditableRegion(nsINode* aNode) {
 }
 
 // static
-bool nsContentUtils::IsForbiddenRequestHeader(const nsACString& aHeader) {
+bool nsContentUtils::IsForbiddenRequestHeader(const nsACString& aHeader,
+                                              const nsACString& aValue) {
   if (IsForbiddenSystemRequestHeader(aHeader)) {
     return true;
   }
 
-  return StringBeginsWith(aHeader, "proxy-"_ns,
-                          nsCaseInsensitiveCStringComparator) ||
-         StringBeginsWith(aHeader, "sec-"_ns,
-                          nsCaseInsensitiveCStringComparator);
+  if ((nsContentUtils::IsOverrideMethodHeader(aHeader) &&
+       nsContentUtils::ContainsForbiddenMethod(aValue))) {
+    return true;
+  }
+
+  if (StringBeginsWith(aHeader, "proxy-"_ns,
+                       nsCaseInsensitiveCStringComparator) ||
+      StringBeginsWith(aHeader, "sec-"_ns,
+                       nsCaseInsensitiveCStringComparator)) {
+    return true;
+  }
+
+  return false;
 }
 
 // static
@@ -7411,6 +7422,31 @@ bool nsContentUtils::IsForbiddenSystemRequestHeader(const nsACString& aHeader) {
 bool nsContentUtils::IsForbiddenResponseHeader(const nsACString& aHeader) {
   return (aHeader.LowerCaseEqualsASCII("set-cookie") ||
           aHeader.LowerCaseEqualsASCII("set-cookie2"));
+}
+
+// static
+bool nsContentUtils::IsOverrideMethodHeader(const nsACString& headerName) {
+  return headerName.EqualsIgnoreCase("x-http-method-override") ||
+         headerName.EqualsIgnoreCase("x-http-method") ||
+         headerName.EqualsIgnoreCase("x-method-override");
+}
+
+// static
+bool nsContentUtils::ContainsForbiddenMethod(const nsACString& headerValue) {
+  bool hasInsecureMethod = false;
+  nsCCharSeparatedTokenizer tokenizer(headerValue, ',');
+
+  while (tokenizer.hasMoreTokens()) {
+    const nsDependentCSubstring& value = tokenizer.nextToken();
+
+    if (value.EqualsIgnoreCase("connect") || value.EqualsIgnoreCase("trace") ||
+        value.EqualsIgnoreCase("track")) {
+      hasInsecureMethod = true;
+      break;
+    }
+  }
+
+  return hasInsecureMethod;
 }
 
 // static
@@ -7898,58 +7934,6 @@ void nsContentUtils::TransferablesToIPCTransferables(
   }
 }
 
-nsresult nsContentUtils::SlurpFileToString(nsIFile* aFile,
-                                           nsACString& aString) {
-  aString.Truncate();
-
-  nsCOMPtr<nsIURI> fileURI;
-  nsresult rv = NS_NewFileURI(getter_AddRefs(fileURI), aFile);
-  if (NS_FAILED(rv)) {
-    return rv;
-  }
-
-  nsCOMPtr<nsIChannel> channel;
-  rv = NS_NewChannel(getter_AddRefs(channel), fileURI,
-                     nsContentUtils::GetSystemPrincipal(),
-                     nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_SEC_CONTEXT_IS_NULL,
-                     nsIContentPolicy::TYPE_OTHER);
-  if (NS_FAILED(rv)) {
-    return rv;
-  }
-
-  nsCOMPtr<nsIInputStream> stream;
-  rv = channel->Open(getter_AddRefs(stream));
-  if (NS_FAILED(rv)) {
-    return rv;
-  }
-
-  rv = NS_ConsumeStream(stream, UINT32_MAX, aString);
-  if (NS_FAILED(rv)) {
-    return rv;
-  }
-
-  rv = stream->Close();
-  if (NS_FAILED(rv)) {
-    return rv;
-  }
-
-  return NS_OK;
-}
-
-bool nsContentUtils::IsFileImage(nsIFile* aFile, nsACString& aType) {
-  nsCOMPtr<nsIMIMEService> mime = do_GetService("@mozilla.org/mime;1");
-  if (!mime) {
-    return false;
-  }
-
-  nsresult rv = mime->GetTypeFromFile(aFile, aType);
-  if (NS_FAILED(rv)) {
-    return false;
-  }
-
-  return StringBeginsWith(aType, "image/"_ns);
-}
-
 nsresult nsContentUtils::CalculateBufferSizeForImage(
     const uint32_t& aStride, const IntSize& aImageSize,
     const SurfaceFormat& aFormat, size_t* aMaxBufferSize,
@@ -8158,28 +8142,6 @@ void nsContentUtils::TransferableToIPCTransferable(
       // Otherwise, handle this as a file.
       nsCOMPtr<BlobImpl> blobImpl;
       if (nsCOMPtr<nsIFile> file = do_QueryInterface(data)) {
-        // FIXME(bug 1778565): Historically, attempting to send a Blob over IPC
-        // in response to a sync message would lead to a crash, however this
-        // isn't an issue anymore. Unfortunately, code in HTMLEditor depends on
-        // the old behaviour, so we need to preserve this oddity, and hope that
-        // the caller is HTMLEditor and can handle a nsIInputStream.
-        if (aInSyncMessage) {
-          nsAutoCString type;
-          if (IsFileImage(file, type)) {
-            IPCDataTransferItem* item =
-                aIPCDataTransfer->items().AppendElement();
-            item->flavor() = type;
-            nsCString data;
-            SlurpFileToString(file, data);
-            // FIXME: This can probably be simplified once bug 1783240 lands, as
-            // `nsCString` will be implicitly serialized in shmem when sent over
-            // IPDL directly.
-            item->data() =
-                IPCDataTransferInputStream(BigBuffer(AsBytes(Span(data))));
-          }
-          continue;
-        }
-
         if (aParent) {
           bool isDir = false;
           if (NS_SUCCEEDED(file->IsDirectory(&isDir)) && isDir) {
@@ -10536,6 +10498,21 @@ static bool JSONCreator(const char16_t* aBuf, uint32_t aLen, void* aData) {
   result->Append(static_cast<const char16_t*>(aBuf),
                  static_cast<uint32_t>(aLen));
   return true;
+}
+
+/* static */
+nsresult nsContentUtils::AnonymizeURI(nsIURI* aURI, nsCString& aAnonymizedURI) {
+  MOZ_ASSERT(aURI);
+
+  if (aURI->SchemeIs("data")) {
+    aAnonymizedURI.Assign("data:..."_ns);
+    return NS_OK;
+  }
+  // Anonymize the URL.
+  // Strip the URL of any possible username/password and make it ready to be
+  // presented in the UI.
+  nsCOMPtr<nsIURI> exposableURI = net::nsIOService::CreateExposableURI(aURI);
+  return exposableURI->GetSpec(aAnonymizedURI);
 }
 
 /* static */

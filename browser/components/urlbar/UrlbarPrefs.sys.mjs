@@ -19,12 +19,10 @@ ChromeUtils.defineESModuleGetters(lazy, {
 
 XPCOMUtils.defineLazyModuleGetters(lazy, {
   NimbusFeatures: "resource://nimbus/ExperimentAPI.jsm",
+  TelemetryEnvironment: "resource://gre/modules/TelemetryEnvironment.jsm",
 });
 
 const PREF_URLBAR_BRANCH = "browser.urlbar.";
-
-const FIREFOX_SUGGEST_UPDATE_TOPIC = "firefox-suggest-update";
-const FIREFOX_SUGGEST_UPDATE_SKIPPED_TOPIC = "firefox-suggest-update-skipped";
 
 // Prefs are defined as [pref name, default value] or [pref name, [default
 // value, type]].  In the former case, the getter method name is inferred from
@@ -198,8 +196,13 @@ const PREF_URLBAR_DEFAULTS = new Map([
   // Whether to show search suggestions before general results.
   ["showSearchSuggestionsFirst", true],
 
-  // Whether to show search term in the URL bar for the users default engine.
-  ["showSearchTerms", false],
+  // Global toggle for whether the show search terms feature
+  // can be used at all, and enabled/disabled by the user.
+  ["showSearchTerms.featureGate", false],
+
+  // If true, show the search term in the Urlbar while on
+  // a default search engine results page.
+  ["showSearchTerms.enabled", true],
 
   // Whether speculative connections should be enabled.
   ["speculativeConnect.enabled", true],
@@ -282,9 +285,6 @@ const PREF_URLBAR_DEFAULTS = new Map([
   // JSON'ed object of quick suggest impression stats. Used for implementing
   // impression frequency caps for quick suggest suggestions.
   ["quicksuggest.impressionCaps.stats", ""],
-
-  // Whether to show QuickSuggest related logs.
-  ["quicksuggest.log", false],
 
   // The user's response to the Firefox Suggest online opt-in dialog.
   ["quicksuggest.onboardingDialogChoice", ""],
@@ -715,6 +715,16 @@ class Preferences {
       await lazy.NimbusFeatures.urlbar.ready();
       this._clearNimbusCache();
 
+      // This also races TelemetryEnvironment's initialization, so wait for it
+      // to finish. TelemetryEnvironment is important because it records the
+      // values of a number of Suggest preferences. If we didn't wait, we could
+      // end up updating prefs after TelemetryEnvironment does its initial pref
+      // cache but before it adds its observer to be notified of pref changes.
+      // It would end up recording the wrong values on startup in that case.
+      if (!this._testSkipTelemetryEnvironmentInit) {
+        await lazy.TelemetryEnvironment.onInitialized();
+      }
+
       this._updateFirefoxSuggestScenarioHelper(isStartup, testOverrides);
     } finally {
       this._updatingFirefoxSuggestScenario = false;
@@ -838,17 +848,6 @@ class Preferences {
     // what the last-seen scenario was. Set it on the user branch so that its
     // value persists across app restarts.
     this.set("quicksuggest.scenario", scenario);
-
-    // Update the pref cache in TelemetryEnvironment. This is only necessary
-    // when we're initializing the scenario on startup, but the scenario will
-    // rarely if ever change after that, so there's no harm in always doing it.
-    // See bug 1731373.
-    //
-    // IMPORTANT: Send the notification only after setting the prefs above.
-    // TelemetryEnvironment updates its cache by fetching the prefs from the
-    // pref service, so the new values need to be set beforehand. See also the
-    // comments in D126017.
-    Services.obs.notifyObservers(null, FIREFOX_SUGGEST_UPDATE_TOPIC);
   }
 
   /**
@@ -888,6 +887,8 @@ class Preferences {
    * configurable via Nimbus variables. This getter returns an object that maps
    * from variable names to pref names relative to `browser.urlbar`. See point 3
    * in the comment inside `_updateFirefoxSuggestScenarioHelper()` for more.
+   *
+   * @returns {{ quickSuggestNonSponsoredEnabled: string; quickSuggestSponsoredEnabled: string; quickSuggestDataCollectionEnabled: string; }}
    */
   get FIREFOX_SUGGEST_UI_PREFS_BY_VARIABLE() {
     return {
@@ -899,6 +900,8 @@ class Preferences {
 
   /**
    * Default prefs relative to `browser.urlbar` per Firefox Suggest scenario.
+   *
+   * @returns {Record<Record<string, boolean>>}
    */
   get FIREFOX_SUGGEST_DEFAULT_PREFS() {
     // Important notes when modifying this:
@@ -937,6 +940,8 @@ class Preferences {
 
   /**
    * The current version of the Firefox Suggest prefs.
+   *
+   * @returns {number}
    */
   get FIREFOX_SUGGEST_MIGRATION_VERSION() {
     return 2;
@@ -1201,8 +1206,11 @@ class Preferences {
    * Observes preference changes.
    *
    * @param {nsISupports} subject
+   *   The subject of the notification.
    * @param {string} topic
+   *   The topic of the notification.
    * @param {string} data
+   *   The data attached to the notification.
    */
   observe(subject, topic, data) {
     let pref = data.replace(PREF_URLBAR_BRANCH, "");
@@ -1288,9 +1296,6 @@ class Preferences {
         return;
       }
     }
-
-    // Notify consumer who are waiting for the scenario to be updated.
-    Services.obs.notifyObservers(null, FIREFOX_SUGGEST_UPDATE_SKIPPED_TOPIC);
   }
 
   /**
@@ -1382,6 +1387,7 @@ class Preferences {
 
   /**
    * Returns a descriptor of the given preference.
+   *
    * @param {string} pref The preference to examine.
    * @returns {object} An object describing the pref with the following shape:
    *          { defaultValue, get, set, clear }

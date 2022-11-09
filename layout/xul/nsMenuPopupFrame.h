@@ -324,9 +324,6 @@ class nsMenuPopupFrame final : public nsBoxFrame,
   void MoveToAnchor(nsIContent* aAnchorContent, const nsAString& aPosition,
                     int32_t aXPos, int32_t aYPos, bool aAttributesOverride);
 
-  bool GetAutoPosition();
-  void SetAutoPosition(bool aShouldAutoPosition);
-
   nsIScrollableFrame* GetScrollFrame(nsIFrame* aStart);
 
   void SetOverrideConstraintRect(mozilla::LayoutDeviceIntRect aRect) {
@@ -394,10 +391,7 @@ class nsMenuPopupFrame final : public nsBoxFrame,
     return false;
   }
 
-  void ShowWithPositionedEvent() {
-    mPopupState = ePopupPositioning;
-    mShouldAutoPosition = true;
-  }
+  void ShowWithPositionedEvent() { mPopupState = ePopupPositioning; }
 
   // Checks for the anchor to change and either moves or hides the popup
   // accordingly. The original position of the anchor should be supplied as
@@ -496,6 +490,8 @@ class nsMenuPopupFrame final : public nsBoxFrame,
   // the popup frame.
   bool ShouldFollowAnchor();
 
+  nsIFrame* GetAnchorFrame() const;
+
  public:
   /**
    * Return whether the popup direction should be RTL.
@@ -504,13 +500,7 @@ class nsMenuPopupFrame final : public nsBoxFrame,
    *
    * Return whether the popup direction should be RTL.
    */
-  bool IsDirectionRTL() const {
-    return mAnchorContent && mAnchorContent->GetPrimaryFrame()
-               ? mAnchorContent->GetPrimaryFrame()
-                         ->StyleVisibility()
-                         ->mDirection == mozilla::StyleDirection::Rtl
-               : StyleVisibility()->mDirection == mozilla::StyleDirection::Rtl;
-  }
+  bool IsDirectionRTL() const;
 
   bool ShouldFollowAnchor(nsRect& aRect);
 
@@ -622,8 +612,6 @@ class nsMenuPopupFrame final : public nsBoxFrame,
   bool mIsTopLevelContextMenu = false;  // true for the topmost context menu.
 
   bool mMenuCanOverlapOSBar;  // can we appear over the taskbar/menubar?
-  bool mShouldAutoPosition;   // Should SetPopupPosition be allowed to auto
-                              // position popup?
   bool mInContentShell;       // True if the popup is in a content shell
   bool mIsMenuLocked;         // Should events inside this menu be ignored?
 

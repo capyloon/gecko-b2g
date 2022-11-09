@@ -34,6 +34,8 @@
 /* Responsive container */
 
 .devtools-responsive-container {
+  min-width: 0;
+  min-height: 0;
   -moz-box-orient: horizontal;
 }
 
@@ -390,6 +392,12 @@
   height: 100%;
   overflow: auto;
   contain: size;
+  display: flex;
+  align-items: start;
+}
+
+.table-widget-body > splitter {
+  align-self: stretch;
 }
 
 .table-widget-body[empty="empty"] {
@@ -400,7 +408,12 @@
 
 .table-widget-column-header,
 .table-widget-cell {
+  display: block;
   border-inline-end: 1px solid var(--table-splitter-color) !important;
+}
+
+.table-widget-column:not([hidden]) {
+  display: block;
 }
 
 /* Table widget column header colors are taken from netmonitor.inc.css to match
@@ -506,9 +519,7 @@
   padding: 0;
   margin: 0;
   width: 100%;
-  height: 100%;
   list-style: none;
-  overflow: hidden;
 }
 
 .tree-widget-container:-moz-focusring,

@@ -2775,7 +2775,8 @@ class nsContentUtils {
    * Returns whether a given header is forbidden for an XHR or fetch
    * request.
    */
-  static bool IsForbiddenRequestHeader(const nsACString& aHeader);
+  static bool IsForbiddenRequestHeader(const nsACString& aHeader,
+                                       const nsACString& aValue);
 
   /**
    * Returns whether a given header is forbidden for a system XHR
@@ -2783,6 +2784,14 @@ class nsContentUtils {
    */
   static bool IsForbiddenSystemRequestHeader(const nsACString& aHeader);
 
+  /**
+   * Checks whether the header overrides any http methods
+   */
+  static bool IsOverrideMethodHeader(const nsACString& headerName);
+  /**
+   * Checks whether the  header value contains any forbidden method
+   */
+  static bool ContainsForbiddenMethod(const nsACString& headerValue);
   /**
    * Returns whether a given header has characters that aren't permitted
    */
@@ -2860,21 +2869,6 @@ class nsContentUtils {
    */
   static void SetKeyboardIndicatorsOnRemoteChildren(
       nsPIDOMWindowOuter* aWindow, UIStateChangeType aShowFocusRings);
-
-  /**
-   * Given an nsIFile, attempts to read it into aString.
-   *
-   * Note: Use sparingly! This causes main-thread I/O, which causes jank and all
-   * other bad things.
-   */
-  static nsresult SlurpFileToString(nsIFile* aFile, nsACString& aString);
-
-  /**
-   * Returns true if the mime service thinks this file contains an image.
-   *
-   * The content type is returned in aType.
-   */
-  static bool IsFileImage(nsIFile* aFile, nsACString& aType);
 
   /**
    * Given an IPCDataTransferImageContainer construct an imgIContainer for the
@@ -3285,6 +3279,9 @@ class nsContentUtils {
   static int32_t GetCurrentInnerOrOuterWindowCount() {
     return sInnerOrOuterWindowCount;
   }
+
+  // Return an anonymized URI so that it can be safely exposed publicly.
+  static nsresult AnonymizeURI(nsIURI* aURI, nsCString& aAnonymizedURI);
 
   /**
    * Serializes a JSON-like JS::Value into a string.

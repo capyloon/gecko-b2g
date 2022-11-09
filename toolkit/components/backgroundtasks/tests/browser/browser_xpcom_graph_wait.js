@@ -203,10 +203,10 @@ add_task(async function test_xpcom_graph_wait() {
     .get("MOZ_UPLOAD_DIR");
   profilePath =
     profilePath ||
-    (await IOUtils.createUniqueFile(
+    (await IOUtils.createUniqueDirectory(
       PathUtils.profileDir,
       "testBackgroundTask",
-      0o600
+      0o700
     ));
 
   profilePath = PathUtils.join(profilePath, "profile_backgroundtask_wait.json");
@@ -255,6 +255,7 @@ add_task(async function test_xpcom_graph_wait() {
       ![
         "ChromeUtils.import", // JSMs.
         "ChromeUtils.importESModule", // System ESMs.
+        "ChromeUtils.importESModule static import",
         "GetService", // XPCOM services.
       ].includes(markerName)
     ) {
@@ -264,7 +265,8 @@ add_task(async function test_xpcom_graph_wait() {
     let markerData = m[dataCol];
     if (
       markerName == "ChromeUtils.import" ||
-      markerName == "ChromeUtils.importESModule"
+      markerName == "ChromeUtils.importESModule" ||
+      markerName == "ChromeUtils.importESModule static import"
     ) {
       let module = markerData.name;
       if (!markersForAllPhases.modules.includes(module)) {

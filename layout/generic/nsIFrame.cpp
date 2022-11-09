@@ -25,7 +25,6 @@
 #include "mozilla/dom/ImageTracker.h"
 #include "mozilla/dom/Selection.h"
 #include "mozilla/gfx/2D.h"
-#include "mozilla/gfx/gfxVars.h"
 #include "mozilla/gfx/PathHelpers.h"
 #include "mozilla/intl/BidiEmbeddingLevel.h"
 #include "mozilla/Maybe.h"
@@ -721,7 +720,7 @@ void nsIFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
     AddStateBits(NS_FRAME_MAY_BE_TRANSFORMED);
   }
 
-  if (disp->mContainerType) {
+  if (disp->mContainerType != StyleContainerType::Normal) {
     PresContext()->RegisterContainerQueryFrame(this);
   }
 
@@ -811,7 +810,7 @@ void nsIFrame::DestroyFrom(nsIFrame* aDestructRoot,
     }
   }
 
-  if (disp->mContainerType) {
+  if (disp->mContainerType != StyleContainerType::Normal) {
     PresContext()->UnregisterContainerQueryFrame(this);
   }
 
@@ -2122,7 +2121,8 @@ const nsFrameList& nsIFrame::GetChildList(ChildListID aListID) const {
 
 void nsIFrame::GetChildLists(nsTArray<ChildList>* aLists) const {
   if (IsAbsoluteContainer()) {
-    nsFrameList absoluteList = GetAbsoluteContainingBlock()->GetChildList();
+    const nsFrameList& absoluteList =
+        GetAbsoluteContainingBlock()->GetChildList();
     absoluteList.AppendIfNonempty(aLists, GetAbsoluteListID());
   }
 }
@@ -3968,12 +3968,6 @@ void nsIFrame::BuildDisplayListForSimpleChild(nsDisplayListBuilder* aBuilder,
   aBuilder->DisplayCaret(aChild, aLists.Outlines());
 }
 
-nsIFrame::DisplayChildFlag nsIFrame::DisplayFlagForFlexOrGridItem() const {
-  MOZ_ASSERT(IsFlexOrGridItem(),
-             "Should only be called on flex or grid items!");
-  return DisplayChildFlag::ForcePseudoStackingContext;
-}
-
 static bool ShouldSkipFrame(nsDisplayListBuilder* aBuilder,
                             const nsIFrame* aFrame) {
   // If painting is restricted to just the background of the top level frame,
@@ -4999,6 +4993,9 @@ nsresult nsIFrame::PeekBackwardAndForward(nsSelectionAmount aAmountBack,
       nsFrameSelection::FocusMode::kExtendSelection, CARET_ASSOCIATE_BEFORE);
   if (NS_FAILED(rv)) {
     return rv;
+  }
+  if (aAmountBack == eSelectWord) {
+    frameSelection->SetIsDoubleClickSelection(true);
   }
 
   // maintain selection
@@ -7856,6 +7853,11 @@ bool nsIFrame::IsImageFrameOrSubclass() const {
   return !!asImage;
 }
 
+bool nsIFrame::IsSubgrid() const {
+  return IsGridContainerFrame() &&
+         static_cast<const nsGridContainerFrame*>(this)->IsSubgrid();
+}
+
 static nsIFrame* GetNearestBlockContainer(nsIFrame* frame) {
   // The block wrappers we use to wrap blocks inside inlines aren't
   // described in the CSS spec.  We need to make them not be containing
@@ -7867,7 +7869,7 @@ static nsIFrame* GetNearestBlockContainer(nsIFrame* frame) {
   // If we ever start skipping table row groups from being containing blocks,
   // you need to remove the StickyScrollContainer hack referencing bug 1421660.
   while (frame->IsFrameOfType(nsIFrame::eLineParticipant) ||
-         frame->IsBlockWrapper() ||
+         frame->IsBlockWrapper() || frame->IsSubgrid() ||
          // Table rows are not containing blocks either
          frame->IsTableRowFrame()) {
     frame = frame->GetParent();
@@ -9200,11 +9202,6 @@ bool nsIFrame::BreakWordBetweenPunctuation(const PeekWordState* aState,
   // Stop only if we've seen some non-punctuation since the last whitespace;
   // don't stop after punctuation that follows whitespace.
   return aState->mSeenNonPunctuationSinceWhitespace;
-}
-
-nsresult nsIFrame::CheckVisibility(nsPresContext*, int32_t, int32_t, bool,
-                                   bool*, bool*) {
-  return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 std::pair<nsIFrame*, nsIFrame*> nsIFrame::GetContainingBlockForLine(
@@ -11502,8 +11499,7 @@ CompositorHitTestInfo nsIFrame::GetCompositorHitTestInfo(
     // If WebRender is enabled, simple clip-paths can be converted into WR
     // clips that WR knows how to hit-test against, so we don't need to mark
     // it as an irregular area.
-    if (!gfxVars::UseWebRender() ||
-        !SVGIntegrationUtils::UsingSimpleClipPathForFrame(this)) {
+    if (!SVGIntegrationUtils::UsingSimpleClipPathForFrame(this)) {
       result += CompositorHitTestFlags::eIrregularArea;
     }
   }

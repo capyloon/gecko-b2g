@@ -5,7 +5,6 @@
 //! `<length>` computed values, and related ones.
 
 use super::{Context, Number, ToComputedValue};
-use crate::computed_value_flags::ComputedValueFlags;
 use crate::values::animated::ToAnimatedValue;
 use crate::values::computed::NonNegativeNumber;
 use crate::values::generics::length as generics;
@@ -18,7 +17,7 @@ use crate::values::{specified, CSSFloat};
 use crate::Zero;
 use app_units::Au;
 use std::fmt::{self, Write};
-use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub};
+use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Rem, Sub};
 use style_traits::{CSSPixel, CssWriter, ToCss};
 
 pub use super::image::Image;
@@ -53,16 +52,9 @@ impl specified::NoCalcLength {
                 length.to_computed_value(context, base_size)
             },
             specified::NoCalcLength::ViewportPercentage(length) => {
-                context
-                    .builder
-                    .add_flags(ComputedValueFlags::USES_VIEWPORT_UNITS);
                 length.to_computed_value(context)
             },
             specified::NoCalcLength::ContainerRelative(length) => {
-                // Fallback uses small viewport size.
-                context
-                    .builder
-                    .add_flags(ComputedValueFlags::USES_VIEWPORT_UNITS);
                 length.to_computed_value(context)
             },
             specified::NoCalcLength::ServoCharacterWidth(length) => {
@@ -407,6 +399,15 @@ impl Neg for CSSPixelLength {
     #[inline]
     fn neg(self) -> Self {
         CSSPixelLength::new(-self.0)
+    }
+}
+
+impl Rem for CSSPixelLength {
+    type Output = Self;
+
+    #[inline]
+    fn rem(self, other: Self) -> Self {
+        CSSPixelLength::new(self.0 % other.0)
     }
 }
 

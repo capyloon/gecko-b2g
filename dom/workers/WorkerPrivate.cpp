@@ -1387,7 +1387,7 @@ void WorkerPrivate::EvictFromBFCache() {
   runnable->Dispatch(this);
 }
 
-void WorkerPrivate::SetCSP(nsIContentSecurityPolicy* aCSP) {
+void WorkerPrivate::SetCsp(nsIContentSecurityPolicy* aCSP) {
   AssertIsOnMainThread();
   if (!aCSP) {
     return;
@@ -4085,7 +4085,7 @@ void WorkerPrivate::CancelAllTimeouts() {
   data->mTimerRunnable = nullptr;
 }
 
-already_AddRefed<nsIEventTarget> WorkerPrivate::CreateNewSyncLoop(
+already_AddRefed<nsISerialEventTarget> WorkerPrivate::CreateNewSyncLoop(
     WorkerStatus aFailStatus) {
   AssertIsOnWorkerThread();
   MOZ_ASSERT(

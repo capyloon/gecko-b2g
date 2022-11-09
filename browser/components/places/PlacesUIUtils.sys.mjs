@@ -11,6 +11,7 @@ import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  MigrationUtils: "resource:///modules/MigrationUtils.sys.mjs",
   PlacesTransactions: "resource://gre/modules/PlacesTransactions.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
@@ -20,7 +21,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
 XPCOMUtils.defineLazyModuleGetters(lazy, {
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.jsm",
   CustomizableUI: "resource:///modules/CustomizableUI.jsm",
-  MigrationUtils: "resource:///modules/MigrationUtils.jsm",
   OpenInTabsUtils: "resource:///modules/OpenInTabsUtils.jsm",
   PluralForm: "resource://gre/modules/PluralForm.jsm",
   Weave: "resource://services-sync/main.js",
@@ -48,10 +48,15 @@ let InternalFaviconLoader = {
    * Actually cancel the request, and clear the timeout for cancelling it.
    *
    * @param {object} options
-   * @param {string} options.uri
+   *   The options object containing:
+   * @param {object} options.uri
+   *   The URI of the favicon to cancel.
    * @param {number} options.innerWindowID
+   *   The inner window ID of the window. Unused.
    * @param {number} options.timerID
+   *   The timer ID of the timeout to be cancelled
    * @param {*} options.callback
+   *   The request callback
    * @param {string} reason
    *   The reason for cancelling the request.
    */
@@ -122,12 +127,15 @@ let InternalFaviconLoader = {
    * load data per chrome window.
    *
    * @param {DOMWindow} win
-   *        the chrome window in which we should look for this load
-   * @param {object} filterData ({innerWindowID, uri, callback})
-   *        the data we should use to find this particular load to remove.
+   *   the chrome window in which we should look for this load
+   * @param {object} filterData
+   *   the data we should use to find this particular load to remove.
    * @param {number} filterData.innerWindowID
+   *   The inner window ID of the window.
    * @param {string} filterData.uri
-   * @param {Function} filterData.callback
+   *   The URI of the favicon to cancel.
+   * @param {*} filterData.callback
+   *   The request callback
    *
    * @returns {object|null}
    *   the loadData object we removed, or null if we didn't find any.
@@ -159,7 +167,9 @@ let InternalFaviconLoader = {
    * away) but that will be a no-op in such cases.
    *
    * @param {DOMWindow} win
+   *   The chrome window in which the request was made.
    * @param {number} id
+   *   The inner window ID of the window.
    * @returns {object}
    */
   _makeCompletionCallback(win, id) {
@@ -287,6 +297,7 @@ class BookmarkState {
    * Save edited title for the bookmark
    *
    * @param {string} title
+   *   The title of the bookmark
    */
   _titleChanged(title) {
     this._newState.title = title;
@@ -296,6 +307,7 @@ class BookmarkState {
    * Save edited location for the bookmark
    *
    * @param {string} location
+   *   The location of the bookmark
    */
   _locationChanged(location) {
     this._newState.uri = location;
@@ -315,6 +327,7 @@ class BookmarkState {
    * Save edited keyword for the bookmark
    *
    * @param {string} keyword
+   *   The keyword of the bookmark
    */
   _keywordChanged(keyword) {
     this._newState.keyword = keyword;
@@ -324,6 +337,7 @@ class BookmarkState {
    * Save edited parentGuid for the bookmark
    *
    * @param {string} parentGuid
+   *   The parentGuid of the bookmark
    */
   _parentGuidChanged(parentGuid) {
     this._newState.parentGuid = parentGuid;
@@ -509,17 +523,8 @@ export var PlacesUIUtils = {
   async showBookmarkDialog(aInfo, aParentWindow = null) {
     this.lastBookmarkDialogDeferred = lazy.PromiseUtils.defer();
 
-    // Preserve size attributes differently based on the fact the dialog has
-    // a folder picker or not, since it needs more horizontal space than the
-    // other controls.
-    let hasFolderPicker =
-      !("hiddenRows" in aInfo) || !aInfo.hiddenRows.includes("folderPicker");
-    // Use a different chrome url to persist different sizes.
-    let dialogURL = hasFolderPicker
-      ? "chrome://browser/content/places/bookmarkProperties2.xhtml"
-      : "chrome://browser/content/places/bookmarkProperties.xhtml";
-
-    let features = "centerscreen,chrome,modal,resizable=yes";
+    let dialogURL = "chrome://browser/content/places/bookmarkProperties.xhtml";
+    let features = "centerscreen,chrome,modal";
     let bookmarkGuid;
 
     if (

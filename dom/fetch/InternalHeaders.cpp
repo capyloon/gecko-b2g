@@ -6,6 +6,7 @@
 
 #include "mozilla/dom/InternalHeaders.h"
 
+#include "FetchUtil.h"
 #include "mozilla/dom/FetchTypes.h"
 #include "mozilla/ErrorResult.h"
 
@@ -61,11 +62,11 @@ bool InternalHeaders::IsValidHeaderValue(const nsCString& aLowerName,
   }
 
   // Step 4
-  if (mGuard == HeadersGuardEnum::Request &&
-      IsForbiddenRequestHeader(aLowerName)) {
-    return false;
+  if (mGuard == HeadersGuardEnum::Request) {
+    if (IsForbiddenRequestHeader(aLowerName, aNormalizedValue)) {
+      return false;
+    }
   }
-
   // Step 5
   if (mGuard == HeadersGuardEnum::Request_no_cors) {
     nsAutoCString tempValue;
@@ -167,7 +168,9 @@ void InternalHeaders::Delete(const nsACString& aName, ErrorResult& aRv) {
   }
 
   // Step 3
-  if (IsForbiddenRequestHeader(lowerName)) {
+  nsAutoCString value;
+  GetInternal(lowerName, value, aRv);
+  if (IsForbiddenRequestHeader(lowerName, value)) {
     return;
   }
 
@@ -391,9 +394,10 @@ bool InternalHeaders::IsImmutable(ErrorResult& aRv) const {
   return false;
 }
 
-bool InternalHeaders::IsForbiddenRequestHeader(const nsCString& aName) const {
+bool InternalHeaders::IsForbiddenRequestHeader(const nsCString& aName,
+                                               const nsACString& aValue) const {
   return mGuard == HeadersGuardEnum::Request &&
-         nsContentUtils::IsForbiddenRequestHeader(aName);
+         nsContentUtils::IsForbiddenRequestHeader(aName, aValue);
 }
 
 bool InternalHeaders::IsForbiddenRequestNoCorsHeader(
@@ -447,15 +451,15 @@ void InternalHeaders::Fill(const Record<nsCString, nsCString>& aInit,
 
 namespace {
 
-class FillOriginalResponseHeaders final : public nsIHttpHeaderVisitor {
+class FillHeaders final : public nsIHttpHeaderVisitor {
   RefPtr<InternalHeaders> mInternalHeaders;
 
-  ~FillOriginalResponseHeaders() = default;
+  ~FillHeaders() = default;
 
  public:
   NS_DECL_ISUPPORTS
 
-  explicit FillOriginalResponseHeaders(InternalHeaders* aInternalHeaders)
+  explicit FillHeaders(InternalHeaders* aInternalHeaders)
       : mInternalHeaders(aInternalHeaders) {
     MOZ_DIAGNOSTIC_ASSERT(mInternalHeaders);
   }
@@ -467,34 +471,8 @@ class FillOriginalResponseHeaders final : public nsIHttpHeaderVisitor {
   }
 };
 
-NS_IMPL_ISUPPORTS(FillOriginalResponseHeaders, nsIHttpHeaderVisitor)
+NS_IMPL_ISUPPORTS(FillHeaders, nsIHttpHeaderVisitor)
 
-class FillMissingResponseHeaders final : public nsIHttpHeaderVisitor {
-  RefPtr<InternalHeaders> mInternalHeaders;
-
-  ~FillMissingResponseHeaders() = default;
-
- public:
-  NS_DECL_ISUPPORTS
-
-  explicit FillMissingResponseHeaders(InternalHeaders* aInternalHeaders)
-      : mInternalHeaders(aInternalHeaders) {
-    MOZ_DIAGNOSTIC_ASSERT(mInternalHeaders);
-  }
-
-  NS_IMETHOD
-  VisitHeader(const nsACString& aHeader, const nsACString& aValue) override {
-    ErrorResult rv;
-
-    if (!mInternalHeaders->Has(aHeader, rv)) {
-      MOZ_ASSERT(!rv.Failed());
-      mInternalHeaders->Append(aHeader, aValue, IgnoreErrors());
-    }
-    return NS_OK;
-  }
-};
-
-NS_IMPL_ISUPPORTS(FillMissingResponseHeaders, nsIHttpHeaderVisitor)
 }  // namespace
 
 void InternalHeaders::FillResponseHeaders(nsIRequest* aRequest) {
@@ -503,23 +481,8 @@ void InternalHeaders::FillResponseHeaders(nsIRequest* aRequest) {
     return;
   }
 
-  RefPtr<FillOriginalResponseHeaders> visitor =
-      new FillOriginalResponseHeaders(this);
-  // response headers received from fetch requires extra processing
-  // we need the response headers received in original formats and also include
-  // any headers internally added
-  // nsIHttpChannel does not have any implemenation to give both types of
-  // headers hence, we fetch them seperately and merge them first step is to get
-  // the original response header
-  nsresult rv = httpChannel->VisitOriginalResponseHeaders(visitor);
-  if (NS_FAILED(rv)) {
-    NS_WARNING("failed to fill headers");
-  }
-
-  RefPtr<FillMissingResponseHeaders> visitMissingHeaders =
-      new FillMissingResponseHeaders(this);
-  rv = httpChannel->VisitResponseHeaders(visitMissingHeaders);
-
+  RefPtr<FillHeaders> visitor = new FillHeaders(this);
+  nsresult rv = httpChannel->VisitResponseHeaders(visitor);
   if (NS_FAILED(rv)) {
     NS_WARNING("failed to fill headers");
   }

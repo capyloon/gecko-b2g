@@ -3016,6 +3016,18 @@ NS_IMETHODIMP nsExternalHelperAppService::GetFromTypeAndExtension(
   return NS_OK;
 }
 
+bool nsExternalHelperAppService::GetMIMETypeFromDefaultForExtension(
+    const nsACString& aExtension, nsACString& aMIMEType) {
+  // First of all, check our default entries
+  for (auto& entry : defaultMimeEntries) {
+    if (aExtension.LowerCaseEqualsASCII(entry.mFileExtension)) {
+      aMIMEType = entry.mMimeType;
+      return true;
+    }
+  }
+  return false;
+}
+
 NS_IMETHODIMP
 nsExternalHelperAppService::GetTypeFromExtension(const nsACString& aFileExt,
                                                  nsACString& aContentType) {
@@ -3035,11 +3047,8 @@ nsExternalHelperAppService::GetTypeFromExtension(const nsACString& aFileExt,
   }
 
   // First of all, check our default entries
-  for (auto& entry : defaultMimeEntries) {
-    if (aFileExt.LowerCaseEqualsASCII(entry.mFileExtension)) {
-      aContentType = entry.mMimeType;
-      return NS_OK;
-    }
+  if (GetMIMETypeFromDefaultForExtension(aFileExt, aContentType)) {
+    return NS_OK;
   }
 
   // Ask OS.
@@ -3085,6 +3094,35 @@ NS_IMETHODIMP nsExternalHelperAppService::GetPrimaryExtension(
 
   return mi->GetPrimaryExtension(_retval);
 }
+
+NS_IMETHODIMP nsExternalHelperAppService::GetDefaultTypeFromURI(
+    nsIURI* aURI, nsACString& aContentType) {
+  NS_ENSURE_ARG_POINTER(aURI);
+  nsresult rv = NS_ERROR_NOT_AVAILABLE;
+  aContentType.Truncate();
+
+  // Now try to get an nsIURL so we don't have to do our own parsing
+  nsCOMPtr<nsIURL> url = do_QueryInterface(aURI);
+  if (!url) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+
+  nsAutoCString ext;
+  rv = url->GetFileExtension(ext);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
+  if (!ext.IsEmpty()) {
+    UnescapeFragment(ext, url, ext);
+
+    if (GetMIMETypeFromDefaultForExtension(ext, aContentType)) {
+      return NS_OK;
+    }
+  }
+
+  return NS_ERROR_NOT_AVAILABLE;
+};
 
 NS_IMETHODIMP nsExternalHelperAppService::GetTypeFromURI(
     nsIURI* aURI, nsACString& aContentType) {
@@ -3596,8 +3634,8 @@ void nsExternalHelperAppService::SanitizeFileName(nsAString& aFileName,
   // The number of bytes that the string would occupy if encoded in UTF-8.
   uint32_t bytesLength = 0;
 
-  // The length of the extension.
-  int32_t extensionBytesLength = 0;
+  // The length of the extension in bytes.
+  uint32_t extensionBytesLength = 0;
 
   // This algorithm iterates over each character in the string and appends it
   // or a replacement character if needed to outFileName.
@@ -3609,9 +3647,8 @@ void nsExternalHelperAppService::SanitizeFileName(nsAString& aFileName,
       break;
     }
 
-    if (nextChar == char16_t(0)) {
-      continue;
-    }
+    // nulls are already stripped out above.
+    MOZ_ASSERT(nextChar != char16_t(0));
 
     auto unicodeCategory = unicode::GetGeneralCategory(nextChar);
     if (unicodeCategory == HB_UNICODE_GENERAL_CATEGORY_CONTROL ||
@@ -3664,10 +3701,11 @@ void nsExternalHelperAppService::SanitizeFileName(nsAString& aFileName,
     if (maxBytes) {
       // UTF16CharEnumerator already converts surrogate pairs, so we can use
       // a simple computation of byte length here.
-      bytesLength += nextChar < 0x80      ? 1
-                     : nextChar < 0x800   ? 2
-                     : nextChar < 0x10000 ? 3
-                                          : 4;
+      uint32_t charBytesLength = nextChar < 0x80      ? 1
+                                 : nextChar < 0x800   ? 2
+                                 : nextChar < 0x10000 ? 3
+                                                      : 4;
+      bytesLength += charBytesLength;
       if (bytesLength > maxBytes) {
         if (longFileNameEnd == -1) {
           longFileNameEnd = int32_t(outFileName.Length());
@@ -3675,11 +3713,12 @@ void nsExternalHelperAppService::SanitizeFileName(nsAString& aFileName,
       }
 
       // If we encounter a period, it could be the start of an extension, so
-      // start counting the number of bytes in the extension.
+      // start counting the number of bytes in the extension. If another period
+      // is found, start again since we want to use the last extension found.
       if (nextChar == u'.') {
         extensionBytesLength = 1;  // 1 byte for the period.
       } else if (extensionBytesLength) {
-        extensionBytesLength++;
+        extensionBytesLength += charBytesLength;
       }
     }
 
@@ -3691,10 +3730,10 @@ void nsExternalHelperAppService::SanitizeFileName(nsAString& aFileName,
   // on the filename.
   if (bytesLength > maxBytes && !outFileName.IsEmpty()) {
     // Get the sanitized extension from the filename without the dot.
-    nsAutoCString extension;
+    nsAutoString extension;
     int32_t dotidx = outFileName.RFind(u".");
     if (dotidx != -1) {
-      extension = NS_ConvertUTF16toUTF8(Substring(outFileName, dotidx + 1));
+      extension = Substring(outFileName, dotidx + 1);
     }
 
     // There are two ways in which the filename should be truncated:
@@ -3714,20 +3753,24 @@ void nsExternalHelperAppService::SanitizeFileName(nsAString& aFileName,
       longFileNameEnd -= extensionBytesLength;
       if (longFileNameEnd <= 0) {
         // This is extremely unlikely, but if the extension is larger than the
-        // maximum size, just get rid of it.
-        outFileName.Truncate(maxBytes);
+        // maximum size, just get rid of it. In this case, the extension
+        // wouldn't have been an ordinary one we would want to preserve (such
+        // as .html or .png) so just truncate off the file wherever the first
+        // period appears.
+        int32_t dotidx = outFileName.Find(u".");
+        outFileName.Truncate(dotidx > 0 ? dotidx : 1);
       } else {
         outFileName.Truncate(std::min(longFileNameEnd, lastNonTrimmable));
-      }
 
-      // Now that the filename has been truncated, re-append the extension
-      // again.
-      if (!extension.IsEmpty()) {
-        if (outFileName.Last() != '.') {
-          outFileName.AppendLiteral(".");
+        // Now that the filename has been truncated, re-append the extension
+        // again.
+        if (!extension.IsEmpty()) {
+          if (outFileName.Last() != '.') {
+            outFileName.AppendLiteral(".");
+          }
+
+          outFileName.Append(extension);
         }
-
-        outFileName.Append(NS_ConvertUTF8toUTF16(extension));
       }
     }
   } else if (lastNonTrimmable >= 0) {
