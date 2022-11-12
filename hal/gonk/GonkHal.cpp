@@ -41,6 +41,7 @@
 #include "hardware/lights.h"
 #include "hardware_legacy/uevent.h"
 #include "android/hardware/vibrator/1.0/IVibrator.h"
+#include "android/hardware/vibrator/IVibrator.h"
 #include "libdisplay/GonkDisplay.h"
 
 #include "utils/threads.h"
@@ -126,6 +127,8 @@ using namespace mozilla;
 using namespace mozilla::hal;
 using namespace mozilla::dom;
 
+namespace Aidl = ::android::hardware::vibrator;
+
 namespace mozilla {
 namespace hal_impl {
 
@@ -181,6 +184,42 @@ bool VibratorRunnable::sShuttingDown = false;
 
 static StaticRefPtr<VibratorRunnable> sVibratorRunnable;
 
+// Helper class to abstract over HIDL and AIDL implementations.
+class HalVibrator {
+  public:
+    HalVibrator() {
+      // Get a handle to the HIDL vibrator service.
+      hidl = android::hardware::vibrator::V1_0::IVibrator::getService();
+
+      // If we can't get the HIDL vibrator service, try the AIDL service.
+      if (!hidl) {
+        aidl = android::waitForVintfService<Aidl::IVibrator>();
+      } else {
+        printf_stderr("Failed to run vibration pattern: vibrator == nullptr");
+      }
+    }
+
+    void off() {
+      if (hidl) {
+        hidl->off();
+      } else if (aidl) {
+        aidl->off();
+      }
+    }
+
+    void on(int32_t ms) {
+      if (hidl) {
+        hidl->on(ms);
+      } else if (aidl) {
+        aidl->on(ms, nullptr);
+      }
+    }
+
+  private:
+    android::sp<Aidl::IVibrator> aidl = nullptr;
+    android::sp<android::hardware::vibrator::V1_0::IVibrator> hidl = nullptr;
+};
+
 NS_IMETHODIMP
 VibratorRunnable::Run() {
   MonitorAutoLock lock(mMonitor);
@@ -194,20 +233,15 @@ VibratorRunnable::Run() {
   // condvar onto another thread.  Better just to be chill about small errors in
   // the timing here.
 
-  // Get a handle to the HIDL vibrator service.
-  auto vibrator = android::hardware::vibrator::V1_0::IVibrator::getService();
+  HalVibrator vibrator;
 
   while (!sShuttingDown) {
     if (mIndex < mPattern.Length()) {
       uint32_t duration = mPattern[mIndex];
-      if (vibrator) {
-        if ((mPattern.Length() == 1) && (duration == 0)) {
-          vibrator->off();
-        } else if (mIndex % 2 == 0) {
-          vibrator->on(duration);
-        }
-      } else {
-        printf_stderr("Failed to run vibration pattern: vibrator == nullptr");
+      if ((mPattern.Length() == 1) && (duration == 0)) {
+        vibrator.off();
+      } else if (mIndex % 2 == 0) {
+        vibrator.on(duration);
       }
       mIndex++;
       mMonitor.Wait(TimeDuration::FromMilliseconds(duration));

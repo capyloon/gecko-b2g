@@ -182,6 +182,7 @@ def Libxul(name, output_category=None):
             "android.hardware.sensors@1.0",
             "android.hardware.sensors@2.0",
             "android.hardware.vibrator@1.0",
+            "android.hardware.vibrator-V2-cpp",
             "android.hardware.wifi@1.0",
             "android.hardware.wifi@1.1",
             "android.hardware.wifi@1.2",
