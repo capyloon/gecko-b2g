@@ -1284,7 +1284,7 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gonk':
         'android/hardware/graphics/composer/2.2/IComposerClient.h',
         'android/hardware/graphics/composer/2.3/IComposer.h',
         'android/hardware/graphics/composer/2.3/IComposerClient.h',
-        'android/hardware/power/1.0/IPower.h',
+        'android/hardware/power/IPower.h',
         'android/hardware/radio/1.0/types.h',
         'android/hardware/radio/1.0/IRadio.h',
         'android/hardware/radio/1.0/IRadioIndication.h',

@@ -18,6 +18,7 @@
 #  error "Only ANDROID_VERSION >= 29 devices are supported"
 #endif
 
+#include <android/hardware/power/Mode.h>
 #include <gui/Surface.h>
 #include <gui/IProducerListener.h>
 #include <hardware/hardware.h>
@@ -25,6 +26,7 @@
 #include <hardware/power.h>
 #include <suspend/autosuspend.h>
 
+#include "binder/IServiceManager.h"
 #include "cutils/properties.h"
 #include "FramebufferSurface.h"
 #include "GonkDisplayP.h"
@@ -38,6 +40,7 @@
 #define DEFAULT_XDPI 75.0
 
 using namespace android;
+using namespace android::hardware;
 
 /* global variables */
 std::mutex hotplugMutex;
@@ -210,7 +213,7 @@ GonkDisplayP::GonkDisplayP()
   ALOGI("created native window\n");
   native_gralloc_initialize(0);
 
-  mPower = IPower::getService();
+  mPower = android::waitForVintfService<IPower>();
   if (mPower == nullptr) {
     ALOGE("Can't find IPower service...");
   }
@@ -339,7 +342,9 @@ void GonkDisplayP::SetEnabled(bool enabled) {
     if (!mExtFBEnabled) {
       autosuspend_disable();
       if (mPower) {
-        mPower->setInteractive(true);
+        printf_stderr("Power change: display enabled=%d", enabled);
+        mPower->setMode(power::Mode::INTERACTIVE, true);
+        mPower->setMode(power::Mode::DISPLAY_INACTIVE, false);
       }
 
       if (mHwc && mEnableHWCPower) {
@@ -371,7 +376,9 @@ void GonkDisplayP::SetEnabled(bool enabled) {
 
       autosuspend_enable();
       if (mPower) {
-        mPower->setInteractive(false);
+        printf_stderr("Power change: display enabled=%d", enabled);
+        mPower->setMode(power::Mode::INTERACTIVE, false);
+        mPower->setMode(power::Mode::DISPLAY_INACTIVE, true);
       }
     }
     mFBEnabled = enabled;
@@ -394,7 +401,8 @@ void GonkDisplayP::SetExtEnabled(bool enabled) {
   if (enabled) {
     if (!mFBEnabled) {
       autosuspend_disable();
-      mPower->setInteractive(true);
+      mPower->setMode(power::Mode::INTERACTIVE, true);
+      mPower->setMode(power::Mode::DISPLAY_INACTIVE, false);
 
       SetHwcPowerMode(enabled);
     }
@@ -415,7 +423,8 @@ void GonkDisplayP::SetExtEnabled(bool enabled) {
       SetHwcPowerMode(enabled);
 
       autosuspend_enable();
-      mPower->setInteractive(false);
+      mPower->setMode(power::Mode::INTERACTIVE, false);
+      mPower->setMode(power::Mode::DISPLAY_INACTIVE, true);
     }
   }
 }
