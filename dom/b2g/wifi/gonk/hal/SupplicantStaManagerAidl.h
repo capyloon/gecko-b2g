@@ -219,8 +219,8 @@ class SupplicantStaManager
   android::sp<ISupplicantStaIface> GetSupplicantStaIface();
   android::sp<ISupplicantStaIface> AddSupplicantStaIface();
   android::sp<ISupplicantP2pIface> GetSupplicantP2pIface();
-  Result_t FindIfaceOfType(SupplicantNameSpaceV1_0::IfaceType aDesired,
-                           ISupplicant::IfaceInfo* aInfo);
+  Result_t FindIfaceOfType(aidl_sup::IfaceType aDesired,
+                           aidl_sup::IfaceInfo* aInfo);
   android::sp<SupplicantStaNetwork> CreateStaNetwork();
   android::sp<SupplicantStaNetwork> GetStaNetwork(uint32_t aNetId) const;
   android::sp<SupplicantStaNetwork> GetCurrentNetwork() const;

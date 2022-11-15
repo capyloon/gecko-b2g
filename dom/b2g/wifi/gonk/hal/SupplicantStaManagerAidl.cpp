@@ -414,8 +414,8 @@ Result_t SupplicantStaManager::SetBtCoexistenceScanMode(bool aEnable) {
 
 // Helper function to find any iface of the desired type exposed.
 Result_t SupplicantStaManager::FindIfaceOfType(
-    SupplicantNameSpaceV1_0::IfaceType aDesired,
-    ISupplicant::IfaceInfo* aInfo) {
+    aidl_sup::IfaceType aDesired,
+    aidl_sup::IfaceInfo* aInfo) {
   if (mSupplicant == nullptr) {
     return nsIWifiResult::ERROR_INVALID_INTERFACE;
   }
@@ -428,12 +428,12 @@ Result_t SupplicantStaManager::FindIfaceOfType(
     return nsIWifiResult::ERROR_COMMAND_FAILED;
   }
 
-  // for (const auto& info : iface_infos) {
-  //   if (info.type == aDesired) {
-  //     *aInfo = info;
-  //     return nsIWifiResult::SUCCESS;
-  //   }
-  // }
+  for (const auto& info : iface_infos) {
+    if (info.type == aDesired) {
+      *aInfo = info;
+      return nsIWifiResult::SUCCESS;
+    }
+  }
   return nsIWifiResult::ERROR_COMMAND_FAILED;
 }
 
@@ -499,8 +499,8 @@ android::sp<ISupplicantStaIface> SupplicantStaManager::GetSupplicantStaIface() {
     return nullptr;
   }
 
-  ISupplicant::IfaceInfo info;
-  if (FindIfaceOfType(SupplicantNameSpaceV1_0::IfaceType::STA, &info) !=
+  aidl_sup::IfaceInfo info;
+  if (FindIfaceOfType(aidl_sup::IfaceType::STA, &info) !=
       nsIWifiResult::SUCCESS) {
     return nullptr;
   }
@@ -1203,11 +1203,11 @@ android::sp<ISupplicantP2pIface> SupplicantStaManager::GetSupplicantP2pIface() {
     return nullptr;
   }
 
-  // ISupplicant::IfaceInfo info;
-  // if (FindIfaceOfType(SupplicantNameSpaceV1_0::IfaceType::P2P, &info) !=
-  //     nsIWifiResult::SUCCESS) {
-  //   return nullptr;
-  // }
+  aidl_sup::IfaceInfo info;
+  if (FindIfaceOfType(aidl_sup::IfaceType::P2P, &info) !=
+      nsIWifiResult::SUCCESS) {
+    return nullptr;
+  }
   // SupplicantStatus response;
   // android::sp<ISupplicantP2pIface> p2p_iface;
   // mSupplicant->getInterface(
