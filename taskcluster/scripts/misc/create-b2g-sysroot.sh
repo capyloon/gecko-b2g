@@ -98,6 +98,7 @@ out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/android.hardware.
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/android.system.wifi.keystore@1.0.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/android.frameworks.stats@1.0.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/android.frameworks.stats-V1-ndk.so
+out/target/product/${GONK_PRODUCT_NAME}/apex/com.android.vndk.v33/lib${BINSUFFIX}/android.hardware.wifi.supplicant-V1-ndk.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/binder_b2g_stub.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/binder_b2g_connectivity_interface-V1-cpp.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/binder_b2g_system_interface-V1-cpp.so
@@ -245,6 +246,7 @@ out/soong/.intermediates/packages/modules/DnsResolver/dnsresolver_aidl_interface
 out/soong/.intermediates/system/netd/server/oemnetd_aidl_interface-cpp-source/gen/include
 out/soong/.intermediates/system/vold/libvold_binder_shared/android_${ARCH_FOLDER}_shared/gen/aidl
 out/soong/.intermediates/system/connectivity/wificond/libwificond_ipc/android_${ARCH_FOLDER}_static/gen/aidl
+out/soong/.intermediates/hardware/interfaces/wifi/supplicant/aidl/android.hardware.wifi.supplicant-V1-ndk-source/gen/include/
 EOF
 
 # out/soong/.intermediates/frameworks/base/media/audio_common-aidl-cpp-source/gen/include

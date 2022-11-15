@@ -47,7 +47,6 @@ UNIFIED_SOURCES = [
     "hal/SoftapEventService.cpp",
     "hal/SoftapManager.cpp",
     "hal/SupplicantCallback.cpp",
-    "hal/SupplicantStaManager.cpp",
     "hal/SupplicantStaNetwork.cpp",
     "hal/WifiCommon.cpp",
     "hal/WificondControl.cpp",
@@ -60,6 +59,11 @@ UNIFIED_SOURCES = [
     "WifiCertService.cpp",
     "WifiProxyService.cpp",
 ]
+
+if CONFIG["ANDROID_VERSION"] >= "33":
+    UNIFIED_SOURCES += [ "hal/SupplicantStaManagerAidl.cpp", ]
+else:
+    UNIFIED_SOURCES += [ "hal/SupplicantStaManager.cpp", ]
 
 LOCAL_INCLUDES += [
     "hal",

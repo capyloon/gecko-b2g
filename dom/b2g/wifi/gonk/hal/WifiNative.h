@@ -12,7 +12,11 @@
 #include "WifiHalManager.h"
 #include "WificondControl.h"
 #include "SoftapManager.h"
+#if ANDROID_VERSION >= 33
+#include "SupplicantStaManagerAidl.h"
+#else
 #include "SupplicantStaManager.h"
+#endif
 #include "nsString.h"
 #include "nsWifiElement.h"
 #include "nsIWifiCommand.h"
