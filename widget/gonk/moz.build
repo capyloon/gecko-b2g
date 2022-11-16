@@ -24,6 +24,7 @@ EXPORTS += [
     "GonkActivityManagerService.h",
     # 'GeckoTouchDispatcher.h',
     "GonkPermission.h",
+    "GonkStatsService.h",
     "OrientationObserver.h",
 ]
 
@@ -72,6 +73,7 @@ SOURCES += [
 UNIFIED_SOURCES += [
     "GonkScreenRecord.cpp",
     "GonkScreenShot.cpp",
+    "GonkStatsService.cpp",
     "hwchal/android_10/ComposerHal.cpp",
     "hwchal/android_10/HWC2.cpp",
     "nsDeviceContextGonk.cpp",
@@ -149,6 +151,7 @@ CXXFLAGS += [
     "-Wno-unused-function",
     "-Wno-unused-value",
     "-Wno-comma",
+    "-D__ANDROID_VENDOR__",
 ]
 
 LOCAL_INCLUDES += [

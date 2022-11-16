@@ -73,6 +73,7 @@
 
 // Replacement of AOSP Java ActivityManagerService
 #include "GonkActivityManagerService.h"
+#include "GonkStatsService.h"
 #include "GeckoEditableSupport.h"
 #include "mozilla/dom/IMELog.h"
 #undef LOG
@@ -1099,6 +1100,7 @@ nsresult nsAppShell::Init() {
 #endif
     GonkPermissionService::instantiate();
     GonkActivityManagerService::instantiate();
+    GonkStats::init();
     ProcessState::self()->startThreadPool();
 
     if (!isXPCShellTest) {

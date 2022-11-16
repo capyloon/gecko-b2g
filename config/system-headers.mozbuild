@@ -1274,6 +1274,8 @@ if CONFIG['OS_TARGET'] == 'Android' or CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gonk':
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gonk':
     system_headers += [
+        'aidl/android/frameworks/stats/BnStats.h',
+        'android/binder_manager.h',
         'android/hardware/gnss/1.0/IGnss.h',
         'android/hardware/BnCameraServiceListener.h',
         'android/hardware/ICameraService.h',

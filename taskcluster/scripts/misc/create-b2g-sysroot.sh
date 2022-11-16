@@ -96,6 +96,8 @@ out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/android.hardware.
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/android.hardware.wifi.supplicant@1.1.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/android.hardware.wifi.supplicant@1.2.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/android.system.wifi.keystore@1.0.so
+out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/android.frameworks.stats@1.0.so
+out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/android.frameworks.stats-V1-ndk.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/binder_b2g_stub.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/binder_b2g_connectivity_interface-V1-cpp.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/binder_b2g_system_interface-V1-cpp.so
@@ -105,6 +107,7 @@ out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/dnsresolver_aidl_
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libaudioclient.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libbase.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libbinder.so
+out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libbinder_ndk.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libcamera_client.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libc++.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libcutils.so
@@ -178,6 +181,7 @@ frameworks/native/libs/binder/include
 frameworks/native/libs/binder/include_activitymanager
 frameworks/native/libs/binder/ndk/include_cpp
 frameworks/native/libs/binder/ndk/include_ndk
+frameworks/native/libs/binder/ndk/include_platform
 frameworks/native/libs/gui/include
 frameworks/native/libs/math/include
 frameworks/native/libs/nativebase/include
@@ -268,6 +272,7 @@ out/soong/.intermediates/hardware/interfaces/graphics/composer/2.3/android.hardw
 out/soong/.intermediates/hardware/interfaces/media/1.0/android.hardware.media@1.0_genc++_headers/gen
 out/soong/.intermediates/hardware/interfaces/media/omx/1.0/android.hardware.media.omx@1.0_genc++_headers/gen
 out/soong/.intermediates/hardware/interfaces/power/aidl/android.hardware.power-V3-cpp-source/gen/include
+out/soong/.intermediates/frameworks/hardware/interfaces/stats/aidl/android.frameworks.stats-V1-ndk-source/gen/include/
 out/soong/.intermediates/hardware/interfaces/radio/1.0/android.hardware.radio@1.0_genc++_headers/gen
 out/soong/.intermediates/hardware/interfaces/radio/1.1/android.hardware.radio@1.1_genc++_headers/gen
 out/soong/.intermediates/hardware/interfaces/sensors/1.0/android.hardware.sensors@1.0_genc++_headers/gen

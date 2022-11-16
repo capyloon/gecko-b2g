@@ -138,6 +138,7 @@ def Libxul(name, output_category=None):
             "audiopolicyservice",
             "base",
             "binder",
+            "binder_ndk",
             "c",
             "camera_client",
             "cutils",
@@ -172,6 +173,8 @@ def Libxul(name, output_category=None):
         # "netdbpf",
         AOSPSharedObjects(
             "audiopolicy-aidl-cpp",
+            "android.frameworks.stats@1.0",
+            "android.frameworks.stats-V1-ndk",
             "android.hardware.gnss@1.0",
             "android.hardware.graphics.composer@2.1",
             "android.hardware.graphics.composer@2.2",
