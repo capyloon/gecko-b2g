@@ -79,25 +79,12 @@ mozilla::Mutex SupplicantStaNetwork::sLock("supplicant-network");
 SupplicantStaNetwork::SupplicantStaNetwork(
     const std::string& aInterfaceName,
     const android::sp<WifiEventCallback>& aCallback,
-    const android::sp<ISupplicantStaNetwork>& aNetwork)
+    const std::shared_ptr<aidl_sup::ISupplicantStaNetwork>& aNetwork)
     : mNetwork(aNetwork),
       mCallback(aCallback),
       mInterfaceName(aInterfaceName) {}
 
 SupplicantStaNetwork::~SupplicantStaNetwork() {}
-
-/**
- * Hal wrapper functions
- */
-android::sp<ISupplicantStaNetworkV1_1>
-SupplicantStaNetwork::GetSupplicantStaNetworkV1_1() const {
-  return ISupplicantStaNetworkV1_1::castFrom(mNetwork);
-}
-
-android::sp<ISupplicantStaNetworkV1_2>
-SupplicantStaNetwork::GetSupplicantStaNetworkV1_2() const {
-  return ISupplicantStaNetworkV1_2::castFrom(mNetwork);
-}
 
 /**
  * Update bssid to supplicant.
@@ -470,21 +457,11 @@ SupplicantStatusCode SupplicantStaNetwork::SetKeyMgmt(uint32_t aKeyMgmtMask) {
   MOZ_ASSERT(mNetwork);
   WIFI_LOGD(LOG_TAG, "key_mgmt => %d", aKeyMgmtMask);
 
-  android::sp<ISupplicantStaNetworkV1_2> networkV1_2 =
-      GetSupplicantStaNetworkV1_2();
-
-  SupplicantStatus response;
-  if (networkV1_2.get()) {
-    // Use HAL V1.2 if supported.
-    HIDL_SET(networkV1_2, setKeyMgmt_1_2, SupplicantStatus, response,
-             aKeyMgmtMask);
-  } else {
-    HIDL_SET(mNetwork, setKeyMgmt, SupplicantStatus, response, aKeyMgmtMask);
-  }
+  auto response = mNetwork->setKeyMgmt(aKeyMgmtMask);
 
   WIFI_LOGD(LOG_TAG, "set key_mgmt return: %s",
-            ConvertStatusToString(response.code).c_str());
-  return response.code;
+            ConvertStatusToString(response.getServiceSpecificError()).c_str());
+  return response.getServiceSpecificError();
 }
 
 SupplicantStatusCode SupplicantStaNetwork::SetSaePassword(
@@ -492,17 +469,8 @@ SupplicantStatusCode SupplicantStaNetwork::SetSaePassword(
   MOZ_ASSERT(mNetwork);
   WIFI_LOGD(LOG_TAG, "sae => %s", aSaePassword.c_str());
 
-  android::sp<ISupplicantStaNetworkV1_2> networkV1_2 =
-      GetSupplicantStaNetworkV1_2();
-
-  if (!networkV1_2.get()) {
-    return SupplicantStatusCode::FAILURE_NETWORK_INVALID;
-  }
-
-  SupplicantStatus response;
-  HIDL_SET(networkV1_2, setPskPassphrase, SupplicantStatus, response,
-           aSaePassword);
-  WIFI_LOGD(LOG_TAG, "set psk return: %s",
+  auto response = mNetwork->setSaePassword(aSaePassword);
+  WIFI_LOGD(LOG_TAG, "set sae password return: %s",
             ConvertStatusToString(response.code).c_str());
   return response.code;
 }

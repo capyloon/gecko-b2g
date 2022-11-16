@@ -40,10 +40,6 @@ using ::android::hardware::hidl_death_recipient;
 using ::android::hardware::hidl_string;
 using ::android::hardware::hidl_vec;
 using ::android::hardware::Return;
-using ::android::hardware::wifi::supplicant::V1_0::Bssid;
-using ::android::hardware::wifi::supplicant::V1_0::ISupplicant;
-using ::android::hardware::wifi::supplicant::V1_0::ISupplicantIface;
-using ::android::hardware::wifi::supplicant::V1_0::ISupplicantP2pIface;
 using ::android::hardware::wifi::supplicant::V1_0::ISupplicantStaIface;
 using ::android::hardware::wifi::supplicant::V1_0::ISupplicantStaIfaceCallback;
 using ::android::hardware::wifi::supplicant::V1_0::SupplicantStatus;
@@ -123,9 +119,9 @@ class SupplicantStaManager
   Result_t SendEapSimUmtsAutsResponse(
       SimUmtsAutsRespDataOptions* aUmtsAutsResp);
   Result_t SendEapSimUmtsAuthFailure();
-  Result_t SendAnqpRequest(const std::array<uint8_t, 6>& aBssid,
-                           const std::vector<uint32_t>& aInfoElements,
-                           const std::vector<uint32_t>& aHs20SubTypes);
+  Result_t SendAnqpRequest(const std::vector<uint8_t>& aBssid,
+                           const std::vector<aidl_sup::AnqpInfoId>& aInfoElements,
+                           const std::vector<aidl_sup::Hs20AnqpSubtypes>& aHs20SubTypes);
 
   Result_t InitWpsDetail();
   Result_t StartWpsRegistrar(const std::string& aBssid,
@@ -207,18 +203,18 @@ class SupplicantStaManager
 
   android::sp<IServiceManager> GetServiceManager();
   std::shared_ptr<aidl_sup::ISupplicant> GetSupplicant();
-  android::sp<ISupplicantV1_1> GetSupplicantV1_1();
-  android::sp<ISupplicantV1_2> GetSupplicantV1_2();
-  android::sp<ISupplicantStaIfaceV1_1> GetSupplicantStaIfaceV1_1();
-  android::sp<ISupplicantStaIfaceV1_2> GetSupplicantStaIfaceV1_2();
+//   android::sp<ISupplicantV1_1> GetSupplicantV1_1();
+//   android::sp<ISupplicantV1_2> GetSupplicantV1_2();
+//   android::sp<ISupplicantStaIfaceV1_1> GetSupplicantStaIfaceV1_1();
+//   android::sp<ISupplicantStaIfaceV1_2> GetSupplicantStaIfaceV1_2();
 
   bool IsSupplicantV1_1();
   bool IsSupplicantV1_2();
   bool SupplicantVersionSupported(const std::string& name);
 
-  android::sp<ISupplicantStaIface> GetSupplicantStaIface();
-  android::sp<ISupplicantStaIface> AddSupplicantStaIface();
-  android::sp<ISupplicantP2pIface> GetSupplicantP2pIface();
+  std::shared_ptr<aidl_sup::ISupplicantStaIface> GetSupplicantStaIface();
+  std::shared_ptr<aidl_sup::ISupplicantStaIface> AddSupplicantStaIface();
+  std::shared_ptr<aidl_sup::ISupplicantP2pIface> GetSupplicantP2pIface();
   Result_t FindIfaceOfType(aidl_sup::IfaceType aDesired,
                            aidl_sup::IfaceInfo* aInfo);
   android::sp<SupplicantStaNetwork> CreateStaNetwork();
@@ -232,14 +228,14 @@ class SupplicantStaManager
   void NotifyTerminating();
   void SupplicantServiceDiedHandler(int32_t aCookie);
 
-  static int16_t ConvertToWpsConfigMethod(const std::string& aConfigMethod);
+  static aidl_sup::WpsConfigMethods ConvertToWpsConfigMethod(const std::string& aConfigMethod);
 
   static mozilla::Mutex sLock;
   static mozilla::Mutex sHashLock;
 
   android::sp<::android::hidl::manager::V1_0::IServiceManager> mServiceManager;
   std::shared_ptr<aidl_sup::ISupplicant> mSupplicant;
-  android::sp<ISupplicantStaIface> mSupplicantStaIface;
+  std::shared_ptr<aidl_sup::ISupplicantStaIface> mSupplicantStaIface;
   android::sp<ISupplicantStaIfaceCallback> mSupplicantStaIfaceCallback;
   android::sp<ServiceManagerDeathRecipient> mServiceManagerDeathRecipient;
   android::sp<SupplicantDeathRecipient> mSupplicantDeathRecipient;

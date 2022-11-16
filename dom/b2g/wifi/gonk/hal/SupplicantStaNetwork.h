@@ -14,6 +14,8 @@
 #include <android/hardware/wifi/supplicant/1.0/types.h>
 #include <android/hardware/wifi/supplicant/1.2/ISupplicantStaNetwork.h>
 
+#include <aidl/android/hardware/wifi/supplicant/ISupplicantStaNetwork.h>
+
 #include "mozilla/Mutex.h"
 
 using ::android::hardware::wifi::supplicant::V1_0::ISupplicantNetwork;
@@ -35,6 +37,8 @@ using RequestUmtsAuthParams =
 
 constexpr uint32_t max_wep_key_num =
     (ISupplicantStaNetwork::ParamSizeLimits::WEP_KEYS_MAX_NUM | 0x0);
+
+namespace aidl_sup = ::aidl::android::hardware::wifi::supplicant;
 
 BEGIN_WIFI_NAMESPACE
 
@@ -234,7 +238,7 @@ class SupplicantStaNetwork
   explicit SupplicantStaNetwork(
       const std::string& aInterfaceName,
       const android::sp<WifiEventCallback>& aCallback,
-      const android::sp<ISupplicantStaNetwork>& aNetwork);
+      const std::shared_ptr<aidl_sup::ISupplicantStaNetwork>& aNetwork);
 
   Result_t UpdateBssid(const std::string& aBssid);
   Result_t SetConfiguration(const NetworkConfiguration& aConfig);
@@ -255,9 +259,6 @@ class SupplicantStaNetwork
 
  private:
   virtual ~SupplicantStaNetwork();
-
-  android::sp<ISupplicantStaNetworkV1_1> GetSupplicantStaNetworkV1_1() const;
-  android::sp<ISupplicantStaNetworkV1_2> GetSupplicantStaNetworkV1_2() const;
 
   //..................... ISupplicantStaNetworkCallback ......................./
   /**
@@ -383,7 +384,7 @@ class SupplicantStaNetwork
 
   static mozilla::Mutex sLock;
 
-  android::sp<ISupplicantStaNetwork> mNetwork;
+  std::shared_ptr<aidl_sup::ISupplicantStaNetwork> mNetwork;
   android::sp<WifiEventCallback> mCallback;
   std::string mInterfaceName;
 };

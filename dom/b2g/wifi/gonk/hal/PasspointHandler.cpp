@@ -9,6 +9,8 @@
 using namespace mozilla;
 using namespace mozilla::dom::wifi;
 
+namespace aidl_sup = ::aidl::android::hardware::wifi::supplicant;
+
 /* passpoint event name */
 #define EVENT_ANQP_QUERY_DONE u"ANQP_QUERY_DONE"_ns
 #define EVENT_HS20_ICON_QUERY_DONE u"HS20_ICON_QUERY_DONE"_ns
@@ -81,24 +83,24 @@ Result_t PasspointHandler::RequestAnqp(const nsAString& aAnqpKey,
 Result_t PasspointHandler::StartAnqpQuery(const nsAString& aBssid,
                                           bool aRoamingConsortiumOIs,
                                           bool aSupportRelease2) {
-  std::vector<uint32_t> infoElements;
-  std::vector<uint32_t> hs20SubTypes;
+  std::vector<aidl_sup::AnqpInfoId> infoElements;
+  std::vector<aidl_sup::Hs20AnqpSubtypes> hs20SubTypes;
 
   for (const auto& element : R1_ANQP_SET) {
-    infoElements.push_back(element);
+    infoElements.push_back((aidl_sup::AnqpInfoId)element);
   }
 
   if (aRoamingConsortiumOIs) {
-    infoElements.push_back((uint32_t)AnqpElementType::ANQPRoamingConsortium);
+    infoElements.push_back((aidl_sup::AnqpInfoId)AnqpElementType::ANQPRoamingConsortium);
   }
 
   if (aSupportRelease2) {
     for (const auto& element : R2_ANQP_SET) {
-      hs20SubTypes.push_back(element);
+      hs20SubTypes.push_back((aidl_sup::Hs20AnqpSubtypes)element);
     }
   }
 
-  std::array<uint8_t, 6> bssid;
+  std::vector<uint8_t> bssid;
   ConvertMacToByteArray(NS_ConvertUTF16toUTF8(aBssid).get(), bssid);
   return mSupplicantManager->SendAnqpRequest(bssid, infoElements, hs20SubTypes);
 }
