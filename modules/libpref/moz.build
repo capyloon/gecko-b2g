@@ -15,7 +15,7 @@ XPCSHELL_TESTS_MANIFESTS += [
     "test/unit_ipc/xpcshell.ini",
 ]
 
-BROWSER_CHROME_MANIFESTS += ["test/mochitest/browser.ini"]
+BROWSER_CHROME_MANIFESTS += ["test/browser/browser.ini"]
 
 XPIDL_SOURCES += [
     "nsIPrefBranch.idl",
@@ -93,7 +93,6 @@ pref_groups = [
     "view_source",
     "webgl",
     "widget",
-    "xul",
     "zoom",
 ]
 if CONFIG["OS_TARGET"] == "Android":

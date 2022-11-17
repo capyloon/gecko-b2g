@@ -15,7 +15,6 @@
 #include "WebGLQuery.h"
 #include "WebGLRenderbuffer.h"
 #include "WebGLTexture.h"
-#include "WebGLExtensions.h"
 #include "WebGLVertexArray.h"
 
 #include "nsDebug.h"
@@ -1285,8 +1284,9 @@ void WebGLContext::StencilOpSeparate(GLenum face, GLenum sfail, GLenum dpfail,
 ////////////////////////////////////////////////////////////////////////////////
 // Uniform setters.
 
-void WebGLContext::UniformData(const uint32_t loc, const bool transpose,
-                               const Range<const uint8_t>& data) const {
+void WebGLContext::UniformData(
+    const uint32_t loc, const bool transpose,
+    const Range<const webgl::UniformDataVal>& data) const {
   const FuncScope funcScope(*this, "uniform setter");
 
   if (!IsWebGL2() && transpose) {
@@ -1312,7 +1312,7 @@ void WebGLContext::UniformData(const uint32_t loc, const bool transpose,
 
   // -
 
-  const auto lengthInType = data.length() / sizeof(float);
+  const auto lengthInType = data.length();
   const auto elemCount = lengthInType / channels;
   if (elemCount > 1 && !validationInfo.isArray) {
     GenerateError(
@@ -1353,10 +1353,13 @@ void WebGLContext::UniformData(const uint32_t loc, const bool transpose,
 
     const auto srcBegin = reinterpret_cast<const uint32_t*>(data.begin().get());
     auto destIndex = locInfo->indexIntoUniform;
-    for (const auto& val : Range<const uint32_t>(srcBegin, elemCount)) {
-      if (destIndex >= texUnits.size()) break;
-      texUnits[destIndex] = val;
-      destIndex += 1;
+    if (destIndex < texUnits.length()) {
+      // Only sample as many indexes as available tex units allow.
+      const auto destCount = std::min(elemCount, texUnits.length() - destIndex);
+      for (const auto& val : Range<const uint32_t>(srcBegin, destCount)) {
+        texUnits[destIndex] = AssertedCast<uint8_t>(val);
+        destIndex += 1;
+      }
     }
   }
 }

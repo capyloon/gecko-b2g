@@ -4,25 +4,10 @@ set -x -e -v
 artifact=$(basename $TOOLCHAIN_ARTIFACT)
 dir=${artifact%.tar.*}
 
+patch -d $MOZ_FETCHES_DIR/wasi-sdk -p1 < $(dirname $0)/wasi-sdk.patch
+
 cd $MOZ_FETCHES_DIR/wasi-sdk
 LLVM_PROJ_DIR=$MOZ_FETCHES_DIR/llvm-project
-
-# Apply patch from https://github.com/WebAssembly/wasi-libc/pull/344.
-patch -p1 <<'EOF'
-diff --git a/src/wasi-libc/Makefile b/src/wasi-libc/Makefile
-index 44acdee..6e01bed 100644
---- a/src/wasi-libc/Makefile
-+++ b/src/wasi-libc/Makefile
-@@ -556,6 +556,8 @@ check-symbols: startup_files libc
- 	    -U__clang_version__ \
- 	    -U__clang_literal_encoding__ \
- 	    -U__clang_wide_literal_encoding__ \
-+	    -U__wasm_mutable_globals__ \
-+	    -U__wasm_sign_ext__ \
- 	    -U__GNUC__ \
- 	    -U__GNUC_MINOR__ \
- 	    -U__GNUC_PATCHLEVEL__ \
-EOF
 
 mkdir -p build/install/wasi
 # The wasi-sdk build system wants to build clang itself. We trick it into

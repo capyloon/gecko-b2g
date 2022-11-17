@@ -1544,6 +1544,7 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
           "intervention_update_restart",
           "intervention_update_web",
           "searchTip_onboard",
+          "searchTip_persist",
           "searchTip_redirect",
           "test", // for tests only
         ],
@@ -1624,6 +1625,7 @@ export class UrlbarQueryContext {
       ["providers", v => Array.isArray(v) && v.length],
       ["searchMode", v => v && typeof v == "object"],
       ["sources", v => Array.isArray(v) && v.length],
+      ["view", v => true],
     ]) {
       if (prop in options) {
         if (!checkFn(options[prop])) {

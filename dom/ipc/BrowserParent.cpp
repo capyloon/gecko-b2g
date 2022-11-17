@@ -481,10 +481,10 @@ ParentShowInfo BrowserParent::GetShowInfo() {
   TryCacheDPIAndScale();
   if (mFrameElement) {
     nsAutoString name;
-    mFrameElement->GetAttr(kNameSpaceID_None, nsGkAtoms::name, name);
+    mFrameElement->GetAttr(nsGkAtoms::name, name);
     bool isTransparent =
         nsContentUtils::IsChromeDoc(mFrameElement->OwnerDoc()) &&
-        mFrameElement->HasAttr(kNameSpaceID_None, nsGkAtoms::transparent) &&
+        mFrameElement->HasAttr(nsGkAtoms::transparent) &&
         mFrameElement->GetAttrInfo(kNameSpaceID_None, nsGkAtoms::transparent)
                 .mValue->GetAtomValue() == nsGkAtoms::_true;
     return ParentShowInfo(name, false, isTransparent, mDPI, mRounding,
@@ -556,6 +556,10 @@ void BrowserParent::SetOwnerElement(Element* aElement) {
 #endif
 
   AddWindowListeners();
+
+  // The DPI depends on our frame element's widget, so invalidate now in case
+  // we've tried to cache it already.
+  mDPI = -1;
   TryCacheDPIAndScale();
 
   if (mRemoteLayerTreeOwner.IsInitialized()) {
@@ -1212,7 +1216,7 @@ a11y::PDocAccessibleParent* BrowserParent::AllocPDocAccessibleParent(
     const MaybeDiscardedBrowsingContext&, const uint32_t&,
     const IAccessibleHolder&) {
   // Reference freed in DeallocPDocAccessibleParent.
-  return do_AddRef(new a11y::DocAccessibleParent()).take();
+  return a11y::DocAccessibleParent::New().take();
 }
 
 bool BrowserParent::DeallocPDocAccessibleParent(PDocAccessibleParent* aParent) {
@@ -1238,10 +1242,6 @@ mozilla::ipc::IPCResult BrowserParent::RecvPDocAccessibleConstructor(
     return IPC_OK();
   }
 
-  if (aBrowsingContext) {
-    doc->SetBrowsingContext(aBrowsingContext.get_canonical());
-  }
-
   if (aParentDoc) {
     // Iframe document rendered in the same process as its embedder.
     // A document should never directly be the parent of another document.
@@ -1260,6 +1260,10 @@ mozilla::ipc::IPCResult BrowserParent::RecvPDocAccessibleConstructor(
       // anyway, so mark this document as shutdown and ignore it.
       doc->MarkAsShutdown();
       return IPC_OK();
+    }
+
+    if (aBrowsingContext) {
+      doc->SetBrowsingContext(aBrowsingContext.get_canonical());
     }
 
     mozilla::ipc::IPCResult added = parentDoc->AddChildDoc(doc, aParentID);
@@ -1284,6 +1288,10 @@ mozilla::ipc::IPCResult BrowserParent::RecvPDocAccessibleConstructor(
 #  endif
 
     return IPC_OK();
+  }
+
+  if (aBrowsingContext) {
+    doc->SetBrowsingContext(aBrowsingContext.get_canonical());
   }
 
   if (auto* bridge = GetBrowserBridgeParent()) {
@@ -3488,17 +3496,17 @@ void BrowserParent::TryCacheDPIAndScale() {
     return;
   }
 
+  const auto oldDefaultScale = mDefaultScale;
   nsCOMPtr<nsIWidget> widget = GetWidget();
+  mDPI = widget ? widget->GetDPI() : nsIWidget::GetFallbackDPI();
+  mRounding = widget ? widget->RoundsWidgetCoordinatesTo() : 1;
+  mDefaultScale =
+      widget ? widget->GetDefaultScale() : nsIWidget::GetFallbackDefaultScale();
 
-  if (widget) {
-    mDPI = widget->GetDPI();
-    mRounding = widget->RoundsWidgetCoordinatesTo();
-    if (mDefaultScale != widget->GetDefaultScale()) {
-      // The change of the default scale factor will affect the child dimensions
-      // so we need to invalidate it.
-      mUpdatedDimensions = false;
-    }
-    mDefaultScale = widget->GetDefaultScale();
+  if (mDefaultScale != oldDefaultScale) {
+    // The change of the default scale factor will affect the child dimensions
+    // so we need to invalidate it.
+    mUpdatedDimensions = false;
   }
 }
 
@@ -3643,18 +3651,19 @@ void BrowserParent::PreserveLayers(bool aPreserveLayers) {
 }
 
 void BrowserParent::NotifyResolutionChanged() {
-  if (!mIsDestroyed) {
-    // TryCacheDPIAndScale()'s cache is keyed off of
-    // mDPI being greater than 0, so this invalidates it.
-    mDPI = -1;
-    TryCacheDPIAndScale();
-    // If mDPI was set to -1 to invalidate it and then TryCacheDPIAndScale
-    // fails to cache the values, then mDefaultScale.scale might be invalid.
-    // We don't want to send that value to content. Just send -1 for it too in
-    // that case.
-    Unused << SendUIResolutionChanged(mDPI, mRounding,
-                                      mDPI < 0 ? -1.0 : mDefaultScale.scale);
+  if (mIsDestroyed) {
+    return;
   }
+  // TryCacheDPIAndScale()'s cache is keyed off of
+  // mDPI being greater than 0, so this invalidates it.
+  mDPI = -1;
+  TryCacheDPIAndScale();
+  // If mDPI was set to -1 to invalidate it and then TryCacheDPIAndScale
+  // fails to cache the values, then mDefaultScale.scale might be invalid.
+  // We don't want to send that value to content. Just send -1 for it too in
+  // that case.
+  Unused << SendUIResolutionChanged(mDPI, mRounding,
+                                    mDPI < 0 ? -1.0 : mDefaultScale.scale);
 }
 
 bool BrowserParent::CanCancelContentJS(

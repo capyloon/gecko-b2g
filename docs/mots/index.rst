@@ -50,7 +50,7 @@ The top level directory for the mozilla tree.
       - Brendan Eich
     * - Includes
       -
-        | `README <https://searchfox.org/mozilla-central/search?q=&path=README>`__
+        | `README.txt <https://searchfox.org/mozilla-central/search?q=&path=README.txt>`__
 
 Code Coverage
 ~~~~~~~~~~~~~
@@ -103,7 +103,7 @@ Support for platform accessibility APIs. Accessibility APIs are used by 3rd part
     * - Group
       - dev-accessibility
     * - URL
-      - http://www.mozilla.org/access/
+      - https://developer.mozilla.org/docs/Web/Accessibility
     * - Bugzilla Components
       - Core::Disability Access APIs
 
@@ -148,7 +148,7 @@ Tracking detection and content-blocking.
     * - Peer(s)
       -
         | `Andrea Marchesini (baku) <https://people.mozilla.org/s?query=baku>`__
-        | `Dimi Lee (dlee) <https://people.mozilla.org/s?query=dlee>`__
+        | `Dimi Lee (dimi) <https://people.mozilla.org/s?query=dimi>`__
         | `Paul Zühlcke (pbz) <https://people.mozilla.org/s?query=pbz>`__
         | `Johann Hofmann (johannh) <https://people.mozilla.org/s?query=johannh>`__
     * - Peer(s) Emeritus
@@ -254,29 +254,21 @@ The build system for Gecko and several mozilla.org hosted Gecko-based applicatio
         | `Mike Hommey (glandium) <https://people.mozilla.org/s?query=glandium>`__
     * - Peer(s)
       -
-        | `Mitchell Hentges (mhentges) <https://people.mozilla.org/s?query=mhentges>`__
         | `Andi (andi) <https://people.mozilla.org/s?query=andi>`__
     * - Owner(s) Emeritus
       - Chris Manchester, Gregory Szorc, Ted Mielczarek, Benjamin Smedberg
     * - Peer(s) Emeritus
-      - Ted Mielczarek, Ralph Giles, Gregory Szorc, Chris Manchester, Mike Shal, Nathan Froyd, Ricky Stewart, David Major
+      - Ted Mielczarek, Ralph Giles, Gregory Szorc, Chris Manchester, Mike Shal, Nathan Froyd, Ricky Stewart, David Major, Mitchell Hentges
     * - Includes
       -
         | `build/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=build/\*\*/\*>`__
         | `config/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=config/\*\*/\*>`__
         | `python/mozbuild/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=python/mozbuild/\*\*/\*>`__
-        | `tools/cross-commit/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=tools/cross-commit/\*\*/\*>`__
-        | `tools/cvs2hg-import.py <https://searchfox.org/mozilla-central/search?q=&path=tools/cvs2hg-import.py>`__
-        | `tools/cvsmgmt/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=tools/cvsmgmt/\*\*/\*>`__
-        | `tools/elf-dynstr-gc/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=tools/elf-dynstr-gc/\*\*/\*>`__
-        | `tools/trees.pl <https://searchfox.org/mozilla-central/search?q=&path=tools/trees.pl>`__
         | `browser/config/mozconfigs/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=browser/config/mozconfigs/\*\*/\*>`__
-        | `mobile/config/mozconfigs/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=mobile/config/mozconfigs/\*\*/\*>`__
-        | `xulrunner/config/mozconfigs/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=xulrunner/config/mozconfigs/\*\*/\*>`__
     * - Group
       - dev-builds
     * - URL
-      - http://www.mozilla.org/build/
+      - :ref:`Build System`
     * - Bugzilla Components
       - Core::Build Config
 
@@ -294,21 +286,13 @@ Submodule of the build config covering Fennec's build system in mobile/android.
         | `Nick Alexander (nalexander) <https://people.mozilla.org/s?query=nalexander>`__
     * - Peer(s)
       -
-        | `Mitchell Hentges (mhentges) <https://people.mozilla.org/s?query=mhentges>`__
         | `Andi (andi) <https://people.mozilla.org/s?query=andi>`__
     * - Includes
       -
         | `build/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=build/\*\*/\*>`__
         | `config/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=config/\*\*/\*>`__
         | `python/mozbuild/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=python/mozbuild/\*\*/\*>`__
-        | `tools/cross-commit/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=tools/cross-commit/\*\*/\*>`__
-        | `tools/cvs2hg-import.py <https://searchfox.org/mozilla-central/search?q=&path=tools/cvs2hg-import.py>`__
-        | `tools/cvsmgmt/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=tools/cvsmgmt/\*\*/\*>`__
-        | `tools/elf-dynstr-gc/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=tools/elf-dynstr-gc/\*\*/\*>`__
-        | `tools/trees.pl <https://searchfox.org/mozilla-central/search?q=&path=tools/trees.pl>`__
         | `browser/config/mozconfigs/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=browser/config/mozconfigs/\*\*/\*>`__
-        | `mobile/config/mozconfigs/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=mobile/config/mozconfigs/\*\*/\*>`__
-        | `xulrunner/config/mozconfigs/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=xulrunner/config/mozconfigs/\*\*/\*>`__
     * - Group
       - dev-builds
     * - Bugzilla Components
@@ -343,14 +327,7 @@ Support for task-graph generation in decision, action, and cron tasks, including
         | `build/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=build/\*\*/\*>`__
         | `config/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=config/\*\*/\*>`__
         | `python/mozbuild/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=python/mozbuild/\*\*/\*>`__
-        | `tools/cross-commit/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=tools/cross-commit/\*\*/\*>`__
-        | `tools/cvs2hg-import.py <https://searchfox.org/mozilla-central/search?q=&path=tools/cvs2hg-import.py>`__
-        | `tools/cvsmgmt/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=tools/cvsmgmt/\*\*/\*>`__
-        | `tools/elf-dynstr-gc/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=tools/elf-dynstr-gc/\*\*/\*>`__
-        | `tools/trees.pl <https://searchfox.org/mozilla-central/search?q=&path=tools/trees.pl>`__
         | `browser/config/mozconfigs/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=browser/config/mozconfigs/\*\*/\*>`__
-        | `mobile/config/mozconfigs/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=mobile/config/mozconfigs/\*\*/\*>`__
-        | `xulrunner/config/mozconfigs/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=xulrunner/config/mozconfigs/\*\*/\*>`__
     * - Bugzilla Components
       - Firefox Build System::Task Configuration
 
@@ -369,22 +346,10 @@ Tools for debugging Mozilla code or for analyzing speed, memory use, and other c
         | `David Baron (dbaron) <https://people.mozilla.org/s?query=dbaron>`__
     * - Includes
       -
-        | `tools/codesighs/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=tools/codesighs/\*\*/\*>`__
-        | `tools/debug/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=tools/debug/\*\*/\*>`__
-        | `tools/dreftool/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=tools/dreftool/\*\*/\*>`__
-        | `tools/dumpdeps/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=tools/dumpdeps/\*\*/\*>`__
         | `tools/jprof/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=tools/jprof/\*\*/\*>`__
         | `tools/leak-gauge/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=tools/leak-gauge/\*\*/\*>`__
-        | `tools/leaky/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=tools/leaky/\*\*/\*>`__
-        | `tools/memory/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=tools/memory/\*\*/\*>`__
-        | `tools/module-deps/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=tools/module-deps/\*\*/\*>`__
         | `tools/performance/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=tools/performance/\*\*/\*>`__
-        | `tools/post_compile/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=tools/post_compile/\*\*/\*>`__
-        | `tools/preloader/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=tools/preloader/\*\*/\*>`__
         | `tools/rb/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=tools/rb/\*\*/\*>`__
-        | `tools/reorder/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=tools/reorder/\*\*/\*>`__
-        | `tools/trace-malloc/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=tools/trace-malloc/\*\*/\*>`__
-        | `tools/uuiddeps/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=tools/uuiddeps/\*\*/\*>`__
     * - Group
       - dev-performance
 
@@ -465,12 +430,12 @@ Infrastructure and tools used to generate, submit and process crash reports. Thi
         | `toolkit/crashreporter/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=toolkit/crashreporter/\*\*/\*>`__
         | `toolkit/components/crashes/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=toolkit/components/crashes/\*\*/\*>`__
         | `tools/crashreporter/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=tools/crashreporter/\*\*/\*>`__
-        | `ipc/glue/CrashReporter/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=ipc/glue/CrashReporter/\*\*/\*>`__
+        | `ipc/glue/CrashReporter\* <https://searchfox.org/mozilla-central/search?q=&path=ipc/glue/CrashReporter\*>`__
         | `mobile/android/geckoview/src/main/java/org/mozilla/geckoview/CrashReporter.java <https://searchfox.org/mozilla-central/search?q=&path=mobile/android/geckoview/src/main/java/org/mozilla/geckoview/CrashReporter.java>`__
     * - Group
       - dev-platform
     * - URL
-      - https://firefox-source-docs.mozilla.org/toolkit/crashreporter/crashreporter/index.html
+      - :ref:`Crash Reporter`
     * - Bugzilla Components
       - Toolkit::Crash Reporting
 
@@ -689,7 +654,7 @@ Core: Editor
     * - Group
       - dev-platform
     * - URL
-      - http://www.mozilla.org/editor/
+      - :ref:`Editor`
     * - Bugzilla Components
       - Core::Editor
 
@@ -775,7 +740,7 @@ Gecko's built-in profiler
     * - Group
       - dev-platform
     * - URL
-      - https://developer.mozilla.org/en-US/docs/Mozilla/Performance/Profiling_with_the_Built-in_Profiler
+      - https://profiler.firefox.com/docs/
     * - Bugzilla Components
       - Core::Gecko Profiler
 
@@ -811,7 +776,7 @@ Framework for embedding Gecko into Android applications
 
 Core: Global Key Bindings
 ~~~~~~~~~~~~~~~~~~~~~~~~~
-Global hot keys in Mozilla for the browser, editor, mail-news and widgets. Does not include underlined menu accelerators and the like, as those are part of i18n.
+Global hot keys for Firefox. Does not include underlined menu accelerators and the like, as those are part of i18n.
 
 
 .. list-table::
@@ -829,7 +794,7 @@ Global hot keys in Mozilla for the browser, editor, mail-news and widgets. Does 
     * - Group
       - dev-accessibility
     * - URL
-      - http://www.mozilla.org/projects/ui/accessibility/mozkeyintro.html
+      - https://support.mozilla.org/kb/keyboard-shortcuts-perform-firefox-tasks-quickly
     * - Bugzilla Components
       - Core::Keyboard: Navigation
 
@@ -940,7 +905,7 @@ Core: I18N Library
     * - Group
       - dev-i18n
     * - URL
-      - http://mozilla.org/projects/intl/index.html
+      - :ref:`Internationalization`
     * - Bugzilla Components
       - Core::Internationalization
 
@@ -1112,31 +1077,6 @@ JavaScript engine's JIT compilers (IonMonkey, Baseline)
     * - Bugzilla Components
       - Core::JavaScript Engine: JIT
 
-Core: jsat
-~~~~~~~~~~
-Javascript screen reader that is used in Android and B2G
-
-
-.. list-table::
-    :stub-columns: 1
-    :widths: 30 70
-
-    * - Owner(s)
-      -
-        | `Eitan Isaacson (eeejay) <https://people.mozilla.org/s?query=eeejay>`__
-    * - Peer(s)
-      -
-        | `Yura Zenevich (yzen) <https://people.mozilla.org/s?query=yzen>`__
-    * - Includes
-      -
-        | `accessible/jsat/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=accessible/jsat/\*\*/\*>`__
-    * - Group
-      - dev-accessibility
-    * - URL
-      - http://www.mozilla.org/access/
-    * - Bugzilla Components
-      - Core::Disability Access APIs
-
 Core: js-tests
 ~~~~~~~~~~~~~~
 JavaScript test suite
@@ -1151,7 +1091,7 @@ JavaScript test suite
         | `Bob Clary (bc) <https://people.mozilla.org/s?query=bc>`__
     * - Includes
       -
-        | `js/tests/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=js/tests/\*\*/\*>`__
+        | `js/src/tests/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=js/src/tests/\*\*/\*>`__
     * - Group
       - dev-tech-js-engine
     * - URL
@@ -1188,10 +1128,8 @@ rendering tree construction, layout (reflow), etc.
         | `layout/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=layout/\*\*/\*>`__
         | `layout/base/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=layout/base/\*\*/\*>`__
         | `layout/build/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=layout/build/\*\*/\*>`__
-        | `layout/doc/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=layout/doc/\*\*/\*>`__
         | `layout/forms/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=layout/forms/\*\*/\*>`__
         | `layout/generic/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=layout/generic/\*\*/\*>`__
-        | `layout/html/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=layout/html/\*\*/\*>`__
         | `layout/printing/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=layout/printing/\*\*/\*>`__
         | `layout/tables/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=layout/tables/\*\*/\*>`__
         | `layout/tools/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=layout/tools/\*\*/\*>`__
@@ -1277,7 +1215,7 @@ MathML is a low-level specification for describing mathematics which provides a 
     * - Group
       - dev-tech-mathml
     * - URL
-      - http://www.mozilla.org/projects/mathml/
+      - https://developer.mozilla.org/docs/Web/MathML
     * - Bugzilla Components
       - Core::MathML
 
@@ -1285,20 +1223,20 @@ Core: Media Playback
 ~~~~~~~~~~~~~~~~~~~~
 HTML Media APIs, including Media Source Extensions and non-MSE video/audio element playback, and Encrypted Media Extensions. (WebRTC and WebAudio not included).
 
+.. warning::
+    This module does not have any owners specified.
 
 .. list-table::
     :stub-columns: 1
     :widths: 30 70
 
-    * - Owner(s)
-      -
-        | `Jean-Yves Avenard (jya) <https://people.mozilla.org/s?query=jya>`__
     * - Peer(s)
       -
         | `Matthew Gregan (kinetik) <https://people.mozilla.org/s?query=kinetik>`__
-        | `Bryce Seager van Dyk (bryce) <https://people.mozilla.org/s?query=bryce>`__
         | `John Lin (jhlin) <https://people.mozilla.org/s?query=jhlin>`__
         | `Alastor Wu (alwu) <https://people.mozilla.org/s?query=alwu>`__
+        | `Paul Adenot (padenot) <https://people.mozilla.org/s?query=padenot>`__
+        | `C (chunmin) <https://people.mozilla.org/s?query=chunmin>`__
     * - Owner(s) Emeritus
       - Robert O'Callahan, Chris Pearce, Jean-Yves Avenard
     * - Includes
@@ -1309,13 +1247,12 @@ HTML Media APIs, including Media Source Extensions and non-MSE video/audio eleme
         | `media/libnestegg/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=media/libnestegg/\*\*/\*>`__
         | `media/libogg/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=media/libogg/\*\*/\*>`__
         | `media/libopus/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=media/libopus/\*\*/\*>`__
-        | `media/libstagefright/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=media/libstagefright/\*\*/\*>`__
         | `media/libtheora/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=media/libtheora/\*\*/\*>`__
         | `media/libtremor/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=media/libtremor/\*\*/\*>`__
         | `media/libvorbis/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=media/libvorbis/\*\*/\*>`__
         | `media/libvpx/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=media/libvpx/\*\*/\*>`__
-        | `media/omx-plugin/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=media/omx-plugin/\*\*/\*>`__
-        | `media/rlz/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=media/rlz/\*\*/\*>`__
+        | `dom/media/platforms/omx/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=dom/media/platforms/omx/\*\*/\*>`__
+        | `dom/media/gmp/rlz/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=dom/media/gmp/rlz/\*\*/\*>`__
     * - Group
       - dev-media
     * - Bugzilla Components
@@ -1340,7 +1277,7 @@ Pluggable transport for real-time media
         | `nohlmeier <https://people.mozilla.org/s?query=nohlmeier>`__
     * - Includes
       -
-        | `media/mtransport/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=media/mtransport/\*\*/\*>`__
+        | `dom/media/webrtc/transport/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=dom/media/webrtc/transport/\*\*/\*>`__
     * - Group
       - dev-media
     * - Bugzilla Components
@@ -1497,12 +1434,10 @@ The Mozilla Networking Library
         | `netwerk/locales/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=netwerk/locales/\*\*/\*>`__
         | `netwerk/mime/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=netwerk/mime/\*\*/\*>`__
         | `netwerk/protocol/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=netwerk/protocol/\*\*/\*>`__
-        | `netwerk/resources/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=netwerk/resources/\*\*/\*>`__
         | `netwerk/socket/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=netwerk/socket/\*\*/\*>`__
         | `netwerk/streamconv/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=netwerk/streamconv/\*\*/\*>`__
         | `netwerk/system/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=netwerk/system/\*\*/\*>`__
         | `netwerk/test/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=netwerk/test/\*\*/\*>`__
-        | `netwerk/testserver/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=netwerk/testserver/\*\*/\*>`__
         | `dom/fetch/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=dom/fetch/\*\*/\*>`__
         | `dom/xhr/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=dom/xhr/\*\*/\*>`__
         | `dom/network/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=dom/network/\*\*/\*>`__
@@ -1510,7 +1445,7 @@ The Mozilla Networking Library
     * - Group
       - dev-tech-network
     * - URL
-      - http://www.mozilla.org/projects/netlib/, https://developer.mozilla.org/en/Necko
+      - :ref:`Networking`
     * - Bugzilla Components
       - Core::Networking, Core::Networking: Cache, Core::Networking: Cookies, Core::Networking: FTP, Core::Networking: File, Core::Networking: HTTP, Core::Networking: JAR, Core::Networking: Websockets, Core::DOM: Networking
 
@@ -1539,7 +1474,7 @@ Advises on the use of NodeJS and npm packages at build and runtime. Reviews addi
         | `package-lock.json <https://searchfox.org/mozilla-central/search?q=&path=package-lock.json>`__
         | `node_modules/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=node_modules/\*\*/\*>`__
     * - URL
-      - [https://wiki.mozilla.org/Firefox/firefox-dev firefox-dev], #nodejs on slack
+      - https://wiki.mozilla.org/Firefox/firefox-dev, #nodejs on slack
     * - Bugzilla Components
       - Various
 
@@ -1566,13 +1501,13 @@ Netscape Portable Runtime
     * - Group
       - dev-tech-nspr
     * - URL
-      - http://www.mozilla.org/projects/nspr/, http://www.mozilla.org/projects/nspr/reference/html/, http://www.mozilla.org/projects/nspr/release-notes/
+      - :ref:`NSPR`
     * - Bugzilla Components
       - NSPR
 
 Core: PDF
 ~~~~~~~~~
-Rendering code to display documents encoded in the ISO 32000-1 \`PDF' format.
+Rendering code to display documents encoded in the ISO 32000-1 PDF format.
 
 
 .. list-table::
@@ -1646,7 +1581,6 @@ NPAPI Plugin support.
     * - Includes
       -
         | `dom/plugins/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=dom/plugins/\*\*/\*>`__
-        | `modules/plugin/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=modules/plugin/\*\*/\*>`__
     * - URL
       - https://wiki.mozilla.org/Plugins
     * - Bugzilla Components
@@ -1708,7 +1642,7 @@ Implementation of the Private Browsing mode, and the integration of other module
 
 Core: Privilege Manager
 ~~~~~~~~~~~~~~~~~~~~~~~
-"caps"
+Caps is the capabilities-based security system.
 
 
 .. list-table::
@@ -1822,7 +1756,7 @@ Sandboxing for the Windows platform
       -
         | `David Parks (handyman) <https://people.mozilla.org/s?query=handyman>`__
     * - Owner(s) Emeritus
-      - Tim Abraldes (https://mozillians.org/en-US/u/TimAbraldes)
+      - Tim Abraldes
     * - Peer(s) Emeritus
       - Brian Bondy, Aaron Klotz, Jim Mathies, Toshihito Kikuchi
     * - Includes
@@ -1864,17 +1798,11 @@ Crypto/PKI code, including NSS (Network Security Services) and JSS (NSS for Java
       - Elio Maldonado, Franziskus Kiefer, Kevin Jacobs
     * - Includes
       -
-        | `dbm/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=dbm/\*\*/\*>`__
-        | `security/coreconf/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=security/coreconf/\*\*/\*>`__
-        | `security/dbm/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=security/dbm/\*\*/\*>`__
-        | `security/jss/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=security/jss/\*\*/\*>`__
         | `security/nss/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=security/nss/\*\*/\*>`__
-        | `security/tinderbox/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=security/tinderbox/\*\*/\*>`__
-        | `security/tinderlight/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=security/tinderlight/\*\*/\*>`__
     * - Group
       - dev-tech-crypto
     * - URL
-      - http://mozilla.org/projects/security/pki/
+      - :ref:`Network Security Services (NSS)`
     * - Bugzilla Components
       - NSS, JSS, Core::Security, Core::Security: S/MIME
 
@@ -1976,7 +1904,7 @@ Storage APIs with a SQLite backend
         | `Jan Varga (janv) <https://people.mozilla.org/s?query=janv>`__
     * - Includes
       -
-        | `db/sqlite3/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=db/sqlite3/\*\*/\*>`__
+        | `third_party/sqlite3/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=third_party/sqlite3/\*\*/\*>`__
         | `storage/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=storage/\*\*/\*>`__
     * - Group
       - dev-platform
@@ -2001,12 +1929,11 @@ Core: String
         | `Eric Rahm (erahm) <https://people.mozilla.org/s?query=erahm>`__
     * - Includes
       -
-        | `string/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=string/\*\*/\*>`__
         | `xpcom/string/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=xpcom/string/\*\*/\*>`__
     * - Group
       - dev-tech-xpcom
     * - URL
-      - https://developer.mozilla.org/En/Mozilla_internal_string_guide
+      - :ref:`String Guide`
     * - Bugzilla Components
       - Core::String
 
@@ -2067,7 +1994,7 @@ Scalable Vector Graphics
     * - Group
       - dev-tech-svg
     * - URL
-      - https://developer.mozilla.org/en-US/docs/Web/SVG
+      - https://developer.mozilla.org/docs/Web/SVG
     * - Bugzilla Components
       - Core::SVG
 
@@ -2093,7 +2020,7 @@ User Agent String
     * - Group
       - dev-platform
     * - URL
-      - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/User-Agent/Firefox
+      - https://developer.mozilla.org/docs/Web/HTTP/Headers/User-Agent/Firefox
     * - Bugzilla Components
       - Core::Networking: HTTP
 
@@ -2178,7 +2105,7 @@ painting, display lists, and layer construction
     * - Group
       - dev-platform
     * - URL
-      - http://mozilla.org/newlayout/doc/, http://lxr.mozilla.org/mozilla/source/layout/doc/
+      - :ref:`Layout & CSS`
     * - Bugzilla Components
       - Core::Layout: Web Painting
 
@@ -2207,7 +2134,7 @@ Core: Web Workers
     * - Group
       - dev-platform
     * - URL
-      - https://developer.mozilla.org/En/Using_web_workers
+      - https://developer.mozilla.org/docs/Web/API/Web_Workers_API/Using_web_workers
     * - Bugzilla Components
       - Core::DOM: Workers
 
@@ -2376,7 +2303,6 @@ Top level Widget
     * - Includes
       -
         | `widget/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=widget/\*\*/\*>`__
-        | `widget/xpwidgets/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=widget/xpwidgets/\*\*/\*>`__
     * - Group
       - dev-platform
     * - Bugzilla Components
@@ -2415,13 +2341,10 @@ GTK widget support
     * - Includes
       -
         | `widget/gtk/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=widget/gtk/\*\*/\*>`__
-        | `widget/gtk2/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=widget/gtk2/\*\*/\*>`__
-        | `widget/gtksuperwin/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=widget/gtksuperwin/\*\*/\*>`__
-        | `widget/gtkxtbin/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=widget/gtkxtbin/\*\*/\*>`__
     * - Group
       - dev-platform
     * - URL
-      - http://www.mozilla.org/unix/, http://www.gtk.org, http://www.mozilla.org/ports/gtk/
+      - http://www.mozilla.org/ports/gtk/
     * - Bugzilla Components
       - Core::Widget: Gtk
 
@@ -2519,12 +2442,9 @@ XML in Mozilla, including XML, XHTML, Namespaces in XML, Associating Style Sheet
     * - Includes
       -
         | `dom/xml/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=dom/xml/\*\*/\*>`__
-        | `extensions/xmlextras/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=extensions/xmlextras/\*\*/\*>`__
         | `parser/expat/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=parser/expat/\*\*/\*>`__
     * - Group
       - dev-tech-xml
-    * - URL
-      - http://www.mozilla.org/newlayout/xml/
     * - Bugzilla Components
       - Core::XML
 
@@ -2551,8 +2471,6 @@ Cross-Platform Applications, mostly Navigator front end and application shell.
         | `xpfe/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=xpfe/\*\*/\*>`__
     * - Group
       - dev-apps-seamonkey
-    * - URL
-      - http://www.mozilla.org/xpapps/
 
 Core: XPCOM
 ~~~~~~~~~~~
@@ -2577,7 +2495,7 @@ The cross-platform object model and core data structures.
     * - Owner(s) Emeritus
       - Benjamin Smedberg
     * - Peer(s) Emeritus
-      - Doug Turner (https://mozillians.org/en-US/u/dougt/), Eric Rahm, Simon Giesecke
+      - Doug Turner, Eric Rahm, Simon Giesecke
     * - Includes
       -
         | `startupcache/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=startupcache/\*\*/\*>`__
@@ -2597,7 +2515,7 @@ The cross-platform object model and core data structures.
     * - Group
       - dev-platform
     * - URL
-      - http://developer.mozilla.org/en/XPCOM
+      - :ref:`XPCOM`
     * - Bugzilla Components
       - Core::XPCOM
 
@@ -2655,7 +2573,7 @@ Cross-platform IDL compiler; produces .h C++ header files and .xpt runtime type 
     * - Group
       - dev-tech-xpcom
     * - URL
-      - http://www.mozilla.org/scriptable/xpidl, http://www.mozilla.org/scriptable
+      - :ref:`XPIDL`
 
 Core: XSLT Processor
 ~~~~~~~~~~~~~~~~~~~~
@@ -2677,7 +2595,7 @@ XSLT transformations processor
     * - Group
       - dev-tech-xslt
     * - URL
-      - http://www.mozilla.org/projects/xslt/, http://www.w3.org/TR/xslt.html
+      - https://developer.mozilla.org/docs/Web/XSLT
     * - Bugzilla Components
       - Core::XSLT
 
@@ -2708,8 +2626,6 @@ Standalone Web Browser.
         | `toolkit/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=toolkit/\*\*/\*>`__
     * - Group
       - firefox-dev
-    * - URL
-      - `Code Review Guidelines <https://wiki.mozilla.org/Firefox/Code_Review>`__
     * - Bugzilla Components
       - Firefox, Toolkit
 
@@ -2945,7 +2861,7 @@ Form detection and autocomplete.
     * - Peer(s)
       -
         | `Tim Giles (tgiles) <https://people.mozilla.org/s?query=tgiles>`__
-        | `Dimi Lee (dlee) <https://people.mozilla.org/s?query=dlee>`__
+        | `Dimi Lee (dimi) <https://people.mozilla.org/s?query=dimi>`__
     * - Owner(s) Emeritus
       - Matthew Noorenberghe
     * - Includes
@@ -3086,7 +3002,7 @@ Managing, saving and filling logins.
       -
         | `jaws <https://people.mozilla.org/s?query=jaws>`__
         | `Tim Giles (tgiles) <https://people.mozilla.org/s?query=tgiles>`__
-        | `Dimi Lee (dlee) <https://people.mozilla.org/s?query=dlee>`__
+        | `Dimi Lee (dimi) <https://people.mozilla.org/s?query=dimi>`__
         | `Sam Foster (sfoster) <https://people.mozilla.org/s?query=sfoster>`__
     * - Owner(s) Emeritus
       - Matthew Noorenberghe
@@ -3621,8 +3537,6 @@ Components shared between desktop and mobile browsers.
         | `toolkit/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=toolkit/\*\*/\*>`__
     * - Group
       - firefox-dev
-    * - URL
-      - `Code Review Guidelines <https://wiki.mozilla.org/Firefox/Code_Review>`__
     * - Bugzilla Components
       - Firefox, Toolkit
 
@@ -3673,7 +3587,7 @@ The core infrastructure in the Firefox client to send back Telemetry and FHR dat
     * - Group
       - fx-data-dev
     * - URL
-      - https://firefox-source-docs.mozilla.org/toolkit/components/telemetry/telemetry/index.html
+      - :ref:`Telemetry`
 
 
 UI Widgets

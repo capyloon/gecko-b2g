@@ -5436,7 +5436,8 @@ void PresShell::AddCanvasBackgroundColorItem(
   if (!addedScrollingBackgroundColor || forceUnscrolledItem) {
     nsDisplaySolidColor* item = MakeDisplayItem<nsDisplaySolidColor>(
         aBuilder, aFrame, aBounds, bgcolor);
-    if (addedScrollingBackgroundColor) {
+    if (addedScrollingBackgroundColor &&
+        mPresContext->IsRootContentDocumentCrossProcess()) {
       item->SetIsCheckerboardBackground();
     }
     AddDisplayItemToBottom(aBuilder, aList, item);
@@ -6071,7 +6072,7 @@ void PresShell::MarkFramesInSubtreeApproximatelyVisible(
   bool preserves3DChildren = aFrame->Extend3DContext();
 
   for (const auto& [list, listID] : aFrame->ChildLists()) {
-    if (listID == nsIFrame::kPopupList) {
+    if (listID == FrameChildListID::Popup) {
       // We assume all frames in popups are visible, so we skip them here.
       continue;
     }
@@ -6870,7 +6871,11 @@ void PresShell::nsSynthMouseMoveEvent::Revoke() {
 // static
 nsIFrame* PresShell::EventHandler::GetNearestFrameContainingPresShell(
     PresShell* aPresShell) {
-  nsView* view = aPresShell->GetViewManager()->GetRootView();
+  nsViewManager* vm = aPresShell->GetViewManager();
+  if (!vm) {
+    return nullptr;
+  }
+  nsView* view = vm->GetRootView();
   while (view && !view->GetFrame()) {
     view = view->GetParent();
   }
@@ -11258,7 +11263,7 @@ void PresShell::MarkFixedFramesForReflow(IntrinsicDirty aIntrinsicDirty) {
   nsIFrame* rootFrame = mFrameConstructor->GetRootFrame();
   if (rootFrame) {
     const nsFrameList& childList =
-        rootFrame->GetChildList(nsIFrame::kFixedList);
+        rootFrame->GetChildList(FrameChildListID::Fixed);
     for (nsIFrame* childFrame : childList) {
       FrameNeedsReflow(childFrame, aIntrinsicDirty, NS_FRAME_IS_DIRTY);
     }

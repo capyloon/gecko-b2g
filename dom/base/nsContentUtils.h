@@ -350,7 +350,6 @@ class nsContentUtils {
   static bool ShouldResistFingerprinting(nsIGlobalObject* aGlobalObject);
   static bool ShouldResistFingerprinting(nsIDocShell* aDocShell);
   // These functions are the new, nuanced functions
-  static bool ShouldResistFingerprinting(const Document* aDoc);
   static bool ShouldResistFingerprinting(nsIChannel* aChannel);
   static bool ShouldResistFingerprinting(nsILoadInfo* aPrincipal);
   // These functions are labeled as dangerous because they will do the wrong
@@ -1948,17 +1947,17 @@ class nsContentUtils {
    * @param aResult the result. Out param.
    * @return false on out of memory errors, true otherwise.
    */
-  [[nodiscard]] static bool GetNodeTextContent(nsINode* aNode, bool aDeep,
+  [[nodiscard]] static bool GetNodeTextContent(const nsINode* aNode, bool aDeep,
                                                nsAString& aResult,
                                                const mozilla::fallible_t&);
 
-  static void GetNodeTextContent(nsINode* aNode, bool aDeep,
+  static void GetNodeTextContent(const nsINode* aNode, bool aDeep,
                                  nsAString& aResult);
 
   /**
    * Same as GetNodeTextContents but appends the result rather than sets it.
    */
-  static bool AppendNodeTextContent(nsINode* aNode, bool aDeep,
+  static bool AppendNodeTextContent(const nsINode* aNode, bool aDeep,
                                     nsAString& aResult,
                                     const mozilla::fallible_t&);
 

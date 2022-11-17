@@ -49,6 +49,8 @@
 #  include "builtin/intl/FormatBuffer.h"
 #  include "builtin/intl/SharedIntlData.h"
 #endif
+#include "builtin/BigInt.h"
+#include "builtin/MapObject.h"
 #include "builtin/Promise.h"
 #include "builtin/TestingUtility.h"  // js::ParseCompileOptions, js::ParseDebugMetadata
 #include "frontend/BytecodeCompilation.h"  // frontend::CompileGlobalScriptToExtensibleStencil, frontend::DelazifyCanonicalScriptedFunction
@@ -102,6 +104,8 @@
 #include "util/DifferentialTesting.h"
 #include "util/StringBuffer.h"
 #include "util/Text.h"
+#include "vm/BooleanObject.h"
+#include "vm/DateObject.h"
 #include "vm/ErrorContext.h"  // AutoReportFrontendContext
 #include "vm/ErrorObject.h"
 #include "vm/GlobalObject.h"
@@ -110,6 +114,7 @@
 #include "vm/Interpreter.h"
 #include "vm/JSContext.h"
 #include "vm/JSObject.h"
+#include "vm/NumberObject.h"
 #include "vm/PlainObject.h"    // js::PlainObject
 #include "vm/PromiseObject.h"  // js::PromiseObject, js::PromiseSlot_*
 #include "vm/ProxyObject.h"
@@ -117,6 +122,7 @@
 #include "vm/ScopeKind.h"
 #include "vm/Stack.h"
 #include "vm/StencilObject.h"  // StencilObject, StencilXDRBufferObject
+#include "vm/StringObject.h"
 #include "vm/StringType.h"
 #include "wasm/AsmJS.h"
 #include "wasm/WasmBaselineCompile.h"
@@ -1195,18 +1201,30 @@ static bool WasmGlobalExtractLane(JSContext* cx, unsigned argc, Value* vp) {
 
   wasm::RootedVal val(cx);
   switch (interp) {
-    case LaneInterp::I32x4:
-      val.set(wasm::Val(v128.extractLane<uint32_t>(lane)));
+    case LaneInterp::I32x4: {
+      uint32_t i;
+      v128.extractLane<uint32_t>(lane, &i);
+      val.set(wasm::Val(i));
       break;
-    case LaneInterp::I64x2:
-      val.set(wasm::Val(v128.extractLane<uint64_t>(lane)));
+    }
+    case LaneInterp::I64x2: {
+      uint64_t i;
+      v128.extractLane<uint64_t>(lane, &i);
+      val.set(wasm::Val(i));
       break;
-    case LaneInterp::F32x4:
-      val.set(wasm::Val(v128.extractLane<float>(lane)));
+    }
+    case LaneInterp::F32x4: {
+      float f;
+      v128.extractLane<float>(lane, &f);
+      val.set(wasm::Val(f));
       break;
-    case LaneInterp::F64x2:
-      val.set(wasm::Val(v128.extractLane<double>(lane)));
+    }
+    case LaneInterp::F64x2: {
+      double d;
+      v128.extractLane<double>(lane, &d);
+      val.set(wasm::Val(d));
       break;
+    }
     default:
       MOZ_ASSERT_UNREACHABLE();
   }
@@ -1263,12 +1281,12 @@ static bool WasmGlobalsEqual(JSContext* cx, unsigned argc, Value* vp) {
     }
     case wasm::ValType::F32: {
       result = mozilla::BitwiseCast<uint32_t>(aVal.f32()) ==
-               mozilla::BitwiseCast<uint32_t>(aVal.f32());
+               mozilla::BitwiseCast<uint32_t>(bVal.f32());
       break;
     }
     case wasm::ValType::F64: {
       result = mozilla::BitwiseCast<uint64_t>(aVal.f64()) ==
-               mozilla::BitwiseCast<uint64_t>(aVal.f64());
+               mozilla::BitwiseCast<uint64_t>(bVal.f64());
       break;
     }
     case wasm::ValType::V128: {
@@ -4779,6 +4797,13 @@ static mozilla::Maybe<JS::StructuredCloneScope> ParseCloneScope(
 bool js::testingFunc_serialize(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
 
+  if (js::SupportDifferentialTesting()) {
+    RootedObject callee(cx, &args.callee());
+    ReportUsageErrorASCII(cx, callee,
+                          "Function unavailable in differential testing mode.");
+    return false;
+  }
+
   mozilla::Maybe<JSAutoStructuredCloneBuffer> clonebuf;
   JS::CloneDataPolicy policy;
 
@@ -4875,6 +4900,13 @@ bool js::testingFunc_serialize(JSContext* cx, unsigned argc, Value* vp) {
 
 static bool Deserialize(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
+
+  if (js::SupportDifferentialTesting()) {
+    RootedObject callee(cx, &args.callee());
+    ReportUsageErrorASCII(cx, callee,
+                          "Function unavailable in differential testing mode.");
+    return false;
+  }
 
   if (!args.get(0).isObject() || !args[0].toObject().is<CloneBufferObject>()) {
     JS_ReportErrorASCII(cx, "deserialize requires a clonebuffer argument");
@@ -9230,3 +9262,48 @@ bool js::DefineTestingFunctions(JSContext* cx, HandleObject obj,
 
   return JS_DefineFunctionsWithHelp(cx, obj, TestingFunctions);
 }
+
+#ifdef FUZZING_JS_FUZZILLI
+uint32_t js::FuzzilliHashDouble(double value) {
+  // We shouldn't GC here as this is called directly from IC code.
+  AutoUnsafeCallWithABI unsafe;
+  uint64_t v = mozilla::BitwiseCast<uint64_t>(value);
+  return static_cast<uint32_t>(v) + static_cast<uint32_t>(v >> 32);
+}
+
+uint32_t js::FuzzilliHashBigInt(BigInt* bigInt) {
+  // We shouldn't GC here as this is called directly from IC code.
+  AutoUnsafeCallWithABI unsafe;
+  return bigInt->hash();
+}
+
+void js::FuzzilliHashObject(JSContext* cx, JSObject* obj) {
+  // called from IC and baseline/interpreter
+  uint32_t hash;
+  FuzzilliHashObjectInl(cx, obj, &hash);
+
+  cx->executionHashInputs += 1;
+  cx->executionHash = mozilla::RotateLeft(cx->executionHash + hash, 1);
+}
+
+void js::FuzzilliHashObjectInl(JSContext* cx, JSObject* obj, uint32_t* out) {
+  *out = 0;
+  RootedValue v(cx);
+  v.setObject(*obj);
+
+  JSAutoStructuredCloneBuffer JSCloner(
+      JS::StructuredCloneScope::DifferentProcess, nullptr, nullptr);
+  if (JSCloner.write(cx, v)) {
+    JSStructuredCloneData& data = JSCloner.data();
+    data.ForEachDataChunk([&](const char* aData, size_t aSize) {
+      uint32_t h = mozilla::HashBytes(aData, aSize);
+      h = (h << 1) | 1;
+      *out ^= h;
+      *out *= h;
+      return true;
+    });
+  } else if (JS_IsExceptionPending(cx)) {
+    JS_ClearPendingException(cx);
+  }
+}
+#endif

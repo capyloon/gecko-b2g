@@ -193,6 +193,8 @@
 #include "mozilla/gfx/Rect.h"
 #include "mozilla/gfx/Types.h"
 #include "mozilla/intl/LocaleService.h"
+#include "mozilla/ipc/BackgroundUtils.h"
+#include "mozilla/ipc/PBackgroundSharedTypes.h"
 #include "mozilla/net/CookieJarSettings.h"
 #include "nsAtom.h"
 #include "nsBaseHashtable.h"
@@ -1627,7 +1629,7 @@ bool nsGlobalWindowInner::IsBlackForCC(bool aTracingNeeded) {
 
 bool nsGlobalWindowInner::ShouldResistFingerprinting() const {
   if (mDoc) {
-    return nsContentUtils::ShouldResistFingerprinting(mDoc);
+    return mDoc->ShouldResistFingerprinting();
   }
   return nsIScriptGlobalObject::ShouldResistFingerprinting();
 }
@@ -1648,6 +1650,32 @@ uint32_t nsGlobalWindowInner::GetPrincipalHashValue() const {
     return mDoc->NodePrincipal()->GetHashValue();
   }
   return 0;
+}
+
+mozilla::Result<mozilla::ipc::PrincipalInfo, nsresult>
+nsGlobalWindowInner::GetStorageKey() {
+  MOZ_ASSERT(NS_IsMainThread());
+
+  nsIPrincipal* principal = GetEffectiveStoragePrincipal();
+  if (!principal) {
+    return mozilla::Err(NS_ERROR_FAILURE);
+  }
+
+  mozilla::ipc::PrincipalInfo principalInfo;
+  nsresult rv = PrincipalToPrincipalInfo(principal, &principalInfo);
+  if (NS_FAILED(rv)) {
+    return mozilla::Err(rv);
+  }
+
+  // Block expanded and null principals, let content and system through.
+  if (principalInfo.type() !=
+          mozilla::ipc::PrincipalInfo::TContentPrincipalInfo &&
+      principalInfo.type() !=
+          mozilla::ipc::PrincipalInfo::TSystemPrincipalInfo) {
+    return Err(NS_ERROR_DOM_SECURITY_ERR);
+  }
+
+  return std::move(principalInfo);
 }
 
 nsresult nsGlobalWindowInner::EnsureScriptEnvironment() {
@@ -4990,10 +5018,8 @@ Storage* nsGlobalWindowInner::GetLocalStorage(ErrorResult& aError) {
   if (mDoc) {
     cookieJarSettings = mDoc->CookieJarSettings();
   } else {
-    bool shouldResistFingerprinting =
-        nsContentUtils::ShouldResistFingerprinting(this->GetExtantDoc());
     cookieJarSettings =
-        net::CookieJarSettings::GetBlockingAll(shouldResistFingerprinting);
+        net::CookieJarSettings::GetBlockingAll(ShouldResistFingerprinting());
   }
 
   // Note that this behavior is observable: if we grant storage permission to a
@@ -6592,7 +6618,7 @@ void nsGlobalWindowInner::DisableDeviceSensor(uint32_t aType) {
 
 #if defined(MOZ_WIDGET_ANDROID)
 void nsGlobalWindowInner::EnableOrientationChangeListener() {
-  if (!nsContentUtils::ShouldResistFingerprinting(GetDocShell())) {
+  if (!ShouldResistFingerprinting()) {
     mHasOrientationChangeListeners = true;
     mOrientationAngle = Orientation(CallerType::System);
   }
@@ -6919,7 +6945,7 @@ void nsGlobalWindowInner::GetGamepads(nsTArray<RefPtr<Gamepad>>& aGamepads) {
 
   // navigator.getGamepads() always returns an empty array when
   // privacy.resistFingerprinting is true.
-  if (nsContentUtils::ShouldResistFingerprinting(GetDocShell())) {
+  if (ShouldResistFingerprinting()) {
     return;
   }
 
@@ -7567,7 +7593,7 @@ void nsGlobalWindowInner::SetReplaceableWindowCoord(
     return;
   }
 
-  if (nsContentUtils::ShouldResistFingerprinting(GetDocShell())) {
+  if (ShouldResistFingerprinting()) {
     bool innerWidthSpecified = false;
     bool innerHeightSpecified = false;
     bool outerWidthSpecified = false;

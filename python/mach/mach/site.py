@@ -18,10 +18,10 @@ import site
 import subprocess
 import sys
 import sysconfig
-from pathlib import Path
 import tempfile
 from contextlib import contextmanager
-from typing import Optional, Callable
+from pathlib import Path
+from typing import Callable, Optional
 
 from mach.requirements import (
     MachEnvRequirements,
@@ -763,7 +763,7 @@ class PythonVirtualenv:
         else:
             self.bin_path = os.path.join(prefix, "bin")
             self.python_path = os.path.join(self.bin_path, "python")
-        self.prefix = prefix
+        self.prefix = os.path.realpath(prefix)
 
     @functools.lru_cache(maxsize=None)
     def resolve_sysconfig_packages_path(self, sysconfig_path):

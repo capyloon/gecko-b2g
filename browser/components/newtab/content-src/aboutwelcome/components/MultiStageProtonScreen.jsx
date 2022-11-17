@@ -6,8 +6,13 @@ import React, { useEffect, useState } from "react";
 import { Localized } from "./MSLocalized";
 import { Colorways } from "./MRColorways";
 import { MobileDownloads } from "./MobileDownloads";
+import { MultiSelect } from "./MultiSelect";
 import { Themes } from "./Themes";
-import { SecondaryCTA, StepsIndicator } from "./MultiStageAboutWelcome";
+import {
+  OnboardingVideo,
+  SecondaryCTA,
+  StepsIndicator,
+} from "./MultiStageAboutWelcome";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { CTAParagraph } from "./CTAParagraph";
 import { HeroImage } from "./HeroImage";
@@ -35,6 +40,8 @@ export const MultiStageProtonScreen = props => {
       id={props.id}
       order={props.order}
       activeTheme={props.activeTheme}
+      activeMultiSelect={props.activeMultiSelect}
+      setActiveMultiSelect={props.setActiveMultiSelect}
       totalNumberOfScreens={props.totalNumberOfScreens}
       handleAction={props.handleAction}
       isFirstCenteredScreen={props.isFirstCenteredScreen}
@@ -191,6 +198,16 @@ export class ProtonScreen extends React.PureComponent {
             handleAction={this.props.handleAction}
           />
         ) : null}
+        {content.tiles &&
+        content.tiles.type === "multiselect" &&
+        content.tiles.data ? (
+          <MultiSelect
+            content={content}
+            activeMultiSelect={this.props.activeMultiSelect}
+            setActiveMultiSelect={this.props.setActiveMultiSelect}
+            handleAction={this.props.handleAction}
+          />
+        ) : null}
       </React.Fragment>
     );
   }
@@ -286,7 +303,7 @@ export class ProtonScreen extends React.PureComponent {
     const isCenterPosition = content.position === "center" || !content.position;
     const hideStepsIndicator =
       autoAdvance ||
-      content?.has_video ||
+      content?.video_container ||
       (isFirstCenteredScreen && isLastCenteredScreen);
     const textColorClass = content.text_color
       ? `${content.text_color}-text`
@@ -298,7 +315,7 @@ export class ProtonScreen extends React.PureComponent {
           isFirstCenteredScreen,
           isLastCenteredScreen,
           includeNoodles,
-          content?.has_video
+          content?.video_container
         )
       : "";
 
@@ -366,6 +383,12 @@ export class ProtonScreen extends React.PureComponent {
                   />
                 ) : null}
               </div>
+              {content.video_container ? (
+                <OnboardingVideo
+                  content={content.video_container}
+                  handleAction={this.props.handleAction}
+                />
+              ) : null}
               {this.renderContentTiles()}
               {this.renderLanguageSwitcher()}
               <ProtonScreenActionButtons

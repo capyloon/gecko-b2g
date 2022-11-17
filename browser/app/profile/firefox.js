@@ -404,6 +404,13 @@ pref("browser.urlbar.suggest.calculator",           false);
   pref("browser.urlbar.quickactions.showInZeroPrefix", true);
 #endif
 
+// Feature gate pref for weather suggestions in the urlbar.
+pref("browser.urlbar.weather.featureGate", false);
+
+// If `browser.urlbar.weather.featureGate` is true, this controls whether
+// weather suggestions are turned on.
+pref("browser.urlbar.suggest.weather", true);
+
 // When `browser.urlbar.bestMatch.enabled` is true, this controls whether best
 // match results are shown in the urlbar. This pref is exposed to the user in
 // the UI, and it's sticky so that its user-branch value persists regardless of
@@ -1791,9 +1798,6 @@ pref("media.gmp.trial-create.enabled", true);
 pref("media.gmp-gmpopenh264.visible", true);
 pref("media.gmp-gmpopenh264.enabled", true);
 
-// Set Firefox to block autoplay, asking for permission by default.
-pref("media.autoplay.default", 1); // 0=Allowed, 1=Blocked, 5=All Blocked
-
 // Block WebAudio from playing automatically.
 pref("media.autoplay.block-webaudio", true);
 
@@ -2079,6 +2083,10 @@ pref("extensions.experiments.enabled", false);
   pref("dom.ipc.processPriorityManager.enabled", true);
 #endif
 
+#if defined(XP_WIN)
+  pref("dom.ipc.processPriorityManager.backgroundUsesEcoQoS", true);
+#endif
+
 // Don't limit how many nodes we care about on desktop:
 pref("reader.parse-node-limit", 0);
 
@@ -2134,6 +2142,7 @@ pref("browser.migrate.firefox.enabled", true);
 pref("browser.migrate.ie.enabled", true);
 pref("browser.migrate.safari.enabled", true);
 pref("browser.migrate.opera.enabled", false);
+pref("browser.migrate.vivaldi.enabled", false);
 
 pref("browser.migrate.showBookmarksToolbarAfterMigration", true);
 
@@ -2518,8 +2527,8 @@ pref("devtools.storage.enabled", true);
 // Enable the Style Editor.
 pref("devtools.styleeditor.enabled", true);
 pref("devtools.styleeditor.autocompletion-enabled", true);
-pref("devtools.styleeditor.showMediaSidebar", true);
-pref("devtools.styleeditor.mediaSidebarWidth", 238);
+pref("devtools.styleeditor.showAtRulesSidebar", true);
+pref("devtools.styleeditor.atRulesSidebarWidth", 238);
 pref("devtools.styleeditor.navSidebarWidth", 245);
 pref("devtools.styleeditor.transitions", true);
 
@@ -2763,8 +2772,3 @@ pref("browser.pdfjs.feature-tour", "{\"screen\":\"FEATURE_CALLOUT_1\",\"complete
 
 // Enables the cookie banner desktop UI.
 pref("cookiebanners.ui.desktop.enabled", false);
-
-// We only want to enable this pref for Desktop nightlies.
-#ifdef NIGHTLY_BUILD
-  pref("dom.sitepermsaddon-provider.enabled", true);
-#endif

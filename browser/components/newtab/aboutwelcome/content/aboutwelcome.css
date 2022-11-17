@@ -428,6 +428,55 @@ html {
   background-color: var(--mr-welcome-background-color);
   border-radius: 8px;
   box-shadow: 0 2px 14px rgba(58, 57, 68, 0.2);
+  padding: 44px 85px 20px;
+}
+.onboardingContainer .screen[pos=center].with-video .main-content .welcome-text {
+  margin: 0;
+}
+.onboardingContainer .screen[pos=center].with-video .main-content .main-content-inner {
+  justify-content: space-between;
+}
+.onboardingContainer .screen[pos=center].with-video .main-content h1,
+.onboardingContainer .screen[pos=center].with-video .main-content h2 {
+  align-self: start;
+}
+.onboardingContainer .screen[pos=center].with-video .main-content h1 {
+  font-size: 24px;
+  line-height: 28.8px;
+}
+.onboardingContainer .screen[pos=center].with-video .main-content h2 {
+  font-size: 15px;
+  line-height: 22px;
+}
+.onboardingContainer .screen[pos=center].with-video .main-content .secondary-cta {
+  justify-content: end;
+}
+.onboardingContainer .screen[pos=center].with-video .main-content .secondary-cta .arrow-icon {
+  -moz-context-properties: fill;
+  fill: currentColor;
+}
+.onboardingContainer .screen[pos=center].with-video .main-content .secondary-cta .arrow-icon::after {
+  content: "";
+  padding-inline-end: 12px;
+  margin-inline-start: 4px;
+  background: url("chrome://browser/skin/forward.svg") no-repeat center/12px;
+}
+.onboardingContainer .screen[pos=center].with-video .main-content .secondary-cta .arrow-icon:dir(rtl)::after {
+  background-image: url("chrome://browser/skin/back.svg");
+}
+.onboardingContainer .screen[pos=center].with-video .main-content .secondary-cta .secondary {
+  background-color: var(--in-content-button-background) !important;
+  border: 1px solid var(--in-content-button-border-color);
+  line-height: 12px;
+  font-size: 0.72em;
+  font-weight: 600;
+  padding: 8px 16px;
+  color: var(--in-content-button-text-color);
+}
+.onboardingContainer .screen[pos=center].with-video .main-content .secondary-cta .secondary:hover {
+  text-decoration: none;
+  background-color: var(--in-content-button-background-hover) !important;
+  color: var(--in-content-button-text-color-hover);
 }
 .onboardingContainer .screen:not([pos=split]) .secondary-cta .secondary {
   background: none;
@@ -458,6 +507,7 @@ html {
   right: 0;
   bottom: 0;
   margin: auto;
+  pointer-events: none;
 }
 .onboardingContainer .screen[pos=split] .section-secondary,
 .onboardingContainer .screen[pos=split] .section-main {
@@ -571,11 +621,15 @@ html {
   width: 300px;
 }
 .onboardingContainer .screen[pos=split] .section-main .main-content .welcome-text h2 {
-  color: #5B5B66;
   margin: 10px 0 0;
   min-height: 1em;
   font-size: 15px;
   line-height: 1.5;
+}
+@media (prefers-contrast: no-preference) {
+  .onboardingContainer .screen[pos=split] .section-main .main-content .welcome-text h2 {
+    color: #5B5B66;
+  }
 }
 .onboardingContainer .screen[pos=split] .section-main .main-content .welcome-text h1,
 .onboardingContainer .screen[pos=split] .section-main .main-content .primary {
@@ -668,7 +722,7 @@ html {
 .onboardingContainer .screen[pos=split] .tiles-theme-container .theme {
   min-width: 38px;
 }
-@media (prefers-color-scheme: dark) {
+@media (prefers-contrast: no-preference) and (prefers-color-scheme: dark) {
   .onboardingContainer .screen[pos=split] .section-main .main-content .welcome-text h2 {
     color: #CFCFD8;
   }
@@ -1246,6 +1300,27 @@ html {
 .onboardingContainer .tiles-delayed {
   animation: fadein 0.4s;
 }
+.onboardingContainer .multi-select-container {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-block: -1em 1em;
+  color: #5B5B66;
+  font-weight: 400;
+  font-size: 14px;
+  transition: var(--transition);
+  z-index: 1;
+}
+.onboardingContainer .multi-select-container .checkbox-container {
+  display: flex;
+  margin-bottom: 16px;
+  align-items: center;
+}
+@media (prefers-color-scheme: dark) {
+  .onboardingContainer .multi-select-container {
+    color: #CFCFD8;
+  }
+}
 .onboardingContainer .mobile-downloads .qr-code-image {
   margin: 24px 0 10px;
   width: 113px;
@@ -1581,7 +1656,8 @@ html {
 .onboardingContainer .dialog-initial .brand-logo {
   transition-delay: 0.6s;
 }
-.onboardingContainer .dialog-initial .welcome-text {
+.onboardingContainer .dialog-initial .welcome-text,
+.onboardingContainer .dialog-initial .multi-select-container {
   transition-delay: 0.8s;
 }
 .onboardingContainer .dialog-initial .colorway-variations,
@@ -1666,6 +1742,7 @@ html {
   opacity: 0.2;
 }
 .onboardingContainer.transition-in .screen:not([pos=corner]) .welcome-text,
+.onboardingContainer.transition-in .screen:not([pos=corner]) .multi-select-container,
 .onboardingContainer.transition-in .screen:not([pos=corner]) .colorway-variations,
 .onboardingContainer.transition-in .screen:not([pos=corner]) .tiles-theme-section,
 .onboardingContainer.transition-in .screen:not([pos=corner]) .colorway-text,
@@ -1702,7 +1779,8 @@ html {
 .onboardingContainer.transition-out .screen:not(.dialog-last):not([pos=corner]) .main-content {
   overflow: hidden;
 }
-.onboardingContainer.transition-out .screen:not(.dialog-last):not([pos=corner]) .welcome-text {
+.onboardingContainer.transition-out .screen:not(.dialog-last):not([pos=corner]) .welcome-text,
+.onboardingContainer.transition-out .screen:not(.dialog-last):not([pos=corner]) .multi-select-container {
   opacity: 0;
   translate: 0 var(--translate);
   transition-delay: 0.1s;

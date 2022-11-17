@@ -15,7 +15,7 @@ const twoTabs = [
     title: "Phabricator Home",
     url: "https://phabricator.services.mozilla.com/",
     icon: "https://phabricator.services.mozilla.com/favicon.d25d81d39065.ico",
-    lastUsed: 1655745700000, // Mon, 20 Jun 2022 17:21:40 GMT
+    lastUsed: 1655745700, // Mon, 20 Jun 2022 17:21:40 GMT
   },
   {
     type: "tab",
@@ -23,7 +23,7 @@ const twoTabs = [
     url: "https://www.mozilla.org/en-US/privacy/firefox/",
     icon:
       "https://www.mozilla.org/media/img/favicons/mozilla/favicon.d25d81d39065.ico",
-    lastUsed: 1655745700000, // Mon, 20 Jun 2022 17:21:40 GMT
+    lastUsed: 1655745700, // Mon, 20 Jun 2022 17:21:40 GMT
   },
 ];
 const syncedTabsData2 = structuredClone(syncedTabsData1);
@@ -42,7 +42,7 @@ const syncedTabsData3 = [
         title: "Sandboxes - Sinon.JS",
         url: "https://sinonjs.org/releases/latest/sandbox/",
         icon: "https://sinonjs.org/assets/images/favicon.png",
-        lastUsed: 1655391592000, // Thu Jun 16 2022 14:59:52 GMT+0000
+        lastUsed: 1655391592, // Thu Jun 16 2022 14:59:52 GMT+0000
       },
     ],
   },
@@ -64,7 +64,7 @@ const syncedTabsData5 = [
         title: "Example2",
         url: "https://example.com",
         icon: "https://example/favicon.png",
-        lastUsed: Math.floor(Date.now() - 1000 * 60), // This is one minute from now, which is below the threshold for 'Just now'
+        lastUsed: Math.floor((Date.now() - 1000 * 60) / 1000), // This is one minute from now, which is below the threshold for 'Just now'
       },
     ],
   },
@@ -418,6 +418,8 @@ add_task(async function test_time_updates_correctly() {
 
 /**
  * Ensure that tabs sync when a user reloads Firefox View.
+ * This is accomplished by asserting that a new set of tabs are loaded
+ * on page reload.
  */
 add_task(async function test_tabs_sync_on_user_page_reload() {
   await withFirefoxView({}, async browser => {
@@ -427,7 +429,7 @@ add_task(async function test_tabs_sync_on_user_page_reload() {
     sandbox.stub(SyncedTabs._internal, "syncTabs").resolves(true);
     const syncedTabsMock = sandbox.stub(SyncedTabs, "getRecentTabs");
     let mockTabs1 = getMockTabData(syncedTabsData1);
-    let mockTabs2 = getMockTabData(syncedTabsData5);
+    let expectedTabsAfterReload = getMockTabData(syncedTabsData3);
     syncedTabsMock.returns(mockTabs1);
 
     await setupListState(browser);
@@ -441,7 +443,7 @@ add_task(async function test_tabs_sync_on_user_page_reload() {
     ok(true, "Firefox View has been reloaded");
     ok(TabsSetupFlowManager.waitingForTabs, "waitingForTabs is true");
 
-    syncedTabsMock.returns(mockTabs2);
+    syncedTabsMock.returns(expectedTabsAfterReload);
     Services.obs.notifyObservers(null, "services.sync.tabs.changed");
     ok(!TabsSetupFlowManager.waitingForTabs, "waitingForTabs is false");
 
@@ -450,14 +452,10 @@ add_task(async function test_tabs_sync_on_user_page_reload() {
     await BrowserTestUtils.waitForMutationCondition(
       syncedTabsList,
       { childList: true },
-      () => syncedTabsList.firstChild.textContent.includes("Example2")
+      () =>
+        syncedTabsList.firstChild.textContent.includes("Sandboxes - Sinon.JS")
     );
-    const timeLabel = document.querySelector("span.synced-tab-li-time");
-    await BrowserTestUtils.waitForMutationCondition(
-      timeLabel,
-      { childList: true },
-      () => timeLabel.textContent.includes("now")
-    );
+
     sandbox.restore();
     cleanup_tab_pickup();
   });
@@ -466,112 +464,107 @@ add_task(async function test_tabs_sync_on_user_page_reload() {
     // Setting this pref allows the test to run as expected on MacOS
     await SpecialPowers.pushPrefEnv({ set: [["accessibility.tabfocus", 7]] });
     TabsSetupFlowManager.resetInternalState();
-    await BrowserTestUtils.withNewTab(
-      {
-        gBrowser,
-        url: "about:firefoxview",
-      },
-      async browser => {
-        const { document } = browser.contentWindow;
-        const sandbox = setupRecentDeviceListMocks();
-        const syncedTabsMock = sandbox.stub(SyncedTabs, "getRecentTabs");
-        let mockTabs1 = getMockTabData(syncedTabsData1);
-        syncedTabsMock.returns(mockTabs1);
+    await withFirefoxView({}, async browser => {
+      const { document } = browser.contentWindow;
+      let win = browser.ownerGlobal;
+      const sandbox = setupRecentDeviceListMocks();
+      const syncedTabsMock = sandbox.stub(SyncedTabs, "getRecentTabs");
+      let mockTabs1 = getMockTabData(syncedTabsData1);
+      syncedTabsMock.returns(mockTabs1);
 
-        await setupListState(browser);
-        const tab = (shiftKey = false) => {
-          info(`${shiftKey ? "Shift + Tab" : "Tab"}`);
-          EventUtils.synthesizeKey("KEY_Tab", { shiftKey });
-        };
-        const arrowDown = () => {
-          info("Arrow Down");
-          EventUtils.synthesizeKey("KEY_ArrowDown");
-        };
-        const arrowUp = () => {
-          info("Arrow Up");
-          EventUtils.synthesizeKey("KEY_ArrowUp");
-        };
-        const arrowLeft = () => {
-          info("Arrow Left");
-          EventUtils.synthesizeKey("KEY_ArrowLeft");
-        };
-        const arrowRight = () => {
-          info("Arrow Right");
-          EventUtils.synthesizeKey("KEY_ArrowRight");
-        };
+      await setupListState(browser);
+      const tab = (shiftKey = false) => {
+        info(`${shiftKey ? "Shift + Tab" : "Tab"}`);
+        EventUtils.synthesizeKey("KEY_Tab", { shiftKey }, win);
+      };
+      const arrowDown = () => {
+        info("Arrow Down");
+        EventUtils.synthesizeKey("KEY_ArrowDown", {}, win);
+      };
+      const arrowUp = () => {
+        info("Arrow Up");
+        EventUtils.synthesizeKey("KEY_ArrowUp", {}, win);
+      };
+      const arrowLeft = () => {
+        info("Arrow Left");
+        EventUtils.synthesizeKey("KEY_ArrowLeft", {}, win);
+      };
+      const arrowRight = () => {
+        info("Arrow Right");
+        EventUtils.synthesizeKey("KEY_ArrowRight", {}, win);
+      };
 
-        let syncedTabsLinks = document
-          .querySelector("ol.synced-tabs-list")
-          .querySelectorAll("a");
-        let summary = document
-          .getElementById("tab-pickup-container")
-          .querySelector("summary");
-        summary.focus();
-        tab();
-        is(
-          syncedTabsLinks[0],
-          document.activeElement,
-          "First synced tab should be focused"
-        );
-        arrowDown();
-        is(
-          syncedTabsLinks[1],
-          document.activeElement,
-          "Second synced tab should be focused"
-        );
-        arrowDown();
-        is(
-          syncedTabsLinks[2],
-          document.activeElement,
-          "Third synced tab should be focused"
-        );
-        arrowDown();
-        is(
-          syncedTabsLinks[2],
-          document.activeElement,
-          "Third synced tab should still be focused"
-        );
-        arrowUp();
-        is(
-          syncedTabsLinks[1],
-          document.activeElement,
-          "Second synced tab should be focused"
-        );
-        arrowLeft();
-        is(
-          syncedTabsLinks[0],
-          document.activeElement,
-          "First synced tab should be focused"
-        );
-        arrowRight();
-        is(
-          syncedTabsLinks[1],
-          document.activeElement,
-          "Second synced tab should be focused"
-        );
-        arrowDown();
-        is(
-          syncedTabsLinks[2],
-          document.activeElement,
-          "Third synced tab should be focused"
-        );
-        arrowLeft();
-        is(
-          syncedTabsLinks[0],
-          document.activeElement,
-          "First synced tab should be focused"
-        );
+      let syncedTabsLinks = document
+        .querySelector("ol.synced-tabs-list")
+        .querySelectorAll("a");
+      let summary = document
+        .getElementById("tab-pickup-container")
+        .querySelector("summary");
+      summary.focus();
+      tab();
+      is(
+        syncedTabsLinks[0],
+        document.activeElement,
+        "First synced tab should be focused"
+      );
+      arrowDown();
+      is(
+        syncedTabsLinks[1],
+        document.activeElement,
+        "Second synced tab should be focused"
+      );
+      arrowDown();
+      is(
+        syncedTabsLinks[2],
+        document.activeElement,
+        "Third synced tab should be focused"
+      );
+      arrowDown();
+      is(
+        syncedTabsLinks[2],
+        document.activeElement,
+        "Third synced tab should still be focused"
+      );
+      arrowUp();
+      is(
+        syncedTabsLinks[1],
+        document.activeElement,
+        "Second synced tab should be focused"
+      );
+      arrowLeft();
+      is(
+        syncedTabsLinks[0],
+        document.activeElement,
+        "First synced tab should be focused"
+      );
+      arrowRight();
+      is(
+        syncedTabsLinks[1],
+        document.activeElement,
+        "Second synced tab should be focused"
+      );
+      arrowDown();
+      is(
+        syncedTabsLinks[2],
+        document.activeElement,
+        "Third synced tab should be focused"
+      );
+      arrowLeft();
+      is(
+        syncedTabsLinks[0],
+        document.activeElement,
+        "First synced tab should be focused"
+      );
 
-        tab(true);
-        is(
-          summary,
-          document.activeElement,
-          "Summary element should be focused when shift tabbing away from list"
-        );
+      tab(true);
+      is(
+        summary,
+        document.activeElement,
+        "Summary element should be focused when shift tabbing away from list"
+      );
 
-        sandbox.restore();
-        cleanup_tab_pickup();
-      }
-    );
+      sandbox.restore();
+      cleanup_tab_pickup();
+    });
   });
 });

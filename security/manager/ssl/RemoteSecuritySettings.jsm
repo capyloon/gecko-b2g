@@ -124,7 +124,7 @@ function setRevocations(certStorage, revocations) {
  * @param {Integer} dataType a Ci.nsICertStorage.DATA_TYPE_* constant
  *                           indicating the type of data
 
- * @return {Promise} a promise that will resolve with true if the data type is
+ * @returns {Promise} a promise that will resolve with true if the data type is
  *                   present
  */
 function hasPriorData(dataType) {
@@ -147,7 +147,12 @@ function hasPriorData(dataType) {
 /**
  * Revoke the appropriate certificates based on the records from the blocklist.
  *
- * @param {Object} data   Current records in the local db.
+ * @param {object} options
+ * @param {object} options.data Current records in the local db.
+ * @param {Array} options.data.current
+ * @param {Array} options.data.created
+ * @param {Array} options.data.updated
+ * @param {Array} options.data.deleted
  */
 const updateCertBlocklist = async function({
   data: { current, created, updated, deleted },
@@ -167,7 +172,8 @@ const updateCertBlocklist = async function({
     created = current;
   }
 
-  for (let item of deleted) {
+  let toDelete = deleted.concat(updated.map(u => u.old));
+  for (let item of toDelete) {
     if (item.issuerName && item.serialNumber) {
       items.push(
         new IssuerAndSerialRevocationState(
@@ -215,7 +221,7 @@ const updateCertBlocklist = async function({
     );
     await setRevocations(certList, items);
   } catch (e) {
-    Cu.reportError(e);
+    lazy.log.error(e);
   }
 };
 
@@ -229,7 +235,7 @@ var RemoteSecuritySettings = {
    * Initialize the clients (cheap instantiation) and setup their sync event.
    * This static method is called from BrowserGlue.jsm soon after startup.
    *
-   * @returns {Object} instantiated clients for security remote settings.
+   * @returns {object} instantiated clients for security remote settings.
    */
   init() {
     // Avoid repeated initialization (work-around for bug 1730026).
@@ -374,7 +380,7 @@ class IntermediatePreloads {
       certStorage.addCerts(certInfos, resolve);
     }).catch(err => err);
     if (result != Cr.NS_OK) {
-      Cu.reportError(`certStorage.addCerts failed: ${result}`);
+      lazy.log.error(`certStorage.addCerts failed: ${result}`);
       return;
     }
     try {
@@ -421,9 +427,10 @@ class IntermediatePreloads {
   /**
    * Attempts to download the attachment, assuming it's not been processed
    * already. Does not retry, and always resolves (e.g., does not reject upon
-   * failure.) Errors are reported via Cu.reportError.
+   * failure.) Errors are reported via console.error.
+   *
    * @param  {AttachmentRecord} record defines which data to obtain
-   * @return {Promise}          a Promise that will resolve to an object with the properties
+   * @returns {Promise}          a Promise that will resolve to an object with the properties
    *                            record, cert, and subject. record is the original record.
    *                            cert is the base64-encoded bytes of the downloaded certificate (if
    *                            downloading was successful), and null otherwise.
@@ -443,7 +450,7 @@ class IntermediatePreloads {
       if (err.name == "BadContentError") {
         lazy.log.debug(`Bad attachment content.`);
       } else {
-        Cu.reportError(`Failed to download attachment: ${err}`);
+        lazy.log.error(`Failed to download attachment: ${err}`);
       }
       return result;
     }
@@ -463,7 +470,7 @@ class IntermediatePreloads {
         bytesToString(cert.tbsCertificate.subject._der._bytes)
       );
     } catch (err) {
-      Cu.reportError(`Failed to decode cert: ${err}`);
+      lazy.log.error(`Failed to decode cert: ${err}`);
       return result;
     }
     result.cert = certBase64;
@@ -484,7 +491,7 @@ class IntermediatePreloads {
       certStorage.removeCertsByHashes(hashes, resolve);
     }).catch(err => err);
     if (result != Cr.NS_OK) {
-      Cu.reportError(`Failed to remove some intermediate certificates`);
+      lazy.log.error(`Failed to remove some intermediate certificates`);
     }
   }
 }
@@ -537,8 +544,7 @@ class CRLiteFilters {
         }
       }
     } catch (e) {
-      lazy.log.debug(e);
-      Cu.reportError("Could not clean cert-revocations attachment cache", e);
+      lazy.log.error("Could not clean cert-revocations attachment cache", e);
     }
   }
 
@@ -636,8 +642,7 @@ class CRLiteFilters {
         filter.bytes = bytes;
         filtersDownloaded.push(filter);
       } catch (e) {
-        lazy.log.debug(e);
-        Cu.reportError("failed to download CRLite filter", e);
+        lazy.log.error("failed to download CRLite filter", e);
       }
     }
     let fullFiltersDownloaded = filtersDownloaded.filter(

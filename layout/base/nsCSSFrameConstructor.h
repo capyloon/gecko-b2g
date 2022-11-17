@@ -103,8 +103,6 @@ class nsCSSFrameConstructor final : public nsFrameManager {
 
   nsIFrame* ConstructRootFrame();
 
-  void ReconstructDocElementHierarchy(InsertionKind);
-
  private:
   enum Operation { CONTENTAPPEND, CONTENTINSERT };
 
@@ -299,6 +297,12 @@ class nsCSSFrameConstructor final : public nsFrameManager {
                                   nsContainerFrame* aParentFrame,
                                   bool aIsFluid = true);
 
+  void SetNextPageContentFramePageName(const nsAtom* aAtom) {
+    MOZ_ASSERT(!mNextPageContentFramePageName,
+               "PageContentFrame page name was already set");
+    mNextPageContentFramePageName = aAtom;
+  }
+
   // Copy over fixed frames from aParentFrame's prev-in-flow
   nsresult ReplicateFixedFrames(nsPageContentFrame* aParentFrame);
 
@@ -439,7 +443,7 @@ class nsCSSFrameConstructor final : public nsFrameManager {
    * then we also set aText to the returned node.
    */
   already_AddRefed<nsIContent> CreateGenConTextNode(
-      nsFrameConstructorState& aState, const nsString& aString,
+      nsFrameConstructorState& aState, const nsAString& aString,
       mozilla::UniquePtr<nsGenConInitializer> aInitializer);
 
   /**
@@ -448,11 +452,13 @@ class nsCSSFrameConstructor final : public nsFrameManager {
    * to the document, and creating frames for it.
    * @param aOriginatingElement is the node that has the before/after style.
    * @param aComputedStyle is the 'before' or 'after' pseudo-element style.
-   * @param aContentIndex is the index of the content item to create
+   * @param aContentIndex is the index of the content item to create.
+   * @param aAddChild callback to be called for each generated content child.
    */
-  already_AddRefed<nsIContent> CreateGeneratedContent(
+  void CreateGeneratedContent(
       nsFrameConstructorState& aState, Element& aOriginatingElement,
-      ComputedStyle& aComputedStyle, uint32_t aContentIndex);
+      ComputedStyle& aPseudoStyle, uint32_t aContentIndex,
+      const mozilla::FunctionRef<void(nsIContent*)> aAddChild);
 
   /**
    * Create child content nodes for a ::marker from its 'list-style-*' values.
@@ -1117,7 +1123,6 @@ class nsCSSFrameConstructor final : public nsFrameManager {
           mSuppressWhiteSpaceOptimizations(aSuppressWhiteSpaceOptimizations),
           mIsText(false),
           mIsGeneratedContent(false),
-          mIsRootPopupgroup(false),
           mIsAllInline(false),
           mIsBlock(false),
           mIsPopup(false),
@@ -1178,8 +1183,6 @@ class nsCSSFrameConstructor final : public nsFrameManager {
     // Whether this is a generated content container.
     // If it is, mContent is a strong pointer.
     bool mIsGeneratedContent : 1;
-    // Whether this is an item for the root popupgroup.
-    bool mIsRootPopupgroup : 1;
     // Whether construction from this item will create only frames that are
     // IsInlineOutside() in the principal child list.  This is not precise, but
     // conservative: if true the frames will really be inline, whereas if false
@@ -1230,7 +1233,7 @@ class nsCSSFrameConstructor final : public nsFrameManager {
     explicit AutoFrameConstructionItem(nsCSSFrameConstructor* aFCtor,
                                        Args&&... args)
         : mFCtor(aFCtor),
-          mItem(new (aFCtor)
+          mItem(new(aFCtor)
                     FrameConstructionItem(std::forward<Args>(args)...)) {
       MOZ_ASSERT(mFCtor);
     }
@@ -2132,6 +2135,13 @@ class nsCSSFrameConstructor final : public nsFrameManager {
 
   // FrameConstructionItem arena + list of freed items available for re-use.
   mozilla::ArenaAllocator<4096, 8> mFCItemPool;
+
+  // This indicates what page name to use for the next nsPageContentFrame.
+  // Set when CSS named pages cause a breakpoint.
+  // This does not apply to the first page content frame, which has its name
+  // set by nsPageContentFrame::EnsurePageName() during first reflow.
+  RefPtr<const nsAtom> mNextPageContentFramePageName;
+
   struct FreeFCItemLink {
     FreeFCItemLink* mNext;
   };

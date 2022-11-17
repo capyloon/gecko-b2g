@@ -278,7 +278,7 @@ nsDOMAttributeMap* Element::Attributes() {
 }
 
 void Element::SetPointerCapture(int32_t aPointerId, ErrorResult& aError) {
-  if (nsContentUtils::ShouldResistFingerprinting(GetComposedDoc()) &&
+  if (OwnerDoc()->ShouldResistFingerprinting() &&
       aPointerId != PointerEventHandler::GetSpoofedPointerIdForRFP()) {
     aError.ThrowNotFoundError("Invalid pointer id");
     return;
@@ -307,7 +307,7 @@ void Element::SetPointerCapture(int32_t aPointerId, ErrorResult& aError) {
 }
 
 void Element::ReleasePointerCapture(int32_t aPointerId, ErrorResult& aError) {
-  if (nsContentUtils::ShouldResistFingerprinting(GetComposedDoc()) &&
+  if (OwnerDoc()->ShouldResistFingerprinting() &&
       aPointerId != PointerEventHandler::GetSpoofedPointerIdForRFP()) {
     aError.ThrowNotFoundError("Invalid pointer id");
     return;
@@ -3962,7 +3962,6 @@ void Element::InsertAdjacentHTML(const nsAString& aPosition,
   // listeners on the fragment that comes from the parser.
   nsAutoScriptBlockerSuppressNodeRemoved scriptBlocker;
 
-  nsAutoMutationBatch mb(destination, true, false);
   switch (position) {
     case eBeforeBegin:
       destination->InsertBefore(*fragment, this, aError);

@@ -18,9 +18,10 @@ ChromeUtils.defineESModuleGetters(this, {
   BrowserSearchTelemetry: "resource:///modules/BrowserSearchTelemetry.sys.mjs",
   BrowserTelemetryUtils: "resource://gre/modules/BrowserTelemetryUtils.sys.mjs",
   Color: "resource://gre/modules/Color.sys.mjs",
+  Deprecated: "resource://gre/modules/Deprecated.sys.mjs",
   DevToolsSocketStatus:
     "resource://devtools/shared/security/DevToolsSocketStatus.sys.mjs",
-  Deprecated: "resource://gre/modules/Deprecated.sys.mjs",
+  DownloadsCommon: "resource:///modules/DownloadsCommon.sys.mjs",
   E10SUtils: "resource://gre/modules/E10SUtils.sys.mjs",
   FirefoxViewNotificationManager:
     "resource:///modules/firefox-view-notification-manager.sys.mjs",
@@ -64,7 +65,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   ContextualIdentityService:
     "resource://gre/modules/ContextualIdentityService.jsm",
   CustomizableUI: "resource:///modules/CustomizableUI.jsm",
-  DownloadsCommon: "resource:///modules/DownloadsCommon.jsm",
   DownloadUtils: "resource://gre/modules/DownloadUtils.jsm",
   NimbusFeatures: "resource://nimbus/ExperimentAPI.jsm",
   ExtensionsUI: "resource:///modules/ExtensionsUI.jsm",
@@ -1730,11 +1730,12 @@ var gBrowserInit = {
     gNavToolbox.palette = document.getElementById(
       "BrowserToolbarPalette"
     ).content;
-    let areas = CustomizableUI.areas;
-    areas.splice(areas.indexOf(CustomizableUI.AREA_FIXED_OVERFLOW_PANEL), 1);
-    for (let area of areas) {
-      let node = document.getElementById(area);
-      CustomizableUI.registerToolbarNode(node);
+    for (let area of CustomizableUI.areas) {
+      let type = CustomizableUI.getAreaType(area);
+      if (type == CustomizableUI.TYPE_TOOLBAR) {
+        let node = document.getElementById(area);
+        CustomizableUI.registerToolbarNode(node);
+      }
     }
     BrowserSearch.initPlaceHolder();
 
@@ -2410,12 +2411,12 @@ var gBrowserInit = {
         // downloads will start right away, and initializing again won't hurt.
         try {
           DownloadsCommon.initializeAllDataLinks();
-          ChromeUtils.import(
-            "resource:///modules/DownloadsTaskbar.jsm"
+          ChromeUtils.importESModule(
+            "resource:///modules/DownloadsTaskbar.sys.mjs"
           ).DownloadsTaskbar.registerIndicator(window);
           if (AppConstants.platform == "macosx") {
-            ChromeUtils.import(
-              "resource:///modules/DownloadsMacFinderProgress.jsm"
+            ChromeUtils.importESModule(
+              "resource:///modules/DownloadsMacFinderProgress.sys.mjs"
             ).DownloadsMacFinderProgress.register();
           }
           Services.telemetry.setEventRecordingEnabled("downloads", true);
@@ -4741,7 +4742,7 @@ function updateEditUIVisibility() {
     // Now check the edit-controls toolbar buttons.
     let placement = CustomizableUI.getPlacementOfWidget("edit-controls");
     let areaType = placement ? CustomizableUI.getAreaType(placement.area) : "";
-    if (areaType == CustomizableUI.TYPE_MENU_PANEL) {
+    if (areaType == CustomizableUI.TYPE_PANEL) {
       let customizablePanel = PanelUI.overflowPanel;
       gEditUIVisible = kOpenPopupStates.includes(customizablePanel.state);
     } else if (
@@ -5466,9 +5467,18 @@ var XULBrowserWindow = {
 
     SaveToPocket.onLocationChange(window);
 
+    let originalURI;
+    if (
+      aRequest instanceof Ci.nsIChannel &&
+      !isBlankPageURL(aRequest.originalURI.spec)
+    ) {
+      originalURI = aRequest.originalURI;
+    }
+
     UrlbarProviderSearchTips.onLocationChange(
       window,
       aLocationURI,
+      originalURI,
       aWebProgress,
       aFlags
     );
@@ -7406,6 +7416,11 @@ var ToolbarContextMenu = {
     return node && node.getAttribute("data-extensionid");
   },
 
+  _getWidgetId(popup) {
+    let node = this._getUnwrappedTriggerNode(popup);
+    return node?.closest(".unified-extensions-item")?.id;
+  },
+
   async updateExtension(popup) {
     let removeExtension = popup.querySelector(
       ".customize-context-removeExtension"
@@ -7416,6 +7431,7 @@ var ToolbarContextMenu = {
     let reportExtension = popup.querySelector(
       ".customize-context-reportExtension"
     );
+    let pinToToolbar = popup.querySelector(".customize-context-pinToToolbar");
     let separator = reportExtension.nextElementSibling;
     let id = this._getExtensionId(popup);
     let addon = id && (await AddonManager.getAddonByID(id));
@@ -7424,9 +7440,32 @@ var ToolbarContextMenu = {
       element.hidden = !addon;
     }
 
+    // The pinToToolbar item is only available in the toolbar context menu popup,
+    // and not in the overflow panel context menu, and should only be made visible
+    // for addons when the Unified Extensions UI is enabled.
+    if (pinToToolbar) {
+      pinToToolbar.hidden = !addon || !gUnifiedExtensions.isEnabled;
+    }
+
     reportExtension.hidden = !addon || !gAddonAbuseReportEnabled;
 
     if (addon) {
+      if (gUnifiedExtensions.isEnabled) {
+        popup.querySelector(".customize-context-moveToPanel").hidden = true;
+        popup.querySelector(
+          ".customize-context-removeFromToolbar"
+        ).hidden = true;
+
+        if (pinToToolbar) {
+          let widgetId = this._getWidgetId(popup);
+          if (widgetId) {
+            let area = CustomizableUI.getPlacementOfWidget(widgetId).area;
+            let inToolbar = area != CustomizableUI.AREA_ADDONS;
+            pinToToolbar.setAttribute("checked", inToolbar);
+          }
+        }
+      }
+
       removeExtension.disabled = !(
         addon.permissions & AddonManager.PERM_CAN_UNINSTALL
       );
@@ -9982,8 +10021,9 @@ var FirefoxViewHandler = {
   handleEvent(e) {
     switch (e.type) {
       case "TabSelect":
-        this.button?.toggleAttribute("open", e.target == this.tab);
-        this.button?.setAttribute("aria-selected", e.target == this.tab);
+        const selected = e.target == this.tab;
+        this.button?.toggleAttribute("open", selected);
+        this.button?.setAttribute("aria-pressed", selected);
         this._recordViewIfTabSelected();
         this._onTabForegrounded();
         if (e.target == this.tab) {

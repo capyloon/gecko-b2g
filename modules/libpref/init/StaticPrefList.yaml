@@ -238,7 +238,7 @@
 #ifdef ANDROID
   value: true
 #else
-  value: false
+  value: @IS_NOT_RELEASE_OR_BETA@
 #endif
   mirror: once
 
@@ -312,6 +312,15 @@
 - name: apz.scrollend-event.content.enabled
   type: RelaxedAtomicBool
   value: false
+  mirror: always
+
+# After a user has executed a pan gesture, we may receive momentum phase pan
+# gestures from the OS. This specifies how long we should wait following the
+# pan end gesture for possible momentum phase pan gestures before sending the
+# TransformEnd notification.
+- name: apz.scrollend-event.content.delay_ms
+  type: RelaxedAtomicInt32
+  value: 100
   mirror: always
 
 - name: apz.wr.activate_all_scroll_frames
@@ -1669,7 +1678,7 @@
 # JavaScript.
 - name: browser.opaqueResponseBlocking
   type: RelaxedAtomicBool
-  value: false
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
 
 # When this pref is enabled, <object> and <embed> elements will create
@@ -2106,12 +2115,6 @@
 # Whether Alarm API is exposed to the web.
 - name: dom.alarm.enabled
   type: RelaxedAtomicBool
-  value: false
-  mirror: always
-
-# Whether CanvasRenderingContext2D.mozCurrentTransform is enabled.
-- name: dom.mozCurrentTransform.enabled
-  type: bool
   value: false
   mirror: always
 
@@ -2960,6 +2963,13 @@
 #endif
   mirror: always
 
+#ifdef XP_WIN
+- name: dom.ipc.processPriorityManager.backgroundUsesEcoQoS
+  type: bool
+  value: false
+  mirror: always
+#endif
+
 # Is support for HTMLElement.autocapitalize enabled?
 - name: dom.forms.autocapitalize
   type: bool
@@ -2988,6 +2998,11 @@
 - name: dom.icc.enabled
   type: bool
   value: true
+  mirror: always
+
+- name: dom.forms.always_allow_pointer_events.enabled
+  type: bool
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
 
 # Is support for HTMLInputElement.showPicker enabled?
@@ -3481,7 +3496,7 @@
 # Reporting API.
 - name: dom.reporting.enabled
   type: RelaxedAtomicBool
-  value: @IS_NIGHTLY_BUILD@
+  value: false
   mirror: always
 
 - name: dom.reporting.testing.enabled
@@ -3949,7 +3964,7 @@
 
 - name: dom.sitepermsaddon-provider.enabled
   type: bool
-  value: false
+  value: @IS_NOT_ANDROID@
   mirror: always
 
 # Whether automatic storage access granting heuristics should be turned on.
@@ -3998,6 +4013,15 @@
 
 # Whether the File System API is enabled
 - name: dom.fs.enabled
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
+# Whether the WritableFileStream is enabled on the main thread.
+# WritableFileStream currently does all IO on the current thread which is okish
+# for workers but not for the main thread. The situation will change after bug
+# 1798513.
+- name: dom.fs.main_thread_writable_file_stream
   type: RelaxedAtomicBool
   value: false
   mirror: always
@@ -5801,6 +5825,11 @@
   value: 0.66
   mirror: always
 
+- name: gfx.canvas.accelerated.gpu-path-size
+  type: RelaxedAtomicUint32
+  value: 4
+  mirror: always
+
 # 0x7fff is the maximum supported xlib surface size and is more than enough for canvases.
 - name: gfx.canvas.max-size
   type: RelaxedAtomicInt32
@@ -6011,6 +6040,11 @@
 - name: gfx.display.frame-rate-divisor
   type: RelaxedAtomicInt32
   value: 1
+  mirror: always
+
+- name: gfx.display.max-frame-rate
+  type: RelaxedAtomicInt32
+  value: 0
   mirror: always
 
 # Whether to preserve color bitmap tables in fonts (bypassing OTS).
@@ -7523,7 +7557,7 @@
   # Experimental support for Array Grouping in JavaScript.
 -   name: javascript.options.experimental.array_grouping
     type: bool
-    value: true
+    value: false
     mirror: always
 #endif  // NIGHTLY_BUILD
 
@@ -9358,6 +9392,25 @@
   value: 0
   mirror: always
 
+# Whether to allow autoplay on extension background pages.
+- name: media.autoplay.allow-extension-background-pages
+  type: bool
+  value: true
+  mirror: always
+
+# Block autoplay, asking for permission by default.
+# 0=Allowed, 1=Blocked, 5=All Blocked
+- name: media.autoplay.default
+  type: int32_t
+  value: 1
+  mirror: always
+
+# Wether to block autoplay for webaudio
+- name: media.autoplay.block-webaudio
+  type: bool
+  value: false
+  mirror: always
+
 # File-backed MediaCache size.
 - name: media.cache_size
   type: RelaxedAtomicUint32
@@ -10015,6 +10068,11 @@
 -   name: media.wmf.dxva.max-videos
     type: RelaxedAtomicUint32
     value: 8
+    mirror: always
+
+-   name: media.wmf.dxva.d3d9.amd-pre-uvd4.disabled
+    type: RelaxedAtomicBool
+    value: true
     mirror: always
 
 -   name: media.wmf.use-nv12-format
@@ -12179,7 +12237,7 @@
 # delete the cache folder at shutdown in order to avoid shutdown hangs.
 - name: network.cache.shutdown_purge_in_background_task
   type: RelaxedAtomicBool
-#if defined(NIGHTLY_BUILD) && defined(XP_WIN)
+#if defined(XP_WIN)
   value: true
 #else
   value: false
@@ -12427,12 +12485,6 @@
 
 # Whether the pages per sheet print setting is enabled.
 - name: print.pages_per_sheet.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
-# Print via the parent process. This is only used when e10s is enabled.
-- name: print.print_via_parent
   type: RelaxedAtomicBool
   value: true
   mirror: always
@@ -12874,13 +12926,13 @@
 # Always partition web storage APIs except cookies.
 - name: privacy.partition.always_partition_third_party_non_cookie_storage
   type: RelaxedAtomicBool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
 
-# Always partition web storage APIs except cookies.
+# Exclude session storage from the above preference.
 - name: privacy.partition.always_partition_third_party_non_cookie_storage.exempt_sessionstorage
   type: RelaxedAtomicBool
-  value: true
+  value: false
   mirror: always
 
 - name: privacy.partition.bloburl_per_agent_cluster
@@ -13200,6 +13252,12 @@
 - name: security.csp.wasm-unsafe-eval.enabled
   type: bool
   value: true
+  mirror: always
+
+# unsafe-hashes source keyword
+- name: security.csp.unsafe-hashes.enabled
+  type: bool
+  value: false
   mirror: always
 
 # The script-src-attr and script-src-elem directive
@@ -13812,6 +13870,12 @@
 #---------------------------------------------------------------------------
 # Prefs starting with "toolkit."
 #---------------------------------------------------------------------------
+
+# Makes removeDirectory background task wait for the given milliseconds before removal.
+- name: toolkit.background_tasks.remove_directory.testing.sleep_ms
+  type: RelaxedAtomicUint32
+  value: 0
+  mirror: always
 
 # Returns true if BHR is disabled.
 - name: toolkit.content-background-hang-monitor.disabled
@@ -14983,22 +15047,6 @@
   type: bool
   value: true
   mirror: once
-
-#---------------------------------------------------------------------------
-# Prefs starting with "xul."
-#---------------------------------------------------------------------------
-
-# Pref to control whether arrow-panel animations are enabled or not.
-# Transitions are currently disabled on Linux due to rendering issues on
-# certain configurations.
-- name: xul.panel-animations.enabled
-  type: bool
-#ifdef MOZ_WIDGET_GTK
-  value: false
-#else
-  value: true
-#endif
-  mirror: always
 
 #---------------------------------------------------------------------------
 # Prefs starting with "zoom."

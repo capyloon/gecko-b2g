@@ -225,9 +225,7 @@ ENameValueFlag RemoteAccessibleBase<Derived>::Name(nsString& aName) const {
   }
 
   MOZ_ASSERT(aName.IsEmpty());
-  if (nameFlag != eNoNameOnPurpose) {
-    aName.SetIsVoid(true);
-  }
+  aName.SetIsVoid(true);
   return nameFlag;
 }
 
@@ -382,12 +380,16 @@ Accessible* RemoteAccessibleBase<Derived>::ChildAtPoint(
             MOZ_ASSERT(innerDoc->IsDoc());
             // Search the embedded document's viewport cache so we return the
             // deepest descendant in that embedded document.
-            return innerDoc->ChildAtPoint(aX, aY,
-                                          EWhichChildAtPoint::DeepestChild);
+            Accessible* deepestAcc = innerDoc->ChildAtPoint(
+                aX, aY, EWhichChildAtPoint::DeepestChild);
+            MOZ_ASSERT(!deepestAcc || deepestAcc->IsRemote());
+            lastMatch = deepestAcc ? deepestAcc->AsRemote() : nullptr;
+            break;
           }
           // If there is no embedded document, the iframe itself is the deepest
           // descendant.
-          return acc;
+          lastMatch = acc;
+          break;
         }
 
         if (acc == this) {
@@ -418,6 +420,12 @@ Accessible* RemoteAccessibleBase<Derived>::ChildAtPoint(
 
   if (!lastMatch && Bounds().Contains(aX, aY)) {
     return this;
+  }
+  // If we end up with a match that is not in the ancestor chain
+  // of the accessible this call originated on, we should ignore it.
+  // This can happen when the aX, aY given are outside `this`.
+  if (lastMatch && !IsDoc() && !IsAncestorOf(lastMatch)) {
+    return nullptr;
   }
 
   return lastMatch;
@@ -697,18 +705,10 @@ Relation RemoteAccessibleBase<Derived>::RelationByType(
     Pivot p = Pivot(mDoc);
     nsString href;
     Value(href);
-    if (!href.IsEmpty()) {
-      // `Value` will give us the entire URL, we're only interested in the ID
-      // after the hash. Split that part out.
-      for (auto s : href.Split('#')) {
-        href = s;
-      }
-      if (href.IsEmpty()) {
-        // This can happen if we encounter a link with an empty anchor:
-        // ie. <a href="#">hi</a>
-        return Relation();
-      }
-
+    int32_t i = href.FindChar('#');
+    int32_t len = static_cast<int32_t>(href.Length());
+    if (i != -1 && i < (len - 1)) {
+      nsDependentSubstring anchorName = Substring(href, i + 1, len);
       MustPruneSameDocRule rule;
       Accessible* nameMatch = nullptr;
       for (Accessible* match = p.Next(mDoc, rule); match;
@@ -716,12 +716,12 @@ Relation RemoteAccessibleBase<Derived>::RelationByType(
         nsString currID;
         match->DOMNodeID(currID);
         MOZ_ASSERT(match->IsRemote());
-        if (href.Equals(currID)) {
+        if (anchorName.Equals(currID)) {
           return Relation(match->AsRemote());
         }
         if (!nameMatch) {
           nsString currName = match->AsRemote()->GetCachedHTMLNameAttribute();
-          if (match->TagName() == nsGkAtoms::a && href.Equals(currName)) {
+          if (match->TagName() == nsGkAtoms::a && anchorName.Equals(currName)) {
             // If we find an element with a matching ID, we should return
             // that, but if we don't we should return the first anchor with
             // a matching name. To avoid doing two traversals, store the first
@@ -1098,24 +1098,14 @@ uint64_t RemoteAccessibleBase<Derived>::State() {
       }
     }
 
-    // Fetch our current opacity value from the cache.
-    auto opacity = Opacity();
-    if (opacity && *opacity == 1.0f) {
-      state |= states::OPAQUE1;
-    } else {
-      // If we can't retrieve an opacity value, or if the value we retrieve
-      // is less than one, ensure the OPAQUE1 bit is cleared.
-      // It's possible this bit was set in the cached `rawState` vector, but
-      // we've since been notified of a style change invalidating that state.
-      state &= ~states::OPAQUE1;
-    }
-
     auto* browser = static_cast<dom::BrowserParent*>(Document()->Manager());
     if (browser == dom::BrowserParent::GetFocused()) {
       if (this == Document()->GetFocusedAcc()) {
         state |= states::FOCUSED;
       }
     }
+
+    ApplyImplicitState(state);
 
     auto* cbc = mDoc->GetBrowsingContext();
     if (cbc && !cbc->IsActive()) {
@@ -1254,6 +1244,12 @@ already_AddRefed<AccAttributes> RemoteAccessibleBase<Derived>::Attributes() {
     }
 
     nsAccUtils::SetLiveContainerAttributes(attributes, this);
+
+    nsString id;
+    DOMNodeID(id);
+    if (!id.IsEmpty()) {
+      attributes->SetAttribute(nsGkAtoms::id, std::move(id));
+    }
   }
 
   nsAutoString name;
@@ -1289,14 +1285,14 @@ already_AddRefed<nsAtom> RemoteAccessibleBase<Derived>::DisplayStyle() const {
 }
 
 template <class Derived>
-Maybe<float> RemoteAccessibleBase<Derived>::Opacity() const {
+float RemoteAccessibleBase<Derived>::Opacity() const {
   if (mCachedFields) {
-    // GetAttribute already returns a Maybe<float>, so we don't
-    // need to do any additional manipulation.
-    return mCachedFields->GetAttribute<float>(nsGkAtoms::opacity);
+    if (auto opacity = mCachedFields->GetAttribute<float>(nsGkAtoms::opacity)) {
+      return *opacity;
+    }
   }
 
-  return Nothing();
+  return 1.0f;
 }
 
 template <class Derived>
@@ -1325,6 +1321,14 @@ void RemoteAccessibleBase<Derived>::LiveRegionAttributes(
   if (aBusy) {
     attrs->GetAttribute(nsGkAtoms::aria_busy, *aBusy);
   }
+}
+
+template <class Derived>
+Maybe<bool> RemoteAccessibleBase<Derived>::ARIASelected() const {
+  if (mCachedFields) {
+    return mCachedFields->GetAttribute<bool>(nsGkAtoms::aria_selected);
+  }
+  return Nothing();
 }
 
 template <class Derived>
@@ -1710,6 +1714,29 @@ Maybe<int32_t> RemoteAccessibleBase<Derived>::GetIntARIAAttr(
     }
   }
   return Nothing();
+}
+
+template <class Derived>
+size_t RemoteAccessibleBase<Derived>::SizeOfIncludingThis(
+    MallocSizeOf aMallocSizeOf) {
+  return aMallocSizeOf(this) + SizeOfExcludingThis(aMallocSizeOf);
+}
+
+template <class Derived>
+size_t RemoteAccessibleBase<Derived>::SizeOfExcludingThis(
+    MallocSizeOf aMallocSizeOf) {
+  size_t size = 0;
+
+  // Count attributes.
+  if (mCachedFields) {
+    size += mCachedFields->SizeOfIncludingThis(aMallocSizeOf);
+  }
+
+  // We don't recurse into mChildren because they're already counted in their
+  // document's mAccessibles.
+  size += mChildren.ShallowSizeOfExcludingThis(aMallocSizeOf);
+
+  return size;
 }
 
 template class RemoteAccessibleBase<RemoteAccessible>;

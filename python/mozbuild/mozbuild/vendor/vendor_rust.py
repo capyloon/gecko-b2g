@@ -197,6 +197,7 @@ class VendorRust(MozbuildObject):
             f
             for f in self.repository.get_changed_files("M")
             if os.path.basename(f) not in ("Cargo.toml", "Cargo.lock")
+            and not f.startswith("supply-chain/")
         ]
         if modified:
             self.log(

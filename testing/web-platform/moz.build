@@ -456,6 +456,9 @@ with Files("tests/fonts/**"):
 with Files("tests/fonts/math/**"):
     BUG_COMPONENT = ("Core", "MathML")
 
+with Files("tests/fs/**"):
+    BUG_COMPONENT = ("Core", "DOM: File")
+
 with Files("tests/fullscreen/**"):
     BUG_COMPONENT = ("Core", "DOM: Core & HTML")
 
@@ -607,6 +610,9 @@ with Files("tests/preload/**"):
 with Files("tests/presentation-api/**"):
     BUG_COMPONENT = ("Core", "DOM: Core & HTML")
 
+with Files("tests/priority-hints/**"):
+    BUG_COMPONENT = ("Core", "DOM: Networking")
+
 with Files("tests/proximity/**"):
     BUG_COMPONENT = ("Core", "DOM: Device Interfaces")
 
@@ -756,6 +762,9 @@ with Files("tests/websockets/**"):
 
 with Files("tests/webstorage/**"):
     BUG_COMPONENT = ("Core", "Storage: localStorage & sessionStorage")
+
+with Files("tests/webtransport/**"):
+    BUG_COMPONENT = ("Core", "Networking: HTTP")
 
 with Files("tests/webusb/**"):
     BUG_COMPONENT = ("Core", "DOM: Device Interfaces")

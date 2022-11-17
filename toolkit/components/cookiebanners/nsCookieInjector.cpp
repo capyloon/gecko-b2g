@@ -78,19 +78,30 @@ already_AddRefed<nsCookieInjector> nsCookieInjector::GetSingleton() {
 }
 
 // static
+bool nsCookieInjector::IsEnabledForCurrentPrefState() {
+  if (!StaticPrefs::cookiebanners_cookieInjector_enabled()) {
+    return false;
+  }
+
+  auto shouldInitForMode = [](uint32_t mode) {
+    return mode != nsICookieBannerService::MODE_DISABLED &&
+           mode != nsICookieBannerService::MODE_DETECT_ONLY;
+  };
+
+  // The cookie injector is initialized if enabled by pref and the main service
+  // is enabled (either in private browsing or normal browsing). For
+  // MODE_DETECT_ONLY the component should be disabled because it does not have
+  // banner detection capabilities.
+  return shouldInitForMode(StaticPrefs::cookiebanners_service_mode()) ||
+         shouldInitForMode(
+             StaticPrefs::cookiebanners_service_mode_privateBrowsing());
+}
+
+// static
 void nsCookieInjector::OnPrefChange(const char* aPref, void* aData) {
   RefPtr<nsCookieInjector> injector = nsCookieInjector::GetSingleton();
 
-  // The cookie injector is initialized if enabled by pref and the main service
-  // is enabled (either in private browsing or normal browsing).
-  bool shouldInit =
-      (StaticPrefs::cookiebanners_service_mode() !=
-           nsICookieBannerService::MODE_DISABLED ||
-       StaticPrefs::cookiebanners_service_mode_privateBrowsing() !=
-           nsICookieBannerService::MODE_DISABLED) &&
-      StaticPrefs::cookiebanners_cookieInjector_enabled();
-
-  if (shouldInit) {
+  if (IsEnabledForCurrentPrefState()) {
     MOZ_LOG(gCookieInjectorLog, LogLevel::Info,
             ("Initializing cookie injector after pref change. %s", aPref));
 
@@ -169,6 +180,19 @@ nsresult nsCookieInjector::MaybeInjectCookies(nsIHttpChannel* aChannel,
   nsCOMPtr<nsILoadInfo> loadInfo = aChannel->LoadInfo();
   NS_ENSURE_TRUE(loadInfo, NS_ERROR_FAILURE);
 
+  // Skip non browser tab loads, e.g. extension panels.
+  RefPtr<mozilla::dom::BrowsingContext> browsingContext;
+  nsresult rv = loadInfo->GetBrowsingContext(getter_AddRefs(browsingContext));
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  if (!browsingContext ||
+      !browsingContext->GetMessageManagerGroup().EqualsLiteral("browsers")) {
+    MOZ_LOG(
+        gCookieInjectorLog, LogLevel::Verbose,
+        ("%s: Skip load for BC message manager group != browsers.", aTopic));
+    return NS_OK;
+  }
+
   // Skip non-toplevel loads.
   if (!loadInfo->GetIsTopLevelLoad()) {
     MOZ_LOG(gCookieInjectorLog, LogLevel::Debug,
@@ -177,7 +201,7 @@ nsresult nsCookieInjector::MaybeInjectCookies(nsIHttpChannel* aChannel,
   }
 
   nsCOMPtr<nsIURI> uri;
-  nsresult rv = aChannel->GetURI(getter_AddRefs(uri));
+  rv = aChannel->GetURI(getter_AddRefs(uri));
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Get hostPort string, used for logging only.

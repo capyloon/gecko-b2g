@@ -33,6 +33,7 @@ async function makeExtension({
     content_scripts,
     action: {
       default_popup: "popup.html",
+      default_area: "navbar",
     },
   };
   if (manifest_version < 3) {
@@ -77,24 +78,31 @@ async function testOriginControls(
     `Testing ${extension.id} on ${win.gBrowser.currentURI.spec} with contextMenuId=${contextMenuId}.`
   );
 
-  let button;
+  let buttonOrWidget;
   let menu;
   let manageExtensionClassName;
+  let visibleOriginItems;
 
   switch (contextMenuId) {
     case "toolbar-context-menu":
       let target = `#${CSS.escape(makeWidgetId(extension.id))}-BAP`;
-      button = win.document.querySelector(target);
+      buttonOrWidget = win.document.querySelector(target).parentElement;
       menu = await openChromeContextMenu(contextMenuId, target, win);
       manageExtensionClassName = "customize-context-manageExtension";
+      visibleOriginItems = menu.querySelectorAll(
+        ":is(menuitem, menuseparator):not([hidden])"
+      );
       break;
 
     case "unified-extensions-context-menu":
       await openExtensionsPanel(win);
-      button = getUnifiedExtensionsItem(win, extension.id);
+      buttonOrWidget = getUnifiedExtensionsItem(win, extension.id);
       menu = await openUnifiedExtensionsContextMenu(win, extension.id);
       manageExtensionClassName =
         "unified-extensions-context-menu-manage-extension";
+      visibleOriginItems = menu.querySelectorAll(
+        ".unified-extensions-context-menu-management-separator ~ :is(menuitem, menuseparator):not([hidden])"
+      );
       break;
 
     default:
@@ -105,35 +113,39 @@ async function testOriginControls(
 
   info("Check expected menu items.");
   for (let i = 0; i < items.length; i++) {
-    let l10n = doc.l10n.getAttributes(menu.children[i]);
-    Assert.deepEqual(l10n, items[i], `Menu item ${i} has correct l10n attrs.`);
+    let l10n = doc.l10n.getAttributes(visibleOriginItems[i]);
+    Assert.deepEqual(
+      l10n,
+      items[i],
+      `Visible menu item ${i} has correct l10n attrs.`
+    );
 
-    let checked = menu.children[i].getAttribute("checked") === "true";
+    let checked = visibleOriginItems[i].getAttribute("checked") === "true";
     is(i === selected, checked, `Expected checked value for item ${i}.`);
   }
 
   if (items.length) {
     is(
-      menu.children[items.length].nodeName,
+      visibleOriginItems[items.length].nodeName,
       "menuseparator",
       "Found separator."
     );
     is(
-      menu.children[items.length + 1].className,
+      visibleOriginItems[items.length + 1].className,
       manageExtensionClassName,
       "All items accounted for."
     );
   }
 
   is(
-    button.getAttribute("attention"),
-    attention ? "true" : "false",
+    buttonOrWidget.hasAttribute("attention"),
+    !!attention,
     "Expected attention badge before clicking."
   );
 
   let itemToClick;
   if (click) {
-    itemToClick = menu.children[click];
+    itemToClick = visibleOriginItems[click];
   }
   await closeChromeContextMenu(contextMenuId, itemToClick, win);
 
@@ -153,11 +165,13 @@ async function testOriginControls(
   }
 }
 
-// Move the widget to the toolbar or the overflow panel.
-function moveWidget(ext, pinToToolbar = false) {
-  let area = pinToToolbar
-    ? CustomizableUI.AREA_NAVBAR
+// Move the widget to the toolbar or the addons panel (if Unified Extensions
+// is enabled) or the overflow panel otherwise.
+function moveWidget(ext, win, pinToToolbar = false) {
+  let overflowPanelArea = win.gUnifiedExtensions.isEnabled
+    ? CustomizableUI.AREA_ADDONS
     : CustomizableUI.AREA_FIXED_OVERFLOW_PANEL;
+  let area = pinToToolbar ? CustomizableUI.AREA_NAVBAR : overflowPanelArea;
   let widgetId = `${makeWidgetId(ext.id)}-browser-action`;
   CustomizableUI.addWidgetToArea(widgetId, area);
 }
@@ -206,16 +220,16 @@ const originControlsInContextMenu = async options => {
   if (options.contextMenuId === "unified-extensions-context-menu") {
     // Unified button should only show a notification indicator when extensions
     // asking for attention are not already visible in the toolbar.
-    moveWidget(ext2, false);
-    moveWidget(ext3, false);
+    moveWidget(ext2, options.win, false);
+    moveWidget(ext3, options.win, false);
     unifiedButton = options.win.document.querySelector(
       "#unified-extensions-button"
     );
   } else {
     // TestVerify runs this again in the same Firefox instance, so move the
     // widgets back to the toolbar for testing outside the unified button.
-    moveWidget(ext2, true);
-    moveWidget(ext3, true);
+    moveWidget(ext2, options.win, true);
+    moveWidget(ext3, options.win, true);
   }
 
   const NO_ACCESS = { id: "origin-controls-no-access", args: null };
@@ -234,9 +248,8 @@ const originControlsInContextMenu = async options => {
     await testOriginControls(ext5, options, { items: [] });
 
     if (unifiedButton) {
-      is(
-        unifiedButton.getAttribute("attention"),
-        "false",
+      ok(
+        !unifiedButton.hasAttribute("attention"),
         "No extension will have attention indicator on about:blank."
       );
     }
@@ -274,9 +287,8 @@ const originControlsInContextMenu = async options => {
     // MV2 extension, has no origin controls, and never flags for attention.
     await testOriginControls(ext5, options, { items: [], attention: false });
     if (unifiedButton) {
-      is(
-        unifiedButton.getAttribute("attention"),
-        "true",
+      ok(
+        unifiedButton.hasAttribute("attention"),
         "Both ext2 and ext3 are WHEN_CLICKED for example.com, so show attention indicator."
       );
     }
@@ -313,9 +325,8 @@ const originControlsInContextMenu = async options => {
     await testOriginControls(ext5, options, { items: [], attention: false });
 
     if (unifiedButton) {
-      is(
-        unifiedButton.getAttribute("attention"),
-        "true",
+      ok(
+        unifiedButton.hasAttribute("attention"),
         "ext2 is WHEN_CLICKED for example.com, show attention indicator."
       );
     }
@@ -329,9 +340,8 @@ const originControlsInContextMenu = async options => {
       attention: true,
     });
     if (unifiedButton) {
-      is(
-        unifiedButton.getAttribute("attention"),
-        "false",
+      ok(
+        !unifiedButton.hasAttribute("attention"),
         "Bot ext2 and ext3 are ALWAYS_ON for example.com, so no attention indicator."
       );
     }
@@ -344,9 +354,8 @@ const originControlsInContextMenu = async options => {
       attention: false,
     });
     if (unifiedButton) {
-      is(
-        unifiedButton.getAttribute("attention"),
-        "true",
+      ok(
+        unifiedButton.hasAttribute("attention"),
         "ext3 is now WHEN_CLICKED for example.com, show attention indicator."
       );
     }
@@ -364,9 +373,8 @@ const originControlsInContextMenu = async options => {
     });
 
     if (unifiedButton) {
-      is(
-        unifiedButton.getAttribute("attention"),
-        "true",
+      ok(
+        unifiedButton.hasAttribute("attention"),
         "Still showing the attention indicator."
       );
     }

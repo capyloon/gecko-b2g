@@ -285,7 +285,6 @@ skip-if(Android&&asyncPan) == 243519-1.html 243519-1-ref.html
 == 244135-2.html 244135-2-ref.html
 == 244932-1.html 244932-1-ref.html
 == 246669-1.html 246669-1-ref.html
-fails-if(Android) == chrome://reftest/content/bugs/249141.xhtml chrome://reftest/content/bugs/249141-ref.xhtml # dependent on width of '…' and '*' in the default font
 == 249982-1.html 249982-1-ref.html
 == 252920-1.html 252920-1-ref.html
 == 253701-1.html 253701-1-ref.html
@@ -328,7 +327,6 @@ random-if(d2d) fuzzy(0-25,0-2040) fails-if(useDrawSnapshot) HTTP == 289480.html#
 == 296904-1.html 296904-1-ref.html
 == 299136-1.html 299136-1-ref.html
 == 299837-1.html 299837-1-ref.html
-== chrome://reftest/content/bugs/299837-2.xhtml chrome://reftest/content/bugs/299837-2-ref.xhtml
 skip-if(Android) random-if(d2d) == chrome://reftest/content/bugs/299837-3.xhtml chrome://reftest/content/bugs/299837-3-ref.xhtml # bug 587631
 == 300691-1a.html 300691-1-ref.html
 == 300691-1b.html 300691-1-ref.html
@@ -1168,7 +1166,7 @@ fuzzy(0-4,0-361) == 449519-1.html 449519-1-ref.html
 == 455171-5.html 455171-5-ref.html
 == 455280-1.xhtml 455280-1-ref.xhtml
 fails-if(Android) == 455826-1.html 455826-1-ref.html
-fails-if(Android||cocoaWidget||winWidget) == chrome://reftest/content/bugs/456147.xhtml 456147-ref.html # bug 458047
+== chrome://reftest/content/bugs/456147.xhtml 456147-ref.html
 fuzzy(24-60,107-570) fuzzy-if(Android&&/^aarch64-gcc3/.test(xulRuntime.XPCOMABI),0-54,0-618) == 456219-1a.html 456219-1-ref.html # bug 1128229
 fuzzy(24-60,107-1251) == 456219-1b.html 456219-1-ref.html # bug 1128229
 fuzzy(24-60,107-497) fuzzy-if(geckoview&&device,53-60,426-4421) == 456219-1c.html 456219-1-ref.html # bug 1128229
@@ -1270,7 +1268,6 @@ pref(layout.css.caption-side-non-standard.enabled,true) == 478614-7.html 478614-
 == 478811-4.html 478811-4-ref.html
 == 478956-1a.html 478956-1-ref.html
 == 478956-1b.html 478956-1-ref.html
-== chrome://reftest/content/bugs/480017-1.html chrome://reftest/content/bugs/480017-1-ref.html
 == 480880-1a.html 480880-1-ref.html
 == 480880-1b.html 480880-1-ref.html
 == 480880-1c.html 480880-1-ref.html
@@ -1315,7 +1312,6 @@ fuzzy(0-1,0-5) == 482659-1d.html 482659-1-ref.html
 == 488685-1.html 488685-1-ref.html
 == 488692-1.html 488692-1-ref.html
 == 489868-1.svg 489868-1-ref.svg
-== 490173-1.html 490173-1-ref.html
 == 490173-2.html 490173-2-ref.html
 == 490176-1.html 490176-1-ref.html
 == 490177-1.svg 490177-1-ref.svg
@@ -2134,3 +2130,5 @@ pref(layout.css.prefers-color-scheme.content-override,2) == 1787127.html 1787127
 == 1792643-1.html 1792643-1-ref.html
 skip-if(!/^Windows\x20NT\x2010\.0/.test(http.oscpu)) == 1798297-1.html 1798297-1-ref.html
 skip-if(!/^Windows\x20NT\x2010\.0/.test(http.oscpu)) != 1798297-1.html 1798297-1-notref.html
+== 1799425-1.html 1799425-1-ref.html
+== 1800437-1.html 1800437-1-ref.html

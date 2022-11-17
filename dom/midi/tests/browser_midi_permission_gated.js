@@ -77,17 +77,12 @@ add_task(async function testRequestMIDIAccess() {
   );
   is(
     installPopupHeader.textContent,
-    gNavigatorBundle.getFormattedString("xpinstallPromptMessage.header", [
-      testPageHost,
-    ]),
+    gNavigatorBundle.getString("sitePermissionInstallFirstPrompt.header"),
     "First popup has expected header text"
   );
   is(
     installPopupMessage.textContent,
-    gNavigatorBundle.getFormattedString(
-      "sitePermissionsInstallPromptMessage.message",
-      [testPageHost]
-    ),
+    gNavigatorBundle.getString("sitePermissionInstallFirstPrompt.message"),
     "First popup has expected message"
   );
 
@@ -135,7 +130,7 @@ add_task(async function testRequestMIDIAccess() {
     installDialog.querySelector(".popup-notification-description").textContent,
     gNavigatorBundle.getFormattedString(
       "webextSitePerms.headerWithGatedPerms.midi-sysex",
-      [`Site Permissions for ${testPageHost}`, testPageHost]
+      [testPageHost]
     ),
     "Install dialog has expected header text"
   );
@@ -212,6 +207,16 @@ add_task(async function testRequestMIDIAccess() {
   info("Accept site permission addon install");
   addonInstallPanel = await onAddonInstallBlockedNotification;
   notification = addonInstallPanel.childNodes[0];
+
+  is(
+    notification
+      .querySelector("#addon-install-blocked-info")
+      .getAttribute("href"),
+    Services.urlFormatter.formatURLPref("app.support.baseURL") +
+      "site-permission-addons",
+    "Got the expected SUMO page as a learn more link in the addon-install-blocked panel"
+  );
+
   dialogPromise = waitForInstallDialog();
   notification.button.click();
   installDialog = await dialogPromise;
@@ -220,7 +225,7 @@ add_task(async function testRequestMIDIAccess() {
     installDialog.querySelector(".popup-notification-description").textContent,
     gNavigatorBundle.getFormattedString(
       "webextSitePerms.headerWithGatedPerms.midi",
-      [`Site Permissions for ${testPageHost}`, testPageHost]
+      [testPageHost]
     ),
     "Install dialog has expected header text"
   );

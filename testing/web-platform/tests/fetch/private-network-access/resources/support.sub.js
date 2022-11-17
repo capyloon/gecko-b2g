@@ -72,39 +72,68 @@ async function postMessageAndAwaitReply(target, message) {
   return await reply;
 }
 
-const Server = {
-  HTTP_LOCAL: {
-    port: {{ports[http][0]}},
-    protocol: "http:",
+// Maps protocol (without the trailing colon) and address space to port.
+const SERVER_PORTS = {
+  "http": {
+    "local": {{ports[http][0]}},
+    "private": {{ports[http-private][0]}},
+    "public": {{ports[http-public][0]}},
   },
-  HTTP_PRIVATE: {
-    port: {{ports[http-private][0]}},
-    protocol: "http:",
+  "https": {
+    "local": {{ports[https][0]}},
+    "private": {{ports[https-private][0]}},
+    "public": {{ports[https-public][0]}},
   },
-  HTTP_PUBLIC: {
-    port: {{ports[http-public][0]}},
-    protocol: "http:",
+  "ws": {
+    "local": {{ports[ws][0]}},
   },
-  HTTPS_LOCAL: {
-    port: {{ports[https][0]}},
-    protocol: "https:",
+  "wss": {
+    "local": {{ports[wss][0]}},
   },
-  HTTPS_PRIVATE: {
-    port: {{ports[https-private][0]}},
-    protocol: "https:",
-  },
-  HTTPS_PUBLIC: {
-    port: {{ports[https-public][0]}},
-    protocol: "https:",
-  },
-  WS_LOCAL: {
-    port: {{ports[ws][0]}},
-    protocol: "ws:",
-  },
-  WSS_LOCAL: {
-    port: {{ports[wss][0]}},
-    protocol: "wss:",
-  },
+};
+
+// A `Server` is a web server accessible by tests. It has the following shape:
+//
+// {
+//   addressSpace: the IP address space of the server ("local", "private" or
+//     "public"),
+//   name: a human-readable name for the server,
+//   port: the port on which the server listens for connections,
+//   protocol: the protocol (including trailing colon) spoken by the server,
+// }
+//
+// Constants below define the available servers, which can also be accessed
+// programmatically with `get()`.
+class Server {
+  // Maps the given `protocol` (without a trailing colon) and `addressSpace` to
+  // a server. Returns null if no such server exists.
+  static get(protocol, addressSpace) {
+    const ports = SERVER_PORTS[protocol];
+    if (ports === undefined) {
+      return null;
+    }
+
+    const port = ports[addressSpace];
+    if (port === undefined) {
+      return null;
+    }
+
+    return {
+      addressSpace,
+      name: `${protocol}-${addressSpace}`,
+      port,
+      protocol: protocol + ':',
+    };
+  }
+
+  static HTTP_LOCAL = Server.get("http", "local");
+  static HTTP_PRIVATE = Server.get("http", "private");
+  static HTTP_PUBLIC = Server.get("http", "public");
+  static HTTPS_LOCAL = Server.get("https", "local");
+  static HTTPS_PRIVATE = Server.get("https", "private");
+  static HTTPS_PUBLIC = Server.get("https", "public");
+  static WS_LOCAL = Server.get("ws", "local");
+  static WSS_LOCAL = Server.get("wss", "local");
 };
 
 // Resolves a URL relative to the current location, returning an absolute URL.
@@ -283,7 +312,7 @@ async function fetchTest(t, { source, target, fetchOptions, expected }) {
   const targetUrl = preflightUrl(target);
 
   const iframe = await appendIframe(t, document, sourceUrl);
-  const reply = futureMessage();
+  const reply = futureMessage({ source: iframe.contentWindow });
 
   const message = {
     url: targetUrl.href,
@@ -390,6 +419,77 @@ async function iframeTest(t, { source, target, expected }) {
 
   assert_equals(result, expected);
 }
+
+const iframeGrandparentTest = ({
+  name,
+  grandparentServer,
+  child,
+  grandchild,
+  expected,
+}) => promise_test_parallel(async (t) => {
+  // Allows running tests in parallel.
+  const grandparentUuid = token();
+  const childUuid = token();
+  const grandchildUuid = token();
+
+  const grandparentUrl =
+      resolveUrl("resources/executor.html", grandparentServer);
+  grandparentUrl.searchParams.set("executor-uuid", grandparentUuid);
+
+  const childUrl = preflightUrl(child);
+  childUrl.searchParams.set("file", "executor.html");
+  childUrl.searchParams.set("executor-uuid", childUuid);
+
+  const grandchildUrl = preflightUrl(grandchild);
+  grandchildUrl.searchParams.set("file", "iframed.html");
+  grandchildUrl.searchParams.set("iframe-uuid", grandchildUuid);
+
+  const iframe = await appendIframe(t, document, grandparentUrl);
+
+  const addChild = (url) => new Promise((resolve) => {
+    const child = document.createElement("iframe");
+    child.src = url;
+    child.addEventListener("load", () => resolve(), { once: true });
+    document.body.appendChild(child);
+  });
+
+  const grandparentCtx = new RemoteContext(grandparentUuid);
+  await grandparentCtx.execute_script(addChild, [childUrl]);
+
+  // Add a blank grandchild frame inside the child.
+  // Apply a timeout to this step so that failures at this step do not block the
+  // execution of other tests.
+  const childCtx = new RemoteContext(childUuid);
+  await Promise.race([
+      childCtx.execute_script(addChild, ["about:blank"]),
+      new Promise((resolve, reject) => t.step_timeout(
+          () => reject("timeout adding grandchild"),
+          2000 /* ms */
+      )),
+  ]);
+
+  const messagePromise = futureMessage({
+    filter: (data) => data.uuid === grandchildUuid,
+  });
+  await grandparentCtx.execute_script((url) => {
+    const child = window.frames[0];
+    const grandchild = child.frames[0];
+    grandchild.location = url;
+  }, [grandchildUrl]);
+
+  // The great-grandchild frame posts a message iff it loads successfully.
+  // There exists no interoperable way to check whether an iframe failed to
+  // load, so we use a timeout.
+  // See: https://github.com/whatwg/html/issues/125
+  const result = await Promise.race([
+      messagePromise.then((data) => data.message),
+      new Promise((resolve) => {
+        t.step_timeout(() => resolve("timeout"), 2000 /* ms */);
+      }),
+  ]);
+
+  assert_equals(result, expected);
+}, name);
 
 const WebsocketTestResult = {
   SUCCESS: "open",

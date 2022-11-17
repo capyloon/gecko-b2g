@@ -41,12 +41,6 @@ enum ENameValueFlag {
   eNameOK,
 
   /**
-   * Name was left empty by the author on purpose:
-   * name.IsEmpty() && !name.IsVoid().
-   */
-  eNoNameOnPurpose,
-
-  /**
    * Name was computed from the subtree.
    */
   eNameFromSubtree,
@@ -136,6 +130,12 @@ class KeyBinding {
   };
 };
 
+/**
+ * The base type for an accessibility tree node. Methods and attributes in this
+ * class are available in both the content process and the parent process.
+ * Overrides for these methods live primarily in LocalAccessible and
+ * RemoteAccessibleBase.
+ */
 class Accessible {
  protected:
   Accessible();
@@ -317,7 +317,7 @@ class Accessible {
 
   virtual already_AddRefed<nsAtom> DisplayStyle() const = 0;
 
-  virtual Maybe<float> Opacity() const = 0;
+  virtual float Opacity() const = 0;
 
   /**
    * Get the live region attributes (if any) for this single Accessible. This
@@ -327,6 +327,13 @@ class Accessible {
   virtual void LiveRegionAttributes(nsAString* aLive, nsAString* aRelevant,
                                     Maybe<bool>* aAtomic,
                                     nsAString* aBusy) const = 0;
+
+  /**
+   * Get the aria-selected state. aria-selected not being specified is not
+   * always the same as aria-selected="false". If not specified, Nothing() will
+   * be returned.
+   */
+  virtual Maybe<bool> ARIASelected() const = 0;
 
   LayoutDeviceIntSize Size() const;
 
@@ -627,6 +634,12 @@ class Accessible {
    * not a primary action either.
    */
   virtual bool HasPrimaryAction() const = 0;
+
+  /**
+   * Apply states which are implied by other information common to both
+   * LocalAccessible and RemoteAccessible.
+   */
+  void ApplyImplicitState(uint64_t& aState) const;
 
  private:
   static const uint8_t kTypeBits = 6;

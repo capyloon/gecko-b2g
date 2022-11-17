@@ -1378,7 +1378,7 @@ static FrameTextTraversal CanTextCrossFrameBoundary(nsIFrame* aFrame) {
     if (continuesTextRun) {
       result.mFrameToScan = aFrame->PrincipalChildList().FirstChild();
       result.mOverflowFrameToScan =
-          aFrame->GetChildList(nsIFrame::kOverflowList).FirstChild();
+          aFrame->GetChildList(FrameChildListID::Overflow).FirstChild();
       NS_WARNING_ASSERTION(
           !result.mOverflowFrameToScan,
           "Scanning overflow inline frames is something we should avoid");
@@ -6871,19 +6871,14 @@ bool nsTextFrame::MeasureCharClippedText(nscoord aVisIStartEdge,
 }
 
 static uint32_t GetClusterLength(const gfxTextRun* aTextRun,
-                                 uint32_t aStartOffset, uint32_t aMaxLength,
-                                 bool aIsRTL) {
-  uint32_t clusterLength = aIsRTL ? 0 : 1;
-  while (clusterLength < aMaxLength) {
+                                 uint32_t aStartOffset, uint32_t aMaxLength) {
+  uint32_t clusterLength = 0;
+  while (++clusterLength < aMaxLength) {
     if (aTextRun->IsClusterStart(aStartOffset + clusterLength)) {
-      if (aIsRTL) {
-        ++clusterLength;
-      }
-      break;
+      return clusterLength;
     }
-    ++clusterLength;
   }
-  return clusterLength;
+  return aMaxLength;
 }
 
 bool nsTextFrame::MeasureCharClippedText(
@@ -6905,8 +6900,7 @@ bool nsTextFrame::MeasureCharClippedText(
   if (startEdge > 0) {
     const gfxFloat maxAdvance = gfxFloat(startEdge);
     while (maxLength > 0) {
-      uint32_t clusterLength =
-          GetClusterLength(mTextRun, offset, maxLength, rtl);
+      uint32_t clusterLength = GetClusterLength(mTextRun, offset, maxLength);
       advanceWidth += mTextRun->GetAdvanceWidth(
           Range(offset, offset + clusterLength), &aProvider);
       maxLength -= clusterLength;
@@ -6924,8 +6918,7 @@ bool nsTextFrame::MeasureCharClippedText(
   if (endEdge > 0) {
     const gfxFloat maxAdvance = gfxFloat(frameISize - endEdge);
     while (maxLength > 0) {
-      uint32_t clusterLength =
-          GetClusterLength(mTextRun, offset, maxLength, rtl);
+      uint32_t clusterLength = GetClusterLength(mTextRun, offset, maxLength);
       gfxFloat nextAdvance =
           advanceWidth + mTextRun->GetAdvanceWidth(
                              Range(offset, offset + clusterLength), &aProvider);
@@ -9280,9 +9273,9 @@ static void RemoveEmptyInFlows(nsTextFrame* aFrame,
     // text runs.
     parentBlock->DoRemoveFrame(aFrame, nsBlockFrame::FRAMES_ARE_EMPTY);
   } else {
-    // Just remove it normally; use kNoReflowPrincipalList to avoid posting
-    // new reflows.
-    parent->RemoveFrame(nsIFrame::kNoReflowPrincipalList, aFrame);
+    // Just remove it normally; use FrameChildListID::NoReflowPrincipal to avoid
+    // posting new reflows.
+    parent->RemoveFrame(FrameChildListID::NoReflowPrincipal, aFrame);
   }
 }
 
@@ -9326,7 +9319,7 @@ void nsTextFrame::SetLength(int32_t aLength, nsLineLayout* aLineLayout,
           PresShell()->FrameConstructor()->CreateContinuingFrame(this,
                                                                  GetParent());
       nsTextFrame* next = static_cast<nsTextFrame*>(newFrame);
-      GetParent()->InsertFrames(kNoReflowPrincipalList, this,
+      GetParent()->InsertFrames(FrameChildListID::NoReflowPrincipal, this,
                                 aLineLayout->GetLine(),
                                 nsFrameList(next, next));
       f = next;

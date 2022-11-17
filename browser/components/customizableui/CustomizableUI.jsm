@@ -231,16 +231,27 @@ var CustomizableUIInternal = {
     this.loadSavedState();
     this._updateForNewVersion();
     this._updateForNewProtonVersion();
+    this._updateForUnifiedExtensions();
     this._markObsoleteBuiltinButtonsSeen();
 
     this.registerArea(
       CustomizableUI.AREA_FIXED_OVERFLOW_PANEL,
       {
-        type: CustomizableUI.TYPE_MENU_PANEL,
+        type: CustomizableUI.TYPE_PANEL,
         defaultPlacements: [],
         anchor: "nav-bar-overflow-button",
       },
       true
+    );
+
+    this.registerArea(
+      CustomizableUI.AREA_ADDONS,
+      {
+        type: CustomizableUI.TYPE_PANEL,
+        defaultPlacements: [],
+        anchor: "unified-extensions-button",
+      },
+      false
     );
 
     let navbarPlacements = [
@@ -321,6 +332,7 @@ var CustomizableUIInternal = {
     return new Set([
       ...this._builtinToolbars,
       CustomizableUI.AREA_FIXED_OVERFLOW_PANEL,
+      CustomizableUI.AREA_ADDONS,
     ]);
   },
 
@@ -683,6 +695,61 @@ var CustomizableUIInternal = {
     Services.prefs.setIntPref(kPrefProtonToolbarVersion, VERSION);
   },
 
+  _updateForUnifiedExtensions() {
+    if (!gSavedState?.placements) {
+      return;
+    }
+
+    let overflowPlacements =
+      gSavedState.placements[CustomizableUI.AREA_FIXED_OVERFLOW_PANEL] || [];
+    // The most likely case is that there are no AREA_ADDONS placements, in which case the
+    // array won't exist.
+    let addonsPlacements =
+      gSavedState.placements[CustomizableUI.AREA_ADDONS] || [];
+
+    if (lazy.gUnifiedExtensionsEnabled) {
+      // Migration algorithm for transitioning to Unified Extensions:
+      //
+      // 1. Create two arrays, one for extension widgets, one for built-in widgets.
+      // 2. Iterate all items in the overflow panel, and push them into the
+      //    appropriate array based on whether or not its an extension widget.
+      // 3. Overwrite the overflow panel placements with the built-in widgets array.
+      // 4. Prepend the extension widgets to the addonsPlacements array. Note that this
+      //    does not overwrite this array as a precaution because it's possible
+      //    (though pretty unlikely) that some widgets are already there.
+      //
+      // For extension widgets that were in the palette, they will be appended to the
+      // addons area when they're created within createWidget.
+      let extWidgets = [];
+      let builtInWidgets = [];
+      for (let widgetId of overflowPlacements) {
+        if (CustomizableUI.isWebExtensionWidget(widgetId)) {
+          extWidgets.push(widgetId);
+        } else {
+          builtInWidgets.push(widgetId);
+        }
+      }
+      gSavedState.placements[
+        CustomizableUI.AREA_FIXED_OVERFLOW_PANEL
+      ] = builtInWidgets;
+      gSavedState.placements[CustomizableUI.AREA_ADDONS] = [
+        ...extWidgets,
+        ...addonsPlacements,
+      ];
+    } else {
+      // This is an emergency backstop in case things go sideways and we need to
+      // temporarily flip back the Unified Extensions pref if it had already been
+      // enabled. We will do simplest thing and just empty the AREA_ADDONS placements,
+      // and append them to the bottom of the overflow panel, and then blow away
+      // the AREA_ADDONS placements.
+      gSavedState.placements[CustomizableUI.AREA_FIXED_OVERFLOW_PANEL] = [
+        ...overflowPlacements,
+        ...addonsPlacements,
+      ];
+      delete gSavedState.placements[CustomizableUI.AREA_ADDONS];
+    }
+  },
+
   /**
    * _markObsoleteBuiltinButtonsSeen
    * when upgrading, ensure obsoleted buttons are in seen state.
@@ -857,10 +924,7 @@ var CustomizableUIInternal = {
       throw new Error("defaultCollapsed only applies for TYPE_TOOLBAR areas.");
     }
     // Sanity check type:
-    let allTypes = [
-      CustomizableUI.TYPE_TOOLBAR,
-      CustomizableUI.TYPE_MENU_PANEL,
-    ];
+    let allTypes = [CustomizableUI.TYPE_TOOLBAR, CustomizableUI.TYPE_PANEL];
     if (!allTypes.includes(props.get("type"))) {
       throw new Error("Invalid area type " + props.get("type"));
     }
@@ -1049,7 +1113,7 @@ var CustomizableUIInternal = {
     let inPrivateWindow = lazy.PrivateBrowsingUtils.isWindowPrivate(window);
     let container = this.getCustomizationTarget(aAreaNode);
     let areaIsPanel =
-      gAreas.get(aArea).get("type") == CustomizableUI.TYPE_MENU_PANEL;
+      gAreas.get(aArea).get("type") == CustomizableUI.TYPE_PANEL;
 
     if (!container) {
       throw new Error(
@@ -1226,10 +1290,21 @@ var CustomizableUIInternal = {
 
     let currentContextMenu =
       aNode.getAttribute("context") || aNode.getAttribute("contextmenu");
-    let contextMenuForPlace =
-      forcePanel || "menu-panel" == CustomizableUI.getPlaceForItem(aAreaNode)
-        ? kPanelItemContextMenu
-        : null;
+    let contextMenuForPlace;
+
+    if (
+      lazy.gUnifiedExtensionsEnabled &&
+      CustomizableUI.isWebExtensionWidget(aNode.id) &&
+      (aAreaNode?.id == CustomizableUI.AREA_ADDONS ||
+        aNode.getAttribute("overflowedItem") == "true")
+    ) {
+      contextMenuForPlace = null;
+    } else {
+      contextMenuForPlace =
+        forcePanel || "panel" == CustomizableUI.getPlaceForItem(aAreaNode)
+          ? kPanelItemContextMenu
+          : null;
+    }
     if (contextMenuForPlace && !currentContextMenu) {
       aNode.setAttribute("context", contextMenuForPlace);
     } else if (
@@ -1297,29 +1372,29 @@ var CustomizableUIInternal = {
     return [null, null];
   },
 
-  registerMenuPanel(aPanelContents, aArea) {
-    if (gBuildAreas.has(aArea) && gBuildAreas.get(aArea).has(aPanelContents)) {
+  registerPanelNode(aNode, aArea) {
+    if (gBuildAreas.has(aArea) && gBuildAreas.get(aArea).has(aNode)) {
       return;
     }
 
-    aPanelContents._customizationTarget = aPanelContents;
-    this.addPanelCloseListeners(this._getPanelForNode(aPanelContents));
+    aNode._customizationTarget = aNode;
+    this.addPanelCloseListeners(this._getPanelForNode(aNode));
 
     let placements = gPlacements.get(aArea);
-    this.buildArea(aArea, placements, aPanelContents);
-    this.notifyListeners("onAreaNodeRegistered", aArea, aPanelContents);
+    this.buildArea(aArea, placements, aNode);
+    this.notifyListeners("onAreaNodeRegistered", aArea, aNode);
 
-    for (let child of aPanelContents.children) {
+    for (let child of aNode.children) {
       if (child.localName != "toolbarbutton") {
         if (child.localName == "toolbaritem") {
-          this.ensureButtonContextMenu(child, aPanelContents, true);
+          this.ensureButtonContextMenu(child, aNode, true);
         }
         continue;
       }
-      this.ensureButtonContextMenu(child, aPanelContents, true);
+      this.ensureButtonContextMenu(child, aNode, true);
     }
 
-    this.registerBuildArea(aArea, aPanelContents);
+    this.registerBuildArea(aArea, aNode);
   },
 
   onWidgetAdded(aWidgetId, aArea, aPosition) {
@@ -2096,7 +2171,7 @@ var CustomizableUIInternal = {
 
     if (
       aWidget.disallowSubView &&
-      (areaType == CustomizableUI.TYPE_MENU_PANEL ||
+      (areaType == CustomizableUI.TYPE_PANEL ||
         aNode.hasAttribute("overflowedItem"))
     ) {
       // Close the containing panel (e.g. overflow), PanelUI will reopen.
@@ -2105,7 +2180,7 @@ var CustomizableUIInternal = {
         this.hidePanelForNode(aNode);
         anchor = wrapper.anchor;
       }
-    } else if (areaType != CustomizableUI.TYPE_MENU_PANEL) {
+    } else if (areaType != CustomizableUI.TYPE_PANEL) {
       let wrapper = this.wrapWidget(aWidget.id).forWindow(ownerWindow);
 
       let hasMultiView = !!aNode.closest("panelmultiview");
@@ -2354,6 +2429,12 @@ var CustomizableUIInternal = {
   },
 
   addWidgetToArea(aWidgetId, aArea, aPosition, aInitialAdd) {
+    if (aArea == CustomizableUI.AREA_NO_AREA) {
+      throw new Error(
+        "AREA_NO_AREA is only used as an argument for " +
+          "canWidgetMoveToArea. Use removeWidgetFromArea instead."
+      );
+    }
     if (!gAreas.has(aArea)) {
       throw new Error("Unknown customization area: " + aArea);
     }
@@ -2361,7 +2442,7 @@ var CustomizableUIInternal = {
     // Hack: don't want special widgets in the panel (need to check here as well
     // as in canWidgetMoveToArea because the menu panel is lazy):
     if (
-      gAreas.get(aArea).get("type") == CustomizableUI.TYPE_MENU_PANEL &&
+      gAreas.get(aArea).get("type") == CustomizableUI.TYPE_PANEL &&
       this.isSpecialWidget(aWidgetId)
     ) {
       return;
@@ -2834,6 +2915,17 @@ var CustomizableUIInternal = {
             }
           }
         }
+
+        // Extension widgets cannot enter the customization palette, so if
+        // at this point, we haven't found an area for them, move them into
+        // AREA_ADDONS.
+        if (
+          lazy.gUnifiedExtensionsEnabled &&
+          !widget.currentArea &&
+          CustomizableUI.isWebExtensionWidget(widget.id)
+        ) {
+          this.addWidgetToArea(widget.id, CustomizableUI.AREA_ADDONS);
+        }
       }
     } finally {
       // Ensure we always have this widget in gSeenWidgets, and save
@@ -3208,6 +3300,12 @@ var CustomizableUIInternal = {
     gNewElementCount = 0;
     lazy.log.debug("State reset");
 
+    // Later in the function, we're going to add any area-less extension
+    // buttons to the AREA_ADDONS area. We'll remember the old placements
+    // for that area so that we don't need to re-add widgets that are already
+    // in there in the DOM.
+    let oldAddonPlacements = gPlacements[CustomizableUI.AREA_ADDONS] || [];
+
     // Reset placements to make restoring default placements possible.
     gPlacements = new Map();
     gDirtyAreaCache = new Set();
@@ -3216,7 +3314,27 @@ var CustomizableUIInternal = {
     gSavedState = null;
     // Restore the state for each area to its defaults
     for (let [areaId] of gAreas) {
-      this.restoreStateForArea(areaId);
+      // If the Unified Extensions UI is enabled, we'll be adding any
+      // extension buttons that aren't already in AREA_ADDONS there,
+      // so we can skip restoring the state for it.
+      if (areaId != CustomizableUI.AREA_ADDONS) {
+        this.restoreStateForArea(areaId);
+      }
+    }
+
+    if (lazy.gUnifiedExtensionsEnabled) {
+      // restoreStateForArea will have normally set an array for the placements
+      // for each area, but since we skip AREA_ADDONS intentionally, that array
+      // doesn't get set, so we do that manually here.
+      gPlacements.set(CustomizableUI.AREA_ADDONS, []);
+      for (let [widgetId] of gPalette) {
+        if (
+          CustomizableUI.isWebExtensionWidget(widgetId) &&
+          !oldAddonPlacements.includes(widgetId)
+        ) {
+          this.addWidgetToArea(widgetId, CustomizableUI.AREA_ADDONS);
+        }
+      }
     }
   },
 
@@ -3369,10 +3487,37 @@ var CustomizableUIInternal = {
     if (
       this.isSpecialWidget(aWidgetId) &&
       gAreas.has(aArea) &&
-      gAreas.get(aArea).get("type") == CustomizableUI.TYPE_MENU_PANEL
+      gAreas.get(aArea).get("type") == CustomizableUI.TYPE_PANEL
     ) {
       return false;
     }
+
+    if (
+      aArea == CustomizableUI.AREA_ADDONS &&
+      !CustomizableUI.isWebExtensionWidget(aWidgetId)
+    ) {
+      return false;
+    }
+
+    if (
+      lazy.gUnifiedExtensionsEnabled &&
+      CustomizableUI.isWebExtensionWidget(aWidgetId)
+    ) {
+      // Extension widgets cannot move to the customization palette.
+      if (aArea == CustomizableUI.AREA_NO_AREA) {
+        return false;
+      }
+
+      // Extension widgets cannot move to panels, with the exception of the
+      // AREA_ADDONS area.
+      if (
+        gAreas.get(aArea).get("type") == CustomizableUI.TYPE_PANEL &&
+        aArea != CustomizableUI.AREA_ADDONS
+      ) {
+        return false;
+      }
+    }
+
     let placement = this.getPlacementOfWidget(aWidgetId);
     // Items in the palette can move, and items can move within their area:
     if (!placement || placement.area == aArea) {
@@ -3605,11 +3750,23 @@ var CustomizableUI = {
    * Constant reference to the ID of the non-dymanic (fixed) list in the overflow panel.
    */
   AREA_FIXED_OVERFLOW_PANEL: "widget-overflow-fixed-list",
-
   /**
-   * Constant indicating the area is a menu panel.
+   * Constant reference to the ID of the addons area.
    */
-  TYPE_MENU_PANEL: "menu-panel",
+  AREA_ADDONS: "unified-extensions-area",
+  /**
+   * Constant reference to the ID of the customization palette, which is
+   * where widgets go when they're not assigned to an area. Note that this
+   * area is "virtual" in that it's never set as a value for a widgets
+   * currentArea or defaultArea. It's only used for the `canWidgetMoveToArea`
+   * function to check if widgets can be moved to the palette. Callers who
+   * wish to move items to the palette should use `removeWidgetFromArea`.
+   */
+  AREA_NO_AREA: "customization-palette",
+  /**
+   * Constant indicating the area is a panel.
+   */
+  TYPE_PANEL: "panel",
   /**
    * Constant indicating the area is a toolbar.
    */
@@ -3778,7 +3935,7 @@ var CustomizableUI = {
    * @param aProps  the properties of the area. The following properties are
    *                recognized:
    *                - type:   the type of area. Either TYPE_TOOLBAR (default) or
-   *                          TYPE_MENU_PANEL;
+   *                          TYPE_PANEL;
    *                - anchor: for a menu panel or overflowable toolbar, the
    *                          anchoring node for the panel.
    *                - overflowable: set to true if your toolbar is overflowable.
@@ -3809,13 +3966,15 @@ var CustomizableUI = {
     CustomizableUIInternal.registerToolbarNode(aToolbar);
   },
   /**
-   * Register the menu panel node. This method should not be called by anyone
-   * apart from the built-in PanelUI.
+   * Register a panel node. A panel treated slightly differently from a toolbar in
+   * terms of what items can be moved into it. For example, a panel cannot have a
+   * spacer or a spring put into it.
+   *
    * @param aPanelContents the panel contents DOM node being registered.
    * @param aArea the area for which to register this node.
    */
-  registerMenuPanel(aPanelContents, aArea) {
-    CustomizableUIInternal.registerMenuPanel(aPanelContents, aArea);
+  registerPanelNode(aNode, aArea) {
+    CustomizableUIInternal.registerPanelNode(aNode, aArea);
   },
   /**
    * Unregister a customizable area. The inverse of registerArea.
@@ -4224,7 +4383,7 @@ var CustomizableUI = {
    * property (areaType) for this purpose.
    *
    * @param aArea the ID of the area whose type you want to know
-   * @return TYPE_TOOLBAR or TYPE_MENU_PANEL depending on the area, null if
+   * @return TYPE_TOOLBAR or TYPE_PANEL depending on the area, null if
    *         the area is unknown.
    */
   getAreaType(aArea) {
@@ -4367,7 +4526,9 @@ var CustomizableUI = {
    * is already in the right area.
    *
    * @param aWidgetId the widget ID or DOM node you want to move somewhere
-   * @param aArea     the area ID you want to move it to.
+   * @param aArea     the area ID you want to move it to. This can also be
+   *                  AREA_NO_AREA to see if the widget can move to the
+   *                  customization palette, whether it's removable or not.
    * @return true if this is possible, false if it is not. The same caveats as
    *              for isWidgetRemovable apply, however, if no windows are open.
    */
@@ -4472,10 +4633,7 @@ var CustomizableUI = {
    */
   isWebExtensionWidget(aWidgetId) {
     let widget = this.getWidget(aWidgetId);
-    if (widget) {
-      return widget.webExtension;
-    }
-    return aWidgetId.endsWith("-browser-action");
+    return widget?.webExtension || aWidgetId.endsWith("-browser-action");
   },
   /**
    * Add listeners to a panel that will close it. For use from the menu panel
@@ -4565,7 +4723,7 @@ var CustomizableUI = {
       if (node.localName == "toolbar") {
         place = "toolbar";
       } else if (node.id == CustomizableUI.AREA_FIXED_OVERFLOW_PANEL) {
-        place = "menu-panel";
+        place = "panel";
       } else if (node.id == "customization-palette") {
         place = "palette";
       }
@@ -5575,7 +5733,7 @@ class OverflowableToolbar {
         let style = win.getComputedStyle(child);
         if (
           style.display == "none" ||
-          style.display == "-moz-popup" ||
+          win.XULPopupElement.isInstance(child) ||
           (style.position != "static" && style.position != "relative")
         ) {
           continue;

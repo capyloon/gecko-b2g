@@ -15,7 +15,10 @@
 #include <algorithm>
 #include <utility>
 
+#include "ConnectionHandle.h"
+#include "HttpConnectionUDP.h"
 #include "NullHttpTransaction.h"
+#include "SpeculativeTransaction.h"
 #include "mozilla/Components.h"
 #include "mozilla/SpinEventLoopUntil.h"
 #include "mozilla/StaticPrefs_network.h"
@@ -28,10 +31,11 @@
 #include "nsHttpHandler.h"
 #include "nsIClassOfService.h"
 #include "nsIDNSByTypeRecord.h"
-#include "nsIDNSRecord.h"
 #include "nsIDNSListener.h"
+#include "nsIDNSRecord.h"
 #include "nsIDNSService.h"
 #include "nsIHttpChannelInternal.h"
+#include "nsIPipe.h"
 #include "nsIRequestContext.h"
 #include "nsISocketTransport.h"
 #include "nsISocketTransportService.h"
@@ -39,11 +43,11 @@
 #include "nsIXPConnect.h"
 #include "nsInterfaceRequestorAgg.h"
 #include "nsNetCID.h"
+#include "nsNetSegmentUtils.h"
 #include "nsNetUtil.h"
 #include "nsQueryObject.h"
-#include "ConnectionHandle.h"
-#include "HttpConnectionUDP.h"
-#include "SpeculativeTransaction.h"
+#include "nsSocketTransportService2.h"
+#include "nsStreamUtils.h"
 
 namespace mozilla::net {
 
@@ -793,13 +797,13 @@ HttpConnectionBase* nsHttpConnectionMgr::FindCoalescableConnection(
 }
 
 void nsHttpConnectionMgr::UpdateCoalescingForNewConn(
-    HttpConnectionBase* newConn, ConnectionEntry* ent) {
+    HttpConnectionBase* newConn, ConnectionEntry* ent, bool aNoHttp3) {
   MOZ_ASSERT(OnSocketThread(), "not on socket thread");
   MOZ_ASSERT(newConn);
   MOZ_ASSERT(newConn->ConnectionInfo());
   MOZ_ASSERT(ent);
   MOZ_ASSERT(mCT.GetWeak(newConn->ConnectionInfo()->HashKey()) == ent);
-
+  LOG(("UpdateCoalescingForNewConn newConn=%p aNoHttp3=%d", newConn, aNoHttp3));
   HttpConnectionBase* existingConn =
       FindCoalescableConnection(ent, true, false, false);
   if (existingConn) {
@@ -816,10 +820,10 @@ void nsHttpConnectionMgr::UpdateCoalescingForNewConn(
       }
     } else if (existingConn->UsingHttp3() && newConn->UsingSpdy()) {
       RefPtr<nsHttpConnection> connTCP = do_QueryObject(newConn);
-      if (connTCP && !connTCP->IsForWebSocket()) {
+      if (connTCP && !connTCP->IsForWebSocket() && !aNoHttp3) {
         LOG(
-            ("UpdateCoalescingForNewConn() found existing active conn that "
-             "could have served newConn graceful close of newConn=%p to "
+            ("UpdateCoalescingForNewConn() found existing active H3 conn that "
+             "could have served H2 newConn graceful close of newConn=%p to "
              "migrate to existingConn %p\n",
              newConn, existingConn));
         newConn->DontReuse();
@@ -877,7 +881,8 @@ void nsHttpConnectionMgr::UpdateCoalescingForNewConn(
 // spdy with that host and update the coalescing hash
 // entries used for de-sharding hostsnames.
 void nsHttpConnectionMgr::ReportSpdyConnection(nsHttpConnection* conn,
-                                               bool usingSpdy) {
+                                               bool usingSpdy,
+                                               bool disallowHttp3) {
   MOZ_ASSERT(OnSocketThread(), "not on socket thread");
   if (!conn->ConnectionInfo()) {
     return;
@@ -897,7 +902,7 @@ void nsHttpConnectionMgr::ReportSpdyConnection(nsHttpConnection* conn,
     PruneDeadConnectionsAfter(ttl);
   }
 
-  UpdateCoalescingForNewConn(conn, ent);
+  UpdateCoalescingForNewConn(conn, ent, disallowHttp3);
 
   nsresult rv = ProcessPendingQ(ent->mConnInfo);
   if (NS_FAILED(rv)) {
@@ -927,7 +932,7 @@ void nsHttpConnectionMgr::ReportHttp3Connection(HttpConnectionBase* conn) {
 
   mNumSpdyHttp3ActiveConns++;
 
-  UpdateCoalescingForNewConn(conn, ent);
+  UpdateCoalescingForNewConn(conn, ent, false);
   nsresult rv = ProcessPendingQ(ent->mConnInfo);
   if (NS_FAILED(rv)) {
     LOG(
@@ -2474,8 +2479,42 @@ void nsHttpConnectionMgr::OnMsgCompleteUpgrade(int32_t, ARefBase* param) {
   }
 
   RefPtr<nsCompleteUpgradeData> upgradeData(data);
-  auto transportAvailableFunc = [upgradeData{std::move(upgradeData)},
-                                 aRv(rv)]() {
+
+  nsCOMPtr<nsIAsyncInputStream> socketIn;
+  nsCOMPtr<nsIAsyncOutputStream> socketOut;
+
+  // If this is for JS, the input and output sockets need to be piped over the
+  // socket thread. Otherwise, the JS may attempt to read and/or write the
+  // sockets on the main thread, which could cause network I/O on the main
+  // thread. This is particularly bad in the case of TLS connections, because
+  // PSM and NSS rely on those connections only being used on the socket
+  // thread.
+  if (data->mJsWrapped) {
+    nsCOMPtr<nsIAsyncInputStream> pipeIn;
+    uint32_t segsize = 0;
+    uint32_t segcount = 0;
+    net_ResolveSegmentParams(segsize, segcount);
+    if (NS_SUCCEEDED(rv)) {
+      NS_NewPipe2(getter_AddRefs(pipeIn), getter_AddRefs(socketOut), true, true,
+                  segsize, segcount);
+      rv = NS_AsyncCopy(pipeIn, data->mSocketOut, gSocketTransportService,
+                        NS_ASYNCCOPY_VIA_READSEGMENTS, segsize);
+    }
+
+    nsCOMPtr<nsIAsyncOutputStream> pipeOut;
+    if (NS_SUCCEEDED(rv)) {
+      NS_NewPipe2(getter_AddRefs(socketIn), getter_AddRefs(pipeOut), true, true,
+                  segsize, segcount);
+      rv = NS_AsyncCopy(data->mSocketIn, pipeOut, gSocketTransportService,
+                        NS_ASYNCCOPY_VIA_WRITESEGMENTS, segsize);
+    }
+  } else {
+    socketIn = upgradeData->mSocketIn;
+    socketOut = upgradeData->mSocketOut;
+  }
+
+  auto transportAvailableFunc = [upgradeData{std::move(upgradeData)}, socketIn,
+                                 socketOut, aRv(rv)]() {
     // Handle any potential previous errors first
     // and call OnUpgradeFailed if necessary.
     nsresult rv = aRv;
@@ -2492,8 +2531,7 @@ void nsHttpConnectionMgr::OnMsgCompleteUpgrade(int32_t, ARefBase* param) {
     }
 
     rv = upgradeData->mUpgradeListener->OnTransportAvailable(
-        upgradeData->mSocketTransport, upgradeData->mSocketIn,
-        upgradeData->mSocketOut);
+        upgradeData->mSocketTransport, socketIn, socketOut);
     if (NS_FAILED(rv)) {
       LOG(
           ("nsHttpConnectionMgr::OnMsgCompleteUpgrade OnTransportAvailable "

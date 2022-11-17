@@ -90,12 +90,12 @@ rev = "3484d3e3ebdc8931493aa5df4d7ee9360a90e76b"
 [source."https://github.com/gfx-rs/wgpu"]
 git = "https://github.com/gfx-rs/wgpu"
 replace-with = "vendored-sources"
-rev = "b752c7d2"
+rev = "261069d04fc1263d8e587c18936b9db90b077abb"
 
 [source."https://github.com/gfx-rs/naga"]
 git = "https://github.com/gfx-rs/naga"
 replace-with = "vendored-sources"
-rev = "b209d911"
+rev = "c52d9102"
 
 [source."https://github.com/chris-zen/coremidi.git"]
 git = "https://github.com/chris-zen/coremidi.git"
@@ -105,6 +105,11 @@ rev = "fc68464b5445caf111e41f643a2e69ccce0b4f83"
 [source."https://github.com/capyloon/b2ghald.git"]
 git = "https://github.com/capyloon/b2ghald.git"
 replace-with = "vendored-sources"
+
+[source."https://github.com/FirefoxGraphics/wpf-gpu-raster"]
+git = "https://github.com/FirefoxGraphics/wpf-gpu-raster"
+replace-with = "vendored-sources"
+rev = "f0d95ce14af8a8de74f469dbad715c4064fca2e1"
 
 [source.crates-io]
 replace-with = "vendored-sources"

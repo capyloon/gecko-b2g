@@ -9,6 +9,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 import argparse
 import copy
 import glob
+import multiprocessing
 import os
 import re
 import sys
@@ -600,6 +601,20 @@ class Raptor(
                     ),
                 },
             ],
+            [
+                ["--extra-summary-methods"],
+                {
+                    "action": "append",
+                    "metavar": "OPTION",
+                    "dest": "extra_summary_methods",
+                    "default": [],
+                    "help": (
+                        "Alternative methods for summarizing technical and visual"
+                        "pageload metrics."
+                        "Options: geomean, mean."
+                    ),
+                },
+            ],
         ]
         + testing_config_options
         + copy.deepcopy(code_coverage_config_options)
@@ -1007,7 +1022,13 @@ class Raptor(
             options.extend(["--test-bytecode-cache"])
         if self.config.get("collect_perfstats", False):
             options.extend(["--collect-perfstats"])
-
+        if self.config.get("extra_summary_methods"):
+            options.extend(
+                [
+                    "--extra-summary-methods={}".format(method)
+                    for method in self.config.get("extra_summary_methods")
+                ]
+            )
         if self.config.get("webext", False):
             options.extend(["--webext"])
         else:
@@ -1073,13 +1094,16 @@ class Raptor(
         if self.clean:
             rmtree(_virtualenv_path, ignore_errors=True)
 
+        _python_interp = self.query_exe("python")
+        if "win" in self.platform_name() and os.path.exists(_python_interp):
+            multiprocessing.set_executable(_python_interp)
+
         if self.run_local and os.path.exists(_virtualenv_path):
             self.info("Virtualenv already exists, skipping creation")
             # ffmpeg exists outside of this virtual environment so
             # we re-add it to the platform environment on repeated
             # local runs of browsertime visual metric tests
             self.setup_local_ffmpeg()
-            _python_interp = self.config.get("exes")["python"]
 
             if "win" in self.platform_name():
                 _path = os.path.join(_virtualenv_path, "Lib", "site-packages")

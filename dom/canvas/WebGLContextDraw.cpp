@@ -79,8 +79,11 @@ ScopedResolveTexturesForDraw::ScopedResolveTexturesForDraw(
     : mWebGL(webgl) {
   const auto& fb = mWebGL->mBoundDrawFramebuffer;
 
-  std::unordered_map<uint32_t, const webgl::SamplerUniformInfo*>
-      samplerByTexUnit;
+  struct SamplerByTexUnit {
+    uint8_t texUnit;
+    const webgl::SamplerUniformInfo* sampler;
+  };
+  Vector<SamplerByTexUnit, 8> samplerByTexUnit;
 
   MOZ_ASSERT(mWebGL->mActiveProgramLinkInfo);
   const auto& samplerUniforms = mWebGL->mActiveProgramLinkInfo->samplerUniforms;
@@ -93,13 +96,20 @@ ScopedResolveTexturesForDraw::ScopedResolveTexturesForDraw(
       MOZ_ASSERT(texUnit < texList.Length());
 
       {
-        samplerByTexUnit.reserve(
-            32);  // Only allocate if we need, but don't start too small.
-        auto& prevSamplerForTexUnit = samplerByTexUnit[texUnit];
+        decltype(SamplerByTexUnit::sampler) prevSamplerForTexUnit = nullptr;
+        for (const auto& cur : samplerByTexUnit) {
+          if (cur.texUnit == texUnit) {
+            prevSamplerForTexUnit = cur.sampler;
+          }
+        }
         if (!prevSamplerForTexUnit) {
           prevSamplerForTexUnit = &uniform;
+          MOZ_RELEASE_ASSERT(samplerByTexUnit.append(
+              SamplerByTexUnit{texUnit, prevSamplerForTexUnit}));
         }
-        if (&uniform.texListForType != &prevSamplerForTexUnit->texListForType) {
+
+        if (MOZ_UNLIKELY(&uniform.texListForType !=
+                         &prevSamplerForTexUnit->texListForType)) {
           // Pointing to different tex lists means different types!
           const auto linkInfo = mWebGL->mActiveProgramLinkInfo;
           const auto LocInfoBySampler = [&](const webgl::SamplerUniformInfo* p)
@@ -131,11 +141,11 @@ ScopedResolveTexturesForDraw::ScopedResolveTexturesForDraw(
 
       const auto& sampler = mWebGL->mBoundSamplers[texUnit];
       const auto& samplingInfo = tex->GetSampleableInfo(sampler.get());
-      if (!samplingInfo) {  // There was an error.
+      if (MOZ_UNLIKELY(!samplingInfo)) {  // There was an error.
         *out_error = true;
         return;
       }
-      if (!samplingInfo->IsComplete()) {
+      if (MOZ_UNLIKELY(!samplingInfo->IsComplete())) {
         if (samplingInfo->incompleteReason) {
           const auto& targetName = GetEnumName(tex->Target().get());
           mWebGL->GenerateWarning("%s at unit %u is incomplete: %s", targetName,
@@ -147,7 +157,7 @@ ScopedResolveTexturesForDraw::ScopedResolveTexturesForDraw(
 
       // We have more validation to do if we're otherwise complete:
       const auto& texBaseType = samplingInfo->usage->format->baseType;
-      if (texBaseType != uniformBaseType) {
+      if (MOZ_UNLIKELY(texBaseType != uniformBaseType)) {
         const auto& targetName = GetEnumName(tex->Target().get());
         const auto& srcType = ToString(texBaseType);
         const auto& dstType = ToString(uniformBaseType);
@@ -159,7 +169,8 @@ ScopedResolveTexturesForDraw::ScopedResolveTexturesForDraw(
         return;
       }
 
-      if (uniform.isShadowSampler != samplingInfo->isDepthTexCompare) {
+      if (MOZ_UNLIKELY(uniform.isShadowSampler !=
+                       samplingInfo->isDepthTexCompare)) {
         const auto& targetName = GetEnumName(tex->Target().get());
         mWebGL->ErrorInvalidOperation(
             "%s at unit %u is%s a depth texture"
@@ -172,8 +183,8 @@ ScopedResolveTexturesForDraw::ScopedResolveTexturesForDraw(
         return;
       }
 
-      if (!ValidateNoSamplingFeedback(*tex, samplingInfo->levels, fb.get(),
-                                      texUnit)) {
+      if (MOZ_UNLIKELY(!ValidateNoSamplingFeedback(*tex, samplingInfo->levels,
+                                                   fb.get(), texUnit))) {
         *out_error = true;
         return;
       }

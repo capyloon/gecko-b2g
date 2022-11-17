@@ -57,6 +57,7 @@ body {
   --fxview-background-color: var(--newtab-background-color, var(--in-content-page-background));
   --fxview-element-background-hover: color-mix(in srgb, var(--fxview-background-color) 90%, currentColor);
   --fxview-element-background-active: color-mix(in srgb, var(--fxview-background-color) 80%, currentColor);
+  --fxview-text-primary-color: var(--newtab-text-primary-color, var(--in-content-page-color));
   --fxview-text-color-hover: var(--newtab-text-primary-color);
   --fxview-contrast-border: color-mix(in hsl, currentColor 45%, transparent);
   --fxview-extra-contrast-border: color-mix(in hsl, currentColor 85%, transparent);
@@ -103,7 +104,7 @@ body:not([lwt-newtab]) {
 }
 
 h1 {
-  color: var(--newtab-text-primary-color);
+  color: var(--fxview-text-primary-color);
   font-weight: 600;
   font-size: 1.5em;
 }
@@ -363,6 +364,11 @@ button.close {
   border: 1px solid var(--fxview-contrast-border);
 }
 
+#collapsible-tabs-container,
+#tabpickup-tabs-container {
+  margin-block-start: 0.5em;
+}
+
 .empty-container {
   border-radius: 4px;
 }
@@ -382,8 +388,39 @@ button.close {
 
 .placeholder-content {
   color: var(--fxview-text-secondary-color);
-  text-align: center;
-  padding: 24px 16px;
+  display: flex;
+  padding: 1.8em 1.1em;
+}
+
+#recently-closed-empty-image,
+#tab-pickup-empty-image {
+  margin-inline-end: 1.1em;
+  -moz-context-properties: fill, stroke, fill-opacity;
+  fill: var(--fxview-background-color);
+  stroke: var(--fxview-text-primary-color);
+  fill-opacity: 0.07;
+}
+
+@media (prefers-color-scheme: dark) {
+  #recently-closed-empty-image,
+  #tab-pickup-empty-image {
+    fill: var(--newtab-background-color-secondary);
+    fill-opacity: 0.15;
+  }
+}
+
+.placeholder-text {
+  margin: 0;
+}
+
+.placeholder-header {
+  margin-block: 0 0.27em;
+  font-weight: 600;
+}
+
+.placeholder-body {
+  margin-block: 0;
+  line-height: 1.3em;
 }
 
 .page-section-header {
@@ -630,7 +667,7 @@ details[open] > .page-section-header > .twisty {
 
 .closed-tabs-list {
   padding-inline-start: 0;
-  margin-block-start: 8px;
+  margin-block-start: 0;
   display: grid;
   grid-template-columns: min-content repeat(5, 1fr) min-content;
   column-gap: 8px;
@@ -700,6 +737,16 @@ details[open] > .page-section-header > .twisty {
 }
 
 @media (prefers-contrast) {
+  .synced-tab-a {
+    border-color: FieldText;
+  }
+  .synced-tab-a,
+  .synced-tab-a:hover,
+  .synced-tab-a:active,
+  .synced-tab-a:hover:active,
+  .synced-tab-a:visited {
+    color: LinkText;
+  }
   .synced-tab-a:focus-visible {
     box-shadow: none;
     outline: var(--in-content-focus-outline);
@@ -737,7 +784,7 @@ details[open] > .page-section-header > .twisty {
 
 .synced-tabs-list {
   padding: 0;
-  margin-block-start: 8px;
+  margin-block-start: 0;
   list-style: none;
   display: grid;
   grid-template-columns: 4fr 4fr;
@@ -913,6 +960,12 @@ details[open] > .page-section-header > .twisty {
   margin-inline-end: 10px;
 }
 
+@media (prefers-contrast) {
+  .synced-tab-li .favicon {
+    color: LinkText;
+  }
+}
+
 .synced-tab-li .icon {
   vertical-align: bottom;
   margin-inline-end: 5px;
@@ -1011,4 +1064,16 @@ details[open] > .page-section-header > .twisty {
   letter-spacing: 0.02em;
   margin-inline-start: 4px;
   color: #000000;
+}
+
+@media (prefers-contrast) {
+  .last-active-badge {
+    border: 1px solid CanvasText;
+  }
+  .dot {
+    background-color: FieldText;
+  }
+  .badge-text {
+    color: FieldText;
+  }
 }

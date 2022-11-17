@@ -1573,27 +1573,6 @@ void nsIFrame::CreateView() {
                ("nsIFrame::CreateView: frame=%p view=%p", this, view));
 }
 
-// MSVC fails with link error "one or more multiply defined symbols found",
-// gcc fails with "hidden symbol `nsIFrame::kPrincipalList' isn't defined"
-// etc if they are not defined.
-#ifndef _MSC_VER
-// static nsIFrame constants; initialized in the header file.
-const nsIFrame::ChildListID nsIFrame::kPrincipalList;
-const nsIFrame::ChildListID nsIFrame::kAbsoluteList;
-const nsIFrame::ChildListID nsIFrame::kBulletList;
-const nsIFrame::ChildListID nsIFrame::kCaptionList;
-const nsIFrame::ChildListID nsIFrame::kColGroupList;
-const nsIFrame::ChildListID nsIFrame::kExcessOverflowContainersList;
-const nsIFrame::ChildListID nsIFrame::kFixedList;
-const nsIFrame::ChildListID nsIFrame::kFloatList;
-const nsIFrame::ChildListID nsIFrame::kOverflowContainersList;
-const nsIFrame::ChildListID nsIFrame::kOverflowList;
-const nsIFrame::ChildListID nsIFrame::kOverflowOutOfFlowList;
-const nsIFrame::ChildListID nsIFrame::kPopupList;
-const nsIFrame::ChildListID nsIFrame::kPushedFloatsList;
-const nsIFrame::ChildListID nsIFrame::kNoReflowPrincipalList;
-#endif
-
 /* virtual */
 nsMargin nsIFrame::GetUsedMargin() const {
   nsMargin margin(0, 0, 0, 0);
@@ -2136,12 +2115,40 @@ AutoTArray<nsIFrame::ChildList, 4> nsIFrame::CrossDocChildLists() {
     if (root) {
       childLists.EmplaceBack(
           nsFrameList(root, nsLayoutUtils::GetLastSibling(root)),
-          nsIFrame::kPrincipalList);
+          FrameChildListID::Principal);
     }
   }
 
   GetChildLists(&childLists);
   return childLists;
+}
+
+const nsAtom* nsIFrame::ComputePageValue() const {
+  if (!StaticPrefs::layout_css_named_pages_enabled()) {
+    return nsGkAtoms::_empty;
+  }
+  const nsAtom* value = nsGkAtoms::_empty;
+  const nsIFrame* frame = this;
+  do {
+    // If this has a non-auto start value, track that instead.
+    if (const nsAtom* const startValue = frame->GetStartPageValue()) {
+      value = startValue;
+    }
+    MOZ_ASSERT(value, "Should not have a NULL page value.");
+    // Get the next frame to read from.
+    const nsIFrame* firstNonPlaceholderFrame = nullptr;
+    // If this is a container frame, inspect its in-flow children.
+    if (const nsContainerFrame* containerFrame = do_QueryFrame(frame)) {
+      for (const nsIFrame* childFrame : containerFrame->PrincipalChildList()) {
+        if (!childFrame->IsPlaceholderFrame()) {
+          firstNonPlaceholderFrame = childFrame;
+          break;
+        }
+      }
+    }
+    frame = firstNonPlaceholderFrame;
+  } while (frame);
+  return value;
 }
 
 Visibility nsIFrame::GetVisibility() const {
@@ -7199,48 +7206,6 @@ Matrix4x4Flagged nsIFrame::GetTransformMatrix(ViewportType aViewportType,
     return result;
   }
 
-  if (nsLayoutUtils::IsPopup(this) && IsListControlFrame()) {
-    nsPresContext* presContext = PresContext();
-    nsIFrame* docRootFrame = presContext->PresShell()->GetRootFrame();
-
-    // Compute a matrix that transforms from the popup widget to the toplevel
-    // widget. We use the widgets because they're the simplest and most
-    // accurate approach --- this should work no matter how the widget position
-    // was chosen.
-    nsIWidget* widget = GetView()->GetWidget();
-    nsPresContext* rootPresContext = PresContext()->GetRootPresContext();
-    // Maybe the widget hasn't been created yet? Popups without widgets are
-    // treated as regular frames. That should work since they'll be rendered
-    // as part of the page if they're rendered at all.
-    if (widget && rootPresContext) {
-      nsIWidget* toplevel = rootPresContext->GetNearestWidget();
-      if (toplevel) {
-        LayoutDeviceIntRect screenBounds = widget->GetClientBounds();
-        LayoutDeviceIntRect toplevelScreenBounds = toplevel->GetClientBounds();
-        LayoutDeviceIntPoint translation =
-            screenBounds.TopLeft() - toplevelScreenBounds.TopLeft();
-
-        Matrix4x4 transformToTop;
-        transformToTop._41 = translation.x;
-        transformToTop._42 = translation.y;
-
-        *aOutAncestor = docRootFrame;
-        Matrix4x4 docRootTransformToTop =
-            nsLayoutUtils::GetTransformToAncestor(RelativeTo{docRootFrame},
-                                                  RelativeTo{nullptr})
-                .GetMatrix();
-        if (docRootTransformToTop.IsSingular()) {
-          NS_WARNING(
-              "Containing document is invisible, we can't compute a valid "
-              "transform");
-        } else {
-          docRootTransformToTop.Invert();
-          return transformToTop * docRootTransformToTop;
-        }
-      }
-    }
-  }
-
   *aOutAncestor = nsLayoutUtils::GetCrossDocParentFrameInProcess(this);
 
   /* Otherwise, we're not transformed.  In that case, we'll walk up the frame
@@ -8605,8 +8570,7 @@ static nsContentAndOffset FindLineBreakingFrame(nsIFrame* aFrame,
 
   // Iterate over children and call ourselves recursively
   if (aDirection == eDirPrevious) {
-    nsIFrame* child =
-        aFrame->GetChildList(nsIFrame::kPrincipalList).LastChild();
+    nsIFrame* child = aFrame->PrincipalChildList().LastChild();
     while (child && !result.mContent) {
       result = FindLineBreakingFrame(child, aDirection);
       child = child->GetPrevSibling();
@@ -9565,9 +9529,10 @@ static nsRect ComputeOutlineInnerRect(
 
   // Iterate over all children except pop-up, absolutely-positioned,
   // float, and overflow ones.
-  const nsIFrame::ChildListIDs skip = {
-      nsIFrame::kPopupList, nsIFrame::kAbsoluteList, nsIFrame::kFixedList,
-      nsIFrame::kFloatList, nsIFrame::kOverflowList};
+  const FrameChildListIDs skip = {
+      FrameChildListID::Popup, FrameChildListID::Absolute,
+      FrameChildListID::Fixed, FrameChildListID::Float,
+      FrameChildListID::Overflow};
   for (const auto& [list, listID] : aFrame->ChildLists()) {
     if (skip.contains(listID)) {
       continue;
@@ -12282,7 +12247,6 @@ void DR_State::InitFrameTypeTable() {
   AddFrameTypeInfo(LayoutFrameType::Viewport, "VP", "viewport");
   AddFrameTypeInfo(LayoutFrameType::Box, "Box", "Box");
   AddFrameTypeInfo(LayoutFrameType::Slider, "Slider", "Slider");
-  AddFrameTypeInfo(LayoutFrameType::PopupSet, "PopupSet", "PopupSet");
   AddFrameTypeInfo(LayoutFrameType::None, "unknown", "unknown");
 }
 

@@ -25,6 +25,7 @@
 #include "mozilla/dom/MutationEventBinding.h"
 #include "mozilla/dom/WheelEventBinding.h"
 #include "mozilla/dom/WindowGlobalChild.h"
+#include "mozilla/EventStateManager.h"
 #include "mozilla/PresShell.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/TextUtils.h"
@@ -3737,6 +3738,22 @@ nsresult HTMLInputElement::PostHandleEvent(EventChainPostVisitor& aVisitor) {
           }
           break;
         }
+
+        case eKeyDown: {
+          // For compatibility with the other browsers, we should active this
+          // element at least when a checkbox or a radio button.
+          // TODO: Investigate which elements are activated by space key in the
+          //       other browsers.
+          if (aVisitor.mPresContext && keyEvent->IsTrusted() && !IsDisabled() &&
+              keyEvent->ShouldWorkAsSpaceKey() &&
+              (mType == FormControlType::InputCheckbox ||
+               mType == FormControlType::InputRadio)) {
+            EventStateManager::SetActiveManager(
+                aVisitor.mPresContext->EventStateManager(), this);
+          }
+          break;
+        }
+
         case eKeyPress: {
           if (mType == FormControlType::InputRadio && keyEvent->IsTrusted() &&
               !keyEvent->IsAlt() && !keyEvent->IsControl() &&
@@ -4464,6 +4481,14 @@ void HTMLInputElement::HandleTypeChange(FormControlType aNewType,
   UpdateApzAwareFlag();
 
   UpdateBarredFromConstraintValidation();
+
+  // Changing type may affect directionality because of the special-case for
+  // <input type=tel>, as specified in
+  // https://html.spec.whatwg.org/multipage/dom.html#the-directionality
+  if (oldType == FormControlType::InputTel ||
+      mType == FormControlType::InputTel) {
+    RecomputeDirectionality(this, aNotify);
+  }
 
   if (oldType == FormControlType::InputImage) {
     // We're no longer an image input.  Cancel our image requests, if we have

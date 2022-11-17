@@ -81,3 +81,26 @@ addAccessibleTask(
     remoteIframe: true,
   }
 );
+
+/*
+ * Test LINKS_TO relation caching an anchor with multiple hashes
+ */
+addAccessibleTask(
+  `
+  <a id="link" href="#foo#bar">Origin</a><br>
+  <a id="anchor" name="foo#bar">Destination`,
+  async function(browser, accDoc) {
+    const link = findAccessibleChildByID(accDoc, "link");
+    const anchor = findAccessibleChildByID(accDoc, "anchor");
+
+    await testCachedRelation(link, RELATION_LINKS_TO, anchor);
+  },
+  {
+    chrome: true,
+    // IA2 doesn't have a LINKS_TO relation and Windows non-cached
+    // RemoteAccessible uses IA2, so we can't run these tests in this case.
+    topLevel: !isWinNoCache,
+    iframe: !isWinNoCache,
+    remoteIframe: !isWinNoCache,
+  }
+);
