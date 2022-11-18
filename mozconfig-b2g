@@ -7,7 +7,6 @@ export CC=$TOOLCHAIN/bin/clang
 export CXX=$TOOLCHAIN/bin/clang++
 export LLVMCONFIG=$TOOLCHAIN/bin/llvm-config
 export AR=$TOOLCHAIN/bin/llvm-ar
-export AS=$TOOLCHAIN/bin/llvm-as
 export NM=$TOOLCHAIN/bin/llvm-nm
 export RANLIB=$TOOLCHAIN/bin/llvm-ranlib
 
