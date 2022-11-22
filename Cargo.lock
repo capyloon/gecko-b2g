@@ -1789,7 +1789,7 @@ dependencies = [
 
 [[package]]
 name = "fluent-fallback"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "async-trait",
  "chunky-vec",
@@ -1797,6 +1797,7 @@ dependencies = [
  "fluent-langneg",
  "futures 0.3.23",
  "once_cell",
+ "rustc-hash",
  "tokio 1.17.0",
  "unic-langid",
 ]
@@ -1807,11 +1808,8 @@ version = "0.1.0"
 dependencies = [
  "cstr",
  "fluent",
- "fluent-fallback",
  "fluent-pseudo",
- "futures 0.3.23",
  "intl-memoizer",
- "l10nregistry",
  "nsstring",
  "thin-vec",
  "unic-langid",
@@ -1832,12 +1830,10 @@ name = "fluent-langneg-ffi"
 version = "0.1.0"
 dependencies = [
  "fluent-langneg",
- "nserror",
  "nsstring",
  "thin-vec",
  "unic-langid",
  "unic-langid-ffi",
- "xpcom",
 ]
 
 [[package]]
@@ -1860,9 +1856,9 @@ dependencies = [
 
 [[package]]
 name = "fluent-testing"
-version = "0.0.2"
+version = "0.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e4597df830d853d8a319c9cba05bc62d59288b613f1f445638444e05e4041fdf"
+checksum = "cd97ebaec22ed506c034098decf727363925b77fa265d20816f17f35c871e7f8"
 dependencies = [
  "fluent-bundle",
  "fluent-fallback",
@@ -2376,9 +2372,9 @@ dependencies = [
 
 [[package]]
 name = "glean"
-version = "51.8.1"
+version = "51.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d1f6f93391e6a54301b0896347a100f5f742ccc89bf48c9bd4dad06e7282716"
+checksum = "43db04e51b1b7e796177e3bda4fdbeb3b649d6e429524863b1ecf699fabc7d6c"
 dependencies = [
  "chrono",
  "crossbeam-channel",
@@ -2396,7 +2392,7 @@ dependencies = [
 
 [[package]]
 name = "glean-core"
-version = "51.8.1"
+version = "51.8.2"
 dependencies = [
  "android_logger",
  "bincode",
@@ -2407,6 +2403,7 @@ dependencies = [
  "log",
  "once_cell",
  "oslog",
+ "remove_dir_all",
  "rkv",
  "serde",
  "serde_json",
@@ -3575,12 +3572,10 @@ version = "0.1.0"
 dependencies = [
  "async-task",
  "cstr",
- "futures-task",
  "libc",
  "log",
  "nserror",
  "nsstring",
- "thiserror",
  "xpcom",
 ]
 
@@ -4682,9 +4677,9 @@ dependencies = [
 
 [[package]]
 name = "rkv"
-version = "0.17.1"
+version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6006704273063c72952370ad236b8d58556dcc4f99a95ced4d9ad40f3e80a69"
+checksum = "2c3b196786090b5b57c9bb0f4afca6ac6a5bfb6182c0161ef32f1ecade43ac47"
 dependencies = [
  "arrayref",
  "bincode",
@@ -5820,11 +5815,9 @@ dependencies = [
 name = "unic-langid-ffi"
 version = "0.1.0"
 dependencies = [
- "nserror",
  "nsstring",
  "thin-vec",
  "unic-langid",
- "xpcom",
 ]
 
 [[package]]

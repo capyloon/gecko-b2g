@@ -189,7 +189,9 @@
            tabspecific="true"
            aria-labelledby="editBookmarkPanelTitle">
       <box class="panel-header">
-        <html:h1 id="editBookmarkPanelTitle"/>
+        <html:h1>
+          <html:span id="editBookmarkPanelTitle"/>
+        </html:h1>
       </box>
       <toolbarseparator id="editBookmarkHeaderSeparator"></toolbarseparator>
       <vbox class="panel-subview-body">
@@ -637,7 +639,8 @@
   </html:template>
 
   <menupopup id="unified-extensions-context-menu"
-             onpopupshowing="gUnifiedExtensions.updateContextMenu(this, event)">
+             onpopupshowing="gUnifiedExtensions.updateContextMenu(this, event)"
+             oncommand="gUnifiedExtensions.onContextMenuCommand(this, event)">
     <menuitem oncommand="gUnifiedExtensions.onPinToToolbarChange(this.parentElement, event);"
               data-lazy-l10n-id="unified-extensions-context-menu-pin-to-toolbar"
               type="checkbox"

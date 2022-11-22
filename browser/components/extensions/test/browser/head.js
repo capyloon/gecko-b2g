@@ -87,6 +87,11 @@ function loadTestSubscript(filePath) {
   Services.scriptloader.loadSubScript(new URL(filePath, gTestPath).href, this);
 }
 
+// Ensure when we turn off topsites in the next few lines,
+// we don't hit any remote endpoints.
+Services.prefs
+  .getDefaultBranch("browser.newtabpage.activity-stream.")
+  .setStringPref("discoverystream.endpointSpocsClear", "");
 // Leaving Top Sites enabled during these tests would create site screenshots
 // and update pinned Top Sites unnecessarily.
 Services.prefs
@@ -1003,7 +1008,7 @@ async function getIncognitoWindow(url = "about:privatebrowsing") {
  *
  * @returns {boolean} True if the window's background-color is set on :root
  *   rather than #navigator-toolbox.
- **/
+ */
 function backgroundColorSetOnRoot() {
   const os = ClientEnvironmentBase.os;
   if (!os.isWindows) {
