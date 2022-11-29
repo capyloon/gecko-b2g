@@ -373,7 +373,7 @@ DataCallManager.prototype = {
     }
 
     // Once got the apn, loading the white list config if any.
-    if (aApnList && aApnList.length > 0) {
+    if (aApnList && aApnList.length) {
       let allowed = null;
       if (lazy.customizationInfo) {
         allowed = lazy.customizationInfo.getCustomizedValue(
@@ -382,7 +382,7 @@ DataCallManager.prototype = {
           []
         );
       }
-      if (allowed.length > 0) {
+      if (allowed.length) {
         handler.mobileWhiteList = allowed;
         if (DEBUG) {
           this.debug(
@@ -664,6 +664,35 @@ function convertToDataCallType(aNetworkType) {
   }
 }
 
+function convertApnType(aApnType) {
+  switch (aApnType) {
+    case "default":
+      return NETWORK_TYPE_MOBILE;
+    case "mms":
+      return NETWORK_TYPE_MOBILE_MMS;
+    case "supl":
+      return NETWORK_TYPE_MOBILE_SUPL;
+    case "ims":
+      return NETWORK_TYPE_MOBILE_IMS;
+    case "dun":
+      return NETWORK_TYPE_MOBILE_DUN;
+    case "fota":
+      return NETWORK_TYPE_MOBILE_FOTA;
+    case "ia":
+      return NETWORK_TYPE_MOBILE_IA;
+    case "xcap":
+      return NETWORK_TYPE_MOBILE_XCAP;
+    case "cbs":
+      return NETWORK_TYPE_MOBILE_CBS;
+    case "hipri":
+      return NETWORK_TYPE_MOBILE_HIPRI;
+    case "Emergency":
+      return NETWORK_TYPE_MOBILE_ECC;
+    default:
+      return NETWORK_TYPE_UNKNOWN;
+  }
+}
+
 function convertToDataCallState(aState) {
   switch (aState) {
     case NETWORK_STATE_CONNECTING:
@@ -789,35 +818,6 @@ DataCallHandler.prototype = {
     );
   },
 
-  _convertApnType(aApnType) {
-    switch (aApnType) {
-      case "default":
-        return NETWORK_TYPE_MOBILE;
-      case "mms":
-        return NETWORK_TYPE_MOBILE_MMS;
-      case "supl":
-        return NETWORK_TYPE_MOBILE_SUPL;
-      case "ims":
-        return NETWORK_TYPE_MOBILE_IMS;
-      case "dun":
-        return NETWORK_TYPE_MOBILE_DUN;
-      case "fota":
-        return NETWORK_TYPE_MOBILE_FOTA;
-      case "ia":
-        return NETWORK_TYPE_MOBILE_IA;
-      case "xcap":
-        return NETWORK_TYPE_MOBILE_XCAP;
-      case "cbs":
-        return NETWORK_TYPE_MOBILE_CBS;
-      case "hipri":
-        return NETWORK_TYPE_MOBILE_HIPRI;
-      case "Emergency":
-        return NETWORK_TYPE_MOBILE_ECC;
-      default:
-        return NETWORK_TYPE_UNKNOWN;
-    }
-  },
-
   /*_compareDataCallOptions: function(aDataCall, aNewDataCall) {
     return aDataCall.dataProfile.apn == aNewDataCall.dataProfile.apn &&
            aDataCall.dataProfile.user == aNewDataCall.dataProfile.user &&
@@ -880,7 +880,7 @@ DataCallHandler.prototype = {
       }
       //Create apn type map to DC list.
       for (let i = 0; i < inputApnSetting.types.length; i++) {
-        let networkType = this._convertApnType(inputApnSetting.types[i]);
+        let networkType = convertApnType(inputApnSetting.types[i]);
         if (networkType === NETWORK_TYPE_UNKNOWN) {
           if (DEBUG) {
             this.debug("Invalid apn type: " + networkType);
@@ -947,6 +947,45 @@ DataCallHandler.prototype = {
     this.debug("_setupApnSettings done. ");
   },
 
+  configMeter(aMeterNetworkType) {
+    aMeterNetworkType.forEach(
+      function(apnType) {
+        let networkType = convertApnType(apnType);
+        let networkInterface = this.dataNetworkInterfaces.get(networkType);
+        if (networkInterface) {
+          networkInterface.info.meter = true;
+          this.debug("Config meter apn type:" + apnType);
+        } else {
+          this.debug("No such meter apn type:" + apnType);
+        }
+      }.bind(this)
+    );
+  },
+
+  updateMeterApnType() {
+    if (!this._activeApnSettings) {
+      this.debug("No apn setting.");
+      return;
+    }
+
+    let meterInterfaceList = [];
+    if (lazy.customizationInfo) {
+      meterInterfaceList = lazy.customizationInfo.getCustomizedValue(
+        this.clientId,
+        "meterInterfaceList",
+        []
+      );
+    }
+    // Default config, if no meterInterfaceList config, set the default type as meter type.
+    if (!meterInterfaceList.length) {
+      this.debug("Config default type as meter.");
+      meterInterfaceList.push("default");
+    }
+    this.debug("meterInterfaceList:" + JSON.stringify(meterInterfaceList));
+
+    this.configMeter(meterInterfaceList);
+  },
+
   /**
    * Check if all data is disconnected.
    */
@@ -1001,6 +1040,8 @@ DataCallHandler.prototype = {
     ).then(() => {
       this._setupApnSettings(this._pendingApnSettings);
       this._pendingApnSettings = null;
+      // Once got the apn, loading the meter list config if any.
+      this.updateMeterApnType();
       this.updateAllRILNetworkInterface();
     });
   },
@@ -1083,7 +1124,7 @@ DataCallHandler.prototype = {
 
       for (let i = 0; i < inputApnSetting.types.length; i++) {
         let apnType = inputApnSetting.types[i];
-        let networkType = this._convertApnType(apnType);
+        let networkType = convertApnType(apnType);
         if (networkType == NETWORK_TYPE_MOBILE_IA) {
           iaApnSetting = inputApnSetting;
         } else if (networkType == NETWORK_TYPE_MOBILE) {
@@ -2078,7 +2119,7 @@ DataCall.prototype = {
 
     this.reset();
 
-    if (this.requestedNetworkIfaces.length > 0) {
+    if (this.requestedNetworkIfaces.length) {
       if (DEBUG) {
         this.debug(
           "State is disconnected/unknown, but this DataCall is requested."
@@ -2180,7 +2221,7 @@ DataCall.prototype = {
         this.reset();
 
         // Handle network drop call case.
-        if (this.requestedNetworkIfaces.length > 0) {
+        if (this.requestedNetworkIfaces.length) {
           if (DEBUG) {
             this.debug(
               "State is disconnected/unknown, but this DataCall is" +
@@ -2268,7 +2309,7 @@ DataCall.prototype = {
   dataRegistrationChanged(aRadioTech) {
     // 1. Update the tcp buffer size for connected datacall.
     if (
-      this.requestedNetworkIfaces.length > 0 &&
+      this.requestedNetworkIfaces.length &&
       this.state == RIL.GECKO_NETWORK_STATE_CONNECTED
     ) {
       this.linkInfo.tcpbuffersizes = this.updateTcpBufferSizes(aRadioTech);
@@ -2588,7 +2629,7 @@ DataCall.prototype = {
     // DataCall and if state is CONNECTED, for other states, we simply remove
     // the network interface from requestedNetworkIfaces.
     if (
-      this.requestedNetworkIfaces.length > 0 ||
+      this.requestedNetworkIfaces.length ||
       this.state != NETWORK_STATE_CONNECTED
     ) {
       return;
@@ -2645,6 +2686,7 @@ function RILNetworkInfo(aClientId, aType, aNetworkInterface) {
   this.serviceId = aClientId;
   this.type = aType;
   this.reason = Ci.nsINetworkInfo.REASON_NONE;
+  this.meter = false;
 
   this.networkInterface = aNetworkInterface;
 }
@@ -2656,6 +2698,9 @@ RILNetworkInfo.prototype = {
   ]),
 
   networkInterface: null,
+
+  // For check if this interface is meter or not.
+  meter: false,
 
   getDataCall() {
     let dataCallsList = this.networkInterface.dataCallsList;

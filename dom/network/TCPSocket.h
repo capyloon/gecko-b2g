@@ -140,6 +140,9 @@ class TCPSocket final : public DOMEventTargetHelper,
 
   // Initialize this socket's associated IPC actor in the parent process.
   void SetSocketBridgeParent(TCPSocketParent* aBridgeParent);
+  // Initialize this socket's associated app origin.
+  void SetOrigin(nsAutoCString& aOrigin, nsAutoCString& aURL, bool aIsApp,
+                 nsAutoCString& aManifestURL);
 
   static bool SocketEnabled();
 
@@ -180,6 +183,10 @@ class TCPSocket final : public DOMEventTargetHelper,
   void ActivateTLS();
   // Dispatch an error event if necessary, then dispatch a "close" event.
   nsresult MaybeReportErrorAndCloseIfOpen(nsresult status);
+#ifdef MOZ_WIDGET_GONK
+  // Store and reset any saved network stats for this socket.
+  void SaveNetworkStats(bool aEnforce);
+#endif
 
   // Helper for FireDataStringEvent/FireDataArrayEvent.
   nsresult FireDataEvent(JSContext* aCx, const nsAString& aType,
@@ -247,6 +254,23 @@ class TCPSocket final : public DOMEventTargetHelper,
   nsTArray<nsCOMPtr<nsIInputStream>> mPendingData;
 
   bool mObserversActive;
+
+#ifdef MOZ_WIDGET_GONK
+  // Number of bytes sent.
+  uint32_t mTxBytes;
+  // Number of bytes received.
+  uint32_t mRxBytes;
+  // Flag to recognize is app or not.
+  bool mIsApp;
+  // The origin of app used by this socket.
+  nsAutoCString mOrigin;
+  // The URL of app used by this socket.
+  nsAutoCString mURL;
+  // The manifest URL of app used by this socket.
+  nsAutoCString mManifestURL;
+  // The name of the active network used by this socket.
+  nsCOMPtr<nsINetworkInfo> mActiveNetworkInfo;
+#endif
 
 #ifdef MOZ_B2G
   static bool PermissionAllowed(const nsACString& aType,

@@ -95,7 +95,7 @@ NetworkWorkerRequestQueue.prototype = {
     }
 
     this.tasks.shift();
-    if (this.tasks.length > 0) {
+    if (this.tasks.length) {
       // Run queue on the next tick.
       Services.tm.currentThread.dispatch(() => {
         this.runQueue();
@@ -216,28 +216,41 @@ NetworkService.prototype = {
 
   // nsINetworkService
 
-  getNetworkInterfaceStats(aInterfaces, aCallback) {
-    debug("getNetworkInterfaceStats for " + JSON.stringify(aInterfaces));
+  getNetworkInterfaceStats(aInterface, aCallback) {
+    debug("getNetworkInterfaceStats for " + JSON.stringify(aInterface));
+    let interfaceStats = [];
     if (this.trafficStats) {
       let statsInfos = {};
       this.trafficStats.getStats(statsInfos);
-      let rxBytes = 0,
-        txBytes = 0,
-        now = Date.now();
-      for (let i = 0; i < statsInfos.value.length; i++) {
-        if (aInterfaces.includes(statsInfos.value[i].name)) {
-          rxBytes += statsInfos.value[i].rxBytes;
-          txBytes += statsInfos.value[i].txBytes;
+      let now = Date.now();
+      if (aInterface.length) {
+        for (let i = 0; i < statsInfos.value.length; i++) {
+          if (aInterface == statsInfos.value[i].name) {
+            interfaceStats.push({
+              name: statsInfos.value[i].name,
+              rxBytes: statsInfos.value[i].rxBytes,
+              txBytes: statsInfos.value[i].txBytes,
+            });
+            break;
+          }
         }
+      } else {
+        statsInfos.value.forEach(function(value) {
+          interfaceStats.push({
+            name: value.name,
+            rxBytes: value.rxBytes,
+            txBytes: value.txBytes,
+          });
+        });
       }
-      aCallback.networkStatsAvailable(true, rxBytes, txBytes, now);
+      aCallback.networkStatsAvailable(true, interfaceStats, now);
       return;
     }
 
     // legacy parse kernel node.
     let file = new FileUtils.File("/proc/net/dev");
     if (!file) {
-      aCallback.networkStatsAvailable(false, 0, 0, Date.now());
+      aCallback.networkStatsAvailable(false, interfaceStats, Date.now());
       return;
     }
 
@@ -247,9 +260,8 @@ NetworkService.prototype = {
         loadUsingSystemPrincipal: true,
       },
       function(inputStream, status) {
-        let rxBytes = 0,
-          txBytes = 0,
-          now = Date.now();
+        interfaceStats = [];
+        let now = Date.now();
 
         if (Components.isSuccessCode(status)) {
           // Find record for corresponding interface.
@@ -260,15 +272,18 @@ NetworkService.prototype = {
           ).split("\n");
           for (let i = 2; i < data.length; i++) {
             let parseResult = statExpr.exec(data[i]);
-            if (parseResult && aInterfaces.includes(parseResult[1])) {
-              rxBytes += parseInt(parseResult[2], 10);
-              txBytes += parseInt(parseResult[3], 10);
+            if (parseResult && aInterface == parseResult[1]) {
+              interfaceStats.push({
+                name: parseResult[1],
+                rxBytes: parseInt(parseResult[2], 10),
+                txBytes: parseInt(parseResult[3], 10),
+              });
             }
           }
         }
 
         // netd always return success even interface doesn't exist.
-        aCallback.networkStatsAvailable(true, rxBytes, txBytes, now);
+        aCallback.networkStatsAvailable(true, interfaceStats, now);
       }
     );
   },
@@ -355,7 +370,12 @@ NetworkService.prototype = {
       self.controlMessage(params, function(aResult) {
         if (!aResult.result) {
           // Tethering disabled, set interfaceAlarm
-          self._setNetworkInterfaceAlarm(aInterfaceName, aThreshold, aCallback);
+          // TODO: We shall prevent enable same network alarm again and again.
+          self._enableNetworkInterfaceAlarm(
+            aInterfaceName,
+            aThreshold,
+            aCallback
+          );
           return;
         }
 
@@ -389,11 +409,11 @@ NetworkService.prototype = {
 
     this.controlMessage(params, function(aResult) {
       if (!aResult.result) {
-        aCallback.networkUsageAlarmResult(null);
+        aCallback.networkUsageAlarmResult("setNetworkInterfaceAlarm failed");
         return;
       }
 
-      this._enableNetworkInterfaceAlarm(aInterfaceName, aThreshold, aCallback);
+      aCallback.networkUsageAlarmResult(null);
     });
   },
 
@@ -416,10 +436,10 @@ NetworkService.prototype = {
 
     this.controlMessage(params, function(aResult) {
       if (!aResult.result) {
-        aCallback.networkUsageAlarmResult(null);
+        aCallback.networkUsageAlarmResult("enableNetworkInterfaceAlarm failed");
         return;
       }
-      aCallback.networkUsageAlarmResult(aResult.reason);
+      this._setNetworkInterfaceAlarm(aInterfaceName, aThreshold, aCallback);
     });
   },
 

@@ -12,6 +12,9 @@
 #include "mozilla/Unused.h"
 #include "mozilla/dom/BrowserParent.h"
 #include "mozilla/dom/TCPServerSocketEvent.h"
+#include "mozilla/dom/ContentParent.h"
+#include "mozilla/dom/CanonicalBrowsingContext.h"
+#include "mozilla/dom/WindowGlobalParent.h"
 
 namespace mozilla::dom {
 
@@ -105,6 +108,12 @@ mozilla::ipc::IPCResult TCPServerSocketParent::RecvRequestDelete() {
 
 void TCPServerSocketParent::OnConnect(TCPServerSocketEvent* event) {
   RefPtr<TCPSocket> socket = event->Socket();
+  nsAutoCString origin;
+  nsAutoCString url;
+  bool isApp = false;
+  nsAutoCString manifestURL;
+  GetOrigin(origin, url, &isApp, manifestURL);
+  socket->SetOrigin(origin, url, isApp, manifestURL);
 
   RefPtr<TCPSocketParent> socketParent = new TCPSocketParent();
   socketParent->SetSocket(socket);
@@ -112,6 +121,54 @@ void TCPServerSocketParent::OnConnect(TCPServerSocketEvent* event) {
   socket->SetSocketBridgeParent(socketParent);
 
   SendCallbackAccept(socketParent);
+}
+
+void TCPServerSocketParent::GetOrigin(nsAutoCString& aOrigin, nsAutoCString& aURL, bool* aIsApp,
+                                      nsAutoCString& aManifestURL) {
+  const PContentParent* content = Manager()->Manager();
+  if (PBrowserParent* browser =
+          SingleManagedOrNull(content->ManagedPBrowserParent())) {
+    CanonicalBrowsingContext* browsingContext =
+        static_cast<BrowserParent*>(browser)->GetBrowsingContext()->Top();
+    if (!browsingContext) {
+      return;
+    }
+
+    WindowGlobalParent* window = browsingContext->GetCurrentWindowGlobal();
+    if (!window) {
+      return;
+    }
+
+    nsCOMPtr<nsIPrincipal> principal = window->DocumentPrincipal();
+    if (principal) {
+      principal->GetOrigin(aOrigin);
+      principal->GetSpec(aURL);
+      nsCOMPtr<nsIPermissionManager> permMgr =
+          mozilla::services::GetPermissionManager();
+      uint32_t perm = nsIPermissionManager::DENY_ACTION;
+      if (permMgr) {
+        permMgr->TestExactPermissionFromPrincipal(
+            principal, "networkstats-perm"_ns, &perm);
+        *aIsApp = perm == nsIPermissionManager::ALLOW_ACTION;
+      }
+    }
+
+    RefPtr<dom::Element> element = browsingContext->GetEmbedderElement();
+    if (!element) {
+      return;
+    }
+
+    RefPtr<dom::Element> parentElement = element->GetParentElement();
+    if (parentElement) {
+      nsAutoString manifestURLStr;
+      nsAutoString tagName;
+      parentElement->GetTagName(tagName);
+      if (tagName.LowerCaseEqualsLiteral("web-view")) {
+        parentElement->GetAttribute(u"data-manifest-url"_ns, manifestURLStr);
+        aManifestURL.Assign(NS_ConvertUTF16toUTF8(manifestURLStr));
+      }
+    }
+  }
 }
 
 }  // namespace mozilla::dom

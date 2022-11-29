@@ -22,6 +22,12 @@
 #include "mozilla/net/WebSocketConnectionListener.h"
 #include "BaseWebSocketChannel.h"
 
+#ifdef MOZ_WIDGET_GONK
+#  include "nsINetworkInterface.h"
+#  include "nsThreadUtils.h"
+#  include "nsProxyRelease.h"
+#endif
+
 #include "nsCOMPtr.h"
 #include "nsString.h"
 #include "nsDeque.h"
@@ -137,7 +143,7 @@ class WebSocketChannel : public BaseWebSocketChannel,
   const static uint8_t kPayloadLengthBitsMask = 0x7F;
 
  protected:
-  virtual ~WebSocketChannel();
+  ~WebSocketChannel() override;
 
  private:
   friend class OutboundEnqueuer;
@@ -354,6 +360,28 @@ class WebSocketChannel : public BaseWebSocketChannel,
 
   nsCOMPtr<nsIDashboardEventNotifier>
       mConnectionLogService;  // effectively const
+
+  // These members are used for network per-app metering (bug 855949)
+  // Currently, they are only available on gonk.
+  Atomic<uint64_t, Relaxed> mCountRecv;
+  Atomic<uint64_t, Relaxed> mCountSent;
+  bool mIsApp;
+  nsAutoCString mTopOrigin;
+  nsAutoCString mURL;
+  bool mIsLoopback;
+  nsAutoCString mManifestURL;
+#ifdef MOZ_WIDGET_GONK
+  nsMainThreadPtrHandle<nsINetworkInfo> mActiveNetworkInfo;
+#endif
+  nsresult SaveNetworkStats(bool);
+  void CountRecvBytes(uint64_t recvBytes) {
+    mCountRecv += recvBytes;
+    SaveNetworkStats(false);
+  }
+  void CountSentBytes(uint64_t sentBytes) {
+    mCountSent += sentBytes;
+    SaveNetworkStats(false);
+  }
 
   mozilla::Mutex mMutex;
 };

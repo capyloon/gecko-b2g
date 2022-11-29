@@ -632,6 +632,14 @@ inline void NS_QueryNotificationCallbacks(nsIInterfaceRequestor* callbacks,
 bool NS_UsePrivateBrowsing(nsIChannel* channel);
 
 /**
+ * Gets Origin from channel's nsILoadContext.
+ * Returns false if error or channel's callbacks don't implement nsILoadContext.
+ */
+bool NS_GetTopOriginInfo(nsIChannel* aChannel, nsACString& aOrigin, nsACString& aURL,
+                         bool* aIsApp, bool* aIsLoopback,
+                         nsACString& aManifestURL);
+
+/**
  * Returns true if the channel has visited any cross-origin URLs on any
  * URLs that it was redirected through.
  */

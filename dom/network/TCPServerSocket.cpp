@@ -146,6 +146,14 @@ TCPServerSocket::OnSocketAccepted(nsIServerSocket* aServer,
   nsCOMPtr<nsIGlobalObject> global = GetOwnerGlobal();
   RefPtr<TCPSocket> socket =
       TCPSocket::CreateAcceptedSocket(global, aTransport, mUseArrayBuffers);
+  if (mServerBridgeParent) {
+    nsAutoCString origin;
+    nsAutoCString url;
+    bool isApp = false;
+    nsAutoCString manifestURL;
+    mServerBridgeParent->GetOrigin(origin, url, &isApp, manifestURL);
+    socket->SetOrigin(origin, url, isApp, manifestURL);
+  }
   FireEvent(u"connect"_ns, socket);
   return NS_OK;
 }
