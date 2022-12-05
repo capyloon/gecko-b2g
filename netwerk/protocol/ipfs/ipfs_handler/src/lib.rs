@@ -192,7 +192,7 @@ impl IpfsHandler {
         };
 
         let uds_url = if url_path.is_empty() {
-            format!("http+unix://{}/{}", self.uds_path, scheme)
+            format!("http+unix://{}/{}/", self.uds_path, scheme)
         } else {
                 format!(
                 "http+unix://{}/{}/{}{}",

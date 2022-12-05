@@ -33,3 +33,4 @@ ac_add_options --enable-forkserver
 ac_add_options --enable-wasm-function-references
 ac_add_options --enable-wasm-gc
 
+ac_add_options --disable-sandbox

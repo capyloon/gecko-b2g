@@ -39,3 +39,5 @@ else
 fi
 
 mk_add_options AUTOCLOBBER=1
+
+ac_add_options --enable-safebrowsing

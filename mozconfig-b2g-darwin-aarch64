@@ -56,9 +56,9 @@ ac_add_options MOZ_TELEMETRY_REPORTING=
 # Pretend to be an official build to be in a release configuration.
 export MOZILLA_OFFICIAL=1
 
-ac_add_options --enable-wasm-simd
-ac_add_options --enable-wasm-function-references
-ac_add_options --enable-wasm-type-reflections
+#ac_add_options --enable-wasm-simd
+#ac_add_options --enable-wasm-function-references
+#ac_add_options --enable-wasm-type-reflections
 
 # Disable until we figure CI issues
 # ac_add_options --enable-clang-plugin
@@ -71,9 +71,7 @@ ac_add_options --with-api-daemon-port=8081
 
 mk_add_options AUTOCLOBBER=1
 
-if [ -n "$MOZ_SAFE_BROWSING" ]; then
-  ac_add_options --enable-safebrowsing
-fi
+ac_add_options --enable-safebrowsing
 
 # Disable WASM libraries sandboxing for now until we figure out build failures.
 ac_add_options --without-wasm-sandboxed-libraries

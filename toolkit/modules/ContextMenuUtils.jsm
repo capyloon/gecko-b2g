@@ -48,7 +48,8 @@ var ContextMenuUtils = {
     let menuData = { systemTargets: [], contextmenu: null };
     let ctxMenuId = null;
     let clipboardPlainTextOnly = Services.prefs.getBoolPref(
-      "clipboard.plainTextOnly"
+      "clipboard.plainTextOnly",
+      false
     );
     var copyableElements = {
       image: false,
