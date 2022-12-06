@@ -10,13 +10,12 @@ import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  FormHistory: "resource://gre/modules/FormHistory.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
   PrincipalsCollector: "resource://gre/modules/PrincipalsCollector.sys.mjs",
 });
 
 XPCOMUtils.defineLazyModuleGetters(lazy, {
-  FormHistory: "resource://gre/modules/FormHistory.jsm",
-
   ContextualIdentityService:
     "resource://gre/modules/ContextualIdentityService.jsm",
 });
@@ -524,7 +523,8 @@ export var Sanitizer = {
             Ci.nsIClearDataService.CLEAR_CONTENT_PREFERENCES |
             Ci.nsIClearDataService.CLEAR_DOM_PUSH_NOTIFICATIONS |
             Ci.nsIClearDataService.CLEAR_CLIENT_AUTH_REMEMBER_SERVICE |
-            Ci.nsIClearDataService.CLEAR_CERT_EXCEPTIONS
+            Ci.nsIClearDataService.CLEAR_CERT_EXCEPTIONS |
+            Ci.nsIClearDataService.CLEAR_CREDENTIAL_MANAGER_STATE
         );
         TelemetryStopwatch.finish("FX_SANITIZE_SITESETTINGS", refObj);
       },

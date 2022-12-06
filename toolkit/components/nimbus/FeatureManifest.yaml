@@ -758,6 +758,21 @@ majorRelease2022:
       fallbackPref: "browser.majorrelease.onboarding"
       description: "Whether or not to use the MR2022 onboarding settings."
 
+featureCallout:
+  description: "Prefs that control users' progress through Feature Callout tours"
+  owner: omc@mozilla.com
+  hasExposure: false
+  isEarlyStartup: false
+  variables:
+    pdfJsTourProgress:
+      description: A JSON blob capturing a user's progress in the PDF.js feature tour
+      type: string
+      setPref: "browser.pdfjs.feature-tour"
+    firefoxViewTourProgress:
+      description: A JSON blob capturing a user's progress in the Firefox View feature tour
+      type: string
+      setPref: "browser.firefox-view.feature-tour"
+
 browserLowMemoryPrefs:
   description: Prefs which control the browser's behaviour under low memory.
   owner: haftandilian@mozilla.com
@@ -802,3 +817,28 @@ echPrefs:
       description: Probability of GREASEing a TLS connection with ECH (0-100).
       type: int
       setPref: "security.tls.ech.grease_probability"
+
+pingsender:
+  description: "In-product usage of the pingsender telemetry reporter."
+  owner: nalexander@mozilla.com
+  hasExposure: false
+  variables:
+    backgroundTaskEnabled:
+      type: "boolean"
+      fallbackPref: "toolkit.telemetry.shutdownPingSender.backgroundtask.enabled"
+      description: "Whether to use the `pingsender` background task to send shutdown telemetry"
+
+dapTelemetry:
+  description: DAP Telemetry
+  owner: simon@mozilla.com
+  hasExposure: false
+  isEarlyStartup: true # Data is sent on startup with a trigger in BrowserGlue.jsm
+  variables:
+    enabled:
+      type: boolean
+      fallbackPref: toolkit.telemetry.dap_enabled
+      description: Whether to automatically send DAP measurements.
+    task1Enabled:
+      type: boolean
+      fallbackPref: toolkit.telemetry.dap_task1_enabled
+      description: Whether to send fake measurements for verification task 1.

@@ -735,8 +735,9 @@ class LocalTrackSource : public MediaStreamTrackSource {
   LocalTrackSource(nsIPrincipal* aPrincipal, const nsString& aLabel,
                    const RefPtr<DeviceListener>& aListener,
                    MediaSourceEnum aSource, MediaTrack* aTrack,
-                   RefPtr<PeerIdentity> aPeerIdentity)
-      : MediaStreamTrackSource(aPrincipal, aLabel),
+                   RefPtr<PeerIdentity> aPeerIdentity,
+                   TrackingId aTrackingId = TrackingId())
+      : MediaStreamTrackSource(aPrincipal, aLabel, std::move(aTrackingId)),
         mSource(aSource),
         mTrack(aTrack),
         mPeerIdentity(std::move(aPeerIdentity)),
@@ -1022,6 +1023,13 @@ LocalMediaDevice::GetRawId(nsAString& aID) {
 }
 
 NS_IMETHODIMP
+LocalMediaDevice::GetId(nsAString& aID) {
+  MOZ_ASSERT(NS_IsMainThread());
+  aID.Assign(mID);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 LocalMediaDevice::GetScary(bool* aScary) {
   *aScary = mRawDevice->mScary;
   return NS_OK;
@@ -1037,6 +1045,10 @@ MediaEngineSource* LocalMediaDevice::Source() {
     mSource = mRawDevice->mEngine->CreateSource(mRawDevice);
   }
   return mSource;
+}
+
+const TrackingId& LocalMediaDevice::GetTrackingId() const {
+  return mSource->GetTrackingId();
 }
 
 // Threadsafe since mKind and mSource are const.
@@ -1410,6 +1422,7 @@ class GetUserMediaStreamTask final : public GetUserMediaTask {
           mAudioDevice->Deallocate();
         }
       } else {
+        mVideoTrackingId.emplace(mVideoDevice->GetTrackingId());
         if (mCallerType == CallerType::NonSystem) {
           if (mShouldFocusSource) {
             rv = mVideoDevice->FocusOnSelectedSource();
@@ -1465,6 +1478,9 @@ class GetUserMediaStreamTask final : public GetUserMediaTask {
   // MediaDevices are set when selected and Allowed() by the UI.
   RefPtr<LocalMediaDevice> mAudioDevice;
   RefPtr<LocalMediaDevice> mVideoDevice;
+  // Tracking id unique for a video frame source. Set when the corresponding
+  // device has been allocated.
+  Maybe<TrackingId> mVideoTrackingId;
   // Copy of MediaManager::mPrefs
   const MediaEnginePrefs mPrefs;
   // media.getusermedia.window.focus_source.enabled
@@ -1558,7 +1574,7 @@ void GetUserMediaStreamTask::PrepareDOMStream() {
     RefPtr<MediaTrack> track = mtg->CreateSourceTrack(MediaSegment::VIDEO);
     videoTrackSource = new LocalTrackSource(
         principal, videoDeviceName, mVideoDeviceListener,
-        mVideoDevice->GetMediaSource(), track, peerIdentity);
+        mVideoDevice->GetMediaSource(), track, peerIdentity, *mVideoTrackingId);
     MOZ_ASSERT(MediaManager::IsOn(mConstraints.mVideo));
     RefPtr<MediaStreamTrack> domTrack = new dom::VideoStreamTrack(
         window, track, videoTrackSource, dom::MediaStreamTrackState::Live,

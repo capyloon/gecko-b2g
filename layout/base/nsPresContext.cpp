@@ -68,7 +68,6 @@
 #include "mozilla/dom/FontFaceSet.h"
 #include "mozilla/StaticPresData.h"
 #include "nsRefreshDriver.h"
-#include "Layers.h"
 #include "LayerUserData.h"
 #include "mozilla/dom/NotifyPaintEvent.h"
 #include "nsFontCache.h"
@@ -2707,6 +2706,23 @@ void nsPresContext::NotifyContentfulPaint() {
       RefPtr<PerformancePaintTiming> paintTiming = new PerformancePaintTiming(
           perf, u"first-contentful-paint"_ns, nowTime);
       perf->SetFCPTimingEntry(paintTiming);
+
+      if (profiler_thread_is_being_profiled_for_markers()) {
+        RefPtr<nsDOMNavigationTiming> timing = mDocument->GetNavigationTiming();
+        if (timing) {
+          TimeStamp navigationStart = timing->GetNavigationStartTimeStamp();
+          TimeDuration elapsed = nowTime - navigationStart;
+          nsIURI* docURI = Document()->GetDocumentURI();
+          nsPrintfCString marker("Contentful paint after %dms for URL %s",
+                                 int(elapsed.ToMilliseconds()),
+                                 docURI->GetSpecOrDefault().get());
+          PROFILER_MARKER_TEXT(
+              "FirstContentfulPaint", DOM,
+              MarkerOptions(MarkerTiming::Interval(navigationStart, nowTime),
+                            MarkerInnerWindowId(innerWindow->WindowID())),
+              marker);
+        }
+      }
     }
   }
 }
@@ -2889,7 +2905,7 @@ void nsPresContext::UpdateDynamicToolbarOffset(ScreenIntCoord aOffset) {
   // %-based style values will be recomputed with the visual viewport size which
   // is including the area covered by the dynamic toolbar.
   if (mDynamicToolbarHeight == 0 || aOffset == -mDynamicToolbarMaxHeight) {
-    mPresShell->MarkFixedFramesForReflow(IntrinsicDirty::Resize);
+    mPresShell->MarkFixedFramesForReflow(IntrinsicDirty::None);
     mPresShell->AddResizeEventFlushObserverIfNeeded();
   }
 

@@ -141,16 +141,8 @@ nsHtml5TreeOpExecutor::~nsHtml5TreeOpExecutor() {
       }
     }
   }
-  // We used to have an `NS_ASSERTION` here that asserted
-  // that either `mBroken` is true or `mOpQueue` is empty.
-  // Sometimes a tree op executor ended up being cycle collected
-  // with the assertion firing. It is not understood what
-  // code path abandons an instance of the tree op executor
-  // without terminating it so that the cycle collector sees
-  // it with stuff still in the queue. The assertion was removed
-  // to avoid sheriffing the assertion failure without a path
-  // to understanding how the object gets abandoned to cycle
-  // collection.
+  MOZ_ASSERT(NS_FAILED(mBroken) || mOpQueue.IsEmpty(),
+             "Somehow there's stuff in the op queue.");
 }
 
 // nsIContentSink
@@ -180,6 +172,13 @@ nsHtml5TreeOpExecutor::DidBuildModel(bool aTerminated) {
 
   MOZ_RELEASE_ASSERT(!IsInDocUpdate(),
                      "DidBuildModel from inside a doc update.");
+
+  RefPtr<nsHtml5TreeOpExecutor> pin(this);
+  auto queueClearer = MakeScopeExit([&] {
+    if (aTerminated && (mFlushState == eNotFlushing)) {
+      ClearOpQueue();  // clear in order to be able to assert in destructor
+    }
+  });
 
   // This comes from nsXMLContentSink and nsHTMLContentSink
   // If this parser has been marked as broken, treat the end of parse as
@@ -1219,7 +1218,7 @@ void nsHtml5TreeOpExecutor::PreloadScript(
   mDocument->ScriptLoader()->PreloadURI(
       uri, aCharset, aType, aCrossOrigin, aIntegrity, aScriptFromHead, aAsync,
       aDefer, aNoModule, aLinkPreload,
-      GetPreloadReferrerPolicy(aReferrerPolicy));
+      GetPreloadReferrerPolicy(aReferrerPolicy), 0);
 }
 
 void nsHtml5TreeOpExecutor::PreloadStyle(const nsAString& aURL,
@@ -1248,7 +1247,8 @@ void nsHtml5TreeOpExecutor::PreloadStyle(const nsAString& aURL,
                           GetPreloadReferrerPolicy(aReferrerPolicy), aIntegrity,
                           aLinkPreload
                               ? css::StylePreloadKind::FromLinkRelPreloadElement
-                              : css::StylePreloadKind::FromParser);
+                              : css::StylePreloadKind::FromParser,
+                          0);
 }
 
 void nsHtml5TreeOpExecutor::PreloadImage(
@@ -1286,7 +1286,7 @@ void nsHtml5TreeOpExecutor::PreloadFont(const nsAString& aURL,
     return;
   }
 
-  mDocument->Preloads().PreloadFont(uri, aCrossOrigin, aReferrerPolicy);
+  mDocument->Preloads().PreloadFont(uri, aCrossOrigin, aReferrerPolicy, 0);
 }
 
 void nsHtml5TreeOpExecutor::PreloadFetch(const nsAString& aURL,
@@ -1298,7 +1298,7 @@ void nsHtml5TreeOpExecutor::PreloadFetch(const nsAString& aURL,
     return;
   }
 
-  mDocument->Preloads().PreloadFetch(uri, aCrossOrigin, aReferrerPolicy);
+  mDocument->Preloads().PreloadFetch(uri, aCrossOrigin, aReferrerPolicy, 0);
 }
 
 void nsHtml5TreeOpExecutor::PreloadOpenPicture() {

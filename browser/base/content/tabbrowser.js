@@ -1412,18 +1412,20 @@
           }
         };
 
-        if (!window.fullScreen) {
-          selectURL();
-          return;
-        }
-
-        if (newTab.isEmpty) {
-          // Wait until fullscreen has exited since it will
-          // change the selection.
+        // This inDOMFullscreen attribute indicates that the page has something
+        // such as a video in fullscreen mode. Opening a new tab will cancel
+        // fullscreen mode, so we need to wait for that to happen and then
+        // select the url field.
+        if (window.document.documentElement.hasAttribute("inDOMFullscreen")) {
           window.addEventListener("MozDOMFullscreen:Exited", selectURL, {
             once: true,
             wantsUntrusted: false,
           });
+          return;
+        }
+
+        if (!window.fullScreen || newTab.isEmpty) {
+          selectURL();
           return;
         }
       }
@@ -1689,6 +1691,7 @@
       var aCsp;
       var aSkipLoad;
       var aGlobalHistoryOptions;
+      var aTriggeringRemoteType;
       if (
         arguments.length == 2 &&
         typeof arguments[1] == "object" &&
@@ -1719,6 +1722,7 @@
         aCsp = params.csp;
         aSkipLoad = params.skipLoad;
         aGlobalHistoryOptions = params.globalHistoryOptions;
+        aTriggeringRemoteType = params.triggeringRemoteType;
       }
 
       // all callers of loadOneTab need to pass a valid triggeringPrincipal.
@@ -1759,6 +1763,7 @@
         csp: aCsp,
         skipLoad: aSkipLoad,
         globalHistoryOptions: aGlobalHistoryOptions,
+        triggeringRemoteType: aTriggeringRemoteType,
       });
       if (!bgLoad) {
         this.selectedTab = tab;
@@ -2609,6 +2614,7 @@
         skipLoad,
         batchInsertingTabs,
         globalHistoryOptions,
+        triggeringRemoteType,
       } = {}
     ) {
       // all callers of addTab that pass a params object need to pass
@@ -2941,6 +2947,7 @@
               postData,
               csp,
               globalHistoryOptions,
+              triggeringRemoteType,
             });
           } catch (ex) {
             Cu.reportError(ex);
@@ -6818,6 +6825,28 @@
         this.mBrowser.lastURI = aLocation;
         this.mBrowser.lastLocationChange = Date.now();
       }
+
+      // For now, only check for Feature Callout messages
+      // when viewing PDFs. Later, we can expand this to check
+      // for callout messages on every change of tab location.
+      if (aLocation.spec.endsWith(".pdf")) {
+        this.showFeatureCalloutIfApplicable(aLocation);
+      }
+    }
+
+    showFeatureCalloutIfApplicable(location) {
+      // Show Feature Callout in browser chrome when applicable
+      const { FeatureCallout } = ChromeUtils.importESModule(
+        "chrome://browser/content/featureCallout.mjs"
+      );
+      // Note - once we have additional browser chrome messages,
+      // only use PDF.js pref value when navigating to PDF viewer
+      let Callout = new FeatureCallout({
+        win: window,
+        prefName: "browser.pdfjs.feature-tour",
+        source: location.spec,
+      });
+      Callout.showFeatureCallout();
     }
 
     onStatusChange(aWebProgress, aRequest, aStatus, aMessage) {

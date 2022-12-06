@@ -54,7 +54,6 @@ class ScrollFrameHelper : public nsIReflowCallback {
   using FrameMetrics = mozilla::layers::FrameMetrics;
   using ScrollableLayerGuid = mozilla::layers::ScrollableLayerGuid;
   using ScrollSnapInfo = mozilla::layers::ScrollSnapInfo;
-  using Layer = mozilla::layers::Layer;
   using WebRenderLayerManager = mozilla::layers::WebRenderLayerManager;
   using ScrollAnchorContainer = mozilla::layout::ScrollAnchorContainer;
   using APZScrollAnimationType = mozilla::APZScrollAnimationType;
@@ -874,7 +873,7 @@ class ScrollFrameHelper : public nsIReflowCallback {
   void ScrollToWithOrigin(nsPoint aScrollPosition, const nsRect* aRange,
                           ScrollOperationParams&& aParams);
 
-  void CompleteAsyncScroll(const nsRect& aRange,
+  void CompleteAsyncScroll(const nsPoint& aScrollPosition, const nsRect& aRange,
                            UniquePtr<ScrollSnapTargetIds> aSnapTargetIds,
                            ScrollOrigin aOrigin = ScrollOrigin::NotSpecified);
 

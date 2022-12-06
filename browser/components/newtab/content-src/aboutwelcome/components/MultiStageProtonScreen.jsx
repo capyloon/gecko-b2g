@@ -8,14 +8,11 @@ import { Colorways } from "./MRColorways";
 import { MobileDownloads } from "./MobileDownloads";
 import { MultiSelect } from "./MultiSelect";
 import { Themes } from "./Themes";
-import {
-  OnboardingVideo,
-  SecondaryCTA,
-  StepsIndicator,
-} from "./MultiStageAboutWelcome";
+import { SecondaryCTA, StepsIndicator } from "./MultiStageAboutWelcome";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { CTAParagraph } from "./CTAParagraph";
 import { HeroImage } from "./HeroImage";
+import { OnboardingVideo } from "./OnboardingVideo";
 
 export const MultiStageProtonScreen = props => {
   const { autoAdvance, handleAction, order } = props;
@@ -326,7 +323,7 @@ export class ProtonScreen extends React.PureComponent {
         )
       : "";
 
-    const currentStep = this.props.order + 1;
+    const currentStep = (this.props.order ?? 0) + 1;
 
     return (
       <main
@@ -415,7 +412,7 @@ export class ProtonScreen extends React.PureComponent {
                 data-l10n-id={"onboarding-welcome-steps-indicator2"}
                 data-l10n-args={JSON.stringify({
                   current: currentStep,
-                  total,
+                  total: total ?? 0,
                 })}
                 data-l10n-attrs="aria-valuetext"
                 role="meter"

@@ -15,6 +15,7 @@ use crate::properties::ComputedValues;
 use crate::queries::feature::{AllowsRanges, Evaluator, FeatureFlags, QueryFeatureDescription};
 use crate::queries::values::Orientation;
 use crate::queries::{FeatureType, QueryCondition};
+use crate::queries::condition::KleeneValue;
 use crate::shared_lock::{
     DeepCloneParams, DeepCloneWithLock, Locked, SharedRwLock, SharedRwLockReadGuard, ToCssWithGuard,
 };
@@ -200,7 +201,7 @@ impl ContainerCondition {
             }
         }
 
-        let size = potential_container.primary_box_size();
+        let size = potential_container.primary_content_box_size();
         let style = style.clone();
         TraversalResult::Done(ContainerLookupResult {
             element: potential_container,
@@ -226,7 +227,7 @@ impl ContainerCondition {
         device: &Device,
         element: E,
         invalidation_flags: &mut ComputedValueFlags,
-    ) -> bool
+    ) -> KleeneValue
     where
         E: TElement,
     {
@@ -463,7 +464,7 @@ impl<'a> ContainerSizeQuery<'a> {
         let box_style = style.get_box();
 
         let container_type = box_style.clone_container_type();
-        let size = e.primary_box_size();
+        let size = e.primary_content_box_size();
         match container_type {
             ContainerType::Size=> {
                 TraversalResult::Done(

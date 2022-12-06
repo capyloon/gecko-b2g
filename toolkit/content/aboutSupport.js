@@ -678,6 +678,11 @@ var snapshotFormatters = {
     }
 
     // graphics-features-tbody
+    let devicePixelRatios = data.graphicsDevicePixelRatios;
+    addRow("features", "graphicsDevicePixelRatios", [
+      new Text(devicePixelRatios),
+    ]);
+
     let compositor = "";
     if (data.windowLayerManagerRemote) {
       compositor = data.windowLayerManagerType;
@@ -691,6 +696,7 @@ var snapshotFormatters = {
     delete data.numTotalWindows;
     delete data.numAcceleratedWindows;
     delete data.numAcceleratedWindowsMessage;
+    delete data.graphicsDevicePixelRatios;
 
     addRow(
       "features",
@@ -1094,8 +1100,7 @@ var snapshotFormatters = {
     insertEnumerateDatabase();
 
     // Codec decode/encode support information (inc. HW accel)
-    // Currently supported on Windows with Linux/OS X support under development
-    if (AppConstants.platform == "win" || AppConstants.platform == "macosx") {
+    if (["win", "macosx", "linux"].includes(AppConstants.platform)) {
       insertBasicInfo("media-codec-support-info", data.codecSupportInfo);
     }
   },

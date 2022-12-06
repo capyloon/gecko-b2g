@@ -82,6 +82,7 @@ uniffi-example-sprites = { git = "https://github.com/mozilla/uniffi-rs.git", rev
 uniffi-example-todolist = { git = "https://github.com/mozilla/uniffi-rs.git", rev = "bb2039f077a29dba0879372a67e764e6ace8e33f", optional = true }
 uniffi-example-custom-types = { path = "../../../components/uniffi-example-custom-types/", optional = true }
 uniffi-fixture-external-types = { path = "../../../components/uniffi-fixture-external-types/", optional = true }
+oblivious_http = { path = "../../../../netwerk/protocol/http/oblivious_http" }
 
 # Note: `modern_sqlite` means rusqlite's bindings file be for a sqlite with
 # version less than or equal to what we link to. This isn't a problem because we
@@ -99,7 +100,8 @@ localization-ffi = { path = "../../../../intl/l10n/rust/localization-ffi" }
 processtools = { path = "../../../components/processtools" }
 qcms = { path = "../../../../gfx/qcms", features = ["c_bindings", "neon"], default-features = false }
 
-wpf-gpu-raster = { git = "https://github.com/FirefoxGraphics/wpf-gpu-raster", rev = "f0d95ce14af8a8de74f469dbad715c4064fca2e1" }
+wpf-gpu-raster = { git = "https://github.com/FirefoxGraphics/wpf-gpu-raster", rev = "b6ca51395c56648b50f21f68a1586f94f8b966c4" }
+aa-stroke = { git = "https://github.com/FirefoxGraphics/aa-stroke", rev = "5289b0ff5736a6a6b916ef007fcf07ac14a663d5" }
 
 # Force url to stay at 2.1.0. See bug 1734538.
 url = "=2.1.0"
@@ -167,3 +169,6 @@ bench = false
 doc = false
 plugin = false
 harness = false
+
+[package.metadata.cargo-udeps.ignore]
+normal = ["moz_asserts"]

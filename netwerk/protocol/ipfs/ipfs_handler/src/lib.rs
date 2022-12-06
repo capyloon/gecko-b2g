@@ -101,14 +101,6 @@ impl IpfsHandler {
         })
     }
 
-    xpcom_method!(get_default_port => GetDefaultPort(aDefaultPort: *mut i32));
-    fn get_default_port(&self, default_port: *mut i32) -> Result<(), nsresult> {
-        unsafe {
-            (*default_port) = -1;
-        }
-        Ok(())
-    }
-
     xpcom_method!(allow_port => AllowPort(port: i32, scheme: *const libc::c_char, _retval: *mut bool));
     fn allow_port(
         &self,
@@ -119,21 +111,6 @@ impl IpfsHandler {
         unsafe {
             (*retval) = false;
         }
-        Ok(())
-    }
-
-    xpcom_method!(get_protocol_flags => GetProtocolFlags(aProtocolFlags: *mut u32));
-    fn get_protocol_flags(&self, protocol_flags: *mut u32) -> Result<(), nsresult> {
-        let flags = nsIProtocolHandler::URI_NOAUTH
-            | nsIProtocolHandler::URI_LOADABLE_BY_ANYONE
-            | nsIProtocolHandler::URI_IS_POTENTIALLY_TRUSTWORTHY
-            | nsIProtocolHandler::URI_FETCHABLE_BY_ANYONE
-            | nsIProtocolHandler::URI_LOADABLE_BY_EXTENSIONS;
-
-        unsafe {
-            (*protocol_flags) = flags as u32;
-        }
-
         Ok(())
     }
 

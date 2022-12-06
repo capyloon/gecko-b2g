@@ -13,7 +13,14 @@
 #define jit_MIR_h
 
 #include "mozilla/Array.h"
+#ifdef JS_JITSPEW
+#  include "mozilla/Attributes.h"  // MOZ_STACK_CLASS
+#endif
 #include "mozilla/MacroForEach.h"
+#ifdef JS_JITSPEW
+#  include "mozilla/Sprintf.h"
+#  include "mozilla/Vector.h"
+#endif
 
 #include <algorithm>
 #include <initializer_list>
@@ -54,6 +61,7 @@ extern uint32_t MIRTypeToABIResultSize(jit::MIRType);
 }  // namespace wasm
 
 class GenericPrinter;
+class NativeIteratorListHead;
 class StringObject;
 
 enum class UnaryMathFunction : uint8_t;
@@ -61,6 +69,34 @@ enum class UnaryMathFunction : uint8_t;
 bool CurrentThreadIsIonCompiling();
 
 namespace jit {
+
+#ifdef JS_JITSPEW
+// Helper for debug printing.  Avoids creating a MIR.h <--> MIRGraph.h cycle.
+// Implementation of this needs to see inside `MBasicBlock`; that is possible
+// in MIR.cpp since it also includes MIRGraph.h, whereas this file does not.
+class MBasicBlock;
+uint32_t GetMBasicBlockId(const MBasicBlock* block);
+
+// Helper class for debug printing.  This class allows `::getExtras` methods
+// to add strings to be printed, on a per-MIR-node basis.  The strings are
+// copied into storage owned by this class when `::add` is called, so the
+// `::getExtras` methods do not need to be concerned about storage management.
+class MOZ_STACK_CLASS ExtrasCollector {
+  mozilla::Vector<UniqueChars, 4> strings_;
+
+ public:
+  // Add `str` to the collection.  A copy, owned by this object, is made.  In
+  // case of OOM the call has no effect.
+  void add(const char* str) {
+    UniqueChars dup = DuplicateString(str);
+    if (dup) {
+      (void)strings_.append(std::move(dup));
+    }
+  }
+  size_t count() const { return strings_.length(); }
+  UniqueChars get(size_t ix) { return std::move(strings_[ix]); }
+};
+#endif
 
 // Forward declarations of MIR types.
 #define FORWARD_DECLARE(op) class M##op;
@@ -361,19 +397,28 @@ class AliasSet {
     // The fuzzilliHash slot
     FuzzilliHash = 1 << 19,
 
-    // The WasmStruct::inlineData_[..] storage area
+    // The WasmStructObject::inlineData_[..] storage area
     WasmStructInlineDataArea = 1 << 20,
 
-    // The WasmStruct::outlineData_ pointer only
+    // The WasmStructObject::outlineData_ pointer only
     WasmStructOutlineDataPointer = 1 << 21,
 
-    // The malloc'd block that WasmStruct::outlineData_ points at
+    // The malloc'd block that WasmStructObject::outlineData_ points at
     WasmStructOutlineDataArea = 1 << 22,
 
-    Last = WasmStructOutlineDataArea,
+    // The WasmArrayObject::numElements_ field
+    WasmArrayNumElements = 1 << 23,
+
+    // The WasmArrayObject::data_ pointer only
+    WasmArrayDataPointer = 1 << 24,
+
+    // The malloc'd block that WasmArrayObject::data_ points at
+    WasmArrayDataArea = 1 << 25,
+
+    Last = WasmArrayDataArea,
 
     Any = Last | (Last - 1),
-    NumCategories = 23,
+    NumCategories = 26,
 
     // Indicates load or store.
     Store_ = 1 << 31
@@ -548,6 +593,10 @@ class MDefinition : public MNode {
   void dump() const override;
   void dumpLocation(GenericPrinter& out) const;
   void dumpLocation() const;
+  // Dump any other stuff the node wants to have printed in `extras`.  The
+  // added strings are copied, with the `ExtrasCollector` taking ownership of
+  // the copies.
+  virtual void getExtras(ExtrasCollector* extras) {}
 #endif
 
   // Also for LICM. Test whether this definition is likely to be a call, which
@@ -602,6 +651,7 @@ class MDefinition : public MNode {
 
   virtual HashNumber valueHash() const;
   virtual bool congruentTo(const MDefinition* ins) const { return false; }
+  const MDefinition* skipObjectGuards() const;
   bool congruentIfOperandsEqual(const MDefinition* ins) const;
   virtual MDefinition* foldsTo(TempAllocator& alloc);
   virtual void analyzeEdgeCasesForward();
@@ -1510,6 +1560,30 @@ class MWasmFloatConstant : public MNullaryInstruction {
     return SimdConstant::CreateX16(u.s128_);
   }
 #endif
+#ifdef JS_JITSPEW
+  void getExtras(ExtrasCollector* extras) override {
+    char buf[64];
+    switch (type()) {
+      case MIRType::Float32:
+        SprintfLiteral(buf, "f32{%e}", (double)u.f32_);
+        break;
+      case MIRType::Double:
+        SprintfLiteral(buf, "f64{%e}", u.f64_);
+        break;
+#  ifdef ENABLE_WASM_SIMD
+      case MIRType::Simd128:
+        SprintfLiteral(buf, "v128{[1]=%016llx:[0]=%016llx}",
+                       (unsigned long long int)u.bits_[1],
+                       (unsigned long long int)u.bits_[0]);
+        break;
+#  endif
+      default:
+        SprintfLiteral(buf, "!!getExtras: missing case!!");
+        break;
+    }
+    extras->add(buf);
+  }
+#endif
 };
 
 class MParameter : public MNullaryInstruction {
@@ -1736,21 +1810,27 @@ class MGoto : public MAryControlInstruction<0, 1>, public NoTypePolicy::Data {
 
   MBasicBlock* target() { return getSuccessor(TargetIndex); }
   AliasSet getAliasSet() const override { return AliasSet::None(); }
+
+#ifdef JS_JITSPEW
+  void getExtras(ExtrasCollector* extras) override {
+    char buf[64];
+    SprintfLiteral(buf, "Block%u", GetMBasicBlockId(target()));
+    extras->add(buf);
+  }
+#endif
 };
 
 // Tests if the input instruction evaluates to true or false, and jumps to the
 // start of a corresponding basic block.
 class MTest : public MAryControlInstruction<1, 2>, public TestPolicy::Data {
+  // It is allowable to specify `trueBranch` or `falseBranch` as nullptr and
+  // patch it in later.
   MTest(MDefinition* ins, MBasicBlock* trueBranch, MBasicBlock* falseBranch)
       : MAryControlInstruction(classOpcode) {
     initOperand(0, ins);
     setSuccessor(TrueBranchIndex, trueBranch);
     setSuccessor(FalseBranchIndex, falseBranch);
   }
-
-  // Variant which may patch the ifTrue branch later.
-  MTest(MDefinition* ins, MBasicBlock* falseBranch)
-      : MTest(ins, nullptr, falseBranch) {}
 
   TypeDataList observedTypes_;
 
@@ -1783,6 +1863,15 @@ class MTest : public MAryControlInstruction<1, 2>, public TestPolicy::Data {
 
 #ifdef DEBUG
   bool isConsistentFloat32Use(MUse* use) const override { return true; }
+#endif
+
+#ifdef JS_JITSPEW
+  void getExtras(ExtrasCollector* extras) override {
+    char buf[64];
+    SprintfLiteral(buf, "true->Block%u false->Block%u",
+                   GetMBasicBlockId(ifTrue()), GetMBasicBlockId(ifFalse()));
+    extras->add(buf);
+  }
 #endif
 };
 
@@ -2780,6 +2869,71 @@ class MCompare : public MBinaryInstruction, public ComparePolicy::Data {
     }
     MOZ_CRASH("unexpected compare type");
   }
+
+#ifdef JS_JITSPEW
+  void getExtras(ExtrasCollector* extras) override {
+    const char* ty = nullptr;
+    switch (compareType_) {
+      case Compare_Undefined:
+        ty = "Undefined";
+        break;
+      case Compare_Null:
+        ty = "Null";
+        break;
+      case Compare_Int32:
+        ty = "Int32";
+        break;
+      case Compare_UInt32:
+        ty = "UInt32";
+        break;
+      case Compare_Int64:
+        ty = "Int64";
+        break;
+      case Compare_UInt64:
+        ty = "UInt64";
+        break;
+      case Compare_UIntPtr:
+        ty = "UIntPtr";
+        break;
+      case Compare_Double:
+        ty = "Double";
+        break;
+      case Compare_Float32:
+        ty = "Float32";
+        break;
+      case Compare_String:
+        ty = "String";
+        break;
+      case Compare_Symbol:
+        ty = "Symbol";
+        break;
+      case Compare_Object:
+        ty = "Object";
+        break;
+      case Compare_BigInt:
+        ty = "BigInt";
+        break;
+      case Compare_BigInt_Int32:
+        ty = "BigInt_Int32";
+        break;
+      case Compare_BigInt_Double:
+        ty = "BigInt_Double";
+        break;
+      case Compare_BigInt_String:
+        ty = "BigInt_String";
+        break;
+      case Compare_RefOrNull:
+        ty = "RefOrNull";
+        break;
+      default:
+        ty = "!!unknown!!";
+        break;
+    };
+    char buf[64];
+    SprintfLiteral(buf, "ty=%s jsop=%s", ty, CodeName(jsop()));
+    extras->add(buf);
+  }
+#endif
 };
 
 // Takes a typed value and returns an untyped value.
@@ -6755,15 +6909,13 @@ class MStoreHoleValueElement : public MBinaryInstruction,
   ALLOW_CLONE(MStoreHoleValueElement)
 };
 
-// Like MStoreElement, but supports indexes >= initialized length. The downside
-// is that we cannot hoist the elements vector and bounds check, since this
-// instruction may update the (initialized) length and reallocate the elements
-// vector.
+// Like MStoreElement, but also supports index == initialized length. The
+// downside is that we cannot hoist the elements vector and bounds check, since
+// this instruction may update the (initialized) length and reallocate the
+// elements vector.
 class MStoreElementHole
     : public MQuaternaryInstruction,
       public MixPolicy<SingleObjectPolicy, NoFloatPolicy<3>>::Data {
-  bool needsNegativeIntCheck_ = true;
-
   MStoreElementHole(MDefinition* object, MDefinition* elements,
                     MDefinition* index, MDefinition* value)
       : MQuaternaryInstruction(classOpcode, object, elements, index, value) {
@@ -6777,15 +6929,11 @@ class MStoreElementHole
   TRIVIAL_NEW_WRAPPERS
   NAMED_OPERANDS((0, object), (1, elements), (2, index), (3, value))
 
-  bool needsNegativeIntCheck() const { return needsNegativeIntCheck_; }
-
   AliasSet getAliasSet() const override {
     // StoreElementHole can update the initialized length, the array length
     // or reallocate obj->elements.
     return AliasSet::Store(AliasSet::ObjectFields | AliasSet::Element);
   }
-
-  void collectRangeInfoPreTrunc() override;
 
   ALLOW_CLONE(MStoreElementHole)
 };
@@ -9027,6 +9175,34 @@ class MObjectStaticProto : public MUnaryInstruction,
   }
 };
 
+class MConstantProto
+    : public MBinaryInstruction,
+      public MixPolicy<ObjectPolicy<0>, ObjectPolicy<1>>::Data {
+  explicit MConstantProto(MDefinition* protoObject, MDefinition* receiverObject)
+      : MBinaryInstruction(classOpcode, protoObject, receiverObject) {
+    MOZ_ASSERT(protoObject->isConstant());
+    setResultType(MIRType::Object);
+    setMovable();
+  }
+
+  ALLOW_CLONE(MConstantProto)
+
+ public:
+  INSTRUCTION_HEADER(ConstantProto)
+  TRIVIAL_NEW_WRAPPERS
+  NAMED_OPERANDS((0, protoObject), (1, receiverObject))
+
+  HashNumber valueHash() const override;
+
+  bool congruentTo(const MDefinition* ins) const override {
+    return ins->isConstantProto() && ins->getOperand(0) == getOperand(0) &&
+           getOperand(1)->skipObjectGuards() ==
+               ins->getOperand(1)->skipObjectGuards();
+  }
+
+  AliasSet getAliasSet() const override { return AliasSet::None(); }
+};
+
 // Flips the input's sign bit, independently of the rest of the number's
 // payload. Note this is different from multiplying by minus-one, which has
 // side-effects for e.g. NaNs.
@@ -9072,6 +9248,24 @@ class MWasmBinaryBitwise : public MBinaryInstruction,
   }
 
   AliasSet getAliasSet() const override { return AliasSet::None(); }
+
+#ifdef JS_JITSPEW
+  void getExtras(ExtrasCollector* extras) override {
+    const char* what = "!!unknown!!";
+    switch (subOpcode()) {
+      case SubOpcode::And:
+        what = "And";
+        break;
+      case SubOpcode::Or:
+        what = "Or";
+        break;
+      case SubOpcode::Xor:
+        what = "Xor";
+        break;
+    }
+    extras->add(what);
+  }
+#endif
 
  private:
   SubOpcode subOpcode_;
@@ -9188,8 +9382,11 @@ class MWasmHeapBase : public MUnaryInstruction, public NoTypePolicy::Data {
 class MWasmBoundsCheck : public MBinaryInstruction, public NoTypePolicy::Data {
  public:
   enum Target {
-    Memory,
-    Table,
+    // Linear memory at index zero, which is the only memory allowed so far.
+    Memory0,
+    // Everything else.  Currently comprises tables, and arrays in the GC
+    // proposal.
+    Unknown
   };
 
  private:
@@ -9218,7 +9415,7 @@ class MWasmBoundsCheck : public MBinaryInstruction, public NoTypePolicy::Data {
 
   AliasSet getAliasSet() const override { return AliasSet::None(); }
 
-  bool isMemory() const { return target_ == MWasmBoundsCheck::Memory; }
+  bool isMemory() const { return target_ == MWasmBoundsCheck::Memory0; }
 
   bool isRedundant() const { return !isGuard(); }
 
@@ -9325,6 +9522,14 @@ class MWasmLoad
     }
     return AliasSet::Load(AliasSet::WasmHeap);
   }
+
+#ifdef JS_JITSPEW
+  void getExtras(ExtrasCollector* extras) override {
+    char buf[64];
+    SprintfLiteral(buf, "(offs=%lld)", (long long int)access().offset64());
+    extras->add(buf);
+  }
+#endif
 };
 
 class MWasmStore : public MVariadicInstruction, public NoTypePolicy::Data {
@@ -9362,6 +9567,14 @@ class MWasmStore : public MVariadicInstruction, public NoTypePolicy::Data {
   AliasSet getAliasSet() const override {
     return AliasSet::Store(AliasSet::WasmHeap);
   }
+
+#ifdef JS_JITSPEW
+  void getExtras(ExtrasCollector* extras) override {
+    char buf[64];
+    SprintfLiteral(buf, "(offs=%lld)", (long long int)access().offset64());
+    extras->add(buf);
+  }
+#endif
 };
 
 class MAsmJSMemoryAccess {
@@ -9800,6 +10013,14 @@ class MWasmDerivedPointer : public MUnaryInstruction,
     return congruentIfOperandsEqual(ins) &&
            ins->toWasmDerivedPointer()->offset() == offset();
   }
+
+#ifdef JS_JITSPEW
+  void getExtras(ExtrasCollector* extras) override {
+    char buf[64];
+    SprintfLiteral(buf, "(offs=%lld)", (long long int)offset_);
+    extras->add(buf);
+  }
+#endif
 
   ALLOW_CLONE(MWasmDerivedPointer)
 };
@@ -10747,6 +10968,10 @@ class MWasmLoadField : public MUnaryInstruction, public NoTypePolicy::Data {
     MOZ_ASSERT(
         aliases.flags() ==
             AliasSet::Load(AliasSet::WasmStructOutlineDataPointer).flags() ||
+        aliases.flags() ==
+            AliasSet::Load(AliasSet::WasmArrayNumElements).flags() ||
+        aliases.flags() ==
+            AliasSet::Load(AliasSet::WasmArrayDataPointer).flags() ||
         aliases.flags() == AliasSet::Load(AliasSet::Any).flags());
     setResultType(type);
   }
@@ -10804,6 +11029,8 @@ class MWasmLoadFieldKA : public MBinaryInstruction, public NoTypePolicy::Data {
             AliasSet::Load(AliasSet::WasmStructInlineDataArea).flags() ||
         aliases.flags() ==
             AliasSet::Load(AliasSet::WasmStructOutlineDataArea).flags() ||
+        aliases.flags() ==
+            AliasSet::Load(AliasSet::WasmArrayDataArea).flags() ||
         aliases.flags() == AliasSet::Load(AliasSet::Any).flags());
     setResultType(type);
   }
@@ -10848,6 +11075,8 @@ class MWasmStoreFieldKA : public MTernaryInstruction,
             AliasSet::Store(AliasSet::WasmStructInlineDataArea).flags() ||
         aliases.flags() ==
             AliasSet::Store(AliasSet::WasmStructOutlineDataArea).flags() ||
+        aliases.flags() ==
+            AliasSet::Store(AliasSet::WasmArrayDataArea).flags() ||
         aliases.flags() == AliasSet::Store(AliasSet::Any).flags());
   }
 
@@ -10876,13 +11105,16 @@ class MWasmStoreFieldRefKA : public MAryInstruction<4>,
                        MDefinition* valueAddr, MDefinition* value,
                        AliasSet aliases)
       : MAryInstruction<4>(classOpcode), aliases_(aliases) {
-    MOZ_ASSERT(valueAddr->type() == MIRType::Pointer);
+    MOZ_ASSERT(valueAddr->type() == MIRType::Pointer ||
+               valueAddr->type() == TargetWordMIRType());
     MOZ_ASSERT(value->type() == MIRType::RefOrNull);
     MOZ_ASSERT(
         aliases.flags() ==
             AliasSet::Store(AliasSet::WasmStructInlineDataArea).flags() ||
         aliases.flags() ==
             AliasSet::Store(AliasSet::WasmStructOutlineDataArea).flags() ||
+        aliases.flags() ==
+            AliasSet::Store(AliasSet::WasmArrayDataArea).flags() ||
         aliases.flags() == AliasSet::Store(AliasSet::Any).flags());
     initOperand(0, instance);
     initOperand(1, ka);

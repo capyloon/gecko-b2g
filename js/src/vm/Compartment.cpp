@@ -578,7 +578,7 @@ void Compartment::addSizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf,
 
 GlobalObject& Compartment::firstGlobal() const {
   for (Realm* realm : realms_) {
-    if (!realm->hasLiveGlobal()) {
+    if (!realm->hasInitializedGlobal()) {
       continue;
     }
     GlobalObject* global = realm->maybeGlobal();
@@ -600,4 +600,18 @@ JS_PUBLIC_API bool js::CompartmentHasLiveGlobal(JS::Compartment* comp) {
     }
   }
   return false;
+}
+
+void Compartment::traceWeakNativeIterators(JSTracer* trc) {
+  /* Sweep list of native iterators. */
+  NativeIteratorListIter iter(&enumerators_);
+  while (!iter.done()) {
+    NativeIterator* ni = iter.next();
+    JSObject* iterObj = ni->iterObj();
+    if (!TraceManuallyBarrieredWeakEdge(trc, &iterObj,
+                                        "Compartment::enumerators_")) {
+      ni->unlink();
+    }
+    MOZ_ASSERT(ni->objectBeingIterated()->compartment() == this);
+  }
 }

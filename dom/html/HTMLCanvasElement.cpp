@@ -9,7 +9,6 @@
 #include "ImageEncoder.h"
 #include "jsapi.h"
 #include "jsfriendapi.h"
-#include "Layers.h"
 #include "MediaTrackGraph.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/Base64.h"
@@ -757,6 +756,7 @@ PrintCallback* HTMLCanvasElement::GetMozPrintCallback() const {
   return mPrintCallback;
 }
 
+static uint32_t sCaptureSourceId = 0;
 class CanvasCaptureTrackSource : public MediaStreamTrackSource {
  public:
   NS_DECL_ISUPPORTS_INHERITED
@@ -765,7 +765,10 @@ class CanvasCaptureTrackSource : public MediaStreamTrackSource {
 
   CanvasCaptureTrackSource(nsIPrincipal* aPrincipal,
                            CanvasCaptureMediaStream* aCaptureStream)
-      : MediaStreamTrackSource(aPrincipal, nsString()),
+      : MediaStreamTrackSource(
+            aPrincipal, nsString(),
+            TrackingId(TrackingId::Source::Canvas, sCaptureSourceId++,
+                       TrackingId::TrackAcrossProcesses::Yes)),
         mCaptureStream(aCaptureStream) {}
 
   MediaSourceEnum GetMediaSource() const override {

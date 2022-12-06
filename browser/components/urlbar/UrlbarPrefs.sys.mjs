@@ -10,8 +10,6 @@
 
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
-import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -75,6 +73,10 @@ const PREF_URLBAR_DEFAULTS = new Map([
   // Whether the best match feature is enabled.
   ["bestMatch.enabled", true],
 
+  // Whether to show a link for using the search functionality provided by the
+  // active view if the the view utilizes OpenSearch.
+  ["contextualSearch.enabled", false],
+
   // Whether using `ctrl` when hitting return/enter in the URL bar
   // (or clicking 'go') should prefix 'www.' and suffix
   // browser.fixup.alternate.suffix to the URL bar value prior to
@@ -127,6 +129,9 @@ const PREF_URLBAR_DEFAULTS = new Map([
 
   // Applies URL highlighting and other styling to the text in the urlbar input.
   ["formatting.enabled", true],
+
+  // Whether search engagement telemetry should be recorded.
+  ["searchEngagementTelemetry.enabled", false],
 
   // Whether Firefox Suggest group labels are shown in the urlbar view in en-*
   // locales. Labels are not shown in other locales but likely will be in the
@@ -932,33 +937,19 @@ class Preferences {
     //
     // Prefs not listed here for any scenario keep their values set in
     // firefox.js.
-
-    let isBeta;
-    if (typeof this._test_isBeta == "boolean") {
-      isBeta = this._test_isBeta;
-    } else {
-      isBeta =
-        AppConstants.MOZ_UPDATE_CHANNEL == "beta" ||
-        AppConstants.isReleaseCandidateOnBeta;
-    }
-
     return {
       history: {
         "quicksuggest.enabled": false,
       },
       offline: {
         "quicksuggest.enabled": true,
-        // Merino (`quicksuggest.dataCollection.enabled`) is opt out on Beta in
-        // the offline scenario.
-        "quicksuggest.dataCollection.enabled": isBeta,
+        "quicksuggest.dataCollection.enabled": false,
         "quicksuggest.shouldShowOnboardingDialog": false,
         "suggest.quicksuggest.nonsponsored": true,
         "suggest.quicksuggest.sponsored": true,
       },
       online: {
         "quicksuggest.enabled": true,
-        // The whole point of the online scenario is to prompt users to opt in
-        // to Merino, so it's disabled by default for online.
         "quicksuggest.dataCollection.enabled": false,
         "quicksuggest.shouldShowOnboardingDialog": true,
         "suggest.quicksuggest.nonsponsored": true,

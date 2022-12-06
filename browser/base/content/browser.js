@@ -411,13 +411,26 @@ XPCOMUtils.defineLazyGetter(this, "PopupNotifications", () => {
     "resource://gre/modules/PopupNotifications.sys.mjs"
   );
   try {
-    // Hide all PopupNotifications while the URL is being edited and the address
-    // bar has focus or while async tab switching, including the virtual focus in
-    // the results popup.
-    let shouldSuppress = () =>
-      (gURLBar.getAttribute("pageproxystate") != "valid" &&
-        (gURLBar.focused || gBrowser.selectedBrowser._awaitingSetURI)) ||
-      shouldSuppressPopupNotifications();
+    // Hide all PopupNotifications while the the address bar has focus,
+    // including the virtual focus in the results popup, and the URL is being
+    // edited or the page proxy state is invalid while async tab switching.
+    let shouldSuppress = () => {
+      // "Blank" pages, like about:welcome, have a pageproxystate of "invalid", but
+      // popups like CFRs should not automatically be suppressed when the address
+      // bar has focus on these pages as it disrupts user navigation using FN+F6.
+      // See `UrlbarInput.setURI()` where pageproxystate is set to "invalid" for
+      // all pages that the "isBlankPageURL" method returns true for.
+      const urlBarEdited = isBlankPageURL(gBrowser.currentURI.spec)
+        ? gURLBar.hasAttribute("usertyping")
+        : gURLBar.getAttribute("pageproxystate") != "valid";
+      return (
+        (urlBarEdited && gURLBar.focused) ||
+        (gURLBar.getAttribute("pageproxystate") != "valid" &&
+          gBrowser.selectedBrowser._awaitingSetURI) ||
+        shouldSuppressPopupNotifications()
+      );
+    };
+
     return new PopupNotifications(
       gBrowser,
       document.getElementById("notification-popup"),
@@ -692,7 +705,7 @@ var gScreenshots = {
   shouldScreenshotsButtonBeDisabled() {
     // About pages other than about:reader are not currently supported by
     // the screenshots extension (see Bug 1620992).
-    let uri = gBrowser.currentURI;
+    let uri = gBrowser.selectedBrowser.currentURI;
     let shouldBeDisabled =
       gScreenshotsDisabled ||
       (!gScreenshotsComponentEnabled &&
@@ -2277,6 +2290,7 @@ var gBrowserInit = {
         let hasValidUserGestureActivation = undefined;
         let fromExternal = undefined;
         let globalHistoryOptions = undefined;
+        let triggeringRemoteType = undefined;
         if (window.arguments[1]) {
           if (!(window.arguments[1] instanceof Ci.nsIPropertyBag2)) {
             throw new Error(
@@ -2305,6 +2319,11 @@ var gBrowserInit = {
               );
             }
           }
+          if (extraOptions.hasKey("triggeringRemoteType")) {
+            triggeringRemoteType = extraOptions.getPropertyAsACString(
+              "triggeringRemoteType"
+            );
+          }
         }
 
         try {
@@ -2326,6 +2345,7 @@ var gBrowserInit = {
             hasValidUserGestureActivation,
             fromExternal,
             globalHistoryOptions,
+            triggeringRemoteType,
           });
         } catch (e) {
           Cu.reportError(e);
@@ -9116,7 +9136,7 @@ const SafeBrowsingNotificationBox = {
  */
 class TabDialogBox {
   static _containerFor(browser) {
-    return browser.closest(".browserContainer, .webextension-popup-stack");
+    return browser.closest(".browserStack, .webextension-popup-stack");
   }
 
   constructor(browser) {

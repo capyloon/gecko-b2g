@@ -4,12 +4,12 @@
 import argparse
 import datetime
 import os
-import requests
 import shutil
 import subprocess
 import sys
 import tarfile
 
+import requests
 
 # If changing the list of unused files, please also update the egrep line
 # of the GIT_CHANGED variable in loop-ff.sh.
@@ -42,7 +42,7 @@ THIRDPARTY_USED_IN_FIREFOX = [
 ]
 
 
-LIBWEBRTC_DIR = os.path.normpath("../../../../third_party/libwebrtc")
+LIBWEBRTC_DIR = os.path.normpath("third_party/libwebrtc")
 
 
 def make_github_url(repo, commit):
@@ -82,7 +82,7 @@ def fetch(target, url):
         sys.exit(1)
     with open(os.path.join(LIBWEBRTC_DIR, "README.mozilla"), "a") as f:
         # write the the command line used
-        f.write("# python3 {}\n".format(" ".join(sys.argv[0:])))
+        f.write("# ./mach python {}\n".format(" ".join(sys.argv[0:])))
         f.write(
             "{} updated from commit {} on {}.\n".format(
                 target, url, datetime.datetime.utcnow().isoformat()
@@ -102,7 +102,7 @@ def fetch_local(target, path, commit):
 
     with open(os.path.join(LIBWEBRTC_DIR, "README.mozilla"), "a") as f:
         # write the the command line used
-        f.write("# python3 {}\n".format(" ".join(sys.argv[0:])))
+        f.write("# ./mach python {}\n".format(" ".join(sys.argv[0:])))
         f.write(
             "{} updated from {} commit {} on {}.\n".format(
                 target, path, commit, datetime.datetime.utcnow().isoformat()

@@ -3,6 +3,14 @@
 version = 3
 
 [[package]]
+name = "aa-stroke"
+version = "0.1.0"
+source = "git+https://github.com/FirefoxGraphics/aa-stroke?rev=5289b0ff5736a6a6b916ef007fcf07ac14a663d5#5289b0ff5736a6a6b916ef007fcf07ac14a663d5"
+dependencies = [
+ "euclid",
+]
+
+[[package]]
 name = "adler"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -445,9 +453,16 @@ dependencies = [
 
 [[package]]
 name = "bindgen"
-version = "0.59.2"
+version = "0.59.999"
+dependencies = [
+ "bindgen 0.63.0",
+]
+
+[[package]]
+name = "bindgen"
+version = "0.63.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bd2a9a458e8f4304c52c43ebb0cfbd520289f8379a52e329a38afda99bf8eb8"
+checksum = "36d860121800b2a9a94f9b5604b332d5cffb234ce17609ea479d723dbc9d3885"
 dependencies = [
  "bitflags",
  "cexpr",
@@ -460,6 +475,7 @@ dependencies = [
  "regex",
  "rustc-hash",
  "shlex",
+ "syn",
 ]
 
 [[package]]
@@ -638,7 +654,7 @@ dependencies = [
 name = "builtins-static"
 version = "0.1.0"
 dependencies = [
- "bindgen",
+ "bindgen 0.63.0",
  "nom 7.1.1",
  "pkcs11-bindings",
  "smallvec",
@@ -986,7 +1002,7 @@ version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3dff444d80630d7073077d38d40b4501fd518bd2b922c2a55edcc8b0f7be57e6"
 dependencies = [
- "bindgen",
+ "bindgen 0.59.999",
 ]
 
 [[package]]
@@ -1291,7 +1307,7 @@ name = "dap_ffi"
 version = "0.1.0"
 dependencies = [
  "prio",
- "rand 0.7.999",
+ "rand 0.8.5",
  "thin-vec",
 ]
 
@@ -1647,9 +1663,14 @@ dependencies = [
 [[package]]
 name = "error-support"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=b09ffe23ee60a066176e5d7f9f2c6cd95c528ceb#b09ffe23ee60a066176e5d7f9f2c6cd95c528ceb"
+source = "git+https://github.com/mozilla/application-services?rev=4d858e4266c6d06d86d361279e6e04dbe5583cb9#4d858e4266c6d06d86d361279e6e04dbe5583cb9"
 dependencies = [
+ "lazy_static",
  "log",
+ "parking_lot 0.12.999",
+ "uniffi",
+ "uniffi_build",
+ "uniffi_macros",
 ]
 
 [[package]]
@@ -2109,7 +2130,7 @@ name = "gecko-profiler"
 version = "0.1.0"
 dependencies = [
  "bincode",
- "bindgen",
+ "bindgen 0.63.0",
  "lazy_static",
  "mozbuild",
  "profiler-macros",
@@ -2253,6 +2274,7 @@ dependencies = [
 name = "gkrust-shared"
 version = "0.1.0"
 dependencies = [
+ "aa-stroke",
  "app_services_logger",
  "audio_thread_priority",
  "audioipc-client",
@@ -2309,6 +2331,7 @@ dependencies = [
  "netwerk_helper",
  "nserror",
  "nsstring",
+ "oblivious_http",
  "origin-trials-ffi",
  "prefs_parser",
  "processtools",
@@ -2680,7 +2703,7 @@ name = "http3server"
 version = "0.1.1"
 dependencies = [
  "base64",
- "bindgen",
+ "bindgen 0.63.0",
  "log",
  "mio 0.6.23",
  "mio-extras",
@@ -2801,7 +2824,7 @@ dependencies = [
 [[package]]
 name = "interrupt-support"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=b09ffe23ee60a066176e5d7f9f2c6cd95c528ceb#b09ffe23ee60a066176e5d7f9f2c6cd95c528ceb"
+source = "git+https://github.com/mozilla/application-services?rev=4d858e4266c6d06d86d361279e6e04dbe5583cb9#4d858e4266c6d06d86d361279e6e04dbe5583cb9"
 dependencies = [
  "lazy_static",
  "parking_lot 0.12.999",
@@ -3338,7 +3361,7 @@ checksum = "60302e4db3a61da70c0cb7991976248362f30319e88850c487b9b95bbf059e00"
 
 [[package]]
 name = "mdns_service"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "byteorder",
  "dns-parser",
@@ -3621,7 +3644,7 @@ dependencies = [
 name = "mozilla-central-workspace-hack"
 version = "0.1.0"
 dependencies = [
- "bindgen",
+ "bindgen 0.63.0",
  "libc",
  "quote",
  "serde",
@@ -3798,7 +3821,7 @@ name = "neqo-crypto"
 version = "0.6.1"
 source = "git+https://github.com/mozilla/neqo?tag=v0.6.1#e71e860489447fed25b64bd8ec31a804dccb0dad"
 dependencies = [
- "bindgen",
+ "bindgen 0.59.999",
  "log",
  "mozbuild",
  "neqo-common",
@@ -3958,7 +3981,7 @@ dependencies = [
 [[package]]
 name = "nss_build_common"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=b09ffe23ee60a066176e5d7f9f2c6cd95c528ceb#b09ffe23ee60a066176e5d7f9f2c6cd95c528ceb"
+source = "git+https://github.com/mozilla/application-services?rev=4d858e4266c6d06d86d361279e6e04dbe5583cb9#4d858e4266c6d06d86d361279e6e04dbe5583cb9"
 
 [[package]]
 name = "nsstring"
@@ -4059,6 +4082,35 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e42c982f2d955fac81dd7e1d0e1426a7d702acd9c98d19ab01083a6a0328c424"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "oblivious_http"
+version = "0.1.0"
+dependencies = [
+ "nserror",
+ "ohttp",
+ "rand 0.8.5",
+ "thin-vec",
+ "xpcom",
+]
+
+[[package]]
+name = "ohttp"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b2c6a2f1b2f840a52ea235d568701369274f6ca08d98e7d9ca4acadd1fe94c5"
+dependencies = [
+ "bindgen 0.59.999",
+ "byteorder",
+ "env_logger 0.8.999",
+ "hex",
+ "lazy_static",
+ "log",
+ "mozbuild",
+ "serde",
+ "serde_derive",
+ "toml",
 ]
 
 [[package]]
@@ -4301,11 +4353,11 @@ checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 
 [[package]]
 name = "pkcs11-bindings"
-version = "0.1.1"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "780bf71a814823f87d50b5bfbfd4ba5f2af46819a01f0ac31238f650693eb592"
+checksum = "c20556de5b64f5d7213b8ea103b92261cac789b59978652d9cd831ba9f477c53"
 dependencies = [
- "bindgen",
+ "bindgen 0.63.0",
 ]
 
 [[package]]
@@ -5156,7 +5208,7 @@ dependencies = [
 [[package]]
 name = "sql-support"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=b09ffe23ee60a066176e5d7f9f2c6cd95c528ceb#b09ffe23ee60a066176e5d7f9f2c6cd95c528ceb"
+source = "git+https://github.com/mozilla/application-services?rev=4d858e4266c6d06d86d361279e6e04dbe5583cb9#4d858e4266c6d06d86d361279e6e04dbe5583cb9"
 dependencies = [
  "ffi-support",
  "interrupt-support",
@@ -5221,7 +5273,7 @@ dependencies = [
  "app_units",
  "arrayvec",
  "atomic_refcell",
- "bindgen",
+ "bindgen 0.63.0",
  "bitflags",
  "byteorder",
  "cssparser",
@@ -5338,7 +5390,7 @@ dependencies = [
 [[package]]
 name = "sync-guid"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=b09ffe23ee60a066176e5d7f9f2c6cd95c528ceb#b09ffe23ee60a066176e5d7f9f2c6cd95c528ceb"
+source = "git+https://github.com/mozilla/application-services?rev=4d858e4266c6d06d86d361279e6e04dbe5583cb9#4d858e4266c6d06d86d361279e6e04dbe5583cb9"
 dependencies = [
  "base64",
  "rand 0.8.5",
@@ -5349,7 +5401,7 @@ dependencies = [
 [[package]]
 name = "sync15"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=b09ffe23ee60a066176e5d7f9f2c6cd95c528ceb#b09ffe23ee60a066176e5d7f9f2c6cd95c528ceb"
+source = "git+https://github.com/mozilla/application-services?rev=4d858e4266c6d06d86d361279e6e04dbe5583cb9#4d858e4266c6d06d86d361279e6e04dbe5583cb9"
 dependencies = [
  "anyhow",
  "error-support",
@@ -5379,7 +5431,7 @@ dependencies = [
 [[package]]
 name = "tabs"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=b09ffe23ee60a066176e5d7f9f2c6cd95c528ceb#b09ffe23ee60a066176e5d7f9f2c6cd95c528ceb"
+source = "git+https://github.com/mozilla/application-services?rev=4d858e4266c6d06d86d361279e6e04dbe5583cb9#4d858e4266c6d06d86d361279e6e04dbe5583cb9"
 dependencies = [
  "anyhow",
  "error-support",
@@ -6129,11 +6181,12 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 [[package]]
 name = "viaduct"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=b09ffe23ee60a066176e5d7f9f2c6cd95c528ceb#b09ffe23ee60a066176e5d7f9f2c6cd95c528ceb"
+source = "git+https://github.com/mozilla/application-services?rev=4d858e4266c6d06d86d361279e6e04dbe5583cb9#4d858e4266c6d06d86d361279e6e04dbe5583cb9"
 dependencies = [
  "ffi-support",
  "log",
  "once_cell",
+ "parking_lot 0.12.999",
  "prost",
  "prost-derive",
  "serde",
@@ -6285,7 +6338,7 @@ dependencies = [
 [[package]]
 name = "webext-storage"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=b09ffe23ee60a066176e5d7f9f2c6cd95c528ceb#b09ffe23ee60a066176e5d7f9f2c6cd95c528ceb"
+source = "git+https://github.com/mozilla/application-services?rev=4d858e4266c6d06d86d361279e6e04dbe5583cb9#4d858e4266c6d06d86d361279e6e04dbe5583cb9"
 dependencies = [
  "error-support",
  "ffi-support",
@@ -6601,7 +6654,7 @@ dependencies = [
 [[package]]
 name = "wpf-gpu-raster"
 version = "0.1.0"
-source = "git+https://github.com/FirefoxGraphics/wpf-gpu-raster?rev=f0d95ce14af8a8de74f469dbad715c4064fca2e1#f0d95ce14af8a8de74f469dbad715c4064fca2e1"
+source = "git+https://github.com/FirefoxGraphics/wpf-gpu-raster?rev=b6ca51395c56648b50f21f68a1586f94f8b966c4#b6ca51395c56648b50f21f68a1586f94f8b966c4"
 dependencies = [
  "typed-arena-nomut",
 ]

@@ -101,7 +101,7 @@ select[size="1"] xul|scrollbarbutton {
 %endif
  
  /* -moz-touch-enabled? media elements */
- :-moz-any(video, audio) > xul|videocontrols {
+:-moz-any(video, audio) > xul|videocontrols {
   -moz-binding: url("chrome://global/content/bindings/videocontrols.xml#touchControls");
 }
 

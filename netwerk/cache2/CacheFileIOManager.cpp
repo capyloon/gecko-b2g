@@ -1373,6 +1373,12 @@ nsresult CacheFileIOManager::OnProfile() {
 
 // static
 nsresult CacheFileIOManager::OnDelayedStartupFinished() {
+  // If we don't clear the cache at shutdown, or we don't use a
+  // background task then there's no need to dispatch a cleanup task
+  // at startup
+  if (!CacheObserver::ClearCacheOnShutdown()) {
+    return NS_OK;
+  }
   if (!StaticPrefs::network_cache_shutdown_purge_in_background_task()) {
     return NS_OK;
   }
@@ -4102,7 +4108,10 @@ nsresult CacheFileIOManager::DispatchPurgeTask(
 #  endif
   NS_ENSURE_SUCCESS(rv, rv);
 
-  return BackgroundTasksRunner::RemoveDirectoryInDetachedProcess(
+  nsCOMPtr<nsIBackgroundTasksRunner> runner =
+      do_GetService("@mozilla.org/backgroundtasksrunner;1");
+
+  return runner->RemoveDirectoryInDetachedProcess(
       path, aCacheDirName, aSecondsToWait, aPurgeExtension);
 #endif
 }

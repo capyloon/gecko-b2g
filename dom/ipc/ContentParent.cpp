@@ -1166,6 +1166,10 @@ already_AddRefed<ContentParent> ContentParent::GetUsedBrowserProcess(
     // This ensures that the preallocator won't shut down the process once
     // it finishes starting
     preallocated->mRemoteType.Assign(aRemoteType);
+    {
+      MutexAutoLock lock(preallocated->mThreadsafeHandle->mMutex);
+      preallocated->mThreadsafeHandle->mRemoteType = preallocated->mRemoteType;
+    }
     preallocated->mRemoteTypeIsolationPrincipal =
         CreateRemoteTypeIsolationPrincipal(aRemoteType);
     preallocated->mActivateTS = TimeStamp::Now();
@@ -1967,15 +1971,18 @@ void ContentParent::MaybeAsyncSendShutDownMessage() {
   bool shouldKeepProcessAlive = ShouldKeepProcessAlive();
 #endif
 
-  auto lock = mRemoteWorkerActorData.Lock();
-  MOZ_ASSERT_IF(!lock->mCount, !shouldKeepProcessAlive);
+  {
+    MutexAutoLock lock(mThreadsafeHandle->mMutex);
+    MOZ_ASSERT_IF(!mThreadsafeHandle->mRemoteWorkerActorCount,
+                  !shouldKeepProcessAlive);
 
-  if (lock->mCount) {
-    return;
+    if (mThreadsafeHandle->mRemoteWorkerActorCount) {
+      return;
+    }
+
+    MOZ_ASSERT(!mThreadsafeHandle->mShutdownStarted);
+    mThreadsafeHandle->mShutdownStarted = true;
   }
-
-  MOZ_ASSERT(!lock->mShutdownStarted);
-  lock->mShutdownStarted = true;
 
   // In the case of normal shutdown, send a shutdown message to child to
   // allow it to perform shutdown tasks.
@@ -1999,7 +2006,8 @@ void MaybeLogBlockShutdownDiagnostics(ContentParent* aSelf, const char* aMsg,
 #endif
 }
 
-void ContentParent::ShutDownProcess(ShutDownMethod aMethod) {
+bool ContentParent::ShutDownProcess(ShutDownMethod aMethod) {
+  bool result = false;
   MOZ_LOG(ContentParent::GetLog(), LogLevel::Debug,
           ("ShutDownProcess: %p", this));
   // NB: must MarkAsDead() here so that this isn't accidentally
@@ -2030,6 +2038,7 @@ void ContentParent::ShutDownProcess(ShutDownMethod aMethod) {
             SignalImpendingShutdownToContentJS();
             StartForceKillTimer();
           }
+          result = true;
         } else {
           MaybeLogBlockShutdownDiagnostics(
               this, "ShutDownProcess: !!! Send shutdown message failed! !!!",
@@ -2043,10 +2052,12 @@ void ContentParent::ShutDownProcess(ShutDownMethod aMethod) {
       MaybeLogBlockShutdownDiagnostics(
           this, "ShutDownProcess: Shutdown already pending.", __FILE__,
           __LINE__);
+
+      result = true;
     }
     // If call was not successful, the channel must have been broken
     // somehow, and we will clean up the error in ActorDestroy.
-    return;
+    return result;
   }
 
   using mozilla::dom::quota::QuotaManagerService;
@@ -2067,6 +2078,7 @@ void ContentParent::ShutDownProcess(ShutDownMethod aMethod) {
       mCalledClose = true;
       Close();
     }
+    result = true;
   }
 
   // A ContentParent object might not get freed until after XPCOM shutdown has
@@ -2074,6 +2086,7 @@ void ContentParent::ShutDownProcess(ShutDownMethod aMethod) {
   // CC'ed objects, so we need to null them out here, while we still can.  See
   // bug 899761.
   ShutDownMessageManager();
+  return result;
 }
 
 mozilla::ipc::IPCResult ContentParent::RecvNotifyShutdownSuccess() {
@@ -2416,6 +2429,8 @@ void ContentParent::ActorDestroy(ActorDestroyReason why) {
     group->Unsubscribe(this);
   }
   MOZ_DIAGNOSTIC_ASSERT(mGroups.IsEmpty());
+
+  mPendingLoadStates.Clear();
 }
 
 void ContentParent::ActorDealloc() { mSelfRef = nullptr; }
@@ -2497,8 +2512,8 @@ bool ContentParent::HasActiveWorkerOrJSPlugin() {
 
   // If we have active workers, we need to stay alive.
   {
-    const auto lock = mRemoteWorkerActorData.Lock();
-    if (lock->mCount) {
+    MutexAutoLock lock(mThreadsafeHandle->mMutex);
+    if (mThreadsafeHandle->mRemoteWorkerActorCount) {
       return true;
     }
   }
@@ -3039,6 +3054,8 @@ ContentParent::ContentParent(const nsACString& aRemoteType, int32_t aJSPluginID)
       mGeolocationWatchID(-1),
       mJSPluginID(aJSPluginID),
       mRemoteWorkerActorData("ContentParent::mRemoteWorkerActorData"),
+      mThreadsafeHandle(
+          new ThreadsafeContentParentHandle(this, mChildID, mRemoteType)),
       mNumDestroyingTabs(0),
       mNumKeepaliveCalls(0),
       mLifecycleState(LifecycleState::LAUNCHING),
@@ -3098,7 +3115,10 @@ ContentParent::~ContentParent() {
     mForceKillTimer->Cancel();
   }
 
-  NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
+  AssertIsOnMainThread();
+
+  // Clear the weak reference from the threadsafe handle back to this actor.
+  mThreadsafeHandle->mWeakActor = nullptr;
 
   if (mIsAPreallocBlocker) {
     MOZ_LOG(ContentParent::GetLog(), LogLevel::Debug,
@@ -3651,12 +3671,56 @@ mozilla::ipc::IPCResult ContentParent::RecvSetClipboard(
   return IPC_OK();
 }
 
+namespace {
+
+static Result<nsCOMPtr<nsITransferable>, nsresult> CreateTransferable(
+    const nsTArray<nsCString>& aTypes) {
+  nsresult rv;
+  nsCOMPtr<nsITransferable> trans =
+      do_CreateInstance("@mozilla.org/widget/transferable;1", &rv);
+  if (NS_FAILED(rv)) {
+    return Err(rv);
+  }
+
+  MOZ_TRY(trans->Init(nullptr));
+  // The private flag is only used to prevent the data from being cached to the
+  // disk. The flag is not exported to the IPCDataTransfer object.
+  // The flag is set because we are not sure whether the clipboard data is used
+  // in a private browsing context. The transferable is only used in this scope,
+  // so the cache would not reduce memory consumption anyway.
+  trans->SetIsPrivateData(true);
+  // Fill out flavors for transferable
+  for (uint32_t t = 0; t < aTypes.Length(); t++) {
+    MOZ_TRY(trans->AddDataFlavor(aTypes[t].get()));
+  }
+
+  return std::move(trans);
+}
+
+}  // anonymous namespace
+
 mozilla::ipc::IPCResult ContentParent::RecvGetClipboard(
     nsTArray<nsCString>&& aTypes, const int32_t& aWhichClipboard,
     IPCDataTransfer* aDataTransfer) {
-  nsresult rv = GetDataFromClipboard(aTypes, aWhichClipboard,
-                                     true /* aInSyncMessage */, aDataTransfer);
-  NS_ENSURE_SUCCESS(rv, IPC_OK());
+  nsresult rv;
+  // Retrieve clipboard
+  nsCOMPtr<nsIClipboard> clipboard(do_GetService(kCClipboardCID, &rv));
+  if (NS_FAILED(rv)) {
+    return IPC_OK();
+  }
+
+  // Create transferable
+  auto result = CreateTransferable(aTypes);
+  if (result.isErr()) {
+    return IPC_OK();
+  }
+
+  // Get data from clipboard
+  nsCOMPtr<nsITransferable> trans = result.unwrap();
+  clipboard->GetData(trans, aWhichClipboard);
+
+  nsContentUtils::TransferableToIPCTransferable(
+      trans, aDataTransfer, true /* aInSyncMessage */, nullptr, this);
   return IPC_OK();
 }
 
@@ -3712,58 +3776,36 @@ mozilla::ipc::IPCResult ContentParent::RecvGetExternalClipboardFormats(
   return IPC_OK();
 }
 
-nsresult ContentParent::GetDataFromClipboard(const nsTArray<nsCString>& aTypes,
-                                             const int32_t aWhichClipboard,
-                                             const bool aInSyncMessage,
-                                             IPCDataTransfer* aDataTransfer) {
+mozilla::ipc::IPCResult ContentParent::RecvGetClipboardAsync(
+    nsTArray<nsCString>&& aTypes, const int32_t& aWhichClipboard,
+    GetClipboardAsyncResolver&& aResolver) {
   nsresult rv;
   // Retrieve clipboard
   nsCOMPtr<nsIClipboard> clipboard(do_GetService(kCClipboardCID, &rv));
   if (NS_FAILED(rv)) {
-    return rv;
+    aResolver(rv);
+    return IPC_OK();
   }
 
   // Create transferable
-  nsCOMPtr<nsITransferable> trans =
-      do_CreateInstance("@mozilla.org/widget/transferable;1", &rv);
-  if (NS_FAILED(rv)) {
-    return rv;
-  }
-  trans->Init(nullptr);
-
-  // The private flag is only used to prevent the data from being cached to the
-  // disk. The flag is not exported to the IPCDataTransfer object.
-  // The flag is set because we are not sure whether the clipboard data is used
-  // in a private browsing context. The transferable is only used in this scope,
-  // so the cache would not reduce memory consumption anyway.
-  trans->SetIsPrivateData(true);
-
-  // Fill out flavors for transferable
-  for (uint32_t t = 0; t < aTypes.Length(); t++) {
-    trans->AddDataFlavor(aTypes[t].get());
+  auto result = CreateTransferable(aTypes);
+  if (result.isErr()) {
+    aResolver(result.unwrapErr());
+    return IPC_OK();
   }
 
   // Get data from clipboard
-  clipboard->GetData(trans, aWhichClipboard);
-
-  nsContentUtils::TransferableToIPCTransferable(trans, aDataTransfer,
-                                                aInSyncMessage, nullptr, this);
-  return NS_OK;
-}
-
-mozilla::ipc::IPCResult ContentParent::RecvGetClipboardAsync(
-    nsTArray<nsCString>&& aTypes, const int32_t& aWhichClipboard,
-    GetClipboardAsyncResolver&& aResolver) {
-  IPCDataTransfer ipcDataTransfer;
-
-  nsresult rv = GetDataFromClipboard(
-      aTypes, aWhichClipboard, false /* aInSyncMessage */, &ipcDataTransfer);
-  if (NS_FAILED(rv)) {
-    return IPC_FAIL(this, "RecvGetClipboardAsync failed.");
-  }
-
-  // Resolve the promise
-  aResolver(std::move(ipcDataTransfer));
+  nsCOMPtr<nsITransferable> trans = result.unwrap();
+  clipboard->AsyncGetData(trans, nsIClipboard::kGlobalClipboard)
+      ->Then(GetMainThreadSerialEventTarget(), __func__,
+             [trans, aResolver, self = RefPtr{this}](
+                 GenericPromise::ResolveOrRejectValue&& aValue) {
+               IPCDataTransfer ipcDataTransfer;
+               nsContentUtils::TransferableToIPCTransferable(
+                   trans, &ipcDataTransfer, false /* aInSyncMessage */, nullptr,
+                   self);
+               aResolver(std::move(ipcDataTransfer));
+             });
   return IPC_OK();
 }
 
@@ -3895,6 +3937,26 @@ mozilla::ipc::IPCResult ContentParent::RecvSpeakerManagerForceSpeaker(
 #endif
 }
 
+already_AddRefed<nsDocShellLoadState> ContentParent::TakePendingLoadStateForId(
+    uint64_t aLoadIdentifier) {
+  return mPendingLoadStates.Extract(aLoadIdentifier).valueOr(nullptr).forget();
+}
+
+void ContentParent::StorePendingLoadState(nsDocShellLoadState* aLoadState) {
+  MOZ_DIAGNOSTIC_ASSERT(
+      !mPendingLoadStates.Contains(aLoadState->GetLoadIdentifier()),
+      "The same nsDocShellLoadState was sent to the same content process "
+      "twice? This will mess with cross-process tracking of loads");
+  mPendingLoadStates.InsertOrUpdate(aLoadState->GetLoadIdentifier(),
+                                    aLoadState);
+}
+
+mozilla::ipc::IPCResult ContentParent::RecvCleanupPendingLoadState(
+    uint64_t aLoadIdentifier) {
+  mPendingLoadStates.Remove(aLoadIdentifier);
+  return IPC_OK();
+}
+
 // We want ContentParent to show up in CC logs for debugging purposes, but we
 // don't actually cycle collect it.
 NS_IMPL_CYCLE_COLLECTION_0(ContentParent)
@@ -3992,8 +4054,10 @@ ContentParent::BlockShutdown(nsIAsyncShutdownClient* aClient) {
     // The normal shutdown sequence is to send a shutdown message
     // to the child and then just wait for ActorDestroy which will
     // cleanup everything and remove our blockers.
-    // XXX: Check for successful dispatch, see bug 1765732
-    ShutDownProcess(SEND_SHUTDOWN_MESSAGE);
+    if (!ShutDownProcess(SEND_SHUTDOWN_MESSAGE)) {
+      KillHard("Failed to send Shutdown message. Destroying the process...");
+      return NS_OK;
+    }
   } else if (IsLaunching()) {
     MaybeLogBlockShutdownDiagnostics(
         this, "BlockShutdown: !CanSend && IsLaunching.", __FILE__, __LINE__);
@@ -7813,6 +7877,7 @@ void ContentParent::RegisterRemoteWorkerActor(nsIURI* aScriptURL) {
 void ContentParent::UnregisterRemoveWorkerActor(nsIURI* aScriptURL) {
   MOZ_ASSERT(NS_IsMainThread());
 
+  // TODO: b2g, check if we can move that to ThreadsafeContentParentHandle
   {
     auto lock = mRemoteWorkerActorData.Lock();
 
@@ -7827,6 +7892,13 @@ void ContentParent::UnregisterRemoveWorkerActor(nsIURI* aScriptURL) {
     lock->mScriptURLs.RemoveElementAt(index);
 
     if (--lock->mCount) {
+      return;
+    }
+  }
+
+  {
+    MutexAutoLock lock(mThreadsafeHandle->mMutex);
+    if (--mThreadsafeHandle->mRemoteWorkerActorCount) {
       return;
     }
   }
@@ -8793,6 +8865,21 @@ IPCResult ContentParent::RecvSignalFuzzingReady() {
   return IPC_OK();
 }
 #endif
+
+nsCString ThreadsafeContentParentHandle::GetRemoteType() {
+  MutexAutoLock lock(mMutex);
+  return mRemoteType;
+}
+
+bool ThreadsafeContentParentHandle::MaybeRegisterRemoteWorkerActor(
+    MoveOnlyFunction<bool(uint32_t, bool)> aCallback) {
+  MutexAutoLock lock(mMutex);
+  if (aCallback(mRemoteWorkerActorCount, mShutdownStarted)) {
+    ++mRemoteWorkerActorCount;
+    return true;
+  }
+  return false;
+}
 
 }  // namespace dom
 }  // namespace mozilla

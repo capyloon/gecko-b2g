@@ -1535,10 +1535,12 @@ nsresult nsHttpChannel::CallOnStartRequest() {
   // are the checks for Opaque Response Blocking to ensure that we block as many
   // cross-origin responses with CORS headers as possible that are not either
   // Javascript or media to avoid leaking their contents through side channels.
-  bool compressedMediaAndImageDetectorStarted = false;
-  if (EnsureOpaqueResponseIsAllowed(compressedMediaAndImageDetectorStarted) ==
-      OpaqueResponseAllowed::No) {
-    mChannelBlockedByOpaqueResponse = true;
+  OpaqueResponse opaqueResponse =
+      PerformOpaqueResponseSafelistCheckBeforeSniff();
+  if (opaqueResponse == OpaqueResponse::Block) {
+    SetChannelBlockedByOpaqueResponse();
+    CancelWithReason(NS_ERROR_FAILURE,
+                     "OpaqueResponseBlocker::BlockResponse"_ns);
     return NS_ERROR_FAILURE;
   }
 
@@ -1592,12 +1594,18 @@ nsresult nsHttpChannel::CallOnStartRequest() {
 
   // If unknownDecoder is not going to be launched, call
   // EnsureOpaqueResponseIsAllowedAfterSniff immediately.
-  if (!unknownDecoderStarted && !compressedMediaAndImageDetectorStarted) {
-    auto isAllowedOrErr = EnsureOpaqueResponseIsAllowedAfterSniff();
-    if (isAllowedOrErr.isErr() ||
-        isAllowedOrErr.inspect() == OpaqueResponseAllowed::No) {
-      mChannelBlockedByOpaqueResponse = true;
-      return NS_ERROR_FAILURE;
+  if (!unknownDecoderStarted) {
+    if (opaqueResponse == OpaqueResponse::SniffCompressed) {
+      mListener = new nsCompressedAudioVideoImageDetector(
+          mListener, &HttpBaseChannel::CallTypeSniffers);
+    } else if (opaqueResponse == OpaqueResponse::Sniff) {
+      MOZ_DIAGNOSTIC_ASSERT(mORB);
+      nsresult rv = mORB->EnsureOpaqueResponseIsAllowedAfterSniff(this);
+      MOZ_DIAGNOSTIC_ASSERT(!mORB->IsSniffing());
+
+      if (NS_FAILED(rv)) {
+        return rv;
+      }
     }
   }
 
@@ -6018,7 +6026,15 @@ void nsHttpChannel::MaybeResolveProxyAndBeginConnect() {
     return;
   }
 
-  rv = BeginConnect();
+  if (!gHttpHandler->Active()) {
+    LOG(
+        ("nsHttpChannel::MaybeResolveProxyAndBeginConnect [this=%p] "
+         "Handler no longer active.\n",
+         this));
+    rv = NS_ERROR_NOT_AVAILABLE;
+  } else {
+    rv = BeginConnect();
+  }
   if (NS_FAILED(rv)) {
     CloseCacheEntry(false);
     Unused << AsyncAbort(rv);
@@ -6068,6 +6084,9 @@ uint16_t nsHttpChannel::GetProxyDNSStrategy() {
 nsresult nsHttpChannel::BeginConnect() {
   LOG(("nsHttpChannel::BeginConnect [this=%p]\n", this));
   nsresult rv;
+
+  // It is the caller's responsibility to not call us late in shutdown.
+  MOZ_ASSERT(gHttpHandler->Active());
 
   // Construct connection info object
   nsAutoCString host;
@@ -9537,27 +9556,36 @@ HttpChannelSecurityWarningReporter* nsHttpChannel::GetWarningReporter() {
   return mWarningReporter.get();
 }
 
+// The specification for ORB is currently being written:
+// https://whatpr.org/fetch/1442.html#orb-algorithm
+// The `opaque-response-safelist check` is implemented in:
+// * `HttpBaseChannel::PerformOpaqueResponseSafelistCheckBeforeSniff`
+// * `nsHttpChannel::DisableIsOpaqueResponseAllowedAfterSniffCheck`
+// * `HttpBaseChannel::PerformOpaqueResponseSafelistCheckAfterSniff`
+// * `OpaqueResponseBlocker::ValidateJavaScript`
+//
 // Should only be called by nsMediaSniffer::GetMIMETypeFromContent and
 // imageLoader::GetMIMETypeFromContent when the content type can be
 // recognized by these sniffers.
 void nsHttpChannel::DisableIsOpaqueResponseAllowedAfterSniffCheck(
     SnifferType aType) {
+  // https://whatpr.org/fetch/1442.html#orb-algorithm
+  // This method covers steps, 8 and 10.
   MOZ_ASSERT(XRE_IsParentProcess());
 
-  if (mCheckIsOpaqueResponseAllowedAfterSniff) {
+  if (NeedOpaqueResponseAllowedCheckAfterSniff()) {
     MOZ_ASSERT(mCachedOpaqueResponseBlockingPref);
 
-    // If the sniifer type is media and the request comes from a media element,
+    // If the sniffer type is media and the request comes from a media element,
     // we would like to check:
     // - Whether the information provided by the media element shows it's an
     // initial request.
     // - Whether the response's status is either 200 or 206.
-    // - Whether the response's header shows it's the first partial response
-    // when the response's status is 206.
     //
     // If any of the results is false, then we set
     // mBlockOpaqueResponseAfterSniff to true and block the response later.
     if (aType == SnifferType::Media) {
+      // Step 8
       MOZ_ASSERT(mLoadInfo);
 
       bool isMediaRequest;
@@ -9568,24 +9596,22 @@ void nsHttpChannel::DisableIsOpaqueResponseAllowedAfterSniffCheck(
         MOZ_ASSERT(isInitialRequest);
 
         if (!isInitialRequest) {
+          // Step 8.1
           BlockOpaqueResponseAfterSniff();
           return;
         }
 
         if (mResponseHead->Status() != 200 && mResponseHead->Status() != 206) {
-          BlockOpaqueResponseAfterSniff();
-          return;
-        }
-
-        if (mResponseHead->Status() == 206 &&
-            !IsFirstPartialResponse(*mResponseHead)) {
+          // Step 8.2
           BlockOpaqueResponseAfterSniff();
           return;
         }
       }
     }
 
-    mCheckIsOpaqueResponseAllowedAfterSniff = false;
+    // Step 8.3 if `aType == SnifferType::Media`
+    // Step 9 can be skipped, only `HTMLMediaElement` ever sets isMediaRequest.
+    // Step 10 if `aType == SnifferType::Image`
     AllowOpaqueResponseAfterSniff();
   }
 }

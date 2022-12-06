@@ -677,6 +677,8 @@ pref("toolkit.telemetry.unified", true);
 
 // DAP related preferences
 pref("toolkit.telemetry.dap_enabled", false);
+// Verification tasks
+pref("toolkit.telemetry.dap_task1_enabled", false);
 // Leader endpoint for the DAP protocol
 pref("toolkit.telemetry.dap_leader", "https://interop-00.api.divviup.org");
 // Not used for anything. Just additional information.
@@ -3382,7 +3384,7 @@ pref("extensions.webcompat-reporter.newIssueEndpoint", "https://webcompat.com/is
 pref("extensions.webextensions.base-content-security-policy", "script-src 'self' https://* http://localhost:* http://127.0.0.1:* moz-extension: blob: filesystem: 'unsafe-eval' 'wasm-unsafe-eval' 'unsafe-inline';");
 pref("extensions.webextensions.base-content-security-policy.v3", "script-src 'self' 'wasm-unsafe-eval';");
 pref("extensions.webextensions.default-content-security-policy", "script-src 'self' 'wasm-unsafe-eval';");
-pref("extensions.webextensions.default-content-security-policy.v3", "script-src 'self';");
+pref("extensions.webextensions.default-content-security-policy.v3", "script-src 'self'; upgrade-insecure-requests;");
 
 
 pref("network.buffer.cache.count", 24);

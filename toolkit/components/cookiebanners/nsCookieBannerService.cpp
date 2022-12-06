@@ -7,6 +7,7 @@
 #include "CookieBannerDomainPrefService.h"
 #include "ErrorList.h"
 #include "mozilla/ClearOnShutdown.h"
+#include "mozilla/RefPtr.h"
 #include "mozilla/dom/CanonicalBrowsingContext.h"
 #include "mozilla/EventQueue.h"
 #include "mozilla/glean/GleanMetrics.h"
@@ -24,7 +25,9 @@
 #include "nsIEffectiveTLDService.h"
 #include "nsNetCID.h"
 #include "nsServiceManagerUtils.h"
+#include "nsStringFwd.h"
 #include "nsThreadUtils.h"
+#include "Cookie.h"
 
 namespace mozilla {
 
@@ -126,6 +129,7 @@ nsCookieBannerService::Observe(nsISupports* aSubject, const char* aTopic,
   // Report the daily telemetry for the cookie banner service on "idle-daily".
   if (nsCRT::strcmp(aTopic, "idle-daily") == 0) {
     DailyReportTelemetry();
+    ResetDomainTelemetryRecord(""_ns);
     return NS_OK;
   }
 
@@ -242,7 +246,9 @@ nsCookieBannerService::ResetRules(const bool doImport) {
 }
 
 nsresult nsCookieBannerService::GetRuleForDomain(const nsACString& aDomain,
-                                                 nsICookieBannerRule** aRule) {
+                                                 bool aIsTopLevel,
+                                                 nsICookieBannerRule** aRule,
+                                                 bool aReportTelemetry) {
   NS_ENSURE_ARG_POINTER(aRule);
   *aRule = nullptr;
 
@@ -252,6 +258,12 @@ nsresult nsCookieBannerService::GetRuleForDomain(const nsACString& aDomain,
   }
 
   nsCOMPtr<nsICookieBannerRule> rule = mRules.Get(aDomain);
+
+  // If we are instructed to collect telemetry.
+  if (aReportTelemetry) {
+    ReportRuleLookupTelemetry(aDomain, rule, aIsTopLevel);
+  }
+
   if (rule) {
     rule.forget(aRule);
   }
@@ -259,8 +271,10 @@ nsresult nsCookieBannerService::GetRuleForDomain(const nsACString& aDomain,
   return NS_OK;
 }
 
-nsresult nsCookieBannerService::GetRuleForURI(nsIURI* aURI,
-                                              nsICookieBannerRule** aRule) {
+nsresult nsCookieBannerService::GetRuleForURI(nsIURI* aURI, bool aIsTopLevel,
+                                              nsICookieBannerRule** aRule,
+                                              nsACString& aDomain,
+                                              bool aReportTelemetry) {
   NS_ENSURE_ARG_POINTER(aURI);
   NS_ENSURE_ARG_POINTER(aRule);
   *aRule = nullptr;
@@ -279,7 +293,11 @@ nsresult nsCookieBannerService::GetRuleForURI(nsIURI* aURI,
   rv = eTLDService->GetBaseDomain(aURI, 0, baseDomain);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  return GetRuleForDomain(baseDomain, aRule);
+  // Return the base domain we computed.
+  aDomain.Assign(baseDomain);
+
+  // Return the cookie banner rule.
+  return GetRuleForDomain(baseDomain, aIsTopLevel, aRule, aReportTelemetry);
 }
 
 NS_IMETHODIMP
@@ -346,7 +364,8 @@ nsCookieBannerService::GetCookiesForURI(
   }
 
   nsCOMPtr<nsICookieBannerRule> rule;
-  nsresult rv = GetRuleForURI(aURI, getter_AddRefs(rule));
+  nsCString domain;
+  nsresult rv = GetRuleForURI(aURI, true, getter_AddRefs(rule), domain);
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (!rule) {
@@ -358,7 +377,7 @@ nsCookieBannerService::GetCookiesForURI(
 
   // MODE_REJECT: In this mode we only handle the banner if we can reject. We
   // don't care about the opt-in cookies.
-  rv = rule->GetCookiesOptOut(aCookies);
+  rv = rule->GetCookies(true, domain, aCookies);
   NS_ENSURE_SUCCESS(rv, rv);
 
   // MODE_REJECT_OR_ACCEPT: In this mode we will try to opt-out, but if we don't
@@ -368,18 +387,18 @@ nsCookieBannerService::GetCookiesForURI(
     MOZ_LOG(gCookieBannerLog, LogLevel::Debug,
             ("%s. Returning opt-in cookies.", __FUNCTION__));
 
-    return rule->GetCookiesOptIn(aCookies);
+    return rule->GetCookies(false, domain, aCookies);
   }
 
   MOZ_LOG(gCookieBannerLog, LogLevel::Debug,
           ("%s. Returning opt-out cookies.", __FUNCTION__));
-
   return NS_OK;
 }
 
 NS_IMETHODIMP
 nsCookieBannerService::GetClickRulesForDomain(
-    const nsACString& aDomain, nsTArray<RefPtr<nsIClickRule>>& aRules) {
+    const nsACString& aDomain, const bool aIsTopLevel,
+    nsTArray<RefPtr<nsIClickRule>>& aRules) {
   aRules.Clear();
 
   // Service is disabled, throw with empty rule.
@@ -387,8 +406,14 @@ nsCookieBannerService::GetClickRulesForDomain(
     return NS_ERROR_NOT_AVAILABLE;
   }
 
+  // Get the cookie banner rule for the domain. Also, we instruct the function
+  // to report the rule lookup telemetry. Note that we collect telemetry here
+  // but don't when getting cookie rules because the cookie injection only apply
+  // for top-level requests. So, we won't be able to collect data for iframe
+  // cases.
   nsCOMPtr<nsICookieBannerRule> ruleForDomain;
-  nsresult rv = GetRuleForDomain(aDomain, getter_AddRefs(ruleForDomain));
+  nsresult rv = GetRuleForDomain(aDomain, aIsTopLevel,
+                                 getter_AddRefs(ruleForDomain), true);
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Extract click rule from an nsICookieBannerRule and if found append it to
@@ -398,7 +423,22 @@ nsCookieBannerService::GetClickRulesForDomain(
     rv = bannerRule->GetClickRule(getter_AddRefs(clickRule));
     NS_ENSURE_SUCCESS(rv, rv);
 
-    if (clickRule) {
+    if (!clickRule) {
+      return NS_OK;
+    }
+
+    // Evaluate the rule's runContext field and skip it if the caller's context
+    // doesn't match. See nsIClickRule::RunContext for possible values.
+    nsIClickRule::RunContext runContext;
+    rv = clickRule->GetRunContext(&runContext);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    bool runContextMatchesRule =
+        (runContext == nsIClickRule::RUN_ALL) ||
+        (runContext == nsIClickRule::RUN_TOP && aIsTopLevel) ||
+        (runContext == nsIClickRule::RUN_CHILD && !aIsTopLevel);
+
+    if (runContextMatchesRule) {
       aRules.AppendElement(clickRule);
     }
 
@@ -434,18 +474,17 @@ nsCookieBannerService::InsertRule(nsICookieBannerRule* aRule) {
     return NS_ERROR_NOT_AVAILABLE;
   }
 
-  nsAutoCString domain;
-  nsresult rv = aRule->GetDomain(domain);
-  NS_ENSURE_SUCCESS(rv, rv);
-  NS_ENSURE_TRUE(!domain.IsEmpty(), NS_ERROR_FAILURE);
+  nsCookieBannerRule::LogRule(gCookieBannerLog, "InsertRule:", aRule,
+                              LogLevel::Debug);
 
-  MOZ_LOG(gCookieBannerLog, LogLevel::Debug,
-          ("%s. domain: %s", __FUNCTION__, domain.get()));
+  nsTArray<nsCString> domains;
+  nsresult rv = aRule->GetDomains(domains);
+  NS_ENSURE_SUCCESS(rv, rv);
 
   // Global rules are stored in a separate map mGlobalRules.
-  // They are identified by a "*" in the domain field.
+  // They are identified by having an empty domains array.
   // They are keyed by the unique ID field.
-  if (domain.EqualsLiteral("*")) {
+  if (domains.IsEmpty()) {
     nsAutoCString id;
     rv = aRule->GetId(id);
     NS_ENSURE_SUCCESS(rv, rv);
@@ -465,8 +504,11 @@ nsCookieBannerService::InsertRule(nsICookieBannerRule* aRule) {
     return NS_OK;
   }
 
-  nsCOMPtr<nsICookieBannerRule> result = mRules.InsertOrUpdate(domain, aRule);
-  NS_ENSURE_TRUE(result, NS_ERROR_FAILURE);
+  // Multiple domains can be mapped to the same rule.
+  for (auto& domain : domains) {
+    nsCOMPtr<nsICookieBannerRule> result = mRules.InsertOrUpdate(domain, aRule);
+    NS_ENSURE_TRUE(result, NS_ERROR_FAILURE);
+  }
 
   return NS_OK;
 }
@@ -480,32 +522,29 @@ nsCookieBannerService::RemoveRule(nsICookieBannerRule* aRule) {
     return NS_ERROR_NOT_AVAILABLE;
   }
 
-  nsAutoCString domain;
-  nsresult rv = aRule->GetDomain(domain);
+  nsCookieBannerRule::LogRule(gCookieBannerLog, "RemoveRule:", aRule,
+                              LogLevel::Debug);
+
+  nsTArray<nsCString> domains;
+  nsresult rv = aRule->GetDomains(domains);
   NS_ENSURE_SUCCESS(rv, rv);
-  NS_ENSURE_TRUE(!domain.IsEmpty(), NS_ERROR_FAILURE);
 
   // Remove global rule by ID.
-  if (domain.EqualsLiteral("*")) {
+  if (domains.IsEmpty()) {
     nsAutoCString id;
     rv = aRule->GetId(id);
     NS_ENSURE_SUCCESS(rv, rv);
     NS_ENSURE_TRUE(!id.IsEmpty(), NS_ERROR_FAILURE);
 
-    MOZ_LOG(gCookieBannerLog, LogLevel::Debug,
-            ("%s. Global Rule, id: %s", __FUNCTION__,
-             PromiseFlatCString(id).get()));
-
     mGlobalRules.Remove(id);
     return NS_OK;
   }
 
-  MOZ_LOG(gCookieBannerLog, LogLevel::Debug,
-          ("%s. Domain rule, aDomain: %s", __FUNCTION__,
-           PromiseFlatCString(domain).get()));
+  // Remove all entries pointing to the rule.
+  for (auto& domain : domains) {
+    mRules.Remove(domain);
+  }
 
-  // Remove site specific rule by domain.
-  mRules.Remove(domain);
   return NS_OK;
 }
 
@@ -600,6 +639,19 @@ nsCookieBannerService::RemoveAllDomainPrefs(const bool aIsPrivate) {
   return NS_OK;
 }
 
+NS_IMETHODIMP
+nsCookieBannerService::ResetDomainTelemetryRecord(const nsACString& aDomain) {
+  if (aDomain.IsEmpty()) {
+    mTelemetryReportedTopDomains.Clear();
+    mTelemetryReportedIFrameDomains.Clear();
+    return NS_OK;
+  }
+
+  mTelemetryReportedTopDomains.Remove(aDomain);
+  mTelemetryReportedIFrameDomains.Remove(aDomain);
+  return NS_OK;
+}
+
 void nsCookieBannerService::DailyReportTelemetry() {
   MOZ_ASSERT(NS_IsMainThread());
 
@@ -622,6 +674,145 @@ void nsCookieBannerService::DailyReportTelemetry() {
     glean::cookie_banners::private_window_service_mode.Get(label).Set(
         modePBMStr.Equals(label));
   }
+}
+
+void nsCookieBannerService::ReportRuleLookupTelemetry(
+    const nsACString& aDomain, nsICookieBannerRule* aRule, bool aIsTopLevel) {
+  nsTArray<nsCString> labelsToBeAdded;
+
+  nsAutoCString labelPrefix;
+  if (aIsTopLevel) {
+    labelPrefix.Assign("top_"_ns);
+  } else {
+    labelPrefix.Assign("iframe_"_ns);
+  }
+
+  // The lambda function to submit the telemetry.
+  auto submitTelemetry = [&]() {
+    // Add the load telemetry for every label in the list.
+    for (const auto& label : labelsToBeAdded) {
+      glean::cookie_banners::rule_lookup_by_load.Get(labelPrefix + label)
+          .Add(1);
+    }
+
+    nsTHashSet<nsCStringHashKey>& reportedDomains =
+        aIsTopLevel ? mTelemetryReportedTopDomains
+                    : mTelemetryReportedIFrameDomains;
+
+    // For domain telemetry, we only submit once for each domain.
+    if (!reportedDomains.Contains(aDomain)) {
+      for (const auto& label : labelsToBeAdded) {
+        glean::cookie_banners::rule_lookup_by_domain.Get(labelPrefix + label)
+            .Add(1);
+      }
+      reportedDomains.Insert(aDomain);
+    }
+  };
+
+  // No rule found for the domain. Submit telemetry with lookup miss.
+  if (!aRule) {
+    labelsToBeAdded.AppendElement("miss"_ns);
+    labelsToBeAdded.AppendElement("cookie_miss"_ns);
+    labelsToBeAdded.AppendElement("click_miss"_ns);
+
+    submitTelemetry();
+    return;
+  }
+
+  // Check if we have a cookie rule for the domain.
+  bool hasCookieRule = false;
+  bool hasCookieOptIn = false;
+  bool hasCookieOptOut = false;
+  nsTArray<RefPtr<nsICookieRule>> cookies;
+
+  nsresult rv = aRule->GetCookiesOptIn(cookies);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return;
+  }
+
+  if (!cookies.IsEmpty()) {
+    labelsToBeAdded.AppendElement("cookie_hit_opt_in"_ns);
+    hasCookieRule = true;
+    hasCookieOptIn = true;
+  }
+
+  cookies.Clear();
+  rv = aRule->GetCookiesOptOut(cookies);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return;
+  }
+
+  if (!cookies.IsEmpty()) {
+    labelsToBeAdded.AppendElement("cookie_hit_opt_out"_ns);
+    hasCookieRule = true;
+    hasCookieOptOut = true;
+  }
+
+  if (hasCookieRule) {
+    labelsToBeAdded.AppendElement("cookie_hit"_ns);
+  } else {
+    labelsToBeAdded.AppendElement("cookie_miss"_ns);
+  }
+
+  // Check if we have a click rule for the domain.
+  bool hasClickRule = false;
+  bool hasClickOptIn = false;
+  bool hasClickOptOut = false;
+  nsCOMPtr<nsIClickRule> clickRule;
+  rv = aRule->GetClickRule(getter_AddRefs(clickRule));
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return;
+  }
+
+  if (clickRule) {
+    nsAutoCString clickOptIn;
+    nsAutoCString clickOptOut;
+
+    rv = clickRule->GetOptIn(clickOptIn);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return;
+    }
+
+    rv = clickRule->GetOptOut(clickOptOut);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return;
+    }
+
+    if (!clickOptIn.IsEmpty()) {
+      labelsToBeAdded.AppendElement("click_hit_opt_in"_ns);
+      hasClickRule = true;
+      hasClickOptIn = true;
+    }
+
+    if (!clickOptOut.IsEmpty()) {
+      labelsToBeAdded.AppendElement("click_hit_opt_out"_ns);
+      hasClickRule = true;
+      hasClickOptOut = true;
+    }
+
+    if (hasClickRule) {
+      labelsToBeAdded.AppendElement("click_hit"_ns);
+    } else {
+      labelsToBeAdded.AppendElement("click_miss"_ns);
+    }
+  } else {
+    labelsToBeAdded.AppendElement("click_miss"_ns);
+  }
+
+  if (hasCookieRule || hasClickRule) {
+    labelsToBeAdded.AppendElement("hit"_ns);
+    if (hasCookieOptIn || hasClickOptIn) {
+      labelsToBeAdded.AppendElement("hit_opt_in"_ns);
+    }
+
+    if (hasCookieOptOut || hasClickOptOut) {
+      labelsToBeAdded.AppendElement("hit_opt_out"_ns);
+    }
+  } else {
+    labelsToBeAdded.AppendElement("miss"_ns);
+  }
+
+  submitTelemetry();
 }
 
 }  // namespace mozilla

@@ -125,15 +125,17 @@ WebrtcMediaDataEncoder::WebrtcMediaDataEncoder(
   PodZero(&mCodecSpecific.codecSpecific);
 }
 
-static void InitCodecSpecficInfo(webrtc::CodecSpecificInfo& aInfo,
-                                 const webrtc::VideoCodec* aCodecSettings) {
+static void InitCodecSpecficInfo(
+    webrtc::CodecSpecificInfo& aInfo, const webrtc::VideoCodec* aCodecSettings,
+    const webrtc::SdpVideoFormat::Parameters& aParameters) {
   MOZ_ASSERT(aCodecSettings);
 
   aInfo.codecType = aCodecSettings->codecType;
   switch (aCodecSettings->codecType) {
     case webrtc::VideoCodecType::kVideoCodecH264: {
       aInfo.codecSpecific.H264.packetization_mode =
-          aCodecSettings->H264().packetizationMode == 1
+          aParameters.count(cricket::kH264FmtpPacketizationMode) == 1 &&
+                  aParameters.at(cricket::kH264FmtpPacketizationMode) == "1"
               ? webrtc::H264PacketizationMode::NonInterleaved
               : webrtc::H264PacketizationMode::SingleNalUnit;
       break;
@@ -171,7 +173,7 @@ int32_t WebrtcMediaDataEncoder::InitEncode(
     return WEBRTC_VIDEO_CODEC_FALLBACK_SOFTWARE;
   }
 
-  InitCodecSpecficInfo(mCodecSpecific, aCodecSettings);
+  InitCodecSpecficInfo(mCodecSpecific, aCodecSettings, mFormatParams);
   LOG("Init encode, mimeType %s, mode %s", mInfo.mMimeType.get(),
       PacketModeStr(mCodecSpecific));
   if (!media::Await(do_AddRef(mTaskQueue), encoder->Init()).IsResolve()) {
@@ -273,6 +275,14 @@ WebrtcVideoEncoder::EncoderInfo WebrtcMediaDataEncoder::GetEncoderInfo() const {
   info.implementation_name = "MediaDataEncoder";
   info.is_hardware_accelerated = false;
   info.supports_simulcast = false;
+
+#ifdef MOZ_WIDGET_ANDROID
+  // Assume MediaDataEncoder is used mainly for hardware encoding. 16-alignment
+  // seems required on Android. This could be improved by querying the
+  // underlying encoder.
+  info.requested_resolution_alignment = 16;
+  info.apply_alignment_to_all_simulcast_layers = true;
+#endif
   return info;
 }
 

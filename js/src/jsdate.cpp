@@ -1115,6 +1115,13 @@ static bool ParseDate(const CharT* s, size_t length, ClippedTime* result) {
     int c = s[index];
     index++;
 
+    // Normalize U+202F (NARROW NO-BREAK SPACE). This character appears between
+    // the AM/PM markers for |date.toLocaleString("en")|. We have to normalize
+    // it for backward compatibility reasons.
+    if (c == 0x202F) {
+      c = ' ';
+    }
+
     // Spaces, ASCII control characters, and commas are simply ignored.
     if (c <= ' ' || c == ',') {
       continue;
@@ -1168,6 +1175,11 @@ static bool ParseDate(const CharT* s, size_t length, ClippedTime* result) {
         index++;
       }
       size_t partLength = index - partStart;
+
+      // See above for why we have to normalize U+202F.
+      if (c == 0x202F) {
+        c = ' ';
+      }
 
       int n = int(u);
 
@@ -1524,8 +1536,11 @@ static ClippedTime NowAsMillis(JSContext* cx) {
 
   double now = PRMJ_Now();
   bool clampAndJitter = cx->realm()->behaviors().clampAndJitterTime();
+  bool shouldResistFingerprinting =
+      cx->realm()->behaviors().shouldResistFingerprinting();
   if (clampAndJitter && sReduceMicrosecondTimePrecisionCallback) {
-    now = sReduceMicrosecondTimePrecisionCallback(now, cx);
+    now = sReduceMicrosecondTimePrecisionCallback(
+        now, shouldResistFingerprinting, cx);
   } else if (clampAndJitter && sResolutionUsec) {
     double clamped = floor(now / sResolutionUsec) * sResolutionUsec;
 

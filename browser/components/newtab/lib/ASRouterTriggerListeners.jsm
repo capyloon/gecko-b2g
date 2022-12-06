@@ -21,6 +21,13 @@ XPCOMUtils.defineLazyModuleGetters(lazy, {
   EveryWindow: "resource:///modules/EveryWindow.jsm",
 });
 
+XPCOMUtils.defineLazyGetter(lazy, "log", () => {
+  const { Logger } = ChromeUtils.import(
+    "resource://messaging-system/lib/Logger.jsm"
+  );
+  return new Logger("ASRouterTriggerListeners");
+});
+
 const FEW_MINUTES = 15 * 60 * 1000; // 15 mins
 
 function isPrivateWindow(win) {
@@ -754,6 +761,13 @@ const ASRouterTriggerListeners = new Map([
       // actively using the browser when it fires.
       _triggerDelay: 2000,
       _triggerTimeout: null,
+      // We may get an idle notification immediately after waking from sleep.
+      // The idle time in such a case will be the amount of time since the last
+      // user interaction, which was before the computer went to sleep. We want
+      // to ignore them in that case, so we ignore idle notifications that
+      // happen within 1 second of the last wake notification.
+      _wakeDelay: 1000,
+      _lastWakeTime: null,
       _listenedEvents: ["visibilitychange", "TabClose", "TabAttrModified"],
       // When the OS goes to sleep or the process is suspended, we want to drop
       // the idle time, since the time between sleep and wake is expected to be
@@ -813,27 +827,55 @@ const ASRouterTriggerListeners = new Map([
             this._quietSince = Date.now();
           }
           this._initialized = true;
+          this.log("Initialized: ", {
+            idleTime: this._idleService.idleTime,
+            quietSince: this._quietSince,
+          });
         }
       },
       observe(subject, topic, data) {
         if (this._initialized) {
+          this.log("Heard observer notification: ", {
+            subject,
+            topic,
+            data,
+            idleTime: this._idleService.idleTime,
+            idleSince: this._idleSince,
+            quietSince: this._quietSince,
+            lastWakeTime: this._lastWakeTime,
+          });
           switch (topic) {
             case "idle":
-              this._idleSince = Date.now() - subject.idleTime;
+              const now = Date.now();
+              // If the idle notification is within 1 second of the last wake
+              // notification, ignore it. We do this to avoid counting time the
+              // computer spent asleep as "idle time"
+              const isImmediatelyAfterWake =
+                this._lastWakeTime &&
+                now - this._lastWakeTime < this._wakeDelay;
+              if (!isImmediatelyAfterWake) {
+                this._idleSince = now - subject.idleTime;
+              }
               break;
             case "active":
               // Trigger when user returns from being idle.
               if (this._isVisible) {
                 this._onActive();
                 this._idleSince = null;
+                this._lastWakeTime = null;
               } else if (this._idleSince) {
                 // If the window is not visible, we want to wait until it is
                 // visible before triggering.
                 this._awaitingVisibilityChange = true;
               }
               break;
+            // OS/process notifications
+            case "wake_notification":
+            case "resume_process_notification":
+            case "mac_app_activate":
+              this._lastWakeTime = Date.now();
+            // Fall through to reset idle time.
             default:
-              // OS/process notifications
               this._idleSince = null;
           }
         }
@@ -845,6 +887,7 @@ const ASRouterTriggerListeners = new Map([
               if (this._awaitingVisibilityChange && this._isVisible) {
                 this._onActive();
                 this._idleSince = null;
+                this._lastWakeTime = null;
                 this._awaitingVisibilityChange = false;
               }
               break;
@@ -855,6 +898,12 @@ const ASRouterTriggerListeners = new Map([
               }
             // fall through
             case "TabClose":
+              this.log("Tab sound changed: ", {
+                event,
+                idleTime: this._idleService.idleTime,
+                idleSince: this._idleSince,
+                quietSince: this._quietSince,
+              });
               // Maybe update time if a tab closes with sound playing.
               if (this._soundPlaying) {
                 this._quietSince = null;
@@ -865,6 +914,12 @@ const ASRouterTriggerListeners = new Map([
         }
       },
       _onActive() {
+        this.log("User is active: ", {
+          idleTime: this._idleService.idleTime,
+          idleSince: this._idleSince,
+          quietSince: this._quietSince,
+          lastWakeTime: this._lastWakeTime,
+        });
         if (this._idleSince && this._quietSince) {
           const win = Services.wm.getMostRecentBrowserWindow();
           if (win && !isPrivateWindow(win) && !this._triggerTimeout) {
@@ -894,7 +949,13 @@ const ASRouterTriggerListeners = new Map([
           this._triggerHandler = null;
           this._idleSince = null;
           this._quietSince = null;
+          this._lastWakeTime = null;
+          this._awaitingVisibilityChange = false;
+          this.log("Uninitialized");
         }
+      },
+      log(...args) {
+        lazy.log.debug("Idle trigger :>>", ...args);
       },
 
       QueryInterface: ChromeUtils.generateQI([
