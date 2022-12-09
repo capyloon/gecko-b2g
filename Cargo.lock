@@ -5,7 +5,7 @@ version = 3
 [[package]]
 name = "aa-stroke"
 version = "0.1.0"
-source = "git+https://github.com/FirefoxGraphics/aa-stroke?rev=5289b0ff5736a6a6b916ef007fcf07ac14a663d5#5289b0ff5736a6a6b916ef007fcf07ac14a663d5"
+source = "git+https://github.com/FirefoxGraphics/aa-stroke?rev=07d3c25322518f294300e96246e09b95e118555d#07d3c25322518f294300e96246e09b95e118555d"
 dependencies = [
  "euclid",
 ]
@@ -378,18 +378,29 @@ dependencies = [
 
 [[package]]
 name = "authenticator"
-version = "0.3.1"
+version = "0.4.0-alpha.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08cee7a0952628fde958e149507c2bb321ab4fccfafd225da0b20adc956ef88a"
+checksum = "0e6049d26a8bcbee28599bc43e2369fa228dc5d63a0c5ad7739887d330c1228b"
 dependencies = [
+ "base64",
  "bitflags",
+ "cfg-if 1.0.0",
  "core-foundation",
  "devd-rs",
  "libc",
  "libudev",
  "log",
- "rand 0.7.999",
+ "memoffset 0.6.5",
+ "nom 7.1.1",
+ "nss-gk-api",
+ "pkcs11-bindings",
+ "rand 0.8.5",
  "runloop",
+ "serde",
+ "serde_bytes",
+ "serde_cbor",
+ "serde_json",
+ "sha2",
  "winapi",
 ]
 
@@ -1663,7 +1674,7 @@ dependencies = [
 [[package]]
 name = "error-support"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=4d858e4266c6d06d86d361279e6e04dbe5583cb9#4d858e4266c6d06d86d361279e6e04dbe5583cb9"
+source = "git+https://github.com/mozilla/application-services?rev=bef536015f038872ad991a1d5a17f765363349f6#bef536015f038872ad991a1d5a17f765363349f6"
 dependencies = [
  "lazy_static",
  "log",
@@ -2597,6 +2608,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "half"
+version = "1.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eabb4a44450da02c90444cf74558da904edde8fb4e9035a9a6a4e15445af0bd7"
+
+[[package]]
 name = "hashbrown"
 version = "0.11.999"
 dependencies = [
@@ -2824,7 +2841,7 @@ dependencies = [
 [[package]]
 name = "interrupt-support"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=4d858e4266c6d06d86d361279e6e04dbe5583cb9#4d858e4266c6d06d86d361279e6e04dbe5583cb9"
+source = "git+https://github.com/mozilla/application-services?rev=bef536015f038872ad991a1d5a17f765363349f6#bef536015f038872ad991a1d5a17f765363349f6"
 dependencies = [
  "lazy_static",
  "parking_lot 0.12.999",
@@ -3979,9 +3996,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "nss-gk-api"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a689b62ba71fda80458a77b6ace9371d6e6a5473300901383ebd101659b3352"
+dependencies = [
+ "bindgen 0.63.0",
+ "mozbuild",
+ "once_cell",
+ "pkcs11-bindings",
+ "serde",
+ "serde_derive",
+ "toml",
+]
+
+[[package]]
 name = "nss_build_common"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=4d858e4266c6d06d86d361279e6e04dbe5583cb9#4d858e4266c6d06d86d361279e6e04dbe5583cb9"
+source = "git+https://github.com/mozilla/application-services?rev=bef536015f038872ad991a1d5a17f765363349f6#bef536015f038872ad991a1d5a17f765363349f6"
 
 [[package]]
 name = "nsstring"
@@ -4415,9 +4447,9 @@ version = "0.0.1"
 
 [[package]]
 name = "prio"
-version = "0.8.4"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41d747fc8ff20e95b1ff2c5c6162143b89a1b08cee1bc8941fada53bfe1b04d3"
+checksum = "c574f8eb821cee725c8e662e5881e0e94f40838af25be4035e15b5c4d960df3e"
 dependencies = [
  "base64",
  "byteorder",
@@ -4982,6 +5014,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_cbor"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2bef2ebfde456fb76bbcf9f59315333decc4fda0b2b44b420243c11e0f5ec1f5"
+dependencies = [
+ "half",
+ "serde",
+]
+
+[[package]]
 name = "serde_derive"
 version = "1.0.144"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5208,7 +5250,7 @@ dependencies = [
 [[package]]
 name = "sql-support"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=4d858e4266c6d06d86d361279e6e04dbe5583cb9#4d858e4266c6d06d86d361279e6e04dbe5583cb9"
+source = "git+https://github.com/mozilla/application-services?rev=bef536015f038872ad991a1d5a17f765363349f6#bef536015f038872ad991a1d5a17f765363349f6"
 dependencies = [
  "ffi-support",
  "interrupt-support",
@@ -5390,7 +5432,7 @@ dependencies = [
 [[package]]
 name = "sync-guid"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=4d858e4266c6d06d86d361279e6e04dbe5583cb9#4d858e4266c6d06d86d361279e6e04dbe5583cb9"
+source = "git+https://github.com/mozilla/application-services?rev=bef536015f038872ad991a1d5a17f765363349f6#bef536015f038872ad991a1d5a17f765363349f6"
 dependencies = [
  "base64",
  "rand 0.8.5",
@@ -5401,7 +5443,7 @@ dependencies = [
 [[package]]
 name = "sync15"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=4d858e4266c6d06d86d361279e6e04dbe5583cb9#4d858e4266c6d06d86d361279e6e04dbe5583cb9"
+source = "git+https://github.com/mozilla/application-services?rev=bef536015f038872ad991a1d5a17f765363349f6#bef536015f038872ad991a1d5a17f765363349f6"
 dependencies = [
  "anyhow",
  "error-support",
@@ -5431,7 +5473,7 @@ dependencies = [
 [[package]]
 name = "tabs"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=4d858e4266c6d06d86d361279e6e04dbe5583cb9#4d858e4266c6d06d86d361279e6e04dbe5583cb9"
+source = "git+https://github.com/mozilla/application-services?rev=bef536015f038872ad991a1d5a17f765363349f6#bef536015f038872ad991a1d5a17f765363349f6"
 dependencies = [
  "anyhow",
  "error-support",
@@ -6181,7 +6223,7 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 [[package]]
 name = "viaduct"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=4d858e4266c6d06d86d361279e6e04dbe5583cb9#4d858e4266c6d06d86d361279e6e04dbe5583cb9"
+source = "git+https://github.com/mozilla/application-services?rev=bef536015f038872ad991a1d5a17f765363349f6#bef536015f038872ad991a1d5a17f765363349f6"
 dependencies = [
  "ffi-support",
  "log",
@@ -6338,7 +6380,7 @@ dependencies = [
 [[package]]
 name = "webext-storage"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=4d858e4266c6d06d86d361279e6e04dbe5583cb9#4d858e4266c6d06d86d361279e6e04dbe5583cb9"
+source = "git+https://github.com/mozilla/application-services?rev=bef536015f038872ad991a1d5a17f765363349f6#bef536015f038872ad991a1d5a17f765363349f6"
 dependencies = [
  "error-support",
  "ffi-support",
@@ -6654,7 +6696,7 @@ dependencies = [
 [[package]]
 name = "wpf-gpu-raster"
 version = "0.1.0"
-source = "git+https://github.com/FirefoxGraphics/wpf-gpu-raster?rev=b6ca51395c56648b50f21f68a1586f94f8b966c4#b6ca51395c56648b50f21f68a1586f94f8b966c4"
+source = "git+https://github.com/FirefoxGraphics/wpf-gpu-raster?rev=e07e3741d1613b1b7ddb85a1120ed4071b3d6a56#e07e3741d1613b1b7ddb85a1120ed4071b3d6a56"
 dependencies = [
  "typed-arena-nomut",
 ]

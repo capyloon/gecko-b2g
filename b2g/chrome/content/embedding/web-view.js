@@ -980,6 +980,11 @@ const { AboutReaderParent } = ChromeUtils.import(
       this.browser?.webViewDownload(url);
     }
 
+    fetchAsBlob(url) {
+      this.log(`fetchAsBlob ${url}`);
+      return this.browser?.webViewFetchAsBlob(url);
+    }
+
     set userAgent(value) {
       if (!this.nodePrincipal.isSystemPrincipal) {
         return;

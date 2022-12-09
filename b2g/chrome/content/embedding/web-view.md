@@ -17,6 +17,7 @@ The <web-view> element supports the following attributes:
 - `deactivateKeyForwarding() : void` : disable key forwarding.
 - `disableCursor() : void` : disables the virtual cursor.
 - `download(uri) : void` : init download.
+- `fetchAsBlob(uri) : Promise<Blob>` : fetches the uri and provides the content as a blob, without saving it in the downloads area.
 - `enableCursor() : void` : enables the virtual cursor.
 - `enterModalState() : void` : Set into a state where scripts are frozen and events suppressed.
 - `focus() : void` : focuses the browser.

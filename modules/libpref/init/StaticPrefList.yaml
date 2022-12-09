@@ -311,7 +311,7 @@
 
 - name: apz.scrollend-event.content.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: true
   mirror: always
 
 # After a user has executed a pan gesture, we may receive momentum phase pan
@@ -3511,6 +3511,14 @@
   value: 200
   mirror: always
 
+# Determines within what distance of a tick mark, in pixels, dragging an input
+# range range will snap the range's value to that tick mark. By default, this is
+# half the default width of the range thumb.
+- name: dom.range_element.magnet_effect_threshold
+  type: float
+  value: 10.0f
+  mirror: always
+
 # Reporting API.
 - name: dom.reporting.enabled
   type: RelaxedAtomicBool
@@ -6669,6 +6677,11 @@
     type: bool
     value: true
     mirror: once
+  # Whether to use virtual surfaces, as opposed to each tile owning a surface.
+-   name: gfx.webrender.dcomp-use-virtual-surfaces
+    type: bool
+    value: true
+    mirror: once
 #endif
 
 # Whether or not fallback to Software WebRender requires the GPU process.
@@ -8795,6 +8808,12 @@
   value: false
   mirror: always
   rust: true
+
+# Enables support for different CSS page sizes on each page when printing.
+- name: layout.css.allow-mixed-page-sizes
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
 
 # Dictates whether or not the prefers contrast media query will be
 # usable.
@@ -13722,7 +13741,7 @@
 
 - name: security.ssl3.ecdhe_ecdsa_aes_128_sha
   type: RelaxedAtomicBool
-  value: false
+  value: @IS_NOT_EARLY_BETA_OR_EARLIER@
   mirror: always
 
 - name: security.ssl3.ecdhe_rsa_aes_256_sha
@@ -13732,7 +13751,7 @@
 
 - name: security.ssl3.ecdhe_ecdsa_aes_256_sha
   type: RelaxedAtomicBool
-  value: false
+  value: @IS_NOT_EARLY_BETA_OR_EARLIER@
   mirror: always
 
 - name: security.ssl3.dhe_rsa_aes_128_sha
@@ -13883,6 +13902,12 @@
 - name: svg.new-getBBox.enabled
   type: bool
   value: false
+  mirror: always
+
+# Whether SVGGraphicsElement.nearestViewportElement and SVGGraphicsElement.farthestViewportElement are enabled.
+- name: svg.nearestAndFarthestViewportElement.enabled
+  type: bool
+  value: @IS_NOT_EARLY_BETA_OR_EARLIER@
   mirror: always
 
 # Tweak which elements are allowed in <svg:use> subtrees, and in which
@@ -14604,12 +14629,6 @@
   value: 100000 # 100KB
   mirror: always
 
-# WebGL and Canvas2D aren't allowed to be async by spec,
-# unless they have e.g.
-# https://html.spec.whatwg.org/multipage/canvas.html#2dcontext:dom-canvasrenderingcontext2dsettings-desynchronized
-# enabled, which defaults to false.
-# This pref=true with webgl.out-of-process.async-present.force-sync=false
-# enables async present in cases where it is allowed.
 - name: webgl.out-of-process.async-present
   type: RelaxedAtomicBool
 #if !defined(MOZ_WIDGET_ANDROID) && defined(EARLY_BETA_OR_EARLIER)

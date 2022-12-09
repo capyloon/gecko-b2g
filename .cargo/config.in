@@ -50,7 +50,7 @@ rev = "fb7a2b12ced3b43e6a268621989c6191d1ed7e39"
 [source."https://github.com/mozilla/application-services"]
 git = "https://github.com/mozilla/application-services"
 replace-with = "vendored-sources"
-rev = "4d858e4266c6d06d86d361279e6e04dbe5583cb9"
+rev = "bef536015f038872ad991a1d5a17f765363349f6"
 
 [source."https://github.com/mozilla-spidermonkey/jsparagus"]
 git = "https://github.com/mozilla-spidermonkey/jsparagus"
@@ -109,12 +109,12 @@ replace-with = "vendored-sources"
 [source."https://github.com/FirefoxGraphics/wpf-gpu-raster"]
 git = "https://github.com/FirefoxGraphics/wpf-gpu-raster"
 replace-with = "vendored-sources"
-rev = "b6ca51395c56648b50f21f68a1586f94f8b966c4"
+rev = "e07e3741d1613b1b7ddb85a1120ed4071b3d6a56"
 
 [source."https://github.com/FirefoxGraphics/aa-stroke"]
 git = "https://github.com/FirefoxGraphics/aa-stroke"
 replace-with = "vendored-sources"
-rev = "5289b0ff5736a6a6b916ef007fcf07ac14a663d5"
+rev = "07d3c25322518f294300e96246e09b95e118555d"
 
 [source.crates-io]
 replace-with = "vendored-sources"

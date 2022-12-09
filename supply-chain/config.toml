@@ -243,10 +243,6 @@ criteria = "safe-to-deploy"
 version = "0.26.1"
 criteria = "safe-to-deploy"
 
-[[exemptions.authenticator]]
-version = "0.3.1"
-criteria = "safe-to-deploy"
-
 [[exemptions.base64]]
 version = "0.13.0"
 criteria = "safe-to-deploy"
@@ -1333,10 +1329,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.typenum]]
 version = "1.15.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.unicase]]
-version = "2.6.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.unicode-ident]]

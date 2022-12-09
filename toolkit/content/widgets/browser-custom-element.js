@@ -7,6 +7,24 @@
 // This is loaded into all XUL windows. Wrap in a block to prevent
 // leaking to window scope.
 {
+  const StorageStream = Components.Constructor(
+    "@mozilla.org/storagestream;1",
+    "nsIStorageStream",
+    "init"
+  );
+
+  const BinaryInputStream = Components.Constructor(
+    "@mozilla.org/binaryinputstream;1",
+    "nsIBinaryInputStream",
+    "setInputStream"
+  );
+
+  const BufferedOutputStream = Components.Constructor(
+    "@mozilla.org/network/buffered-output-stream;1",
+    "nsIBufferedOutputStream",
+    "init"
+  );
+
   const { AppConstants } = ChromeUtils.importESModule(
     "resource://gre/modules/AppConstants.sys.mjs"
   );
@@ -63,9 +81,9 @@
   Object.defineProperty(lazy, "SessionStore", {
     configurable: true,
     get() {
-      const kURL = "resource:///modules/sessionstore/SessionStore.jsm";
-      if (Cu.isModuleLoaded(kURL)) {
-        let { SessionStore } = ChromeUtils.import(kURL);
+      const kURL = "resource:///modules/sessionstore/SessionStore.sys.mjs";
+      if (Cu.isESModuleLoaded(kURL)) {
+        let { SessionStore } = ChromeUtils.importESModule(kURL);
         // eslint-disable-next-line mozilla/valid-lazy
         Object.defineProperty(lazy, "SessionStore", {
           value: SessionStore,
@@ -1330,8 +1348,7 @@
       });
     }
 
-    webViewDownload(url) {
-      console.log(`webViewDownload ${url}`);
+    webViewCreateChannel(url) {
       let uri = Services.io.newURI(url);
       let channel = lazy.NetUtil.newChannel({
         uri,
@@ -1364,11 +1381,100 @@
           console.error(`webViewDownload set referrerInfo ${e}`);
         }
       }
+      return channel;
+    }
+
+    webViewFetchAsBlob(url) {
+      console.log(`webViewFetchAsBlob ${url}`);
+      const STREAM_SEGMENT_SIZE = 4096;
+      const PR_UINT32_MAX = 0xffffffff;
+
+      let channel = this.webViewCreateChannel(url);
+      let dataBuffer = new StorageStream(STREAM_SEGMENT_SIZE, PR_UINT32_MAX);
+      let stream = new BufferedOutputStream(
+        dataBuffer.getOutputStream(0),
+        STREAM_SEGMENT_SIZE * 2
+      );
+
+      return new Promise((resolve, reject) => {
+        function BlobListener() {}
+        BlobListener.prototype = {
+          onStartRequest(_request) {},
+
+          onStopRequest(request, statusCode) {
+            // Create the blob from the data buffer.
+            stream.close();
+            stream = null;
+
+            if (!Components.isSuccessCode(statusCode)) {
+              if (statusCode == Cr.NS_BINDING_ABORTED) {
+                reject(
+                  Components.Exception(
+                    `Load for ${url} was cancelled.`,
+                    statusCode
+                  )
+                );
+              } else {
+                reject(
+                  Components.Exception(`"${url}" failed to load.`, statusCode)
+                );
+              }
+              return;
+            }
+
+            if (channel instanceof Ci.nsIHttpChannel) {
+              if (!channel.requestSucceeded) {
+                reject(
+                  Components.Exception(
+                    `"${url}" failed to load: ${channel.responseStatusText}.`,
+                    { data: { httpStatus: channel.responseStatus } }
+                  )
+                );
+                return;
+              }
+            }
+
+            try {
+              let blobStream = new BinaryInputStream(
+                dataBuffer.newInputStream(0)
+              );
+              let buffer = new ArrayBuffer(dataBuffer.length);
+              blobStream.readArrayBuffer(buffer.byteLength, buffer);
+
+              let type = channel.contentType;
+              let blob = new Blob([buffer], { type });
+              resolve(blob);
+            } catch (e) {
+              reject(e);
+            }
+          },
+
+          onDataAvailable(_request, inputStream, offset, count) {
+            stream.writeFrom(inputStream, count);
+          },
+
+          QueryInterface: ChromeUtils.generateQI([
+            Ci.nsIStreamListener,
+            Ci.nsIRequestObserver,
+          ]),
+        };
+
+        try {
+          channel.asyncOpen(new BlobListener());
+        } catch (e) {
+          reject(e);
+        }
+      });
+    }
+
+    webViewDownload(url) {
+      console.log(`webViewDownload ${url}`);
+      let channel = this.webViewCreateChannel(url);
 
       function DownloadListener() {}
       DownloadListener.prototype = {
         extListener: null,
-        onStartRequest(request, context) {
+        onStartRequest(request) {
           let extHelperAppSvc = Cc[
             "@mozilla.org/uriloader/external-helper-app-service;1"
           ].getService(Ci.nsIExternalHelperAppService);
@@ -1381,15 +1487,14 @@
             true
           );
 
-          this.extListener?.onStartRequest(request, context);
+          this.extListener?.onStartRequest(request);
         },
-        onStopRequest(request, context, statusCode) {
-          this.extListener?.onStopRequest(request, context, statusCode);
+        onStopRequest(request, statusCode) {
+          this.extListener?.onStopRequest(request, statusCode);
         },
-        onDataAvailable(request, context, inputStream, offset, count) {
+        onDataAvailable(request, inputStream, offset, count) {
           this.extListener?.onDataAvailable(
             request,
-            context,
             inputStream,
             offset,
             count

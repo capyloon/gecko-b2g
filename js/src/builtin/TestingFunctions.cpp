@@ -765,7 +765,7 @@ static bool GCParameter(JSContext* cx, unsigned argc, Value* vp) {
   }
 
   uint32_t value = floor(d);
-  bool ok = cx->runtime()->gc.setParameter(param, value);
+  bool ok = cx->runtime()->gc.setParameter(cx, param, value);
   if (!ok) {
     JS_ReportErrorASCII(cx, "Parameter value out of range");
     return false;
@@ -946,21 +946,27 @@ static bool WasmCompileMode(JSContext* cx, unsigned argc, Value* vp) {
 
   JSStringBuilder result(cx);
   if (none && !result.append("none")) {
+    result.failure();
     return false;
   }
   if (baseline && !result.append("baseline")) {
+    result.failure();
     return false;
   }
   if (tiered && !result.append("+")) {
+    result.failure();
     return false;
   }
   if (ion && !result.append("ion")) {
+    result.failure();
     return false;
   }
   if (JSString* str = result.finishString()) {
+    result.ok();
     args.rval().setString(str);
     return true;
   }
+  result.failure();
   return false;
 }
 
@@ -970,17 +976,21 @@ static bool WasmBaselineDisabledByFeatures(JSContext* cx, unsigned argc,
   bool isDisabled = false;
   JSStringBuilder reason(cx);
   if (!wasm::BaselineDisabledByFeatures(cx, &isDisabled, &reason)) {
+    reason.failure();
     return false;
   }
   if (isDisabled) {
     JSString* result = reason.finishString();
     if (!result) {
+      reason.failure();
       return false;
     }
     args.rval().setString(result);
   } else {
+    reason.failure();
     args.rval().setBoolean(false);
   }
+  reason.ok();
   return true;
 }
 
@@ -989,17 +999,21 @@ static bool WasmIonDisabledByFeatures(JSContext* cx, unsigned argc, Value* vp) {
   bool isDisabled = false;
   JSStringBuilder reason(cx);
   if (!wasm::IonDisabledByFeatures(cx, &isDisabled, &reason)) {
+    reason.failure();
     return false;
   }
   if (isDisabled) {
     JSString* result = reason.finishString();
     if (!result) {
+      reason.failure();
       return false;
     }
     args.rval().setString(result);
   } else {
+    reason.failure();
     args.rval().setBoolean(false);
   }
+  reason.ok();
   return true;
 }
 
@@ -1716,14 +1730,17 @@ static bool DisassembleNative(JSContext* cx, unsigned argc, Value* vp) {
   jit::Disassemble(jit_begin, jit_end - jit_begin, &captureDisasmText);
 
   if (buf.oom) {
+    buf.builder.failure();
     ReportOutOfMemory(cx);
     return false;
   }
   JSString* sresult = buf.builder.finishString();
   if (!sresult) {
+    buf.builder.failure();
     ReportOutOfMemory(cx);
     return false;
   }
+  buf.builder.ok();
   sprinter.putString(sresult);
 
   if (args.length() > 1 && args[1].isString()) {
@@ -1789,14 +1806,17 @@ static bool DisassembleIt(JSContext* cx, bool asString, MutableHandleValue rval,
     auto onFinish = mozilla::MakeScopeExit([&] { disasmBuf.set(nullptr); });
     disassembleIt(captureDisasmText);
     if (buf.oom) {
+      buf.builder.failure();
       ReportOutOfMemory(cx);
       return false;
     }
     JSString* sresult = buf.builder.finishString();
     if (!sresult) {
+      buf.builder.failure();
       ReportOutOfMemory(cx);
       return false;
     }
+    buf.builder.ok();
     rval.setString(sresult);
     return true;
   }
@@ -6111,15 +6131,6 @@ static bool EvalReturningScope(JSContext* cx, unsigned argc, Value* vp) {
     }
   }
 
-  AutoStableStringChars strChars(cx);
-  if (!strChars.initTwoByte(cx, str)) {
-    return false;
-  }
-
-  mozilla::Range<const char16_t> chars = strChars.twoByteRange();
-  size_t srclen = chars.length();
-  const char16_t* src = chars.begin().get();
-
   JS::AutoFilename filename;
   unsigned lineno;
 
@@ -6130,8 +6141,12 @@ static bool EvalReturningScope(JSContext* cx, unsigned argc, Value* vp) {
   options.setNoScriptRval(true);
   options.setNonSyntacticScope(true);
 
+  AutoStableStringChars linearChars(cx);
+  if (!linearChars.initTwoByte(cx, str)) {
+    return false;
+  }
   JS::SourceText<char16_t> srcBuf;
-  if (!srcBuf.init(cx, src, srclen, SourceOwnership::Borrowed)) {
+  if (!srcBuf.initMaybeBorrowed(cx, linearChars)) {
     return false;
   }
 
@@ -6342,8 +6357,7 @@ static bool CompileToStencil(JSContext* cx, uint32_t argc, Value* vp) {
     return false;
   }
   JS::SourceText<char16_t> srcBuf;
-  if (!srcBuf.init(cx, linearChars.twoByteChars(), src->length(),
-                   JS::SourceOwnership::Borrowed)) {
+  if (!srcBuf.initMaybeBorrowed(cx, linearChars)) {
     return false;
   }
 
@@ -6488,8 +6502,7 @@ static bool CompileToStencilXDR(JSContext* cx, uint32_t argc, Value* vp) {
     return false;
   }
   JS::SourceText<char16_t> srcBuf;
-  if (!srcBuf.init(cx, linearChars.twoByteChars(), src->length(),
-                   JS::SourceOwnership::Borrowed)) {
+  if (!srcBuf.initMaybeBorrowed(cx, linearChars)) {
     return false;
   }
 
@@ -7674,20 +7687,13 @@ JSScript* js::TestingFunctionArgumentToScript(
     JSContext* cx, HandleValue v, JSFunction** funp /* = nullptr */) {
   if (v.isString()) {
     // To convert a string to a script, compile it. Parse it as an ES6 Program.
-    Rooted<JSLinearString*> linearStr(
-        cx, JS::StringToLinearString(cx, v.toString()));
-    if (!linearStr) {
-      return nullptr;
-    }
-    size_t len = JS::GetLinearStringLength(linearStr);
+    Rooted<JSString*> str(cx, v.toString());
     AutoStableStringChars linearChars(cx);
-    if (!linearChars.initTwoByte(cx, linearStr)) {
+    if (!linearChars.initTwoByte(cx, str)) {
       return nullptr;
     }
-    const char16_t* chars = linearChars.twoByteRange().begin().get();
-
     SourceText<char16_t> source;
-    if (!source.init(cx, chars, len, SourceOwnership::Borrowed)) {
+    if (!source.initMaybeBorrowed(cx, linearChars)) {
       return nullptr;
     }
 

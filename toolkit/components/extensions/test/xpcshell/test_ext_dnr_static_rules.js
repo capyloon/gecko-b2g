@@ -896,6 +896,13 @@ add_task(async function test_updateEnabledRuleset_id_validation() {
 });
 
 add_task(async function test_getAvailableStaticRulesCountAndLimits() {
+  // NOTE: this test is going to load and validate the maximum amount of static rules
+  // that an extension can enable, which on slower builds (in particular in tsan builds,
+  // e.g. see Bug 1803801) have a higher chance that the test extension may have hit the
+  // idle timeout and being suspended by the time the test is going to trigger API method
+  // calls through test API events (which do not expect the lifetime of the event page).
+  Services.prefs.setBoolPref("extensions.background.idle.enabled", false);
+
   const dnrStore = ExtensionDNRStore._getStoreForTesting();
   const { GUARANTEED_MINIMUM_STATIC_RULES } = ExtensionDNR.limits;
   equal(
@@ -1098,6 +1105,8 @@ add_task(async function test_getAvailableStaticRulesCountAndLimits() {
   );
 
   await extension.unload();
+
+  Services.prefs.clearUserPref("extensions.background.idle.enabled");
 });
 
 add_task(async function test_static_rulesets_limits() {
@@ -1264,6 +1273,80 @@ add_task(async function test_static_rulesets_limits() {
     Array.from(Object.keys(expectedEnabledRulesets))
   );
   await assertDNRStoreData(dnrStore, extension, expectedEnabledRulesets);
+
+  await extension.unload();
+});
+
+add_task(async function test_tabId_conditions_invalid_in_static_rules() {
+  const ruleset1_with_tabId_condition = [
+    getDNRRule({ id: 1, condition: { tabIds: [1] } }),
+    getDNRRule({ id: 3, condition: { urlFilter: "valid-ruleset1-rule" } }),
+  ];
+
+  const ruleset2_with_excludeTabId_condition = [
+    getDNRRule({ id: 2, condition: { excludedTabIds: [1] } }),
+    getDNRRule({ id: 3, condition: { urlFilter: "valid-ruleset2-rule" } }),
+  ];
+
+  const rule_resources = [
+    {
+      id: "ruleset1_with_tabId_condition",
+      enabled: true,
+      path: "ruleset1.json",
+    },
+    {
+      id: "ruleset2_with_excludeTabId_condition",
+      enabled: true,
+      path: "ruleset2.json",
+    },
+  ];
+
+  const files = {
+    "ruleset1.json": JSON.stringify(ruleset1_with_tabId_condition),
+    "ruleset2.json": JSON.stringify(ruleset2_with_excludeTabId_condition),
+  };
+
+  const extension = ExtensionTestUtils.loadExtension(
+    getDNRExtension({
+      id: "tabId-invalid-in-session-rules@mochitest",
+      rule_resources,
+      files,
+    })
+  );
+
+  const { messages } = await AddonTestUtils.promiseConsoleOutput(async () => {
+    ExtensionTestUtils.failOnSchemaWarnings(false);
+    await extension.startup();
+    ExtensionTestUtils.failOnSchemaWarnings(true);
+    await extension.awaitMessage("bgpage:ready");
+    await assertDNRGetEnabledRulesets(extension, [
+      "ruleset1_with_tabId_condition",
+      "ruleset2_with_excludeTabId_condition",
+    ]);
+  });
+
+  AddonTestUtils.checkMessages(messages, {
+    expected: [
+      {
+        message: /ruleset1.json: tabIds and excludedTabIds can only be specified in session rules/,
+      },
+      {
+        message: /ruleset2.json: tabIds and excludedTabIds can only be specified in session rules/,
+      },
+    ],
+  });
+
+  info("Expect the invalid rule to not be enabled");
+  const dnrStore = ExtensionDNRStore._getStoreForTesting();
+  // Expect the two valid rules to have been loaded as expected.
+  await assertDNRStoreData(dnrStore, extension, {
+    ruleset1_with_tabId_condition: getSchemaNormalizedRules(extension, [
+      ruleset1_with_tabId_condition[1],
+    ]),
+    ruleset2_with_excludeTabId_condition: getSchemaNormalizedRules(extension, [
+      ruleset2_with_excludeTabId_condition[1],
+    ]),
+  });
 
   await extension.unload();
 });

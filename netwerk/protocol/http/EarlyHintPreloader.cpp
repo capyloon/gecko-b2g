@@ -18,6 +18,7 @@
 #include "mozilla/net/EarlyHintRegistrar.h"
 #include "mozilla/net/NeckoChannelParams.h"
 #include "mozilla/StaticPrefs_network.h"
+#include "mozilla/Telemetry.h"
 #include "nsAttrValue.h"
 #include "nsAttrValueInlines.h"
 #include "nsCOMPtr.h"
@@ -70,9 +71,9 @@ static uint64_t gEarlyHintPreloaderId{0};
 // OngoingEarlyHints
 //=============================================================================
 
-void OngoingEarlyHints::CancelAllOngoingPreloads() {
+void OngoingEarlyHints::CancelAllOngoingPreloads(const nsACString& aReason) {
   for (auto& preloader : mPreloaders) {
-    preloader->CancelChannel(nsresult::NS_ERROR_ABORT);
+    preloader->CancelChannel(NS_ERROR_ABORT, aReason);
   }
   mStartedPreloads.Clear();
 }
@@ -108,30 +109,31 @@ EarlyHintPreloader::EarlyHintPreloader() {
   mConnectArgs.earlyHintPreloaderId() = ++gEarlyHintPreloaderId;
 };
 
+EarlyHintPreloader::~EarlyHintPreloader() {
+  Telemetry::Accumulate(Telemetry::EH_STATE_OF_PRELOAD_REQUEST, mState);
+}
+
 /* static */
 Maybe<PreloadHashKey> EarlyHintPreloader::GenerateHashKey(
     ASDestination aAs, nsIURI* aURI, nsIPrincipal* aPrincipal,
     CORSMode aCorsMode, const nsAString& aType) {
-  if (aAs == ASDestination::DESTINATION_FONT) {
+  if (aAs == ASDestination::DESTINATION_FONT && aCorsMode != CORS_NONE) {
     return Some(PreloadHashKey::CreateAsFont(aURI, aCorsMode));
   }
   if (aAs == ASDestination::DESTINATION_IMAGE) {
     return Some(PreloadHashKey::CreateAsImage(aURI, aPrincipal, aCorsMode));
   }
-  if (aAs == ASDestination::DESTINATION_SCRIPT) {
-    JS::loader::ScriptKind scriptKind = JS::loader::ScriptKind::eClassic;
-    if (aType.LowerCaseEqualsASCII("module")) {
-      scriptKind = JS::loader::ScriptKind::eModule;
-    }
-
-    return Some(PreloadHashKey::CreateAsScript(aURI, aCorsMode, scriptKind));
+  if (aAs == ASDestination::DESTINATION_SCRIPT &&
+      !aType.LowerCaseEqualsASCII("module")) {
+    return Some(PreloadHashKey::CreateAsScript(
+        aURI, aCorsMode, JS::loader::ScriptKind::eClassic));
   }
   if (aAs == ASDestination::DESTINATION_STYLE) {
     return Some(PreloadHashKey::CreateAsStyle(
         aURI, aPrincipal, aCorsMode,
         css::SheetParsingMode::eAuthorSheetFeatures));
   }
-  if (aAs == ASDestination::DESTINATION_FETCH) {
+  if (aAs == ASDestination::DESTINATION_FETCH && aCorsMode != CORS_NONE) {
     return Some(PreloadHashKey::CreateAsFetch(aURI, aCorsMode));
   }
   return Nothing();
@@ -184,15 +186,16 @@ nsSecurityFlags EarlyHintPreloader::ComputeSecurityFlags(CORSMode aCORSMode,
 
 // static
 void EarlyHintPreloader::MaybeCreateAndInsertPreload(
-    OngoingEarlyHints* aOngoingEarlyHints, const LinkHeader& aHeader,
+    OngoingEarlyHints* aOngoingEarlyHints, const LinkHeader& aLinkHeader,
     nsIURI* aBaseURI, nsIPrincipal* aPrincipal,
-    nsICookieJarSettings* aCookieJarSettings) {
-  if (!aHeader.mRel.LowerCaseEqualsASCII("preload")) {
+    nsICookieJarSettings* aCookieJarSettings,
+    const nsACString& aResponseReferrerPolicy) {
+  if (!aLinkHeader.mRel.LowerCaseEqualsASCII("preload")) {
     return;
   }
 
   nsAttrValue as;
-  ParseAsValue(aHeader.mAs, as);
+  ParseAsValue(aLinkHeader.mAs, as);
 
   ASDestination destination = static_cast<ASDestination>(as.GetEnumValue());
   CollectResourcesTypeTelemetry(destination);
@@ -209,12 +212,12 @@ void EarlyHintPreloader::MaybeCreateAndInsertPreload(
 
   nsCOMPtr<nsIURI> uri;
   NS_ENSURE_SUCCESS_VOID(
-      NS_NewURI(getter_AddRefs(uri), aHeader.mHref, nullptr, aBaseURI));
+      NS_NewURI(getter_AddRefs(uri), aLinkHeader.mHref, nullptr, aBaseURI));
   // The link relation may apply to a different resource, specified
   // in the anchor parameter. For the link relations supported so far,
   // we simply abort if the link applies to a resource different to the
   // one we've loaded
-  if (!nsContentUtils::LinkContextIsURI(aHeader.mAnchor, uri)) {
+  if (!nsContentUtils::LinkContextIsURI(aLinkHeader.mAnchor, uri)) {
     return;
   }
 
@@ -223,11 +226,11 @@ void EarlyHintPreloader::MaybeCreateAndInsertPreload(
     return;
   }
 
-  CORSMode corsMode = dom::Element::StringToCORSMode(aHeader.mCrossOrigin);
+  CORSMode corsMode = dom::Element::StringToCORSMode(aLinkHeader.mCrossOrigin);
 
   Maybe<PreloadHashKey> hashKey =
       GenerateHashKey(static_cast<ASDestination>(as.GetEnumValue()), uri,
-                      aPrincipal, corsMode, aHeader.mType);
+                      aPrincipal, corsMode, aLinkHeader.mType);
   if (!hashKey) {
     return;
   }
@@ -241,24 +244,42 @@ void EarlyHintPreloader::MaybeCreateAndInsertPreload(
     return;
   }
 
-  dom::ReferrerPolicy referrerPolicy =
+  dom::ReferrerPolicy linkReferrerPolicy =
       dom::ReferrerInfo::ReferrerPolicyAttributeFromString(
-          aHeader.mReferrerPolicy);
+          aLinkHeader.mReferrerPolicy);
 
+  dom::ReferrerPolicy responseReferrerPolicy =
+      dom::ReferrerInfo::ReferrerPolicyAttributeFromString(
+          NS_ConvertUTF8toUTF16(aResponseReferrerPolicy));
+
+  // The early hint may have two referrer policies, one from the response header
+  // and one from the link element.
+  //
+  // For example, in this server response:
+  //   HTTP/1.1 103 Early Hints
+  //   Referrer-Policy : origin
+  //   Link: </style.css>; rel=preload; as=style referrerpolicy=no-referrer
+  //
+  //   The link header referrer policy, if present, will take precedence over
+  //   the response referrer policy
+  dom::ReferrerPolicy finalReferrerPolicy = responseReferrerPolicy;
+  if (linkReferrerPolicy != dom::ReferrerPolicy::_empty) {
+    finalReferrerPolicy = linkReferrerPolicy;
+  }
   nsCOMPtr<nsIReferrerInfo> referrerInfo =
-      new dom::ReferrerInfo(aBaseURI, referrerPolicy);
+      new dom::ReferrerInfo(aBaseURI, finalReferrerPolicy);
 
   RefPtr<EarlyHintPreloader> earlyHintPreloader = new EarlyHintPreloader();
 
   nsSecurityFlags securityFlags = EarlyHintPreloader::ComputeSecurityFlags(
       corsMode, static_cast<ASDestination>(as.GetEnumValue()),
-      aHeader.mType.LowerCaseEqualsASCII("module"));
+      aLinkHeader.mType.LowerCaseEqualsASCII("module"));
 
   NS_ENSURE_SUCCESS_VOID(earlyHintPreloader->OpenChannel(
       uri, aPrincipal, securityFlags, contentPolicyType, referrerInfo,
       aCookieJarSettings));
 
-  earlyHintPreloader->SetLinkHeader(aHeader);
+  earlyHintPreloader->SetLinkHeader(aLinkHeader);
 
   DebugOnly<bool> result =
       aOngoingEarlyHints->Add(*hashKey, earlyHintPreloader);
@@ -306,6 +327,8 @@ nsresult EarlyHintPreloader::OpenChannel(
   rv = mChannel->AsyncOpen(mParentListener);
   NS_ENSURE_SUCCESS(rv, rv);
 
+  SetState(ePreloaderOpened);
+
   return NS_OK;
 }
 
@@ -321,14 +344,19 @@ EarlyHintConnectArgs EarlyHintPreloader::Register() {
   return mConnectArgs;
 }
 
-nsresult EarlyHintPreloader::CancelChannel(nsresult aStatus) {
+nsresult EarlyHintPreloader::CancelChannel(nsresult aStatus,
+                                           const nsACString& aReason) {
   // clear redirect channel in case this channel is cleared between the call of
   // EarlyHintPreloader::AsyncOnChannelRedirect and
   // EarlyHintPreloader::OnRedirectResult
   mRedirectChannel = nullptr;
   if (mChannel) {
-    mChannel->Cancel(aStatus);
+    if (mSuspended) {
+      mChannel->Resume();
+    }
+    mChannel->CancelWithReason(aStatus, aReason);
     mChannel = nullptr;
+    SetState(ePreloaderCancelled);
   }
   return NS_OK;
 }
@@ -359,11 +387,12 @@ void EarlyHintPreloader::SetParentChannel() {
 
 // Adapted from
 // https://searchfox.org/mozilla-central/rev/b4150d1c6fae0c51c522df2d2c939cf5ad331d4c/netwerk/ipc/DocumentLoadListener.cpp#1311
-bool EarlyHintPreloader::InvokeStreamListenerFunctions() {
+void EarlyHintPreloader::InvokeStreamListenerFunctions() {
   AssertIsOnMainThread();
 
-  LOG(("EarlyHintPreloader::RedirectToParent [this=%p parent=%p]\n", this,
-       mParent.get()));
+  LOG((
+      "EarlyHintPreloader::InvokeStreamListenerFunctions [this=%p parent=%p]\n",
+      this, mParent.get()));
 
   if (nsCOMPtr<nsIIdentChannel> channel = do_QueryInterface(mChannel)) {
     MOZ_ASSERT(mChannelId);
@@ -397,7 +426,8 @@ bool EarlyHintPreloader::InvokeStreamListenerFunctions() {
   mChannel = nullptr;
   mParent = nullptr;
   mParentListener = nullptr;
-  return true;
+
+  SetState(ePreloaderUsed);
 }
 
 //-----------------------------------------------------------------------------

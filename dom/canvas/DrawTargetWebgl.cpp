@@ -826,7 +826,12 @@ void DrawTargetWebgl::SharedContext::InitTexParameters(WebGLTextureJS* aTex,
 }
 
 // Copy the contents of the WebGL framebuffer into a WebGL texture.
-already_AddRefed<TextureHandle> DrawTargetWebgl::SharedContext::CopySnapshot() {
+already_AddRefed<TextureHandle> DrawTargetWebgl::SharedContext::CopySnapshot(
+    const IntRect& aRect, TextureHandle* aHandle) {
+  if (!mWebgl || mWebgl->IsContextLost()) {
+    return nullptr;
+  }
+
   // If the target is going away, then we can just directly reuse the
   // framebuffer texture since it will never change.
   RefPtr<WebGLTextureJS> tex = mWebgl->CreateTexture();
@@ -834,19 +839,39 @@ already_AddRefed<TextureHandle> DrawTargetWebgl::SharedContext::CopySnapshot() {
     return nullptr;
   }
 
-  SurfaceFormat format = mCurrentTarget->GetFormat();
-  IntSize size = mCurrentTarget->GetSize();
+  // If copying from a non-DT source, we have to bind a scratch framebuffer for
+  // reading.
+  if (aHandle) {
+    if (!mScratchFramebuffer) {
+      mScratchFramebuffer = mWebgl->CreateFramebuffer();
+    }
+    mWebgl->BindFramebuffer(LOCAL_GL_FRAMEBUFFER, mScratchFramebuffer);
+    mWebgl->FramebufferTexture2D(
+        LOCAL_GL_FRAMEBUFFER, LOCAL_GL_COLOR_ATTACHMENT0, LOCAL_GL_TEXTURE_2D,
+        aHandle->GetWebGLTexture(), 0);
+  }
+
   // Create a texture to hold the copy
   mWebgl->BindTexture(LOCAL_GL_TEXTURE_2D, tex);
-  mWebgl->TexStorage2D(LOCAL_GL_TEXTURE_2D, 1, LOCAL_GL_RGBA8, size.width,
-                       size.height);
+  mWebgl->TexStorage2D(LOCAL_GL_TEXTURE_2D, 1, LOCAL_GL_RGBA8, aRect.width,
+                       aRect.height);
   InitTexParameters(tex);
   // Copy the framebuffer into the texture
-  mWebgl->CopyTexSubImage2D(LOCAL_GL_TEXTURE_2D, 0, 0, 0, 0, 0, size.width,
-                            size.height);
+  mWebgl->CopyTexSubImage2D(LOCAL_GL_TEXTURE_2D, 0, 0, 0, aRect.x, aRect.y,
+                            aRect.width, aRect.height);
   ClearLastTexture();
 
-  return WrapSnapshot(size, format, tex.forget());
+  SurfaceFormat format =
+      aHandle ? aHandle->GetFormat() : mCurrentTarget->GetFormat();
+  already_AddRefed<TextureHandle> result =
+      WrapSnapshot(aRect.Size(), format, tex.forget());
+
+  // Restore the actual framebuffer after reading is done.
+  if (aHandle && mCurrentTarget) {
+    mWebgl->BindFramebuffer(LOCAL_GL_FRAMEBUFFER, mCurrentTarget->mFramebuffer);
+  }
+
+  return result;
 }
 
 inline DrawTargetWebgl::AutoRestoreContext::AutoRestoreContext(
@@ -864,12 +889,13 @@ inline DrawTargetWebgl::AutoRestoreContext::~AutoRestoreContext() {
 }
 
 // Utility method to install the target before copying a snapshot.
-already_AddRefed<TextureHandle> DrawTargetWebgl::CopySnapshot() {
+already_AddRefed<TextureHandle> DrawTargetWebgl::CopySnapshot(
+    const IntRect& aRect) {
   AutoRestoreContext restore(this);
   if (!PrepareContext(false)) {
     return nullptr;
   }
-  return mSharedContext->CopySnapshot();
+  return mSharedContext->CopySnapshot(aRect);
 }
 
 // Borrow a snapshot that may be used by another thread for composition. Only
@@ -1050,7 +1076,7 @@ static const float kRectVertexData[12] = {0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f,
 // Orphans the contents of the path vertex buffer. The beginning of the buffer
 // always contains data for a simple rectangle draw to avoid needing to switch
 // buffers.
-void DrawTargetWebgl::SharedContext::ResetPathVertexBuffer() {
+void DrawTargetWebgl::SharedContext::ResetPathVertexBuffer(bool aChanged) {
   mWebgl->BindBuffer(LOCAL_GL_ARRAY_BUFFER, mPathVertexBuffer.get());
   mWebgl->RawBufferData(
       LOCAL_GL_ARRAY_BUFFER, nullptr,
@@ -1060,6 +1086,13 @@ void DrawTargetWebgl::SharedContext::ResetPathVertexBuffer() {
                            (const uint8_t*)kRectVertexData,
                            sizeof(kRectVertexData));
   mPathVertexOffset = sizeof(kRectVertexData);
+  if (aChanged) {
+    mWGROutputBuffer.reset(
+        mPathVertexCapacity > 0
+            ? new (fallible) WGR::OutputVertex[mPathVertexCapacity /
+                                               sizeof(WGR::OutputVertex)]
+            : nullptr);
+  }
 }
 
 // Attempts to create all shaders and resources to be used for drawing commands.
@@ -2509,11 +2542,12 @@ static Maybe<QuantizedPath> GenerateQuantizedPath(const SkPath& aPath,
 
 // Get the output vertex buffer using WGR from an input quantized path.
 static Maybe<WGR::VertexBuffer> GeneratePathVertexBuffer(
-    const QuantizedPath& aPath, const IntRect& aClipRect) {
+    const QuantizedPath& aPath, const IntRect& aClipRect,
+    WGR::OutputVertex* aBuffer, size_t aBufferCapacity) {
   WGR::VertexBuffer vb = WGR::wgr_path_rasterize_to_tri_list(
-      &aPath.mPath, aClipRect.x, aClipRect.y, aClipRect.width,
-      aClipRect.height);
-  if (!vb.len) {
+      &aPath.mPath, aClipRect.x, aClipRect.y, aClipRect.width, aClipRect.height,
+      true, false, aBuffer, aBufferCapacity);
+  if (!vb.len || (aBuffer && vb.len > aBufferCapacity)) {
     WGR::wgr_vertex_buffer_release(vb);
     return Nothing();
   }
@@ -2552,7 +2586,7 @@ static inline Point WGRPointToPoint(const WGR::Point& aPoint) {
 // Generates a vertex buffer for a stroked path using aa-stroke.
 static Maybe<AAStroke::VertexBuffer> GenerateStrokeVertexBuffer(
     const QuantizedPath& aPath, const StrokeOptions* aStrokeOptions,
-    float aScale) {
+    float aScale, WGR::OutputVertex* aBuffer, size_t aBufferCapacity) {
   AAStroke::StrokeStyle style = {aStrokeOptions->mLineWidth * aScale,
                                  ToAAStrokeLineCap(aStrokeOptions->mLineCap),
                                  ToAAStrokeLineJoin(aStrokeOptions->mLineJoin),
@@ -2561,7 +2595,8 @@ static Maybe<AAStroke::VertexBuffer> GenerateStrokeVertexBuffer(
       style.miter_limit <= 0.0f || !IsFinite(style.miter_limit)) {
     return Nothing();
   }
-  AAStroke::Stroker* s = AAStroke::aa_stroke_new(&style);
+  AAStroke::Stroker* s = AAStroke::aa_stroke_new(
+      &style, (AAStroke::OutputVertex*)aBuffer, aBufferCapacity);
   bool valid = true;
   size_t curPoint = 0;
   for (size_t curType = 0; valid && curType < aPath.mPath.num_types;) {
@@ -2637,7 +2672,7 @@ static Maybe<AAStroke::VertexBuffer> GenerateStrokeVertexBuffer(
   Maybe<AAStroke::VertexBuffer> result;
   if (valid) {
     AAStroke::VertexBuffer vb = AAStroke::aa_stroke_finish(s);
-    if (!vb.len) {
+    if (!vb.len || (aBuffer && vb.len > aBufferCapacity)) {
       AAStroke::aa_stroke_vertex_buffer_release(vb);
     } else {
       result = Some(vb);
@@ -2808,18 +2843,26 @@ bool DrawTargetWebgl::SharedContext::DrawPathAccel(
     // printf_stderr("Generating... verbs %d, points %d\n",
     //     int(pathSkia->GetPath().countVerbs()),
     //     int(pathSkia->GetPath().countPoints()));
+    WGR::OutputVertex* outputBuffer = nullptr;
+    size_t outputBufferCapacity = 0;
+    if (mWGROutputBuffer) {
+      outputBuffer = mWGROutputBuffer.get();
+      outputBufferCapacity = mPathVertexCapacity / sizeof(WGR::OutputVertex);
+    }
     Maybe<WGR::VertexBuffer> wgrVB;
     Maybe<AAStroke::VertexBuffer> strokeVB;
     if (!aStrokeOptions) {
       wgrVB = GeneratePathVertexBuffer(
-          entry->GetPath(), IntRect(-intBounds.TopLeft(), mViewportSize));
+          entry->GetPath(), IntRect(-intBounds.TopLeft(), mViewportSize),
+          outputBuffer, outputBufferCapacity);
     } else {
       if (mPathAAStroke &&
           SupportsAAStroke(aPattern, aOptions, *aStrokeOptions)) {
         auto scaleFactors = currentTransform.ScaleFactors();
         if (scaleFactors.AreScalesSame()) {
           strokeVB = GenerateStrokeVertexBuffer(
-              entry->GetPath(), aStrokeOptions, scaleFactors.xScale);
+              entry->GetPath(), aStrokeOptions, scaleFactors.xScale,
+              outputBuffer, outputBufferCapacity);
         }
       }
       if (!strokeVB && mPathWGRStroke) {
@@ -2848,7 +2891,8 @@ bool DrawTargetWebgl::SharedContext::DrawPathAccel(
             if (Maybe<QuantizedPath> qp = GenerateQuantizedPath(
                     fillPath, quantBounds, currentTransform)) {
               wgrVB = GeneratePathVertexBuffer(
-                  *qp, IntRect(-intBounds.TopLeft(), mViewportSize));
+                  *qp, IntRect(-intBounds.TopLeft(), mViewportSize),
+                  outputBuffer, outputBufferCapacity);
             }
           }
         }
@@ -2857,6 +2901,9 @@ bool DrawTargetWebgl::SharedContext::DrawPathAccel(
     if (wgrVB || strokeVB) {
       const uint8_t* vbData =
           wgrVB ? (const uint8_t*)wgrVB->data : (const uint8_t*)strokeVB->data;
+      if (outputBuffer && !vbData) {
+        vbData = (const uint8_t*)outputBuffer;
+      }
       size_t vbLen = wgrVB ? wgrVB->len : strokeVB->len;
       uint32_t vertexBytes = uint32_t(
           std::min(vbLen * sizeof(WGR::OutputVertex), size_t(UINT32_MAX)));
@@ -2870,7 +2917,7 @@ bool DrawTargetWebgl::SharedContext::DrawPathAccel(
         if (mPathCache) {
           mPathCache->ClearVertexRanges();
         }
-        ResetPathVertexBuffer();
+        ResetPathVertexBuffer(false);
       }
       if (vertexBytes <= mPathVertexCapacity - mPathVertexOffset) {
         // If there is actually room to fit the vertex data in the vertex buffer

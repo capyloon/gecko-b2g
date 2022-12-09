@@ -15,6 +15,10 @@
 #include "mozilla/ipc/Shmem.h"
 #include <vector>
 
+namespace WGR {
+struct OutputVertex;
+}
+
 namespace mozilla {
 
 class ClientWebGLContext;
@@ -180,6 +184,8 @@ class DrawTargetWebgl : public DrawTarget, public SupportsWeakPtr {
     bool mPathAAStroke = true;
     // Whether to accelerate stroked paths with WGR.
     bool mPathWGRStroke = false;
+    // Temporary buffer for generating WGR output into.
+    UniquePtr<WGR::OutputVertex[]> mWGROutputBuffer;
     RefPtr<WebGLProgramJS> mSolidProgram;
     RefPtr<WebGLUniformLocationJS> mSolidProgramViewport;
     RefPtr<WebGLUniformLocationJS> mSolidProgramAA;
@@ -250,7 +256,7 @@ class DrawTargetWebgl : public DrawTarget, public SupportsWeakPtr {
 
     bool Initialize();
     bool CreateShaders();
-    void ResetPathVertexBuffer();
+    void ResetPathVertexBuffer(bool aChanged = true);
 
     void SetBlendState(CompositionOp aOp,
                        const Maybe<DeviceColor>& aBlendColor = Nothing());
@@ -284,7 +290,8 @@ class DrawTargetWebgl : public DrawTarget, public SupportsWeakPtr {
     already_AddRefed<TextureHandle> WrapSnapshot(const IntSize& aSize,
                                                  SurfaceFormat aFormat,
                                                  RefPtr<WebGLTextureJS> aTex);
-    already_AddRefed<TextureHandle> CopySnapshot();
+    already_AddRefed<TextureHandle> CopySnapshot(
+        const IntRect& aRect, TextureHandle* aHandle = nullptr);
 
     already_AddRefed<WebGLTextureJS> GetCompatibleSnapshot(
         SourceSurface* aSurface);
@@ -528,7 +535,11 @@ class DrawTargetWebgl : public DrawTarget, public SupportsWeakPtr {
 
   bool ReadInto(uint8_t* aDstData, int32_t aDstStride);
   already_AddRefed<DataSourceSurface> ReadSnapshot();
-  already_AddRefed<TextureHandle> CopySnapshot();
+  already_AddRefed<TextureHandle> CopySnapshot(const IntRect& aRect);
+  already_AddRefed<TextureHandle> CopySnapshot() {
+    return CopySnapshot(GetRect());
+  }
+
   void ClearSnapshot(bool aCopyOnWrite = true, bool aNeedHandle = false);
 
   bool CreateFramebuffer();
