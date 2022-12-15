@@ -22,6 +22,7 @@ const testSoftNavigation =
         const preClickLcp = await getLcpEntries();
         setEvent(t, link, pushState, addContent, pushUrl, eventType);
         for (let i = 0; i < clicks; ++i) {
+          let paint_entries_promise = waitOnPaintEntriesPromise();
           clicked = false;
           click(link);
 
@@ -30,6 +31,9 @@ const testSoftNavigation =
               type: 'soft-navigation'
             });
           });
+          // Ensure paint timing entries are fired before moving on to the next
+          // click.
+          await paint_entries_promise;
         }
         assert_equals(
             document.softNavigations, clicks,
@@ -58,22 +62,24 @@ const testNavigationApi = (testName, navigateEventHandler, link) => {
   }, testName);
 };
 
-const testNavigationApiNotDetected =
-    (testName, navigateEventHandler, link) => {
-      promise_test(async t => {
-        const preClickLcp = await getLcpEntries();
-        navigation.addEventListener('navigate', navigateEventHandler);
-        click(link);
-        await new Promise((resolve, reject) => {
-          (new PerformanceObserver(() => reject())).observe({
-            type: 'soft-navigation'
-          });
-          t.step_timeout(resolve, 1000);
+const testSoftNavigationNotDetected = options => {
+    promise_test(async t => {
+      const preClickLcp = await getLcpEntries();
+      options.eventTarget.addEventListener(options.eventName, options.eventHandler);
+      click(options.link);
+      await new Promise((resolve, reject) => {
+        (new PerformanceObserver(() =>
+            reject("Soft navigation should not be triggered"))).observe({
+          type: 'soft-navigation',
+          buffered: true
         });
-        assert_equals(
-            document.softNavigations, 0, 'Soft Navigation not detected');
-      }, testName);
-    };
+        t.step_timeout(resolve, 1000);
+      });
+      assert_equals(
+          document.softNavigations, 0, 'Soft Navigation not detected');
+    }, options.testName);
+  };
+
 const runEntryValidations = async preClickLcp => {
   await doubleRaf();
   validatePaintEntries('first-contentful-paint');
@@ -109,14 +115,11 @@ const setEvent = (t, button, pushState, addContent, pushUrl, eventType) => {
     // Jump through a task, to ensure task tracking is working properly.
     await new Promise(r => t.step_timeout(r, 0));
 
-    // Fetch some content
-    const response = await fetch("/soft-navigation-heuristics/resources/content.json");
-    const json = await response.json();
-
+    const url = URL + "?" + counter;
     if (pushState) {
       // Change the URL
       if (pushUrl) {
-        pushState(URL + "?" + counter);
+        pushState(url);
       } else {
         pushState();
       }
@@ -125,7 +128,7 @@ const setEvent = (t, button, pushState, addContent, pushUrl, eventType) => {
     // Wait 10 ms to make sure the timestamps are correct.
     await new Promise(r => t.step_timeout(r, 10));
 
-    await addContent(json);
+    await addContent(url);
     ++counter;
 
     clicked = true;
@@ -163,11 +166,11 @@ const validateSoftNavigationEntry = async (clicks, extraValidations,
   }
   assert_equals(performance.getEntriesByType("soft-navigation").length,
                 expectedClicks, "Performance timeline got an entry");
-  extraValidations(entries, options);
+  await extraValidations(entries, options);
 
 };
 
-const validatePaintEntries = async type => {
+const validatePaintEntries = async (type, entries_number = 2) => {
   const entries = await new Promise(resolve => {
     (new PerformanceObserver(list => resolve(
       list.getEntriesByName(type)))).observe(
@@ -176,9 +179,12 @@ const validatePaintEntries = async type => {
   // TODO(crbug/1372997): investigate why this is not failing when multiple
   // clicks are fired. Also, make sure the observer waits on the number of
   // required clicks, instead of counting on double rAF.
-  assert_equals(entries.length, 2, "There are two entries for " + type);
-  assert_not_equals(entries[0].startTime, entries[1].startTime,
-    "Entries have different timestamps for " + type);
+  assert_equals(entries.length, entries_number,
+    `There are ${entries_number} entries for ${type}`);
+  if (entries_number > 1) {
+    assert_not_equals(entries[0].startTime, entries[1].startTime,
+      "Entries have different timestamps for " + type);
+  }
 };
 
 const getLcpEntries = async () => {
@@ -212,3 +218,17 @@ const addTextToDivOnMain = () => {
   div.style="font-size: 3em";
   main.appendChild(div);
 }
+
+const waitOnPaintEntriesPromise = () => {
+  return new Promise((resolve, reject) => {
+    const paint_entries = []
+    new PerformanceObserver(list => {
+      paint_entries.push(...list.getEntries());
+      if (paint_entries.length == 2) {
+        resolve();
+      } else if (paint_entries.length > 2) {
+        reject();
+      }
+    }).observe({type: 'paint'});
+  });
+};

@@ -20,7 +20,8 @@ use libc::user_regs_struct;
 
 cfg_if! {
     if #[cfg(any(all(target_os = "linux", target_arch = "s390x"),
-                 all(target_os = "linux", target_env = "gnu")))] {
+                 all(target_os = "linux", target_env = "gnu"),
+                 target_env = "uclibc"))] {
         #[doc(hidden)]
         pub type RequestType = ::libc::c_uint;
     } else {
@@ -30,8 +31,8 @@ cfg_if! {
 }
 
 libc_enum!{
-    #[cfg_attr(not(any(target_env = "musl", target_os = "android")), repr(u32))]
-    #[cfg_attr(any(target_env = "musl", target_os = "android"), repr(i32))]
+    #[cfg_attr(not(any(target_env = "musl", target_env = "uclibc", target_os = "android")), repr(u32))]
+    #[cfg_attr(any(target_env = "musl", target_env = "uclibc", target_os = "android"), repr(i32))]
     /// Ptrace Request enum defining the action to be taken.
     #[non_exhaustive]
     pub enum Request {
@@ -99,8 +100,10 @@ libc_enum!{
                                                target_arch = "mips64"))))]
         PTRACE_SETREGSET,
         #[cfg(target_os = "linux")]
+        #[cfg_attr(docsrs, doc(cfg(all())))]
         PTRACE_SEIZE,
         #[cfg(target_os = "linux")]
+        #[cfg_attr(docsrs, doc(cfg(all())))]
         PTRACE_INTERRUPT,
         #[cfg(all(target_os = "linux", not(any(target_arch = "mips",
                                                target_arch = "mips64"))))]
@@ -171,7 +174,6 @@ libc_bitflags! {
         PTRACE_O_TRACESECCOMP;
         /// Send a SIGKILL to the tracee if the tracer exits.  This is useful
         /// for ptrace jailers to prevent tracees from escaping their control.
-        #[cfg(any(target_os = "android", target_os = "linux"))]
         PTRACE_O_EXITKILL;
     }
 }
@@ -340,6 +342,7 @@ pub fn attach(pid: Pid) -> Result<()> {
 ///
 /// Attaches to the process specified in pid, making it a tracee of the calling process.
 #[cfg(target_os = "linux")]
+#[cfg_attr(docsrs, doc(cfg(all())))]
 pub fn seize(pid: Pid, options: Options) -> Result<()> {
     unsafe {
         ptrace_other(
@@ -388,6 +391,7 @@ pub fn cont<T: Into<Option<Signal>>>(pid: Pid, sig: T) -> Result<()> {
 ///
 /// This request is equivalent to `ptrace(PTRACE_INTERRUPT, ...)`
 #[cfg(target_os = "linux")]
+#[cfg_attr(docsrs, doc(cfg(all())))]
 pub fn interrupt(pid: Pid) -> Result<()> {
     unsafe {
         ptrace_other(Request::PTRACE_INTERRUPT, pid, ptr::null_mut(), ptr::null_mut()).map(drop)
@@ -476,4 +480,25 @@ pub unsafe fn write(
     data: *mut c_void) -> Result<()>
 {
     ptrace_other(Request::PTRACE_POKEDATA, pid, addr, data).map(drop)
+}
+
+/// Reads a word from a user area at `offset`.
+/// The user struct definition can be found in `/usr/include/sys/user.h`.
+pub fn read_user(pid: Pid, offset: AddressType) -> Result<c_long> {
+    ptrace_peek(Request::PTRACE_PEEKUSER, pid, offset, ptr::null_mut())
+}
+
+/// Writes a word to a user area at `offset`.
+/// The user struct definition can be found in `/usr/include/sys/user.h`.
+///
+/// # Safety
+///
+/// The `data` argument is passed directly to `ptrace(2)`.  Read that man page
+/// for guidance.
+pub unsafe fn write_user(
+    pid: Pid,
+    offset: AddressType,
+    data: *mut c_void) -> Result<()>
+{
+    ptrace_other(Request::PTRACE_POKEUSER, pid, offset, data).map(drop)
 }

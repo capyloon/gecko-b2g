@@ -80,7 +80,7 @@ class MOZ_RAII AutoCycleDetector {
 
 struct AutoResolving;
 
-struct OffThreadFrontendErrors;  // vm/HelperThreadState.h
+struct FrontendErrors;  // vm/HelperThreadState.h
 
 class InternalJobQueue : public JS::JobQueue {
  public:
@@ -172,14 +172,13 @@ struct JS_PUBLIC_API JSContext : public JS::RootingContext,
   js::WriteOnceData<js::ContextKind> kind_;
 
   friend class js::gc::AutoSuppressNurseryCellAlloc;
-  js::ContextData<size_t> nurserySuppressions_;
 
   js::ContextData<JS::ContextOptions> options_;
 
   // Thread that the JSContext is currently running on, if in use.
   js::ThreadId currentThread_;
 
-  js::OffThreadFrontendErrors* errors_;
+  js::FrontendErrors* errors_;
 
   // When a helper thread is using a context, it may need to periodically
   // free unused memory.
@@ -330,14 +329,8 @@ struct JS_PUBLIC_API JSContext : public JS::RootingContext,
 
   inline void leaveRealm(JS::Realm* oldRealm);
 
-  void setOffThreadFrontendErrors(js::OffThreadFrontendErrors* errors) {
-    errors_ = errors;
-  }
-  js::OffThreadFrontendErrors* offThreadFrontendErrors() const {
-    return errors_;
-  }
-
-  bool isNurseryAllocSuppressed() const { return nurserySuppressions_; }
+  void setFrontendErrors(js::FrontendErrors* errors) { errors_ = errors; }
+  js::FrontendErrors* frontendErrors() const { return errors_; }
 
   // Threads may freely access any data in their realm, compartment and zone.
   JS::Compartment* compartment() const {
@@ -1166,22 +1159,6 @@ class MOZ_RAII AutoUnsafeCallWithABI {
       UnsafeABIStrictness unused_ = UnsafeABIStrictness::NoExceptions) {}
 #endif
 };
-
-namespace gc {
-
-// Note that this class does not suppress buffer allocation/reallocation in the
-// nursery, only Cells themselves.
-class MOZ_RAII AutoSuppressNurseryCellAlloc {
-  JSContext* cx_;
-
- public:
-  explicit AutoSuppressNurseryCellAlloc(JSContext* cx) : cx_(cx) {
-    cx_->nurserySuppressions_++;
-  }
-  ~AutoSuppressNurseryCellAlloc() { cx_->nurserySuppressions_--; }
-};
-
-}  // namespace gc
 
 } /* namespace js */
 

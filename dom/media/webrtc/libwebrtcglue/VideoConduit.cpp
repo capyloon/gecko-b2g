@@ -181,11 +181,10 @@ ConfigureVideoEncoderSettings(const VideoCodecConfig& aConfig,
   if (aConfig.mName == kVp9CodecName) {
     webrtc::VideoCodecVP9 vp9_settings =
         webrtc::VideoEncoder::GetDefaultVp9Settings();
-    if (is_screencast) {
-      // TODO(asapersson): Set to 2 for now since there is a DCHECK in
-      // VideoSendStream::ReconfigureVideoEncoder.
-      vp9_settings.numberOfSpatialLayers = 2;
-    } else {
+    if (!is_screencast) {
+      // Always configure only 1 spatial layer for screencapture as libwebrtc
+      // has some special requirements when SVC is active. For non-screencapture
+      // the spatial layers are experimentally configurable via a pref.
       vp9_settings.numberOfSpatialLayers = aConduit->SpatialLayers();
     }
     // VP9 denoising is disabled by default.
@@ -1314,6 +1313,22 @@ MediaConduitErrorCode WebrtcVideoConduit::SendVideoFrame(
                     __FUNCTION__);
       return kMediaConduitNoError;
     }
+
+    // Workaround for bug in libwebrtc where all encodings are transmitted
+    // if they are all inactive.
+    bool anyActive = false;
+    for (const auto& encoding : mCurSendCodecConfig->mEncodings) {
+      if (encoding.active) {
+        anyActive = true;
+        break;
+      }
+    }
+    if (!anyActive) {
+      CSFLogVerbose(LOGTAG, "WebrtcVideoConduit %p %s No active encodings",
+                    this, __FUNCTION__);
+      return kMediaConduitNoError;
+    }
+
     CSFLogVerbose(LOGTAG, "WebrtcVideoConduit %p %s (send SSRC %u (0x%x))",
                   this, __FUNCTION__, mSendStreamConfig.rtp.ssrcs.front(),
                   mSendStreamConfig.rtp.ssrcs.front());

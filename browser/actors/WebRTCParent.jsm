@@ -380,8 +380,36 @@ class WebRTCParent extends JSWindowActorParent {
     if (aRequest.sharingScreen) {
       return false;
     }
-    if (aRequest.audioOutputDevices?.length) {
-      return false;
+    let {
+      callID,
+      windowID,
+      audioInputDevices,
+      videoInputDevices,
+      audioOutputDevices,
+      hasInherentAudioConstraints,
+      hasInherentVideoConstraints,
+      audioOutputId,
+    } = aRequest;
+
+    if (audioOutputDevices?.length) {
+      // Prompt if a specific device is not requested, available and allowed.
+      let device = audioOutputDevices.find(({ id }) => id == audioOutputId);
+      if (
+        !device ||
+        !lazy.SitePermissions.getForPrincipal(
+          aPrincipal,
+          ["speaker", device.id].join("^"),
+          this.getBrowser()
+        ).state == lazy.SitePermissions.ALLOW
+      ) {
+        return false;
+      }
+      this.sendAsyncMessage("webrtc:Allow", {
+        callID,
+        windowID,
+        devices: [device.deviceIndex],
+      });
+      return true;
     }
 
     let { perms } = Services;
@@ -400,15 +428,6 @@ class WebRTCParent extends JSWindowActorParent {
       aRequest.secondOrigin;
 
     let map = lazy.webrtcUI.activePerms.get(this.manager.outerWindowId);
-    let {
-      callID,
-      windowID,
-      audioInputDevices,
-      videoInputDevices,
-      hasInherentAudioConstraints,
-      hasInherentVideoConstraints,
-    } = aRequest;
-
     // We consider a camera or mic active if it is active or was active within a
     // grace period of milliseconds ago.
     const isAllowed = ({ mediaSource, rawId }, permissionID) =>
@@ -736,6 +755,7 @@ function prompt(aActor, aBrowser, aRequest) {
         aTopic == "removed"
       ) {
         let video = doc.getElementById("webRTC-previewVideo");
+        video.deviceId = null; // Abort previews still being started.
         if (video.stream) {
           video.stream.getTracks().forEach(t => t.stop());
           video.stream = null;
@@ -1148,6 +1168,14 @@ function prompt(aActor, aBrowser, aRequest) {
           let allowSpeaker = audioDeviceIndex != "-1";
           if (allowSpeaker) {
             allowedDevices.push(audioDeviceIndex);
+            let { id } = audioOutputDevices.find(
+              ({ deviceIndex }) => deviceIndex == audioDeviceIndex
+            );
+            lazy.SitePermissions.setForPrincipal(
+              principal,
+              ["speaker", id].join("^"),
+              lazy.SitePermissions.ALLOW
+            );
           }
         }
 

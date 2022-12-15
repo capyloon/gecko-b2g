@@ -3,9 +3,194 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.25.0] - 2022-08-13
+### Added
+
+- Added `faccessat`
+  ([#1780](https://github.com/nix-rust/nix/pull/1780))
+- Added `memfd` on Android.
+  (#[1773](https://github.com/nix-rust/nix/pull/1773))
+- Added `ETH_P_ALL` to `SockProtocol` enum
+  (#[1768](https://github.com/nix-rust/nix/pull/1768))
+- Added four non-standard Linux `SysconfVar` variants
+  (#[1761](https://github.com/nix-rust/nix/pull/1761))
+- Added const constructors for `TimeSpec` and `TimeVal`
+  (#[1760](https://github.com/nix-rust/nix/pull/1760))
+- Added `chflags`.
+  (#[1758](https://github.com/nix-rust/nix/pull/1758))
+- Added `aio_writev` and `aio_readv`.
+  (#[1713](https://github.com/nix-rust/nix/pull/1713))
+- impl `From<uid_t>` for `Uid` and `From<gid_t>` for `Gid`
+  (#[1727](https://github.com/nix-rust/nix/pull/1727))
+- impl `From<SockaddrIn>` for `std::net::SocketAddrV4` and
+  impl `From<SockaddrIn6>` for `std::net::SocketAddrV6`.
+  (#[1711](https://github.com/nix-rust/nix/pull/1711))
+- Added support for the `x86_64-unknown-haiku` target.
+  (#[1703](https://github.com/nix-rust/nix/pull/1703))
+- Added `ptrace::read_user` and `ptrace::write_user` for Linux.
+  (#[1697](https://github.com/nix-rust/nix/pull/1697))
+- Added `getrusage` and helper types `UsageWho` and `Usage`
+  (#[1747](https://github.com/nix-rust/nix/pull/1747))
+- Added the `DontRoute` SockOpt
+  (#[1752](https://github.com/nix-rust/nix/pull/1752))
+- Added `signal::SigSet::from_sigset_t_unchecked()`.
+  (#[1741](https://github.com/nix-rust/nix/pull/1741))
+- Added the `Ipv4OrigDstAddr` sockopt and control message.
+  (#[1772](https://github.com/nix-rust/nix/pull/1772))
+- Added the `Ipv6OrigDstAddr` sockopt and control message.
+  (#[1772](https://github.com/nix-rust/nix/pull/1772))
+- Added the `Ipv4SendSrcAddr` control message.
+  (#[1776](https://github.com/nix-rust/nix/pull/1776))
+
+### Changed
+
+- Rewrote the aio module.  The new module:
+  * Does more type checking at compile time rather than runtime.
+  * Gives the caller control over whether and when to `Box` an aio operation.
+  * Changes the type of the `priority` arguments to `i32`.
+  * Changes the return type of `aio_return` to `usize`.
+  (#[1713](https://github.com/nix-rust/nix/pull/1713))
+- `nix::poll::ppoll`: `sigmask` parameter is now optional.
+  (#[1739](https://github.com/nix-rust/nix/pull/1739))
+- Changed `gethostname` to return an owned `OsString`.
+  (#[1745](https://github.com/nix-rust/nix/pull/1745))
+- `signal:SigSet` is now marked as `repr(transparent)`.
+  (#[1741](https://github.com/nix-rust/nix/pull/1741))
+
+### Removed
+
+- Removed support for resubmitting partially complete `lio_listio` operations.
+  It was too complicated, and didn't fit Nix's theme of zero-cost abstractions.
+  Instead, it can be reimplemented downstream.
+  (#[1713](https://github.com/nix-rust/nix/pull/1713))
+
+## [0.24.2] - 2022-07-17
+### Fixed
+
+- Fixed buffer overflow in `nix::sys::socket::recvfrom`.
+  (#[1763](https://github.com/nix-rust/nix/pull/1763))
+- Enabled `SockaddrStorage::{as_link_addr, as_link_addr_mut}` for Linux-like
+  operating systems.
+  (#[1729](https://github.com/nix-rust/nix/pull/1729))
+- Fixed `SockaddrLike::from_raw` implementations for `VsockAddr` and
+  `SysControlAddr`.
+  (#[1736](https://github.com/nix-rust/nix/pull/1736))
+
+## [0.24.1] - 2022-04-22
+### Fixed
+
+- Fixed `UnixAddr::size` on Linux-based OSes.
+  (#[1702](https://github.com/nix-rust/nix/pull/1702))
+
+## [0.24.0] - 2022-04-21
+### Added
+
+- Added fine-grained features flags.  Most Nix functionality can now be
+  conditionally enabled.  By default, all features are enabled.
+  (#[1611](https://github.com/nix-rust/nix/pull/1611))
+- Added statfs FS type magic constants for `target_os = "android"`
+  and synced constants with libc v0.2.121.
+  (#[1690](https://github.com/nix-rust/nix/pull/1690))
+- Added `fexecve` on DragonFly.
+  (#[1577](https://github.com/nix-rust/nix/pull/1577))
+- `sys::uio::IoVec` is now `Send` and `Sync`
+  (#[1582](https://github.com/nix-rust/nix/pull/1582))
+- Added `EPOLLEXCLUSIVE` on Android.
+  (#[1567](https://github.com/nix-rust/nix/pull/1567))
+- Added `fdatasync` for FreeBSD, Fuchsia, NetBSD, and OpenBSD.
+  (#[1581](https://github.com/nix-rust/nix/pull/1581))
+- Added `sched_setaffinity` and `sched_getaffinity` on DragonFly.
+  (#[1537](https://github.com/nix-rust/nix/pull/1537))
+- Added `posix_fallocate` on DragonFly.
+  (#[1621](https://github.com/nix-rust/nix/pull/1621))
+- Added `SO_TIMESTAMPING` support
+  (#[1547](https://github.com/nix-rust/nix/pull/1547))
+- Added getter methods to `MqAttr` struct
+  (#[1619](https://github.com/nix-rust/nix/pull/1619))
+- Added the `TxTime` sockopt and control message.
+  (#[1564](https://github.com/nix-rust/nix/pull/1564))
+- Added POSIX per-process timer support
+  (#[1622](https://github.com/nix-rust/nix/pull/1622))
+- Added `sendfile` on DragonFly.
+  (#[1615](https://github.com/nix-rust/nix/pull/1615))
+- Added `UMOUNT_NOFOLLOW`, `FUSE_SUPER_MAGIC` on Linux.
+  (#[1634](https://github.com/nix-rust/nix/pull/1634))
+- Added `getresuid`, `setresuid`, `getresgid`, and `setresgid` on DragonFly, FreeBSD, and OpenBSD.
+  (#[1628](https://github.com/nix-rust/nix/pull/1628))
+- Added `MAP_FIXED_NOREPLACE` on Linux.
+  (#[1636](https://github.com/nix-rust/nix/pull/1636))
+- Added `fspacectl` on FreeBSD
+  (#[1640](https://github.com/nix-rust/nix/pull/1640))
+- Added `accept4` on DragonFly, Emscripten, Fuchsia, Illumos, and NetBSD.
+  (#[1654](https://github.com/nix-rust/nix/pull/1654))
+- Added `AsRawFd` implementation on `OwningIter`.
+  (#[1563](https://github.com/nix-rust/nix/pull/1563))
+- Added `process_vm_readv` and `process_vm_writev` on Android.
+  (#[1557](https://github.com/nix-rust/nix/pull/1557))
+- Added `nix::uncontext` module on s390x.
+  (#[1662](https://github.com/nix-rust/nix/pull/1662))
+- Implemented `Extend`, `FromIterator`, and `IntoIterator` for `SigSet` and
+  added `SigSet::iter` and `SigSetIter`.
+  (#[1553](https://github.com/nix-rust/nix/pull/1553))
+- Added `ENOTRECOVERABLE` and `EOWNERDEAD` error codes on DragonFly.
+  (#[1665](https://github.com/nix-rust/nix/pull/1665))
+- Implemented `Read` and `Write` for `&PtyMaster`
+  (#[1664](https://github.com/nix-rust/nix/pull/1664))
+- Added `MSG_NOSIGNAL` for Android, Dragonfly, FreeBSD, Fuchsia, Haiku, Illumos, Linux, NetBSD, OpenBSD and Solaris.
+  (#[1670](https://github.com/nix-rust/nix/pull/1670))
+- Added `waitid`.
+  (#[1584](https://github.com/nix-rust/nix/pull/1584))
+- Added `Ipv6DontFrag` for android, iOS, linux and macOS.
+- Added `IpDontFrag` for iOS, macOS.
+  (#[1692](https://github.com/nix-rust/nix/pull/1692))
+
+### Changed
+
+- `mqueue` functions now operate on a distinct type, `nix::mqueue::MqdT`.
+  Accessors take this type by reference, not by value.
+  (#[1639](https://github.com/nix-rust/nix/pull/1639))
+- Removed `SigSet::extend` in favor of `<SigSet as Extend<Signal>>::extend`.
+  Because of this change, you now need `use std::iter::Extend` to call `extend`
+  on a `SigSet`.
+  (#[1553](https://github.com/nix-rust/nix/pull/1553))
+- Removed the the `PATH_MAX` restriction from APIs accepting paths. Paths
+  will now be allocated on the heap if they are too long. In addition, large
+  instruction count improvements (~30x) were made to path handling.
+  (#[1656](https://github.com/nix-rust/nix/pull/1656))
+- Changed `getrlimit` and `setrlimit` to use `rlim_t` directly
+  instead of `Option<rlim_t>`.
+  (#[1668](https://github.com/nix-rust/nix/pull/1668))
+- Deprecated `InetAddr` and `SockAddr` in favor of `SockaddrIn`, `SockaddrIn6`,
+  and `SockaddrStorage`.
+  (#[1684](https://github.com/nix-rust/nix/pull/1684))
+- Deprecated `IpAddr`, `Ipv4Addr`, and `Ipv6Addr` in favor of their equivalents
+  from the standard library.
+  (#[1685](https://github.com/nix-rust/nix/pull/1685))
+- `uname` now returns a `Result<UtsName>` instead of just a `UtsName` and
+  ignoring failures from libc.  And getters on the `UtsName` struct now return
+  an `&OsStr` instead of `&str`.
+  (#[1672](https://github.com/nix-rust/nix/pull/1672))
+- Replaced `IoVec` with `IoSlice` and `IoSliceMut`, and replaced `IoVec::from_slice` with
+  `IoSlice::new`. (#[1643](https://github.com/nix-rust/nix/pull/1643))
+
+### Fixed
+
+- `InetAddr::from_std` now sets the `sin_len`/`sin6_len` fields on the BSDs.
+  (#[1642](https://github.com/nix-rust/nix/pull/1642))
+- Fixed a panic in `LinkAddr::addr`.  That function now returns an `Option`.
+  (#[1675](https://github.com/nix-rust/nix/pull/1675))
+  (#[1677](https://github.com/nix-rust/nix/pull/1677))
+
+### Removed
+
+- Removed public access to the inner fields of `NetlinkAddr`, `AlgAddr`,
+  `SysControlAddr`, `LinkAddr`, and `VsockAddr`.
+  (#[1614](https://github.com/nix-rust/nix/pull/1614))
+- Removed `EventFlag::EV_SYSFLAG`.
+  (#[1635](https://github.com/nix-rust/nix/pull/1635))
+
 ## [0.23.1] - 2021-12-16
 
-### Added
 ### Changed
 
 - Relaxed the bitflags requirement from 1.3.1 to 1.1.  This partially reverts
@@ -19,8 +204,6 @@ This project adheres to [Semantic Versioning](https://semver.org/).
   `FdSet::contains` involving file descriptors outside of the range
   `0..FD_SETSIZE`.
   (#[1575](https://github.com/nix-rust/nix/pull/1575))
-
-### Removed
 
 ## [0.23.0] - 2021-09-28
 ### Added

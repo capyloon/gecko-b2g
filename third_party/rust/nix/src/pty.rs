@@ -9,8 +9,9 @@ use std::mem;
 use std::os::unix::prelude::*;
 
 use crate::sys::termios::Termios;
-use crate::unistd::{self, ForkResult, Pid};
-use crate::{Result, fcntl};
+#[cfg(feature = "process")]
+use crate::unistd::{ForkResult, Pid};
+use crate::{Result, fcntl, unistd};
 use crate::errno::Errno;
 
 /// Representation of a master/slave pty pair
@@ -25,6 +26,8 @@ pub struct OpenptyResult {
     pub slave: RawFd,
 }
 
+feature! {
+#![feature = "process"]
 /// Representation of a master with a forked pty
 ///
 /// This is returned by `forkpty`. Note that this type does *not* implement `Drop`, so the user
@@ -35,6 +38,7 @@ pub struct ForkptyResult {
     pub master: RawFd,
     /// Metadata about forked process
     pub fork_result: ForkResult,
+}
 }
 
 
@@ -91,6 +95,21 @@ impl io::Write for PtyMaster {
     }
 }
 
+impl io::Read for &PtyMaster {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        unistd::read(self.0, buf).map_err(io::Error::from)
+    }
+}
+
+impl io::Write for &PtyMaster {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        unistd::write(self.0, buf).map_err(io::Error::from)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 /// Grant access to a slave pseudoterminal (see
 /// [`grantpt(3)`](https://pubs.opengroup.org/onlinepubs/9699919799/functions/grantpt.html))
 ///
@@ -108,7 +127,7 @@ pub fn grantpt(fd: &PtyMaster) -> Result<()> {
 /// Open a pseudoterminal device (see
 /// [`posix_openpt(3)`](https://pubs.opengroup.org/onlinepubs/9699919799/functions/posix_openpt.html))
 ///
-/// `posix_openpt()` returns a file descriptor to an existing unused pseuterminal master device.
+/// `posix_openpt()` returns a file descriptor to an existing unused pseudoterminal master device.
 ///
 /// # Examples
 ///
@@ -188,6 +207,7 @@ pub unsafe fn ptsname(fd: &PtyMaster) -> Result<String> {
 /// This value is useful for opening the slave ptty once the master has already been opened with
 /// `posix_openpt()`.
 #[cfg(any(target_os = "android", target_os = "linux"))]
+#[cfg_attr(docsrs, doc(cfg(all())))]
 #[inline]
 pub fn ptsname_r(fd: &PtyMaster) -> Result<String> {
     let mut name_buf = Vec::<libc::c_char>::with_capacity(64);
@@ -209,7 +229,7 @@ pub fn ptsname_r(fd: &PtyMaster) -> Result<String> {
 ///
 /// `unlockpt()` unlocks the slave pseudoterminal device corresponding to the master pseudoterminal
 /// referred to by `fd`. This must be called before trying to open the slave side of a
-/// pseuoterminal.
+/// pseudoterminal.
 #[inline]
 pub fn unlockpt(fd: &PtyMaster) -> Result<()> {
     if unsafe { libc::unlockpt(fd.as_raw_fd()) } < 0 {
@@ -294,6 +314,8 @@ pub fn openpty<'a, 'b, T: Into<Option<&'a Winsize>>, U: Into<Option<&'b Termios>
     }
 }
 
+feature! {
+#![feature = "process"]
 /// Create a new pseudoterminal, returning the master file descriptor and forked pid.
 /// in `ForkptyResult`
 /// (see [`forkpty`](https://man7.org/linux/man-pages/man3/forkpty.3.html)).
@@ -345,4 +367,5 @@ pub unsafe fn forkpty<'a, 'b, T: Into<Option<&'a Winsize>>, U: Into<Option<&'b T
         master: master.assume_init(),
         fork_result,
     })
+}
 }

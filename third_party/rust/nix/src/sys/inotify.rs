@@ -36,35 +36,58 @@ use crate::unistd::read;
 use crate::Result;
 use crate::NixPath;
 use crate::errno::Errno;
+use cfg_if::cfg_if;
 
 libc_bitflags! {
     /// Configuration options for [`inotify_add_watch`](fn.inotify_add_watch.html).
     pub struct AddWatchFlags: u32 {
+        /// File was accessed.
         IN_ACCESS;
+        /// File was modified.
         IN_MODIFY;
+        /// Metadata changed.
         IN_ATTRIB;
+        /// Writable file was closed.
         IN_CLOSE_WRITE;
+        /// Nonwritable file was closed.
         IN_CLOSE_NOWRITE;
+        /// File was opened.
         IN_OPEN;
+        /// File was moved from X.
         IN_MOVED_FROM;
+        /// File was moved to Y.
         IN_MOVED_TO;
+        /// Subfile was created.
         IN_CREATE;
+        /// Subfile was deleted.
         IN_DELETE;
+        /// Self was deleted.
         IN_DELETE_SELF;
+        /// Self was moved.
         IN_MOVE_SELF;
 
+        /// Backing filesystem was unmounted.
         IN_UNMOUNT;
+        /// Event queue overflowed.
         IN_Q_OVERFLOW;
+        /// File was ignored.
         IN_IGNORED;
 
+        /// Combination of `IN_CLOSE_WRITE` and `IN_CLOSE_NOWRITE`.
         IN_CLOSE;
+        /// Combination of `IN_MOVED_FROM` and `IN_MOVED_TO`.
         IN_MOVE;
 
+        /// Only watch the path if it is a directory.
         IN_ONLYDIR;
+        /// Don't follow symlinks.
         IN_DONT_FOLLOW;
 
+        /// Event occurred against directory.
         IN_ISDIR;
+        /// Only send event once.
         IN_ONESHOT;
+        /// All of the events.
         IN_ALL_EVENTS;
     }
 }
@@ -72,7 +95,9 @@ libc_bitflags! {
 libc_bitflags! {
     /// Configuration options for [`inotify_init1`](fn.inotify_init1.html).
     pub struct InitFlags: c_int {
+        /// Set the `FD_CLOEXEC` flag on the file descriptor.
         IN_CLOEXEC;
+        /// Set the `O_NONBLOCK` flag on the open file description referred to by the new file descriptor.
         IN_NONBLOCK;
     }
 }
@@ -151,16 +176,15 @@ impl Inotify {
     /// Returns an EINVAL error if the watch descriptor is invalid.
     ///
     /// For more information see, [inotify_rm_watch(2)](https://man7.org/linux/man-pages/man2/inotify_rm_watch.2.html).
-    #[cfg(target_os = "linux")]
     pub fn rm_watch(self, wd: WatchDescriptor) -> Result<()> {
-        let res = unsafe { libc::inotify_rm_watch(self.fd, wd.wd) };
-
-        Errno::result(res).map(drop)
-    }
-
-    #[cfg(target_os = "android")]
-    pub fn rm_watch(self, wd: WatchDescriptor) -> Result<()> {
-        let res = unsafe { libc::inotify_rm_watch(self.fd, wd.wd as u32) };
+        cfg_if! {
+            if #[cfg(target_os = "linux")] {
+                let arg = wd.wd;
+            } else if #[cfg(target_os = "android")] {
+                let arg = wd.wd as u32;
+            }
+        }
+        let res = unsafe { libc::inotify_rm_watch(self.fd, arg) };
 
         Errno::result(res).map(drop)
     }
