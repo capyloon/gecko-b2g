@@ -917,7 +917,7 @@ def gen_substs(manifests):
     )
 
     protocol_handlers_phf = PerfectHash(
-        list(protocol_handlers.values()), TINY_PHF_SIZE, key=lambda entry: entry.scheme
+        list(protocol_handlers.values()), PHF_SIZE, key=lambda entry: entry.scheme
     )
 
     js_services_json = {}
