@@ -190,6 +190,7 @@ mochitest-browser-chrome:
         - webrender-sw+a11y-checks
         - webrender-sw+wayland
         - socketprocess_networking
+        - msix
     run-on-projects:
         by-variant:
             webrender-sw:
@@ -210,6 +211,10 @@ mochitest-browser-chrome:
                     (linux.*64|macosx.*64|windows10-64-2004)(-shippable)?-qr/(opt|debug): ['autoland', 'mozilla-central']
                     default: []
             webrender-sw+wayland: []
+            msix:
+                by-test-platform:
+                    windows10-64-2004-shippable-qr/opt: built-projects
+                    default: []
             default:
                 by-test-platform:
                     android.*: []
@@ -321,7 +326,10 @@ mochitest-chrome:
                     android-em-7.0-x86_64-qr/debug: built-projects
                     linux.*64-qr/debug: built-projects
                     default: []
-            1proc: built-projects
+            1proc:
+                by-test-platform:
+                    .*-tsan-qr/opt: []
+                    default: built-projects
     chunks:
         by-test-platform:
             .*(-ccov|-qr).*/.*: 3
@@ -378,6 +386,7 @@ mochitest-devtools-chrome:
             default:
                 by-test-platform:
                     android.*: []
+                    .*-tsan-qr/opt: []
                     linux.*64-ccov-qr/opt: []
                     default: built-projects
     tier: default
@@ -670,6 +679,7 @@ mochitest-webgl1-core:
             webgl-ipc:
                 by-test-platform:
                     .*-ccov.*: []
+                    .*-tsan.*: []
                     linux.*-64.*: ["trunk"]
                     mac.*: ["trunk"]
                     win.*: ["trunk"]
@@ -697,6 +707,7 @@ mochitest-webgl1-core:
             default:
                 by-test-platform:
                     android.*: []
+                    .*-tsan.*: []
                     default: built-projects
     # Bug 1296733: llvmpipe with mesa 9.2.1 lacks thread safety
     allow-software-gl-layers: false
@@ -729,6 +740,7 @@ mochitest-webgl1-ext:
             webgl-ipc:
                 by-test-platform:
                     .*-ccov.*: []
+                    .*-tsan.*: []
                     linux.*-64.*: built-projects
                     mac.*: ["trunk"]
                     windows10-64-2004.*: built-projects
@@ -756,6 +768,7 @@ mochitest-webgl1-ext:
             default:
                 by-test-platform:
                     android.*: []
+                    .*-tsan.*: []
                     default: built-projects
     # Bug 1296733: llvmpipe with mesa 9.2.1 lacks thread safety
     allow-software-gl-layers: false
@@ -789,6 +802,7 @@ mochitest-webgl2-core:
             webgl-ipc:
                 by-test-platform:
                     .*-ccov.*/.*: []
+                    .*-tsan.*: []
                     android.*: []
                     linux.*-64.*: ["trunk"]
                     mac.*: ["trunk"]
@@ -817,6 +831,7 @@ mochitest-webgl2-core:
             default:
                 by-test-platform:
                     android.*: []
+                    .*-tsan.*: []
                     default: built-projects
     # Bug 1296733: llvmpipe with mesa 9.2.1 lacks thread safety
     allow-software-gl-layers: false
@@ -840,6 +855,7 @@ mochitest-webgl2-ext:
             webgl-ipc:
                 by-test-platform:
                     .*ccov.*/.*: []
+                    .*-tsan.*: []
                     linux.*-64.*: ["trunk"]
                     mac.*: ["trunk"]
                     win.*: ["trunk"]
@@ -865,6 +881,7 @@ mochitest-webgl2-ext:
             default:
                 by-test-platform:
                     android.*: []
+                    .*-tsan.*: []
                     default: built-projects
     chunks: 4
     test-manifest-loader: null  # don't load tests in the taskgraph

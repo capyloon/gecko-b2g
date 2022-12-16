@@ -163,6 +163,11 @@ export class SearchSettings {
       Services.prefs.clearUserPref(prefName);
     }
 
+    // Added in Firefox 110.
+    if (this.#settings.version < 8 && Array.isArray(this.#settings.engines)) {
+      this.#migrateTelemetryLoadPaths();
+    }
+
     return structuredClone(json);
   }
 
@@ -518,10 +523,15 @@ export class SearchSettings {
         clonedSettings.metaData.private
       );
 
+      // As per SearchService._getEngineDefault, we relax the verification hash
+      // check for application provided engines to reduce the annoyance for
+      // users who backup/sync their profile in custom ways.
       if (
         currentDefaultEngine &&
-        lazy.SearchUtils.getVerificationHash(clonedSettings.metaData.current) ==
-          clonedSettings.metaData[this.getHashName("current")]
+        (currentDefaultEngine.isAppProvided ||
+          lazy.SearchUtils.getVerificationHash(
+            clonedSettings.metaData.current
+          ) == clonedSettings.metaData[this.getHashName("current")])
       ) {
         // Store the defaultEngineId
         this.setVerifiedMetaDataAttribute(
@@ -534,8 +544,10 @@ export class SearchSettings {
 
       if (
         privateDefaultEngine &&
-        lazy.SearchUtils.getVerificationHash(clonedSettings.metaData.private) ==
-          clonedSettings.metaData[this.getHashName("private")]
+        (privateDefaultEngine.isAppProvided ||
+          lazy.SearchUtils.getVerificationHash(
+            clonedSettings.metaData.private
+          ) == clonedSettings.metaData[this.getHashName("private")])
       ) {
         // Store the privateDefaultEngineId
         this.setVerifiedMetaDataAttribute(
@@ -547,6 +559,27 @@ export class SearchSettings {
       }
 
       lazy.logConsole.debug("migrateEngineIds: done");
+    }
+  }
+
+  /**
+   * Migrates telemetry load paths for versions of settings prior to v8.
+   */
+  #migrateTelemetryLoadPaths() {
+    for (let engine of this.#settings.engines) {
+      if (!engine._loadPath) {
+        continue;
+      }
+      if (engine._loadPath.includes("set-via-policy")) {
+        engine._loadPath = "[policy]";
+      } else if (engine._loadPath.includes("set-via-user")) {
+        engine._loadPath = "[user]";
+      } else if (engine._loadPath.startsWith("[other]addEngineWithDetails:")) {
+        engine._loadPath = engine._loadPath.replace(
+          "[other]addEngineWithDetails:",
+          "[addon]"
+        );
+      }
     }
   }
 

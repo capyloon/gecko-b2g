@@ -1192,14 +1192,14 @@ export class SearchService {
 
     let engineId = this._settings.getMetaDataAttribute(attributeName);
     let engine = this._engines.get(engineId) || null;
+    // If the selected engine is an application provided one, we can relax the
+    // verification hash check to reduce the annoyance for users who
+    // backup/sync their profile in custom ways.
     if (
       engine &&
       (engine.isAppProvided ||
         this._settings.getVerifiedMetaDataAttribute(attributeName))
     ) {
-      // If the current engine is a default one, we can relax the
-      // verification hash check to reduce the annoyance for users who
-      // backup/sync their profile in custom ways.
       if (privateMode) {
         this.#currentPrivateEngine = engine;
       } else {
@@ -1620,7 +1620,7 @@ export class SearchService {
       let engineSettings = settings.engines.find(
         e => e.id == prevCurrentEngineId
       );
-      if (engineSettings?._loadPath?.includes("set-via-policy")) {
+      if (engineSettings?._loadPath?.startsWith("[policy]")) {
         return false;
       }
     }
@@ -2179,10 +2179,10 @@ export class SearchService {
 
       try {
         let engine;
-        if (loadPath?.includes("set-via-policy")) {
+        if (loadPath?.startsWith("[policy]")) {
           skippedEngines++;
           continue;
-        } else if (loadPath?.includes("set-via-user")) {
+        } else if (loadPath?.startsWith("[user]")) {
           engine = new lazy.UserSearchEngine({ json: engineJSON });
         } else if (engineJSON.extensionID ?? engineJSON._extensionID) {
           engine = new lazy.AddonSearchEngine({

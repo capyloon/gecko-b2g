@@ -1848,13 +1848,6 @@ pref("media.gmp-provider.enabled", true);
 // Enable Dynamic First-Party Isolation by default.
 pref("network.cookie.cookieBehavior", 5 /* BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN */);
 
-// Whether to show the section in preferences which allows users to opt-in to
-// Total Cookie Protection (dFPI) in standard mode.
-pref("privacy.restrict3rdpartystorage.rollout.preferences.TCPToggleInStandard", false);
-
-// Target URL for the learn more link of the TCP in standard mode rollout section.
-pref("privacy.restrict3rdpartystorage.rollout.preferences.learnMoreURLSuffix", "total-cookie-protection");
-
 // Target URL for the learn more link of the TCP in standard mode section.
 pref("privacy.restrict3rdpartystorage.preferences.learnMoreURLSuffix", "total-cookie-protection");
 
@@ -2149,9 +2142,16 @@ pref("browser.migrate.edge.enabled", true);
 pref("browser.migrate.firefox.enabled", true);
 pref("browser.migrate.ie.enabled", true);
 pref("browser.migrate.safari.enabled", true);
+
+#ifdef NIGHTLY_BUILD
+pref("browser.migrate.opera.enabled", true);
+pref("browser.migrate.opera-gx.enabled", true);
+pref("browser.migrate.vivaldi.enabled", true);
+#else
 pref("browser.migrate.opera.enabled", false);
-pref("browser.migrate.vivaldi.enabled", false);
 pref("browser.migrate.opera-gx.enabled", false);
+pref("browser.migrate.vivaldi.enabled", false);
+#endif
 
 pref("browser.migrate.content-modal.enabled", false);
 

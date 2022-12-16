@@ -378,9 +378,9 @@ dependencies = [
 
 [[package]]
 name = "authenticator"
-version = "0.4.0-alpha.4"
+version = "0.4.0-alpha.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e6049d26a8bcbee28599bc43e2369fa228dc5d63a0c5ad7739887d330c1228b"
+checksum = "c0bad0926d74984fd6932d928c65efbc0f14d37873d0316a664621898bfcd80c"
 dependencies = [
  "base64",
  "bitflags",
@@ -1685,7 +1685,7 @@ dependencies = [
 [[package]]
 name = "error-support"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=ba67a665dd086b1ea5f1fad638843e82bf9208b4#ba67a665dd086b1ea5f1fad638843e82bf9208b4"
+source = "git+https://github.com/mozilla/application-services?rev=51b984ecb21ba00694c3eee33364123a064a7cbb#51b984ecb21ba00694c3eee33364123a064a7cbb"
 dependencies = [
  "lazy_static",
  "log",
@@ -2518,14 +2518,14 @@ dependencies = [
 name = "goblin"
 version = "0.1.99"
 dependencies = [
- "goblin 0.5.4",
+ "goblin 0.6.0",
 ]
 
 [[package]]
 name = "goblin"
-version = "0.5.4"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7666983ed0dd8d21a6f6576ee00053ca0926fb281a5522577a4dbd0f1b54143"
+checksum = "572564d6cba7d09775202c8e7eebc4d534d5ae36578ab402fb21e182a0ac9505"
 dependencies = [
  "log",
  "plain",
@@ -2845,7 +2845,7 @@ dependencies = [
 [[package]]
 name = "interrupt-support"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=ba67a665dd086b1ea5f1fad638843e82bf9208b4#ba67a665dd086b1ea5f1fad638843e82bf9208b4"
+source = "git+https://github.com/mozilla/application-services?rev=51b984ecb21ba00694c3eee33364123a064a7cbb#51b984ecb21ba00694c3eee33364123a064a7cbb"
 dependencies = [
  "lazy_static",
  "parking_lot 0.12.999",
@@ -4020,7 +4020,7 @@ dependencies = [
 [[package]]
 name = "nss_build_common"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=ba67a665dd086b1ea5f1fad638843e82bf9208b4#ba67a665dd086b1ea5f1fad638843e82bf9208b4"
+source = "git+https://github.com/mozilla/application-services?rev=51b984ecb21ba00694c3eee33364123a064a7cbb#51b984ecb21ba00694c3eee33364123a064a7cbb"
 
 [[package]]
 name = "nsstring"
@@ -5256,7 +5256,7 @@ dependencies = [
 [[package]]
 name = "sql-support"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=ba67a665dd086b1ea5f1fad638843e82bf9208b4#ba67a665dd086b1ea5f1fad638843e82bf9208b4"
+source = "git+https://github.com/mozilla/application-services?rev=51b984ecb21ba00694c3eee33364123a064a7cbb#51b984ecb21ba00694c3eee33364123a064a7cbb"
 dependencies = [
  "ffi-support",
  "interrupt-support",
@@ -5438,7 +5438,7 @@ dependencies = [
 [[package]]
 name = "sync-guid"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=ba67a665dd086b1ea5f1fad638843e82bf9208b4#ba67a665dd086b1ea5f1fad638843e82bf9208b4"
+source = "git+https://github.com/mozilla/application-services?rev=51b984ecb21ba00694c3eee33364123a064a7cbb#51b984ecb21ba00694c3eee33364123a064a7cbb"
 dependencies = [
  "base64",
  "rand 0.8.5",
@@ -5449,7 +5449,7 @@ dependencies = [
 [[package]]
 name = "sync15"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=ba67a665dd086b1ea5f1fad638843e82bf9208b4#ba67a665dd086b1ea5f1fad638843e82bf9208b4"
+source = "git+https://github.com/mozilla/application-services?rev=51b984ecb21ba00694c3eee33364123a064a7cbb#51b984ecb21ba00694c3eee33364123a064a7cbb"
 dependencies = [
  "anyhow",
  "error-support",
@@ -5479,7 +5479,7 @@ dependencies = [
 [[package]]
 name = "tabs"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=ba67a665dd086b1ea5f1fad638843e82bf9208b4#ba67a665dd086b1ea5f1fad638843e82bf9208b4"
+source = "git+https://github.com/mozilla/application-services?rev=51b984ecb21ba00694c3eee33364123a064a7cbb#51b984ecb21ba00694c3eee33364123a064a7cbb"
 dependencies = [
  "anyhow",
  "error-support",
@@ -6117,8 +6117,6 @@ dependencies = [
 [[package]]
 name = "uniffi_bindgen"
 version = "0.21.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12cc4af3c0180c7e86c4a3acf2b6587af04ba2567b1e948993df10f421796621"
 dependencies = [
  "anyhow",
  "askama",
@@ -6126,7 +6124,7 @@ dependencies = [
  "camino",
  "clap",
  "fs-err",
- "goblin 0.5.4",
+ "goblin 0.6.0",
  "heck",
  "once_cell",
  "paste",
@@ -6232,7 +6230,7 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 [[package]]
 name = "viaduct"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=ba67a665dd086b1ea5f1fad638843e82bf9208b4#ba67a665dd086b1ea5f1fad638843e82bf9208b4"
+source = "git+https://github.com/mozilla/application-services?rev=51b984ecb21ba00694c3eee33364123a064a7cbb#51b984ecb21ba00694c3eee33364123a064a7cbb"
 dependencies = [
  "ffi-support",
  "log",
@@ -6389,7 +6387,7 @@ dependencies = [
 [[package]]
 name = "webext-storage"
 version = "0.1.0"
-source = "git+https://github.com/mozilla/application-services?rev=ba67a665dd086b1ea5f1fad638843e82bf9208b4#ba67a665dd086b1ea5f1fad638843e82bf9208b4"
+source = "git+https://github.com/mozilla/application-services?rev=51b984ecb21ba00694c3eee33364123a064a7cbb#51b984ecb21ba00694c3eee33364123a064a7cbb"
 dependencies = [
  "error-support",
  "ffi-support",
