@@ -12,6 +12,7 @@
 #include "mozilla/gfx/AAStroke.h"
 #include "mozilla/gfx/Blur.h"
 #include "mozilla/gfx/DrawTargetSkia.h"
+#include "mozilla/gfx/gfxVars.h"
 #include "mozilla/gfx/Helpers.h"
 #include "mozilla/gfx/HelpersSkia.h"
 #include "mozilla/gfx/Logging.h"
@@ -716,7 +717,7 @@ bool DrawTargetWebgl::IsValid() const {
 
 already_AddRefed<DrawTargetWebgl> DrawTargetWebgl::Create(
     const IntSize& aSize, SurfaceFormat aFormat) {
-  if (!StaticPrefs::gfx_canvas_accelerated()) {
+  if (!gfxVars::UseAcceleratedCanvas2D()) {
     return nullptr;
   }
 
@@ -4019,6 +4020,13 @@ void DrawTargetWebgl::BeginFrame(const IntRect& aPersistedRect) {
 
 // For use within CanvasRenderingContext2D, called on ReturnDrawTarget.
 void DrawTargetWebgl::EndFrame() {
+  if (StaticPrefs::gfx_canvas_accelerated_debug()) {
+    // Draw a green rectangle in the upper right corner to indicate
+    // acceleration.
+    IntRect corner = IntRect(mSize.width - 16, 0, 16, 16).Intersect(GetRect());
+    DrawRect(Rect(corner), ColorPattern(DeviceColor(0.0f, 1.0f, 0.0f, 1.0f)),
+             DrawOptions(), Nothing(), nullptr, false, false);
+  }
   mProfile.EndFrame();
   // Ensure we're not somehow using more than the allowed texture memory.
   mSharedContext->PruneTextureMemory();

@@ -957,6 +957,7 @@ class TelemetryEvent {
         searchWords,
         provider: details.provider,
         searchSource: details.searchSource,
+        searchMode: details.searchMode,
         selectedElement: details.element,
         selIndex: details.selIndex,
         selType: details.selType,
@@ -1040,6 +1041,7 @@ class TelemetryEvent {
       reason,
       searchWords,
       searchSource,
+      searchMode,
       selectedElement,
       selIndex,
       selType,
@@ -1057,13 +1059,17 @@ class TelemetryEvent {
       sap = "urlbar_addonpage";
     }
 
+    searchMode = searchMode ?? this._controller.input.searchMode;
+
+    // Distinguish user typed search strings from persisted search terms.
     const interaction = this.#getInteractionType(
       method,
       startEventInfo,
       searchSource,
-      searchWords
+      searchWords,
+      searchMode
     );
-
+    const search_mode = this.#getSearchMode(searchMode);
     const currentResults = queryContext?.results ?? [];
     const numResults = currentResults.length;
     const groups = currentResults
@@ -1079,6 +1085,7 @@ class TelemetryEvent {
       eventInfo = {
         sap,
         interaction,
+        search_mode,
         n_chars: numChars,
         n_words: numWords,
         n_results: numResults,
@@ -1099,6 +1106,7 @@ class TelemetryEvent {
       eventInfo = {
         sap,
         interaction,
+        search_mode,
         n_chars: numChars,
         n_words: numWords,
         n_results: numResults,
@@ -1110,6 +1118,7 @@ class TelemetryEvent {
         reason,
         sap,
         interaction,
+        search_mode,
         n_chars: numChars,
         n_words: numWords,
         n_results: numResults,
@@ -1130,37 +1139,65 @@ class TelemetryEvent {
     }
   }
 
-  #getInteractionType(method, startEventInfo, searchSource, searchWords) {
-    if (this._controller.input.searchMode?.entry === "topsites_newtab") {
+  #getInteractionType(
+    method,
+    startEventInfo,
+    searchSource,
+    searchWords,
+    searchMode
+  ) {
+    if (searchMode?.entry === "topsites_newtab") {
       return "topsite_search";
     }
 
     let interaction = startEventInfo.interactionType;
-    switch (interaction) {
-      case "typed": {
-        if (searchSource === "urlbar-persisted") {
+    if (
+      (interaction === "returned" || interaction === "restarted") &&
+      this._isRefined(new Set(searchWords), this.#previousSearchWordsSet)
+    ) {
+      interaction = "refined";
+    }
+
+    if (searchSource === "urlbar-persisted") {
+      switch (interaction) {
+        case "returned": {
           interaction = "persisted_search_terms";
+          break;
         }
-        break;
-      }
-      case "restarted":
-      case "returned": {
-        if (
-          this._isRefined(new Set(searchWords), this.#previousSearchWordsSet)
-        ) {
-          interaction = "refined";
+        case "restarted":
+        case "refined": {
+          interaction = `persisted_search_terms_${interaction}`;
+          break;
         }
-        break;
       }
     }
 
-    if (method === "engagement") {
-      this.#previousSearchWordsSet = null;
-    } else if (method === "abandonment") {
+    if (
+      (method === "engagement" &&
+        lazy.UrlbarPrefs.isPersistedSearchTermsEnabled()) ||
+      method === "abandonment"
+    ) {
       this.#previousSearchWordsSet = new Set(searchWords);
+    } else if (method === "engagement") {
+      this.#previousSearchWordsSet = null;
     }
 
     return interaction;
+  }
+
+  #getSearchMode(searchMode) {
+    if (!searchMode) {
+      return "";
+    }
+
+    if (searchMode.engineName) {
+      return "search_engine";
+    }
+
+    const source = lazy.UrlbarUtils.LOCAL_SEARCH_MODES.find(
+      m => m.source == searchMode.source
+    )?.telemetryLabel;
+    return source ?? "unknown";
   }
 
   _parseSearchString(searchString) {

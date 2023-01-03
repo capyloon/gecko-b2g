@@ -1657,6 +1657,8 @@ pref("browser.aboutwelcome.screens", "");
 pref("browser.aboutwelcome.skipFocus", true);
 // Used to enable template for MR 2022 Onboarding
 pref("browser.aboutwelcome.templateMR", true);
+// Used to enable window modal onboarding
+pref("browser.aboutwelcome.showModal", false);
 
 // The pref that controls if the What's New panel is enabled.
 pref("browser.messaging-system.whatsNewPanel.enabled", true);
@@ -2178,8 +2180,17 @@ pref("signon.management.page.fileImport.enabled", false);
 
 #ifdef NIGHTLY_BUILD
 pref("signon.management.page.os-auth.enabled", true);
+
+// "not available"  - feature is not available (will be removed after QA).
+// "available"      - user can see feature offer.
+// "offered"        - we have offered feature to user and they have not yet made a decision.
+// "enabled"        - user opted in to the feature.
+// "disabled"       - user opted out of the feature.
+// will be enabled after QA round
+pref("signon.firefoxRelay.feature", "not available");
 #else
 pref("signon.management.page.os-auth.enabled", false);
+pref("signon.firefoxRelay.feature", "not available");
 #endif
 pref("signon.management.page.breach-alerts.enabled", true);
 pref("signon.management.page.vulnerable-passwords.enabled", true);
@@ -2344,10 +2355,6 @@ pref("devtools.toolbox.tabsOrder", "");
 // so that you can debug the Firefox window, while keeping the devtools
 // always visible
 pref("devtools.toolbox.alwaysOnTop", true);
-
-// The fission pref for enabling the "Multiprocess Browser Toolbox", which will
-// make it possible to debug anything in Firefox (See Bug 1570639 for more information).
-pref("devtools.browsertoolbox.fission", true);
 
 // When the Multiprocess Browser Toolbox is enabled, you can configure the scope of it:
 // - "everything" will enable debugging absolutely everything in the browser
@@ -2616,9 +2623,6 @@ pref("devtools.webconsole.input.editorOnboarding", true);
 // Enable message grouping in the console, true by default
 pref("devtools.webconsole.groupWarningMessages", true);
 
-// Saved state of the Display content messages checkbox in the browser console.
-pref("devtools.browserconsole.contentMessages", false);
-
 // Enable network monitoring the browser toolbox console/browser console.
 pref("devtools.browserconsole.enableNetworkMonitoring", false);
 
@@ -2739,6 +2743,11 @@ pref("svg.context-properties.content.allowed-domains", "profile.accounts.firefox
 // Preference that allows individual users to disable Firefox Translations.
 #ifdef NIGHTLY_BUILD
   pref("extensions.translations.disabled", true);
+#endif
+
+// Turn on interaction measurements in Nightly only
+#ifdef NIGHTLY_BUILD
+  pref("browser.places.interactions.enabled", true);
 #endif
 
 // A set of scores for rating the relevancy of snapshots. The suffixes after the

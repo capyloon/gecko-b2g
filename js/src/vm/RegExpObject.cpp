@@ -207,7 +207,7 @@ RegExpObject* RegExpObject::create(JSContext* cx, Handle<JSAtom*> source,
   {
     AutoReportFrontendContext fc(cx);
     CompileOptions dummyOptions(cx);
-    frontend::DummyTokenStream dummyTokenStream(cx, &fc, dummyOptions);
+    frontend::DummyTokenStream dummyTokenStream(&fc, dummyOptions);
 
     LifoAllocScope allocScope(&cx->tempLifoAlloc());
     if (!irregexp::CheckPatternSyntax(cx, cx->stackLimitForCurrentPrincipal(),
@@ -1213,13 +1213,14 @@ JS_PUBLIC_API bool JS::CheckRegExpSyntax(JSContext* cx, const char16_t* chars,
 
   AutoReportFrontendContext fc(cx);
   CompileOptions dummyOptions(cx);
-  frontend::DummyTokenStream dummyTokenStream(cx, &fc, dummyOptions);
+  frontend::DummyTokenStream dummyTokenStream(&fc, dummyOptions);
 
   LifoAllocScope allocScope(&cx->tempLifoAlloc());
 
   mozilla::Range<const char16_t> source(chars, length);
   bool success = irregexp::CheckPatternSyntax(
-      cx, cx->stackLimitForCurrentPrincipal(), dummyTokenStream, source, flags);
+      cx->tempLifoAlloc(), cx->stackLimitForCurrentPrincipal(),
+      dummyTokenStream, source, flags);
   error.set(UndefinedValue());
   if (!success) {
     // We can fail because of OOM or over-recursion even if the syntax is valid.

@@ -24,9 +24,6 @@ members = [
 # Excluded crates may be built as dependencies, but won't be considered members
 # of the workspace and their dev-dependencies won't be included.
 exclude = [
-  # Excluded because it's for a toolchain task
-  "build/liblowercase",
-
   # Exclude third-party code vendored into mozilla-central.
   "servo",
   "third_party/rust",
@@ -96,6 +93,9 @@ mozbuild = { path = "build/rust/mozbuild" }
 # Patch cfg-if 0.1 to 1.0
 cfg-if = { path = "build/rust/cfg-if" }
 
+# Patch darling 0.13 to 0.14
+darling = { path = "build/rust/darling" }
+
 # Patch redox_users to an empty crate
 redox_users = { path = "build/rust/redox_users" }
 
@@ -130,6 +130,9 @@ bindgen = { path = "build/rust/bindgen" }
 # Patch memoffset 0.6 to 0.7
 memoffset = { path = "build/rust/memoffset" }
 
+# Patch nom 6 to 7
+nom = { path = "build/rust/nom" }
+
 # Patch nix 0.24 to 0.25
 nix = { path = "build/rust/nix" }
 
@@ -139,7 +142,6 @@ autocfg = { path = "third_party/rust/autocfg" }
 # The following overrides point to dummy projects, as a temporary measure until this is resolved:
 # https://github.com/rust-lang/cargo/issues/6179
 js-sys = { path = "build/rust/dummy-web/js-sys" }
-slotmap = { path = "build/rust/dummy-web/slotmap" }
 wasm-bindgen = { path = "build/rust/dummy-web/wasm-bindgen" }
 web-sys = { path = "build/rust/dummy-web/web-sys" }
 
@@ -187,12 +189,23 @@ path = "third_party/rust/mio-0.6.23"
 # also be the git versions.  Patch them to use the published versions to avoid
 # duplicate crates.
 [patch."https://github.com/mozilla/uniffi-rs.git"]
-uniffi = "=0.21.0"
-#uniffi_bindgen = "=0.21.0"
-uniffi_build = "=0.21.0"
-uniffi_macros = "=0.21.0"
+uniffi = "=0.21.1"
+#uniffi_bindgen = "=0.21.1"
+uniffi_build = "=0.21.1"
+uniffi_macros = "=0.21.1"
 weedle2 = "=4.0.0"
 
-# Patched with https://github.com/mozilla/uniffi-rs/pull/1405
+# Patched to use uniffi_version = 0.21.0 for checksums and with
+# https://github.com/mozilla/uniffi-rs/pull/1405
 [patch.crates-io.uniffi_bindgen]
 path = "third_party/rust/uniffi_bindgen"
+
+# Patched to use uuid 1.0 until the upgrade to glean 52 (bug 1805427)
+# (patch from https://github.com/mozilla/glean/pull/2296)
+[patch.crates-io.glean]
+path = "third_party/rust/glean"
+# [patch.crates-io.glean-core]
+# path = "third_party/rust/glean-core"
+# Likewise, with patch from https://github.com/mozilla/rkv/pull/232
+[patch.crates-io.rkv]
+path = "third_party/rust/rkv"

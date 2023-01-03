@@ -9,8 +9,6 @@ with the necessary tool and target support for the Firefox
 build environment.
 """
 
-from __future__ import absolute_import, print_function
-
 import argparse
 import errno
 import glob
@@ -18,13 +16,12 @@ import hashlib
 import os
 import shutil
 import subprocess
-from contextlib import contextmanager
 import tarfile
 import textwrap
+from contextlib import contextmanager
 
 import requests
-import pytoml as toml
-
+import toml
 import zstandard
 
 
@@ -346,7 +343,7 @@ def fetch_manifest(channel="stable", host=None, targets=()):
     url = "https://static.rust-lang.org/dist%s/channel-rust-%s.toml" % (prefix, channel)
     req = requests.get(url)
     req.raise_for_status()
-    manifest = toml.loads(req.content)
+    manifest = toml.loads(req.text)
     if manifest["manifest-version"] != "2":
         raise NotImplementedError(
             "Unrecognized manifest version %s." % manifest["manifest-version"]

@@ -71,8 +71,13 @@ nsDeviceContextSpecGonk::BeginDocument(const nsAString& aTitle,
   return NS_OK;
 }
 
+RefPtr<PrintEndDocumentPromise> nsDeviceContextSpecGonk::EndDocument() {
+  return nsIDeviceContextSpec::EndDocumentPromiseFromResult(DoEndDocument(),
+                                                            __func__);
+}
+
 NS_IMETHODIMP
-nsDeviceContextSpecGonk::EndDocument() {
+nsDeviceContextSpecGonk::DoEndDocument() {
   if (mPrintSettings->GetOutputDestination() ==
           nsIPrintSettings::kOutputDestinationFile &&
       mTempFile) {

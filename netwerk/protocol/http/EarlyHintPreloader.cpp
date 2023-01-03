@@ -27,7 +27,6 @@
 #include "nsDebug.h"
 #include "nsHttpChannel.h"
 #include "nsIAsyncVerifyRedirectCallback.h"
-#include "nsICacheInfoChannel.h"
 #include "nsIChannel.h"
 #include "nsIHttpChannel.h"
 #include "nsIInputStream.h"
@@ -190,10 +189,6 @@ void EarlyHintPreloader::MaybeCreateAndInsertPreload(
     nsIURI* aBaseURI, nsIPrincipal* aPrincipal,
     nsICookieJarSettings* aCookieJarSettings,
     const nsACString& aResponseReferrerPolicy) {
-  if (!aLinkHeader.mRel.LowerCaseEqualsASCII("preload")) {
-    return;
-  }
-
   nsAttrValue as;
   ParseAsValue(aLinkHeader.mAs, as);
 
@@ -468,11 +463,6 @@ EarlyHintPreloader::OnStartRequest(nsIRequest* aRequest) {
     mChannel = do_QueryInterface(aRequest);
   }
   MOZ_DIAGNOSTIC_ASSERT(mChannel);
-
-  nsCOMPtr<nsICacheInfoChannel> cacheInfoChannel = do_QueryInterface(aRequest);
-  if (!cacheInfoChannel) {
-    return NS_ERROR_ABORT;
-  }
 
   if (mParent) {
     SetParentChannel();

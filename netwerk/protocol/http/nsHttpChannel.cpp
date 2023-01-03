@@ -5653,6 +5653,10 @@ nsresult nsHttpChannel::CancelInternal(nsresult status) {
         &mTransactionTimings, std::move(mSource));
   }
 
+  // If we don't have mTransactionPump and mCachePump, we need to call
+  // AsyncAbort to make sure this channel's listener got notified.
+  bool needAsyncAbort = !mTransactionPump && !mCachePump;
+
   if (mProxyRequest) mProxyRequest->Cancel(status);
   CancelNetworkRequest(status);
   mCacheInputStream.CloseAndRelease();
@@ -5663,10 +5667,20 @@ nsresult nsHttpChannel::CancelInternal(nsresult status) {
     mOnTailUnblock = nullptr;
     mRequestContext->CancelTailedRequest(this);
     CloseCacheEntry(false);
+    needAsyncAbort = false;
     Unused << AsyncAbort(status);
   } else if (channelClassifierCancellationPending) {
     // If we're coming from an asynchronous path when canceling a channel due
     // to safe-browsing protection, we need to AsyncAbort the channel now.
+    needAsyncAbort = false;
+    Unused << AsyncAbort(status);
+  }
+
+  // If we already have mCallOnResume, AsyncAbort will be called in
+  // ResumeInternal.
+  if (needAsyncAbort && !mCallOnResume && !mSuspendCount) {
+    LOG(("nsHttpChannel::CancelInternal do AsyncAbort [this=%p]\n", this));
+    CloseCacheEntry(false);
     Unused << AsyncAbort(status);
   }
   return NS_OK;
@@ -6431,7 +6445,12 @@ nsresult nsHttpChannel::MaybeStartDNSPrefetch() {
     mDNSPrefetch =
         new nsDNSPrefetch(mURI, originAttributes, nsIRequest::GetTRRMode(),
                           this, LoadTimingEnabled());
-    nsresult rv = mDNSPrefetch->PrefetchHigh(mCaps & NS_HTTP_REFRESH_DNS);
+    nsIDNSService::DNSFlags dnsFlags =
+        nsIDNSService::RESOLVE_WANT_RECORD_ON_ERROR;
+    if (mCaps & NS_HTTP_REFRESH_DNS) {
+      dnsFlags |= nsIDNSService::RESOLVE_BYPASS_CACHE;
+    }
+    nsresult rv = mDNSPrefetch->PrefetchHigh(dnsFlags);
 
     if (dnsStrategy & DNS_BLOCK_ON_ORIGIN_RESOLVE) {
       LOG(("  blocking on prefetching origin"));
@@ -8546,6 +8565,11 @@ NS_IMETHODIMP
 nsHttpChannel::OnLookupComplete(nsICancelable* request, nsIDNSRecord* rec,
                                 nsresult status) {
   MOZ_ASSERT(NS_IsMainThread(), "Expecting DNS callback on main thread.");
+
+  if (nsCOMPtr<nsIDNSAddrRecord> r = do_QueryInterface(rec)) {
+    r->GetEffectiveTRRMode(&mEffectiveTRRMode);
+    r->GetTrrSkipReason(&mTRRSkipReason);
+  }
 
   LOG(
       ("nsHttpChannel::OnLookupComplete [this=%p] prefetch complete%s: "

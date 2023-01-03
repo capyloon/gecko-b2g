@@ -100,14 +100,14 @@ var StarUI = {
 
           if (removeBookmarksOnPopupHidden && guidsForRemoval) {
             if (this._isNewBookmark) {
-              PlacesTransactions.undo().catch(Cu.reportError);
+              PlacesTransactions.undo().catch(console.error);
               break;
             }
             // Remove all bookmarks for the bookmark's url, this also removes
             // the tags for the url.
             PlacesTransactions.Remove(guidsForRemoval)
               .transact()
-              .catch(Cu.reportError);
+              .catch(console.error);
           } else if (this._isNewBookmark) {
             this.showConfirmation();
           }
@@ -303,7 +303,7 @@ var StarUI = {
 
     let canvas = PageThumbs.createCanvas(window);
     PageThumbs.captureToCanvas(gBrowser.selectedBrowser, canvas).catch(e =>
-      Cu.reportError(e)
+      console.error(e)
     );
     document.mozSetImageElement("editBookmarkPanelImageCanvas", canvas);
   },
@@ -465,7 +465,7 @@ var PlacesCommandHook = {
         info.title = info.title || url.href;
         charset = browser.characterSet;
       } catch (e) {
-        Cu.reportError(e);
+        console.error(e);
       }
 
       if (showEditUI) {
@@ -479,7 +479,7 @@ var PlacesCommandHook = {
 
       if (charset) {
         PlacesUIUtils.setCharsetForPage(url, charset, window).catch(
-          Cu.reportError
+          console.error
         );
       }
     }
@@ -620,6 +620,7 @@ class HistoryMenu extends PlacesMenu {
   // element references before the several superclass constructors call our
   // methods which depend on these.
   _init() {
+    super._init();
     let elements = {
       undoTabMenu: "historyUndoMenu",
       hiddenTabsMenu: "hiddenTabsMenu",
@@ -742,7 +743,7 @@ class HistoryMenu extends PlacesMenu {
   }
 
   _onPopupShowing(aEvent) {
-    PlacesMenu.prototype._onPopupShowing.apply(this, arguments);
+    super._onPopupShowing(aEvent);
 
     // Don't handle events for submenus.
     if (aEvent.target != aEvent.currentTarget) {
@@ -1150,7 +1151,11 @@ var PlacesToolbarHelper = {
       BookmarkingUI.updateEmptyToolbarMessage();
     }
 
-    new PlacesToolbar(`place:parent=${PlacesUtils.bookmarks.toolbarGuid}`);
+    new PlacesToolbar(
+      `place:parent=${PlacesUtils.bookmarks.toolbarGuid}`,
+      document.getElementById("PlacesToolbarItems"),
+      viewElt
+    );
   },
 
   handleEvent(event) {
@@ -1587,22 +1592,6 @@ var BookmarkingUI = {
     }
   },
 
-  attachPlacesView(event, node) {
-    // If the view is already there, bail out early.
-    if (node.parentNode._placesView) {
-      return;
-    }
-
-    let extraClasses = {
-      entry: "subviewbutton",
-    };
-
-    new PlacesMenu(event, `place:parent=${PlacesUtils.bookmarks.menuGuid}`, {
-      extraClasses,
-      insertionPoint: "#BMB_bookmarksShowAll",
-    });
-  },
-
   // Set by sync after syncing bookmarks successfully once.
   MOBILE_BOOKMARKS_PREF: "browser.bookmarks.showMobileBookmarks",
 
@@ -1778,7 +1767,7 @@ var BookmarkingUI = {
 
     PlacesUtils.bookmarks
       .fetch({ url: this._uri }, b => guids.add(b.guid), { concurrent: true })
-      .catch(Cu.reportError)
+      .catch(console.error)
       .then(() => {
         if (pendingUpdate != this._pendingUpdate) {
           return;
@@ -1810,8 +1799,9 @@ var BookmarkingUI = {
             );
             this._hasBookmarksObserver = true;
           } catch (ex) {
-            Cu.reportError(
-              "BookmarkingUI failed adding a bookmarks observer: " + ex
+            console.error(
+              "BookmarkingUI failed adding a bookmarks observer: ",
+              ex
             );
           }
         }
@@ -2041,9 +2031,9 @@ var BookmarkingUI = {
       "&maxResults=42&excludeQueries=1";
 
     this._panelMenuView = new PlacesPanelview(
+      query,
       document.getElementById("panelMenu_bookmarksMenu"),
-      panelview,
-      query
+      panelview
     );
     panelview.removeEventListener("ViewShowing", this);
   },

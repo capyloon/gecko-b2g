@@ -868,12 +868,12 @@ AsyncPanZoomController::GetPinchLockMode() {
   return static_cast<PinchLockMode>(StaticPrefs::apz_pinch_lock_mode());
 }
 
-bool AsyncPanZoomController::ArePointerEventsConsumable(
+PointerEventsConsumableFlags AsyncPanZoomController::ArePointerEventsConsumable(
     TouchBlockState* aBlock, const MultiTouchInput& aInput) {
   uint32_t touchPoints = aInput.mTouches.Length();
   if (touchPoints == 0) {
     // Cant' do anything with zero touch points
-    return false;
+    return {false, false};
   }
 
   // This logic is simplified, erring on the side of returning true if we're
@@ -893,40 +893,46 @@ bool AsyncPanZoomController::ArePointerEventsConsumable(
   // not pannable, so we can only zoom in, and the zoom is already maxed
   // out, so we're not zoomable either" but no need for that at this point.
 
-  bool pannableX = aBlock->TouchActionAllowsPanningX() &&
-                   aBlock->GetOverscrollHandoffChain()->CanScrollInDirection(
-                       this, ScrollDirection::eHorizontal);
+  bool pannableX = aBlock->GetOverscrollHandoffChain()->CanScrollInDirection(
+      this, ScrollDirection::eHorizontal);
+  bool touchActionAllowsX = aBlock->TouchActionAllowsPanningX();
   bool pannableY =
-      (aBlock->TouchActionAllowsPanningY() &&
-       (aBlock->GetOverscrollHandoffChain()->CanScrollInDirection(
-            this, ScrollDirection::eVertical) ||
-        // In the case of the root APZC with any dynamic toolbar, it
-        // shoule be pannable if there is room moving the dynamic
-        // toolbar.
-        (IsRootContent() && CanVerticalScrollWithDynamicToolbar())));
+
+      (aBlock->GetOverscrollHandoffChain()->CanScrollInDirection(
+           this, ScrollDirection::eVertical) ||
+       // In the case of the root APZC with any dynamic toolbar, it
+       // shoule be pannable if there is room moving the dynamic
+       // toolbar.
+       (IsRootContent() && CanVerticalScrollWithDynamicToolbar()));
+  bool touchActionAllowsY = aBlock->TouchActionAllowsPanningY();
 
   bool pannable;
+  bool touchActionAllowsPanning;
 
   Maybe<ScrollDirection> panDirection =
       aBlock->GetBestGuessPanDirection(aInput);
   if (panDirection == Some(ScrollDirection::eVertical)) {
     pannable = pannableY;
+    touchActionAllowsPanning = touchActionAllowsY;
   } else if (panDirection == Some(ScrollDirection::eHorizontal)) {
     pannable = pannableX;
+    touchActionAllowsPanning = touchActionAllowsX;
   } else {
     // If we don't have a guessed pan direction, err on the side of returning
     // true.
     pannable = pannableX || pannableY;
+    touchActionAllowsPanning = touchActionAllowsX || touchActionAllowsY;
   }
 
   if (touchPoints == 1) {
-    return pannable;
+    return {pannable, touchActionAllowsPanning};
   }
 
   bool zoomable = ZoomConstraintsAllowZoom();
-  zoomable &= (aBlock->TouchActionAllowsPinchZoom());
+  bool touchActionAllowsZoom = aBlock->TouchActionAllowsPinchZoom();
 
-  return pannable || zoomable;
+  return {pannable || zoomable,
+          touchActionAllowsPanning || touchActionAllowsZoom};
 }
 
 nsEventStatus AsyncPanZoomController::HandleDragEvent(
@@ -5362,6 +5368,7 @@ void AsyncPanZoomController::NotifyLayersUpdated(
 
     // TODO: Rely entirely on |aScrollMetadata.IsResolutionUpdated()| to
     //       determine which branch to take, and drop the other conditions.
+    CSSToParentLayerScale oldZoom = Metrics().GetZoom();
     if (FuzzyEqualsAdditive(
             Metrics().GetCompositionBoundsWidthIgnoringScrollbars(),
             aLayerMetrics.GetCompositionBoundsWidthIgnoringScrollbars()) &&
@@ -5394,13 +5401,21 @@ void AsyncPanZoomController::NotifyLayersUpdated(
     } else {
       // Take the new zoom as either device scale or composition width or
       // viewport size got changed (e.g. due to orientation change, or content
-      // changing the meta-viewport tag).
+      // changing the meta-viewport tag), or the main thread originated a
+      // resolution change for another reason (e.g. Ctrl+0 was pressed to
+      // reset the zoom).
       Metrics().SetZoom(aLayerMetrics.GetZoom());
       for (auto& sampledState : mSampledState) {
         sampledState.UpdateZoomProperties(aLayerMetrics);
       }
       Metrics().SetDevPixelsPerCSSPixel(
           aLayerMetrics.GetDevPixelsPerCSSPixel());
+    }
+
+    if (Metrics().GetZoom() != oldZoom) {
+      // If the zoom changed, the scroll range in CSS pixels may have changed
+      // even if the composition bounds didn't.
+      needToReclampScroll = true;
     }
 
     mExpectedGeckoMetrics.UpdateZoomFrom(aLayerMetrics);

@@ -2805,7 +2805,6 @@ nsresult EnsureMIMEOfScript(HttpBaseChannel* aChannel, nsIURI* aURI,
           Telemetry::LABELS_SCRIPT_BLOCK_INCORRECT_MIME_3::script_load);
       break;
     case nsIContentPolicy::TYPE_INTERNAL_WORKER:
-    case nsIContentPolicy::TYPE_INTERNAL_WORKER_STATIC_MODULE:
     case nsIContentPolicy::TYPE_INTERNAL_SHARED_WORKER:
       AccumulateCategorical(
           Telemetry::LABELS_SCRIPT_BLOCK_INCORRECT_MIME_3::worker_load);
@@ -2930,8 +2929,7 @@ nsresult EnsureMIMEOfScript(HttpBaseChannel* aChannel, nsIURI* aURI,
 
   // We restrict importScripts() in worker code to JavaScript MIME types.
   nsContentPolicyType internalType = aLoadInfo->InternalContentPolicyType();
-  if (internalType == nsIContentPolicy::TYPE_INTERNAL_WORKER_IMPORT_SCRIPTS ||
-      internalType == nsIContentPolicy::TYPE_INTERNAL_WORKER_STATIC_MODULE) {
+  if (internalType == nsIContentPolicy::TYPE_INTERNAL_WORKER_IMPORT_SCRIPTS) {
     ReportMimeTypeMismatch(aChannel, "BlockImportScriptsWithWrongMimeType",
                            aURI, contentType, Report::Error);
     return NS_ERROR_CORRUPTED_CONTENT;
@@ -3599,6 +3597,18 @@ NS_IMETHODIMP
 HttpBaseChannel::GetIsResolvedByTRR(bool* aResolvedByTRR) {
   NS_ENSURE_ARG_POINTER(aResolvedByTRR);
   *aResolvedByTRR = LoadResolvedByTRR();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+HttpBaseChannel::GetEffectiveTRRMode(nsIRequest::TRRMode* aEffectiveTRRMode) {
+  *aEffectiveTRRMode = mEffectiveTRRMode;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+HttpBaseChannel::GetTrrSkipReason(nsITRRSkipReason::value* aTrrSkipReason) {
+  *aTrrSkipReason = mTRRSkipReason;
   return NS_OK;
 }
 

@@ -14,6 +14,7 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/gfx/Types.h"
 #include "mozilla/StaticPrefs_ui.h"
+#include "mozilla/TimeStamp.h"
 #include "nsAtom.h"
 #include "nsGkAtoms.h"
 #include "nsCOMPtr.h"
@@ -200,6 +201,9 @@ class nsMenuPopupFrame final : public nsBoxFrame,
   // Whether we should create a widget on Init().
   bool ShouldCreateWidgetUpfront() const;
 
+  // Whether we should expand the menu to take the size of the parent menulist.
+  bool ShouldExpandToInflowParentOrAnchor() const;
+
   // Returns true if the popup is a panel with the noautohide attribute set to
   // true. These panels do not roll up automatically.
   bool IsNoAutoHide() const;
@@ -218,16 +222,13 @@ class nsMenuPopupFrame final : public nsBoxFrame,
 
   // layout, position and display the popup as needed
   MOZ_CAN_RUN_SCRIPT_BOUNDARY
-  void LayoutPopup(nsBoxLayoutState& aState, nsIFrame* aParentMenu,
-                   bool aSizedToPopup);
+  void LayoutPopup(nsBoxLayoutState& aState);
 
-  // Set the position of the popup either relative to the anchor aAnchorFrame
-  // (or the frame for mAnchorContent if aAnchorFrame is null), anchored at a
+  // Set the position of the popup relative to the anchor content, anchored at a
   // rectangle, or at a specific point if a screen position is set. The popup
   // will be adjusted so that it is on screen. If aIsMove is true, then the
   // popup is being moved, and should not be flipped.
-  nsresult SetPopupPosition(nsIFrame* aAnchorFrame, bool aIsMove,
-                            bool aSizedToPopup);
+  nsresult SetPopupPosition(bool aIsMove);
 
   // called when the Enter key is pressed while the popup is open. This will
   // just pass the call down to the current menu, if any. If a current menu
@@ -254,7 +255,7 @@ class nsMenuPopupFrame final : public nsBoxFrame,
   bool IsMouseTransparent() const;
 
   // Return true if the popup is for a menulist.
-  bool IsMenuList();
+  bool IsMenuList() const;
 
   bool IsDragSource() const { return mIsDragSource; }
   void SetIsDragSource(bool aIsDragSource) { mIsDragSource = aIsDragSource; }
@@ -306,9 +307,10 @@ class nsMenuPopupFrame final : public nsBoxFrame,
                                     bool& doAction);
 
   void ClearIncrementalString() { mIncrementalString.Truncate(); }
-  static bool IsWithinIncrementalTime(DOMTimeStamp time) {
-    return time - sLastKeyTime <=
-           mozilla::StaticPrefs::ui_menu_incremental_search_timeout();
+  static bool IsWithinIncrementalTime(mozilla::TimeStamp time) {
+    return !sLastKeyTime.IsNull() &&
+           ((time - sLastKeyTime).ToMilliseconds() <=
+            mozilla::StaticPrefs::ui_menu_incremental_search_timeout());
   }
 
 #ifdef DEBUG_FRAME_DUMP
@@ -571,10 +573,6 @@ class nsMenuPopupFrame final : public nsBoxFrame,
   // we stop updating the anchor so that we can end up with a stable position.
   bool mPositionedByMoveToRect = false;
 
-  // Store SizedToPopup attribute for MoveTo call to avoid
-  // unwanted popup resize there.
-  bool mSizedToPopup = false;
-
   // If the panel prefers to "slide" rather than resize, then the arrow gets
   // positioned at this offset (along either the x or y axis, depending on
   // mPosition)
@@ -596,21 +594,17 @@ class nsMenuPopupFrame final : public nsBoxFrame,
   FlipType mFlip;  // Whether to flip
 
   struct ReflowCallbackData {
-    ReflowCallbackData()
-        : mPosted(false), mAnchor(nullptr), mIsOpenChanged(false) {}
-    void MarkPosted(nsIFrame* aAnchor, bool aIsOpenChanged) {
+    ReflowCallbackData() = default;
+    void MarkPosted(bool aIsOpenChanged) {
       mPosted = true;
-      mAnchor = aAnchor;
       mIsOpenChanged = aIsOpenChanged;
     }
     void Clear() {
       mPosted = false;
-      mAnchor = nullptr;
       mIsOpenChanged = false;
     }
-    bool mPosted;
-    nsIFrame* mAnchor;
-    bool mIsOpenChanged;
+    bool mPosted = false;
+    bool mIsOpenChanged = false;
   };
   ReflowCallbackData mReflowCallbackData;
 
@@ -655,7 +649,7 @@ class nsMenuPopupFrame final : public nsBoxFrame,
 
   static int8_t sDefaultLevelIsTop;
 
-  static DOMTimeStamp sLastKeyTime;
+  static mozilla::TimeStamp sLastKeyTime;
 
 };  // class nsMenuPopupFrame
 

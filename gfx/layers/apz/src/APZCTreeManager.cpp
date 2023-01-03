@@ -1612,9 +1612,9 @@ APZEventResult APZCTreeManager::ReceiveInputEvent(
             // becasue we might no longer receive any events which will be
             // handled by the APZC.
             PanGestureInput panInterrupted(
-                PanGestureInput::PANGESTURE_INTERRUPTED, panInput.mTime,
-                panInput.mTimeStamp, panInput.mPanStartPoint,
-                panInput.mPanDisplacement, panInput.modifiers);
+                PanGestureInput::PANGESTURE_INTERRUPTED, panInput.mTimeStamp,
+                panInput.mPanStartPoint, panInput.mPanDisplacement,
+                panInput.modifiers);
             Unused << mInputQueue->ReceiveInputEvent(
                 state.mHit.mTargetApzc,
                 TargetConfirmationFlags{state.mHit.mHitResult}, panInterrupted);
@@ -1934,8 +1934,8 @@ APZEventResult APZCTreeManager::InputHandlingState::Finish(
   // If the event will have a delayed result then add the callback to the
   // APZCTreeManager.
   if (aCallback && mResult.WillHaveDelayedResult()) {
-    aTreeManager.AddInputBlockCallback(mResult.mInputBlockId,
-                                       std::move(aCallback));
+    aTreeManager.AddInputBlockCallback(
+        mResult.mInputBlockId, {mResult.GetStatus(), std::move(aCallback)});
   }
 
   return mResult;
@@ -2128,7 +2128,6 @@ APZEventResult APZCTreeManager::ProcessTouchInputForScrollbarDrag(
                         dom::MouseEvent_Binding::MOZ_SOURCE_TOUCH,
                         MouseButtonsFlag::ePrimaryFlag,
                         aTouchInput.mTouches[0].mScreenPoint,
-                        aTouchInput.mTime,
                         aTouchInput.mTimeStamp,
                         aTouchInput.modifiers};
   mouseInput.mHandledByAPZ = true;
@@ -2240,7 +2239,6 @@ void APZCTreeManager::SynthesizePinchGestureFromMouseWheel(
 
   PinchGestureInput pinchStart{PinchGestureInput::PINCHGESTURE_START,
                                PinchGestureInput::MOUSEWHEEL,
-                               aWheelInput.mTime,
                                aWheelInput.mTimeStamp,
                                ExternalPoint(0, 0),
                                focusPoint,
@@ -2249,7 +2247,6 @@ void APZCTreeManager::SynthesizePinchGestureFromMouseWheel(
                                aWheelInput.modifiers};
   PinchGestureInput pinchScale1{PinchGestureInput::PINCHGESTURE_SCALE,
                                 PinchGestureInput::MOUSEWHEEL,
-                                aWheelInput.mTime,
                                 aWheelInput.mTimeStamp,
                                 ExternalPoint(0, 0),
                                 focusPoint,
@@ -2258,7 +2255,6 @@ void APZCTreeManager::SynthesizePinchGestureFromMouseWheel(
                                 aWheelInput.modifiers};
   PinchGestureInput pinchScale2{PinchGestureInput::PINCHGESTURE_SCALE,
                                 PinchGestureInput::MOUSEWHEEL,
-                                aWheelInput.mTime,
                                 aWheelInput.mTimeStamp,
                                 ExternalPoint(0, 0),
                                 focusPoint,
@@ -2267,7 +2263,6 @@ void APZCTreeManager::SynthesizePinchGestureFromMouseWheel(
                                 aWheelInput.modifiers};
   PinchGestureInput pinchEnd{PinchGestureInput::PINCHGESTURE_END,
                              PinchGestureInput::MOUSEWHEEL,
-                             aWheelInput.mTime,
                              aWheelInput.mTimeStamp,
                              ExternalPoint(0, 0),
                              focusPoint,
@@ -2929,10 +2924,10 @@ void APZCTreeManager::SetLongTapEnabled(bool aLongTapEnabled) {
   GestureEventListener::SetLongTapEnabled(aLongTapEnabled);
 }
 
-void APZCTreeManager::AddInputBlockCallback(uint64_t aInputBlockId,
-                                            InputBlockCallback&& aCallback) {
+void APZCTreeManager::AddInputBlockCallback(
+    uint64_t aInputBlockId, InputBlockCallbackInfo&& aCallbackInfo) {
   APZThreadUtils::AssertOnControllerThread();
-  mInputQueue->AddInputBlockCallback(aInputBlockId, std::move(aCallback));
+  mInputQueue->AddInputBlockCallback(aInputBlockId, std::move(aCallbackInfo));
 }
 
 void APZCTreeManager::FindScrollThumbNode(

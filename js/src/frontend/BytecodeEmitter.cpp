@@ -138,12 +138,11 @@ BytecodeEmitter::BytecodeEmitter(BytecodeEmitter* parent, FrontendContext* fc,
                                  CompilationState& compilationState,
                                  EmitterMode emitterMode)
     : sc(sc),
-      cx(sc->cx_),
       fc(fc),
       stackLimit(stackLimit),
       parent(parent),
       bytecodeSection_(fc, sc->extent().lineno, sc->extent().column),
-      perScriptData_(fc, cx->frontendCollectionPool(), compilationState),
+      perScriptData_(fc, compilationState),
       errorReporter_(errorReporter),
       compilationState(compilationState),
       suppressBreakpointsAndSourceNotes(
@@ -2441,7 +2440,7 @@ bool BytecodeEmitter::emitScript(ParseNode* body) {
     return false;
   }
 
-  if (!NameFunctions(cx, fc, stackLimit, parserAtoms(), body)) {
+  if (!NameFunctions(fc, stackLimit, parserAtoms(), body)) {
     return false;
   }
 
@@ -2516,7 +2515,7 @@ bool BytecodeEmitter::emitFunctionScript(FunctionNode* funNode) {
   }
 
   if (funbox->index() == CompilationStencil::TopLevelIndex) {
-    if (!NameFunctions(cx, fc, stackLimit, parserAtoms(), funNode)) {
+    if (!NameFunctions(fc, stackLimit, parserAtoms(), funNode)) {
       return false;
     }
   }
@@ -9611,7 +9610,7 @@ bool BytecodeEmitter::emitPrivateMethodInitializers(ClassEmitter& ce,
     // private method body.
     TaggedParserAtomIndex name = classMethod->name().as<NameNode>().atom();
     AccessorType accessorType = classMethod->accessorType();
-    StringBuffer storedMethodName(cx, fc);
+    StringBuffer storedMethodName(fc);
     if (!storedMethodName.append(parserAtoms(), name)) {
       return false;
     }
@@ -11746,9 +11745,7 @@ bool BytecodeEmitter::intoScriptStencil(ScriptIndex scriptIndex) {
     return false;
   }
 
-  // De-duplicate the bytecode within the runtime.
-  if (!compilationState.sharedData.addAndShare(cx, fc, scriptIndex,
-                                               sharedData)) {
+  if (!compilationState.sharedData.add(scriptIndex, sharedData)) {
     return false;
   }
 

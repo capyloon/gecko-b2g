@@ -10936,16 +10936,16 @@ static bool SetContextOptions(JSContext* cx, const OptionParser& op) {
   }
 
   if (op.getBoolOption("trace-regexp-parser")) {
-    jit::JitOptions.traceRegExpParser = true;
+    jit::JitOptions.trace_regexp_parser = true;
   }
   if (op.getBoolOption("trace-regexp-assembler")) {
-    jit::JitOptions.traceRegExpAssembler = true;
+    jit::JitOptions.trace_regexp_assembler = true;
   }
   if (op.getBoolOption("trace-regexp-interpreter")) {
-    jit::JitOptions.traceRegExpInterpreter = true;
+    jit::JitOptions.trace_regexp_bytecodes = true;
   }
   if (op.getBoolOption("trace-regexp-peephole")) {
-    jit::JitOptions.traceRegExpPeephole = true;
+    jit::JitOptions.trace_regexp_peephole_optimization = true;
   }
 
   if (op.getBoolOption("less-debug-code")) {
@@ -10998,10 +10998,6 @@ static bool SetContextOptions(JSContext* cx, const OptionParser& op) {
     } else {
       return OptionFailure("shared-memory", str);
     }
-  }
-
-  if (op.getBoolOption("no-large-arraybuffers")) {
-    JS::SetLargeArrayBuffersEnabled(false);
   }
 
   if (op.getBoolOption("disable-bailout-loop-check")) {
@@ -11691,9 +11687,6 @@ int main(int argc, char** argv) {
                         "(no-op) Enable class static blocks") ||
       !op.addBoolOption('\0', "enable-import-assertions",
                         "Enable import assertions") ||
-      !op.addBoolOption('\0', "no-large-arraybuffers",
-                        "Disallow creating ArrayBuffers larger than 2 GB on "
-                        "64-bit platforms") ||
       !op.addStringOption('\0', "shared-memory", "on/off",
                           "SharedArrayBuffer and Atomics "
 #if SHARED_MEMORY_DEFAULT

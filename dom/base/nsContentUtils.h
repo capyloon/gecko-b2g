@@ -3376,6 +3376,12 @@ class nsContentUtils {
    */
   static nsresult EnsureAndLoadStringBundle(PropertiesFile aFile);
 
+  /**
+   * The method asks nsIAppShell to prioritize Gecko's internal tasks over
+   * the OS level tasks for a short period of time.
+   */
+  static void RequestGeckoTaskBurst();
+
  private:
   static bool InitializeEventTable();
 
@@ -3444,7 +3450,6 @@ class nsContentUtils {
   static nsTArray<RefPtr<nsAtom>>* sUserDefinedEvents;
 
   static nsIStringBundleService* sStringBundleService;
-  static nsIStringBundle* sStringBundles[PropertiesFile_COUNT];
   class nsContentUtilsReporter;
 
   static nsIContentPolicy* sContentPolicyService;
@@ -3510,7 +3515,6 @@ nsContentUtils::InternalContentPolicyTypeToExternal(nsContentPolicyType aType) {
     case nsIContentPolicy::TYPE_INTERNAL_SHARED_WORKER:
     case nsIContentPolicy::TYPE_INTERNAL_SERVICE_WORKER:
     case nsIContentPolicy::TYPE_INTERNAL_WORKER_IMPORT_SCRIPTS:
-    case nsIContentPolicy::TYPE_INTERNAL_WORKER_STATIC_MODULE:
     case nsIContentPolicy::TYPE_INTERNAL_AUDIOWORKLET:
     case nsIContentPolicy::TYPE_INTERNAL_PAINTWORKLET:
     case nsIContentPolicy::TYPE_INTERNAL_CHROMEUTILS_COMPILED_SCRIPT:

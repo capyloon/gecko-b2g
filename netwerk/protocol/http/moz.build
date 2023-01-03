@@ -9,6 +9,7 @@ with Files("**"):
 
 XPIDL_SOURCES += [
     "nsIBackgroundChannelRegistrar.idl",
+    "nsIBinaryHttp.idl",
     "nsIEarlyHintObserver.idl",
     "nsIHttpActivityObserver.idl",
     "nsIHttpAuthenticableChannel.idl",
@@ -98,6 +99,7 @@ UNIFIED_SOURCES += [
     "ConnectionEntry.cpp",
     "ConnectionHandle.cpp",
     "DnsAndConnectSocket.cpp",
+    "EarlyHintPreconnect.cpp",
     "EarlyHintPreloader.cpp",
     "EarlyHintRegistrar.cpp",
     "EarlyHintsService.cpp",

@@ -50,9 +50,10 @@ const { AppConstants } = ChromeUtils.importESModule(
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  AsyncShutdown: "resource://gre/modules/AsyncShutdown.sys.mjs",
+  E10SUtils: "resource://gre/modules/E10SUtils.sys.mjs",
   ExtensionDNR: "resource://gre/modules/ExtensionDNR.sys.mjs",
   ExtensionDNRStore: "resource://gre/modules/ExtensionDNRStore.sys.mjs",
-  E10SUtils: "resource://gre/modules/E10SUtils.sys.mjs",
   Log: "resource://gre/modules/Log.sys.mjs",
   SITEPERMS_ADDON_TYPE:
     "resource://gre/modules/addons/siteperms-addon-utils.sys.mjs",
@@ -62,7 +63,6 @@ XPCOMUtils.defineLazyModuleGetters(lazy, {
   AddonManager: "resource://gre/modules/AddonManager.jsm",
   AddonManagerPrivate: "resource://gre/modules/AddonManager.jsm",
   AddonSettings: "resource://gre/modules/addons/AddonSettings.jsm",
-  AsyncShutdown: "resource://gre/modules/AsyncShutdown.jsm",
   ExtensionPermissions: "resource://gre/modules/ExtensionPermissions.jsm",
   ExtensionPreferencesManager:
     "resource://gre/modules/ExtensionPreferencesManager.jsm",
@@ -179,7 +179,7 @@ const SVG_CONTEXT_PROPERTIES_PERMISSION =
 
 // The userContextID reserved for the extension storage (its purpose is ensuring that the IndexedDB
 // storage used by the browser.storage.local API is not directly accessible from the extension code,
-// it is defined and reserved as "userContextIdInternal.webextStorageLocal" in ContextualIdentityService.jsm).
+// it is defined and reserved as "userContextIdInternal.webextStorageLocal" in ContextualIdentityService.sys.mjs).
 const WEBEXT_STORAGE_USER_CONTEXT_ID = -1 >>> 0;
 
 // The maximum time to wait for extension child shutdown blockers to complete.

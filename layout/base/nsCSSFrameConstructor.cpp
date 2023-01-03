@@ -1623,6 +1623,8 @@ void nsCSSFrameConstructor::CreateGeneratedContent(
       aOriginatingElement.GetAttr(nsGkAtoms::value, value);
 
       auto AppendAccessKeyLabel = [&] {
+        // Always append accesskey text in uppercase, see bug 1806167.
+        ToUpperCase(accesskey);
         nsAutoString accessKeyLabel = u"("_ns + accesskey + u")"_ns;
         if (!StringEndsWith(value, accessKeyLabel)) {
           if (nsTextBoxFrame::InsertSeparatorBeforeAccessKey() &&
@@ -4518,11 +4520,8 @@ nsCSSFrameConstructor::FindDisplayData(const nsStyleDisplay& aDisplay,
       }
 
       // If we're emulating -moz-box with flexbox, then treat it as non-XUL and
-      // fall through (except for scrollcorners which have to be XUL becuase
-      // their parent reflows them with BoxReflow() which means they have to get
-      // actual-XUL frames).
-      if (aMozBoxLayout == StyleMozBoxLayout::Legacy ||
-          aElement.IsXULElement(nsGkAtoms::scrollcorner)) {
+      // fall through.
+      if (aMozBoxLayout == StyleMozBoxLayout::Legacy) {
         static constexpr FrameConstructionData data =
             SCROLLABLE_ABSPOS_CONTAINER_XUL_FCDATA(
                 ToCreationFunc(NS_NewBoxFrame));

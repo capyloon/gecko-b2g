@@ -261,15 +261,6 @@ JSObject* WorkerGlobalScopeBase::GetGlobalJSObject() {
   return GetWrapper();
 }
 
-void WorkerGlobalScopeBase::NoteTerminating() {
-  if (mModuleLoader) {
-    mModuleLoader->Shutdown();
-    mModuleLoader = nullptr;
-  }
-
-  StartDying();
-}
-
 JSObject* WorkerGlobalScopeBase::GetGlobalJSObjectPreserveColor() const {
   AssertIsOnWorkerThread();
   return GetWrapperPreserveColor();
@@ -283,15 +274,6 @@ bool WorkerGlobalScopeBase::IsSharedMemoryAllowed() const {
 bool WorkerGlobalScopeBase::ShouldResistFingerprinting() const {
   AssertIsOnWorkerThread();
   return mShouldResistFingerprinting;
-}
-
-bool WorkerGlobalScopeBase::IsSystemPrincipal() const {
-  return mWorkerPrivate->UsesSystemPrincipal();
-}
-
-uint32_t WorkerGlobalScopeBase::GetPrincipalHashValue() const {
-  AssertIsOnWorkerThread();
-  return mWorkerPrivate->GetPrincipalHashValue();
 }
 
 OriginTrials WorkerGlobalScopeBase::Trials() const {
@@ -450,7 +432,7 @@ void WorkerGlobalScope::NoteTerminating() {
     return;
   }
 
-  WorkerGlobalScopeBase::NoteTerminating();
+  StartDying();
 }
 
 void WorkerGlobalScope::NoteShuttingDown() {

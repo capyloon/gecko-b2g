@@ -2,22 +2,18 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from __future__ import absolute_import, print_function, unicode_literals
-
 import fnmatch
 import os
 import pickle
 import sys
-
-import six
-
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 
 import mozpack.path as mozpath
-from manifestparser import combine_fields, TestManifest
+import six
+from manifestparser import TestManifest, combine_fields
 from mozbuild.base import MozbuildObject
-from mozbuild.testing import TEST_MANIFESTS, REFTEST_FLAVORS
+from mozbuild.testing import REFTEST_FLAVORS, TEST_MANIFESTS
 from mozbuild.util import OrderedDefaultDict
 from mozpack.files import FileFinder
 
@@ -834,8 +830,9 @@ class TestResolver(MozbuildObject):
         wpt_path = os.path.join(self.topsrcdir, "testing", "web-platform")
         sys.path = [wpt_path] + sys.path
 
-        import manifestupdate
         import logging
+
+        import manifestupdate
 
         logger = logging.getLogger("manifestupdate")
         logger.disabled = True

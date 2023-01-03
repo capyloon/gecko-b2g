@@ -260,11 +260,17 @@ async function loadRemoteTab(url) {
 }
 
 async function openPopup(input) {
-  await UrlbarTestUtils.promiseAutocompleteResultPopup({
-    window,
-    value: input,
-    fireInputEvent: true,
+  await UrlbarTestUtils.promisePopupOpen(window, async () => {
+    EventUtils.synthesizeMouseAtCenter(gURLBar.inputField, {});
+    await BrowserTestUtils.waitForCondition(
+      () =>
+        gURLBar.inputField.ownerDocument.activeElement === gURLBar.inputField
+    );
+    for (let i = 0; i < input.length; i++) {
+      EventUtils.synthesizeKey(input.charAt(i));
+    }
   });
+  await UrlbarTestUtils.promiseSearchComplete(window);
 }
 
 async function selectRowByURL(url) {
@@ -292,8 +298,9 @@ async function setup() {
     set: [
       ["browser.urlbar.searchEngagementTelemetry.enabled", true],
       ["browser.urlbar.quickactions.enabled", true],
-      ["browser.urlbar.suggest.quickactions", true],
       ["browser.urlbar.quickactions.showInZeroPrefix", true],
+      ["browser.urlbar.suggest.quickactions", true],
+      ["browser.urlbar.shortcuts.quickactions", true],
     ],
   });
 

@@ -45,45 +45,33 @@ add_task(async function() {
 
   // We need to explicitly call Element.focus() since dataURL is treated as
   // cross-origin, thus autofocus doesn't work there.
-  const iframe = await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+  const iframeBC = await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
     return content.document.querySelector("iframe").browsingContext;
   });
 
-  await SpecialPowers.spawn(iframe, [], async () => {
+  const [
+    iframeBorderLeft,
+    iframeBorderTop,
+    iframeX,
+    iframeY,
+  ] = await SpecialPowers.spawn(tab.linkedBrowser, [], async function() {
+    await SpecialPowers.contentTransformsReceived(content);
+    const iframe = content.document.querySelector("iframe");
+    const rect = iframe.getBoundingClientRect();
+    const x = content.window.mozInnerScreenX + rect.left;
+    const y = content.window.mozInnerScreenY + rect.top;
+    const cs = content.window.getComputedStyle(iframe);
+    return [parseInt(cs.borderLeftWidth), parseInt(cs.borderTopWidth), x, y];
+  });
+
+  const selectRect = await SpecialPowers.spawn(iframeBC, [], async function() {
     const input = content.document.getElementById("select");
     const focusPromise = new Promise(resolve => {
       input.addEventListener("focus", resolve, { once: true });
     });
     input.focus();
     await focusPromise;
-  });
-
-  const [iframeBorderLeft, iframeBorderTop] = await SpecialPowers.spawn(
-    tab.linkedBrowser,
-    [],
-    () => {
-      const cs = content.window.getComputedStyle(
-        content.document.querySelector("iframe")
-      );
-      return [parseInt(cs.borderLeftWidth), parseInt(cs.borderTopWidth)];
-    }
-  );
-
-  const [iframeX, iframeY] = await SpecialPowers.spawn(
-    tab.linkedBrowser,
-    [],
-    () => {
-      const rect = content.document
-        .querySelector("iframe")
-        .getBoundingClientRect();
-      const x = content.window.mozInnerScreenX + rect.left;
-      const y = content.window.mozInnerScreenY + rect.top;
-      return [x, y];
-    }
-  );
-
-  const selectRect = await SpecialPowers.spawn(iframe, [], () => {
-    return content.document.querySelector("select").getBoundingClientRect();
+    return input.getBoundingClientRect();
   });
 
   // Open the select popup.
@@ -111,9 +99,16 @@ add_task(async function() {
     iframeBorderTop -
     newWin.mozInnerScreenY +
     parseFloat(getComputedStyle(selectPopup).marginTop);
-  // On platforms other than MaxOSX the popup menu is positioned below the
-  // option element.
-  if (!navigator.platform.includes("Mac")) {
+
+  // On platforms other than macOS the popup menu is positioned below the
+  // option element. On macOS the top is aligned to the selected item (so the
+  // first label).
+  if (navigator.platform.includes("Mac")) {
+    const offsetToSelectedItem =
+      selectPopup.querySelector("menuitem[selected]").getBoundingClientRect()
+        .top - popupRect.top;
+    expectedYPosition -= offsetToSelectedItem;
+  } else {
     expectedYPosition += selectRect.height;
   }
 

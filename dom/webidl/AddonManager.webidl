@@ -109,4 +109,3 @@ interface AddonManager : EventTarget {
 namespace AddonManagerPermissions {
   boolean isHostPermitted(DOMString host);
 };
-

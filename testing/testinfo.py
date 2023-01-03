@@ -2,22 +2,21 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from __future__ import absolute_import, division, print_function
-
 import datetime
 import errno
 import json
 import os
 import posixpath
 import re
+import subprocess
+
+import mozpack.path as mozpath
 import requests
 import six.moves.urllib_parse as urlparse
-import subprocess
-import mozpack.path as mozpath
-from moztest.resolve import TestResolver, TestManifestLoader
+from mozbuild.base import MachCommandConditions as conditions
+from mozbuild.base import MozbuildObject
 from mozfile import which
-
-from mozbuild.base import MozbuildObject, MachCommandConditions as conditions
+from moztest.resolve import TestManifestLoader, TestResolver
 
 REFERER = "https://wiki.developer.mozilla.org/en-US/docs/Mozilla/Test-Info"
 

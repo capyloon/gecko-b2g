@@ -180,15 +180,14 @@ void UsedNameTracker::rewind(RewindToken token) {
 }
 
 void ParseContext::Scope::dump(ParseContext* pc, ParserBase* parser) {
-  JSContext* cx = pc->sc()->cx_;
-
   fprintf(stdout, "ParseScope %p", this);
 
   fprintf(stdout, "\n  decls:\n");
   for (DeclaredNameMap::Range r = declared_->all(); !r.empty(); r.popFront()) {
     auto index = r.front().key();
-    UniqueChars bytes = parser->parserAtoms().toPrintableString(cx, index);
+    UniqueChars bytes = parser->parserAtoms().toPrintableString(index);
     if (!bytes) {
+      ReportOutOfMemory(pc->sc()->fc_);
       return;
     }
     DeclaredNameInfo& info = r.front().value().wrapped;
@@ -308,7 +307,7 @@ void ParseContext::Scope::removeCatchParameters(ParseContext* pc,
   }
 }
 
-ParseContext::ParseContext(JSContext* cx, ParseContext*& parent,
+ParseContext::ParseContext(FrontendContext* fc, ParseContext*& parent,
                            SharedContext* sc, ErrorReporter& errorReporter,
                            CompilationState& compilationState,
                            Directives* newDirectives, bool isFull)
@@ -318,8 +317,8 @@ ParseContext::ParseContext(JSContext* cx, ParseContext*& parent,
       innermostStatement_(nullptr),
       innermostScope_(nullptr),
       varScope_(nullptr),
-      positionalFormalParameterNames_(cx->frontendCollectionPool()),
-      closedOverBindingsForLazy_(cx->frontendCollectionPool()),
+      positionalFormalParameterNames_(fc->nameCollectionPool()),
+      closedOverBindingsForLazy_(fc->nameCollectionPool()),
       innerFunctionIndexesForLazy(sc->fc_),
       newDirectives(newDirectives),
       lastYieldOffset(NoYieldOffset),
@@ -328,9 +327,9 @@ ParseContext::ParseContext(JSContext* cx, ParseContext*& parent,
       superScopeNeedsHomeObject_(false) {
   if (isFunctionBox()) {
     if (functionBox()->isNamedLambda()) {
-      namedLambdaScope_.emplace(cx, parent, compilationState.usedNames);
+      namedLambdaScope_.emplace(fc, parent, compilationState.usedNames);
     }
-    functionScope_.emplace(cx, parent, compilationState.usedNames);
+    functionScope_.emplace(fc, parent, compilationState.usedNames);
   }
 }
 

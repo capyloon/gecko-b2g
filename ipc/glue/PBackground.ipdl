@@ -52,6 +52,7 @@ include protocol PVerifySSLServerCert;
 include protocol PVsync;
 include protocol PRemoteDecoderManager;
 include protocol PWebSocketConnection;
+include protocol PWebTransport;
 
 include DOMTypes;
 include IPCBlob;
@@ -196,6 +197,18 @@ parent:
       PrincipalInfo principalInfo,
       Endpoint<PFileSystemManagerParent> aParentEndpoint)
       returns(nsresult rv);
+
+  /**
+   * Finish the setup of a new PWebTransport top level protocol.
+   */
+  async CreateWebTransportParent(
+      nsString aURL,
+      bool aDedicated,
+      bool aRequireUnreliable,
+      uint32_t aCongestionControl,
+      /* Sequence<WebTransportHash>* aServerCertHashes, */
+      Endpoint<PWebTransportParent> aParentEndpoint)
+      returns(nsresult rv, uint8_t aReliability); // Actually WebTransportReliabityMode enum
 
   async PVsync();
 

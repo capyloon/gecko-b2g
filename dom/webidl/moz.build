@@ -1204,6 +1204,7 @@ GENERATED_EVENTS_WEBIDL_FILES = [
     "BlobEvent.webidl",
     "CaretStateChangedEvent.webidl",
     "CloseEvent.webidl",
+    "ContentVisibilityAutoStateChangeEvent.webidl",
     "DeviceLightEvent.webidl",
     "DeviceOrientationEvent.webidl",
     "DeviceStorageAreaChangedEvent.webidl",

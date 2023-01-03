@@ -1649,13 +1649,6 @@ FontFaceSet* nsGlobalWindowInner::Fonts() {
   return nullptr;
 }
 
-uint32_t nsGlobalWindowInner::GetPrincipalHashValue() const {
-  if (mDoc) {
-    return mDoc->NodePrincipal()->GetHashValue();
-  }
-  return 0;
-}
-
 mozilla::Result<mozilla::ipc::PrincipalInfo, nsresult>
 nsGlobalWindowInner::GetStorageKey() {
   MOZ_ASSERT(NS_IsMainThread());
@@ -1713,7 +1706,8 @@ void nsGlobalWindowInner::UpdateAutoplayPermission() {
   if (!GetWindowContext()) {
     return;
   }
-  uint32_t perm = AutoplayPolicy::GetSiteAutoplayPermission(GetPrincipal());
+  uint32_t perm =
+      media::AutoplayPolicy::GetSiteAutoplayPermission(GetPrincipal());
   if (GetWindowContext()->GetAutoplayPermission() == perm) {
     return;
   }
@@ -1776,7 +1770,7 @@ void nsGlobalWindowInner::UpdatePermissions() {
 
   WindowContext::Transaction txn;
   txn.SetAutoplayPermission(
-      AutoplayPolicy::GetSiteAutoplayPermission(principal));
+      media::AutoplayPolicy::GetSiteAutoplayPermission(principal));
   txn.SetPopupPermission(PopupBlocker::GetPopupPermission(principal));
 
   if (windowContext->IsTop()) {
@@ -2716,12 +2710,28 @@ bool nsGlobalWindowInner::CrossOriginIsolated() const {
   return bc->CrossOriginIsolated();
 }
 
+WindowContext* TopWindowContext(nsPIDOMWindowInner& aWindow) {
+  WindowContext* wc = aWindow.GetWindowContext();
+  if (!wc) {
+    return nullptr;
+  }
+
+  return wc->TopWindowContext();
+}
+
 void nsPIDOMWindowInner::AddPeerConnection() {
   MOZ_ASSERT(NS_IsMainThread());
   ++mActivePeerConnections;
   if (mActivePeerConnections == 1 && mWindowGlobalChild) {
     mWindowGlobalChild->SendUpdateActivePeerConnectionStatus(
         /*aIsAdded*/ true);
+
+    // We need to present having active peer connections immediately. If we need
+    // to wait for the parent process to come back with this information we
+    // might start throttling.
+    if (WindowContext* top = TopWindowContext(*this)) {
+      top->TransientSetHasActivePeerConnections();
+    }
   }
 }
 
@@ -2737,12 +2747,8 @@ void nsPIDOMWindowInner::RemovePeerConnection() {
 
 bool nsPIDOMWindowInner::HasActivePeerConnections() {
   MOZ_ASSERT(NS_IsMainThread());
-  WindowContext* wc = GetWindowContext();
-  if (!wc) {
-    return false;
-  }
 
-  WindowContext* topWindowContext = wc->TopWindowContext();
+  WindowContext* topWindowContext = TopWindowContext(*this);
   return topWindowContext && topWindowContext->GetHasActivePeerConnections();
 }
 

@@ -945,7 +945,6 @@ class WorkerPrivate::EventTarget final : public nsISerialEventTarget {
   // WorkerPrivate's mutex whenever they must both be held.
   mozilla::Mutex mMutex;
   WorkerPrivate* mWorkerPrivate MOZ_GUARDED_BY(mMutex);
-  nsIEventTarget* mWeakNestedEventTarget;
   nsCOMPtr<nsIEventTarget> mNestedEventTarget MOZ_GUARDED_BY(mMutex);
   bool mDisabled MOZ_GUARDED_BY(mMutex);
   bool mShutdown MOZ_GUARDED_BY(mMutex);
@@ -954,7 +953,6 @@ class WorkerPrivate::EventTarget final : public nsISerialEventTarget {
   EventTarget(WorkerPrivate* aWorkerPrivate, nsIEventTarget* aNestedEventTarget)
       : mMutex("WorkerPrivate::EventTarget::mMutex"),
         mWorkerPrivate(aWorkerPrivate),
-        mWeakNestedEventTarget(aNestedEventTarget),
         mNestedEventTarget(aNestedEventTarget),
         mDisabled(false),
         mShutdown(false) {
@@ -983,9 +981,16 @@ class WorkerPrivate::EventTarget final : public nsISerialEventTarget {
     }
   }
 
-  nsIEventTarget* GetWeakNestedEventTarget() const {
-    MOZ_ASSERT(mWeakNestedEventTarget);
-    return mWeakNestedEventTarget;
+  RefPtr<nsIEventTarget> GetNestedEventTarget() {
+    RefPtr<nsIEventTarget> nestedEventTarget = nullptr;
+    {
+      MutexAutoLock lock(mMutex);
+      if (mWorkerPrivate) {
+        mWorkerPrivate->AssertIsOnWorkerThread();
+        nestedEventTarget = mNestedEventTarget.get();
+      }
+    }
+    return nestedEventTarget;
   }
 
   NS_DECL_THREADSAFE_ISUPPORTS
@@ -2289,8 +2294,7 @@ bool IsNewWorkerSecureContext(const WorkerPrivate* const aParent,
 
 WorkerPrivate::WorkerPrivate(
     WorkerPrivate* aParent, const nsAString& aScriptURL, bool aIsChromeWorker,
-    WorkerKind aWorkerKind, RequestCredentials aRequestCredentials,
-    enum WorkerType aWorkerType, const nsAString& aWorkerName,
+    WorkerKind aWorkerKind, const nsAString& aWorkerName,
     const nsACString& aServiceWorkerScope, WorkerLoadInfo& aLoadInfo,
     nsString&& aId, const nsID& aAgentClusterId,
     const nsILoadInfo::CrossOriginOpenerPolicy aAgentClusterOpenerPolicy)
@@ -2299,8 +2303,6 @@ WorkerPrivate::WorkerPrivate(
       mParent(aParent),
       mScriptURL(aScriptURL),
       mWorkerName(aWorkerName),
-      mCredentialsMode(aRequestCredentials),
-      mWorkerType(aWorkerType),  // If the worker runs as a script or a module
       mWorkerKind(aWorkerKind),
       mLoadInfo(std::move(aLoadInfo)),
       mDebugger(nullptr),
@@ -2536,22 +2538,10 @@ WorkerPrivate::ComputeAgentClusterIdAndCoop(WorkerPrivate* aParent,
   return {nsID::GenerateUUID(), agentClusterCoop};
 }
 
-already_AddRefed<WorkerPrivate> WorkerPrivate::Constructor(
-    JSContext* aCx, const nsAString& aScriptURL, bool aIsChromeWorker,
-    WorkerKind aWorkerKind, const nsAString& aWorkerName,
-    const nsACString& aServiceWorkerScope, WorkerLoadInfo* aLoadInfo,
-    ErrorResult& aRv, nsString aId) {
-  return WorkerPrivate::Constructor(
-      aCx, aScriptURL, aIsChromeWorker, aWorkerKind, RequestCredentials::Omit,
-      WorkerType::Classic, aWorkerName, aServiceWorkerScope, aLoadInfo, aRv,
-      std::move(aId));
-}
-
 // static
 already_AddRefed<WorkerPrivate> WorkerPrivate::Constructor(
     JSContext* aCx, const nsAString& aScriptURL, bool aIsChromeWorker,
-    WorkerKind aWorkerKind, RequestCredentials aRequestCredentials,
-    enum WorkerType aWorkerType, const nsAString& aWorkerName,
+    WorkerKind aWorkerKind, const nsAString& aWorkerName,
     const nsACString& aServiceWorkerScope, WorkerLoadInfo* aLoadInfo,
     ErrorResult& aRv, nsString aId) {
   WorkerPrivate* parent =
@@ -2614,10 +2604,10 @@ already_AddRefed<WorkerPrivate> WorkerPrivate::Constructor(
   AgentClusterIdAndCoop idAndCoop =
       ComputeAgentClusterIdAndCoop(parent, aWorkerKind, aLoadInfo);
 
-  RefPtr<WorkerPrivate> worker = new WorkerPrivate(
-      parent, aScriptURL, aIsChromeWorker, aWorkerKind, aRequestCredentials,
-      aWorkerType, aWorkerName, aServiceWorkerScope, *aLoadInfo, std::move(aId),
-      idAndCoop.mId, idAndCoop.mCoop);
+  RefPtr<WorkerPrivate> worker =
+      new WorkerPrivate(parent, aScriptURL, aIsChromeWorker, aWorkerKind,
+                        aWorkerName, aServiceWorkerScope, *aLoadInfo,
+                        std::move(aId), idAndCoop.mId, idAndCoop.mCoop);
 
   // Gecko contexts always have an explicitly-set default locale (set by
   // XPJSRuntime::Initialize for the main thread, set by
@@ -4277,18 +4267,20 @@ nsresult WorkerPrivate::DestroySyncLoop(uint32_t aLoopIndex) {
   // We're about to delete the loop, stash its event target and result.
   const auto& loopInfo = mSyncLoopStack[aLoopIndex];
 
-  loopInfo->mEventTarget->Shutdown();
-
-  nsIEventTarget* nestedEventTarget =
-      loopInfo->mEventTarget->GetWeakNestedEventTarget();
-  MOZ_ASSERT(nestedEventTarget);
-
   nsresult result = loopInfo->mResult;
 
   {
-    MutexAutoLock lock(mMutex);
-    static_cast<ThreadEventQueue*>(mThread->EventQueue())
-        ->PopEventQueue(nestedEventTarget);
+    RefPtr<nsIEventTarget> nestedEventTarget(
+        loopInfo->mEventTarget->GetNestedEventTarget());
+    MOZ_ASSERT(nestedEventTarget);
+
+    loopInfo->mEventTarget->Shutdown();
+
+    {
+      MutexAutoLock lock(mMutex);
+      static_cast<ThreadEventQueue*>(mThread->EventQueue())
+          ->PopEventQueue(nestedEventTarget);
+    }
   }
 
   // Are we making a 1 -> 0 transition here?

@@ -3222,12 +3222,13 @@ pref("signon.debug",                        false);
 pref("signon.recipes.path", "resource://app/defaults/settings/main/password-recipes.json");
 pref("signon.recipes.remoteRecipes.enabled", true);
 pref("signon.relatedRealms.enabled", false);
-
 pref("signon.schemeUpgrades",                     true);
 pref("signon.includeOtherSubdomainsInLookup",     true);
 // This temporarily prevents the primary password to reprompt for autocomplete.
 pref("signon.masterPasswordReprompt.timeout_ms", 900000); // 15 Minutes
 pref("signon.showAutoCompleteFooter",             false);
+pref("signon.firefoxRelay.base_url", "https://relay.firefox.com/api/v1/");
+pref("signon.firefoxRelay.learn_more_url", "https://relay.firefox.com/");
 
 // Satchel (Form Manager) prefs
 pref("browser.formfill.debug",            false);
@@ -4162,9 +4163,6 @@ pref("extensions.formautofill.creditCards.enabled", true);
 pref("extensions.formautofill.creditCards.ignoreAutocompleteOff", true);
 // Supported countries need to follow ISO 3166-1 to align with "browser.search.region"
 pref("extensions.formautofill.creditCards.supportedCountries", "US,CA,GB,FR,DE");
-// Temporary preference to control displaying the UI elements for
-// credit card autofill used for the duration of the A/B test.
-pref("extensions.formautofill.creditCards.hideui", false);
 
 // Algorithm used by formautofill while determine whether a field is a credit card field
 // 0:Heurstics based on regular expression string matching
@@ -4207,6 +4205,9 @@ pref("cookiebanners.bannerClicking.logLevel", "Error");
 // same domain. Every array item should be a valid CookieBannerRule. See
 // CookieBannerRule.schema.json.
 pref("cookiebanners.listService.testRules", "[]");
+
+// Still fetches rules from RemoteSettings, but discards them. Used in tests.
+pref("cookiebanners.listService.testSkipRemoteSettings", false);
 
 // The domains we will block from installing SitePermsAddons. Comma-separated
 // full domains: any subdomains of the domains listed will also be allowed.

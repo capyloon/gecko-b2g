@@ -21,11 +21,12 @@ class nsDeviceContextSpecGonk final : public nsIDeviceContextSpec {
   NS_IMETHOD BeginDocument(const nsAString& aTitle,
                            const nsAString& aPrintToFileName,
                            int32_t aStartPage, int32_t aEndPage) override;
-  NS_IMETHOD EndDocument() override;
+  RefPtr<mozilla::gfx::PrintEndDocumentPromise> EndDocument() override;
   NS_IMETHOD BeginPage() override { return NS_OK; }
   NS_IMETHOD EndPage() override { return NS_OK; }
 
  private:
+  nsresult DoEndDocument();
   nsCOMPtr<nsIPrintSettings> mPrintSettings;
   nsCOMPtr<nsIFile> mTempFile;
 };

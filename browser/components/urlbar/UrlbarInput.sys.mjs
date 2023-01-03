@@ -85,7 +85,7 @@ export class UrlbarInput {
             </html:div>
           </html:div>
           <menupopup class="urlbarView-result-menu">
-            <menuitem label="test" data-command="test"/>
+            <menuitem data-command="remove-from-history" data-l10n-id="urlbar-result-menu-remove-from-history"/>
           </menupopup>
           <hbox class="search-one-offs"
                 includecurrentengine="true"
@@ -339,11 +339,7 @@ export class UrlbarInput {
   ) {
     if (!dontShowSearchTerms && this.window.gBrowser.userTypedValue == null) {
       this.window.gBrowser.selectedBrowser.showingSearchTerms = false;
-      if (
-        lazy.UrlbarPrefs.get("showSearchTermsFeatureGate") &&
-        lazy.UrlbarPrefs.get("showSearchTerms.enabled") &&
-        !lazy.UrlbarPrefs.get("browser.search.widget.inNavBar")
-      ) {
+      if (lazy.UrlbarPrefs.isPersistedSearchTermsEnabled()) {
         let term = lazy.UrlbarSearchUtils.getSearchTermIfDefaultSerpUri(
           this.window.gBrowser.selectedBrowser.originalURI ?? uri
         );
@@ -769,6 +765,7 @@ export class UrlbarInput {
    *
    */
   handoff(searchString, searchEngine, newtabSessionId) {
+    this._isHandoffSession = true;
     this._handoffSession = newtabSessionId;
     if (lazy.UrlbarPrefs.get("shouldHandOffToSearchMode") && searchEngine) {
       this.search(searchString, {
@@ -932,6 +929,8 @@ export class UrlbarInput {
           break;
         }
 
+        // Keep the searchMode for telemetry since handleRevert sets it to null.
+        const searchMode = this.searchMode;
         this.handleRevert();
         let prevTab = this.window.gBrowser.selectedTab;
         let loadOpts = {
@@ -944,6 +943,7 @@ export class UrlbarInput {
         let searchString = this._lastSearchString;
         this.controller.engagementEvent.record(event, {
           searchString,
+          searchMode,
           selIndex,
           selType: "tabswitch",
           provider: result.providerName,
@@ -1056,6 +1056,8 @@ export class UrlbarInput {
           break;
         }
         url = result.payload.url;
+        // Keep the searchMode for telemetry since handleRevert sets it to null.
+        const searchMode = this.searchMode;
         // Do not revert the Urlbar if we're going to navigate. We want the URL
         // populated so we can navigate to it.
         if (!url || !result.payload.shouldNavigate) {
@@ -1065,8 +1067,8 @@ export class UrlbarInput {
           result.providerName
         );
 
-        // Keep startEventInfo since the startEventInfo state might be changed
-        // if the URL Bar loses focus on pickResult.
+        // Keep startEventInfo for telemetry since the startEventInfo state might
+        // be changed if the URL Bar loses focus on pickResult.
         const startEventInfo = this.controller.engagementEvent._startEventInfo;
         provider?.tryMethod("pickResult", result, element);
 
@@ -1075,6 +1077,7 @@ export class UrlbarInput {
           this.controller.engagementEvent.record(event, {
             selIndex,
             searchString: this._lastSearchString,
+            searchMode,
             selType: this.controller.engagementEvent.typeFromElement(element),
             provider: result.providerName,
             element,
@@ -2003,7 +2006,7 @@ export class UrlbarInput {
    *   The source name.
    */
   getSearchSource(event) {
-    if (this._handoffSession) {
+    if (this._isHandoffSession) {
       return "urlbar-handoff";
     }
 
@@ -3007,6 +3010,7 @@ export class UrlbarInput {
 
     this.focusedViaMousedown = false;
     this._handoffSession = undefined;
+    this._isHandoffSession = false;
     this.removeAttribute("focused");
 
     if (this._autofillPlaceholder && this.window.gBrowser.userTypedValue) {

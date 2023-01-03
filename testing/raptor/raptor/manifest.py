@@ -1,18 +1,15 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-from __future__ import absolute_import
-
 import json
 import os
 import re
 
-from six.moves.urllib.parse import parse_qs, urlsplit, urlunsplit, urlencode, unquote
-
+from constants.raptor_tests_constants import YOUTUBE_PLAYBACK_MEASURE
 from logger.logger import RaptorLogger
 from manifestparser import TestManifest
+from six.moves.urllib.parse import parse_qs, unquote, urlencode, urlsplit, urlunsplit
 from utils import bool_from_str, transform_platform, transform_subtest
-from constants.raptor_tests_constants import YOUTUBE_PLAYBACK_MEASURE
 
 here = os.path.abspath(os.path.dirname(__file__))
 raptor_ini = os.path.join(here, "raptor.ini")
