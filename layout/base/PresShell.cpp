@@ -150,7 +150,6 @@
 // For style data reconstruction
 #include "nsStyleChangeList.h"
 #include "nsCSSFrameConstructor.h"
-#include "nsMenuFrame.h"
 #include "nsTreeBodyFrame.h"
 #include "XULTreeElement.h"
 #include "nsMenuPopupFrame.h"
@@ -4405,10 +4404,10 @@ void PresShell::DoFlushPendingNotifications(mozilla::ChangesToFlush aFlush) {
     FlushPendingScrollResnap();
 
     if (MOZ_LIKELY(!mIsDestroying)) {
-      // Try to trigger pending scroll-linked animations after we flush
+      // Try to trigger pending scroll-driven animations after we flush
       // style and layout (if any). If we try to trigger them after flushing
       // style but the frame tree is not ready, we will check them again after
-      // we flush layout because the requirement to trigger scroll-linked
+      // we flush layout because the requirement to trigger scroll-driven
       // animations is that the associated scroll containers are ready (i.e. the
       // scroll-timeline is active), and this depends on the readiness of the
       // scrollable frame and the primary frame of the scroll container.
@@ -8912,12 +8911,11 @@ bool PresShell::EventHandler::AdjustContextMenuKeyEvent(
     WidgetMouseEvent* aMouseEvent) {
   // if a menu is open, open the context menu relative to the active item on the
   // menu.
-  nsXULPopupManager* pm = nsXULPopupManager::GetInstance();
-  if (pm) {
+  if (nsXULPopupManager* pm = nsXULPopupManager::GetInstance()) {
     nsIFrame* popupFrame = pm->GetTopPopup(ePopupTypeMenu);
     if (popupFrame) {
-      nsIFrame* itemFrame =
-          (static_cast<nsMenuPopupFrame*>(popupFrame))->GetCurrentMenuItem();
+      nsIFrame* itemFrame = (static_cast<nsMenuPopupFrame*>(popupFrame))
+                                ->GetCurrentMenuItemFrame();
       if (!itemFrame) itemFrame = popupFrame;
 
       nsCOMPtr<nsIWidget> widget = popupFrame->GetNearestWidget();

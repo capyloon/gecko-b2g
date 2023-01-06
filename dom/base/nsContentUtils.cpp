@@ -6097,10 +6097,13 @@ bool nsContentUtils::IsInStableOrMetaStableState() {
 
 /* static */
 void nsContentUtils::HidePopupsInDocument(Document* aDocument) {
-  nsXULPopupManager* pm = nsXULPopupManager::GetInstance();
-  if (pm && aDocument) {
-    nsCOMPtr<nsIDocShellTreeItem> docShellToHide = aDocument->GetDocShell();
-    if (docShellToHide) pm->HidePopupsInDocShell(docShellToHide);
+  RefPtr<nsXULPopupManager> pm = nsXULPopupManager::GetInstance();
+  if (!pm || !aDocument) {
+    return;
+  }
+  nsCOMPtr<nsIDocShellTreeItem> docShellToHide = aDocument->GetDocShell();
+  if (docShellToHide) {
+    pm->HidePopupsInDocShell(docShellToHide);
   }
 }
 
@@ -8764,7 +8767,7 @@ bool nsContentUtils::IsFirstPartyTrackingResourceWindow(
       classifiedChannel->GetFirstPartyClassificationFlags();
 
   return mozilla::net::UrlClassifierCommon::IsTrackingClassificationFlag(
-      classificationFlags);
+      classificationFlags, NS_UsePrivateBrowsing(document->GetChannel()));
 }
 
 namespace {

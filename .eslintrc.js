@@ -208,24 +208,14 @@ module.exports = {
       // Bug 877389 - Gradually migrate from Cu.reportError to console.error.
       // Report as warnings where it is not yet passing.
       files: [
-        "browser/components/Browser*.*",
         "browser/components/**",
         "browser/extensions/report-site-issue/**",
         "browser/extensions/search-detection/**",
-        "browser/modules/**",
-        "browser/themes/BuiltInThemes.sys.mjs",
         "devtools/**",
-        "dom/base/DOMRequestHelper.*",
-        "dom/push/PushComponents.sys.mjs",
-        "dom/push/PushServiceHttp2.sys.mjs",
         "dom/push/test/mockpushserviceparent.js",
-        "dom/push/test/xpcshell/head.js",
-        "dom/serviceworkers/test/browser_download.js",
-        "dom/system/NetworkGeolocationProvider.*",
-        "dom/tests/browser/browser_hasbeforeunload.js",
         "toolkit/**",
-        "uriloader/exthandler/**",
       ],
+      excludedFiles: ["browser/components/Browser*.*"],
       rules: {
         "mozilla/no-cu-reportError": "off",
       },

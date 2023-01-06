@@ -243,7 +243,12 @@ XPCOMUtils.defineLazyScriptGetter(
 XPCOMUtils.defineLazyScriptGetter(
   this,
   "gEditItemOverlay",
-  "chrome://browser/content/places/instantEditBookmark.js"
+  Services.prefs.getBoolPref(
+    "browser.bookmarks.editDialog.delayedApply.enabled",
+    false
+  )
+    ? "chrome://browser/content/places/editBookmark.js"
+    : "chrome://browser/content/places/instantEditBookmark.js"
 );
 XPCOMUtils.defineLazyScriptGetter(
   this,
@@ -3263,7 +3268,7 @@ async function BrowserViewSourceOfDocument(args) {
   // that fails.  Either way, the view source module will manage the tab's
   // location, so use "about:blank" here to avoid unnecessary redundant
   // requests.
-  let tab = tabBrowser.loadOneTab("about:blank", {
+  let tab = tabBrowser.addTab("about:blank", {
     relatedToCurrent: true,
     inBackground: inNewWindow,
     skipAnimation: inNewWindow,
@@ -6200,7 +6205,7 @@ nsBrowserAccess.prototype = {
       "browser.tabs.loadDivertedInBackground"
     );
 
-    let tab = win.gBrowser.loadOneTab(aURI ? aURI.spec : "about:blank", {
+    let tab = win.gBrowser.addTab(aURI ? aURI.spec : "about:blank", {
       triggeringPrincipal: aTriggeringPrincipal,
       referrerInfo: aReferrerInfo,
       userContextId: aUserContextId,

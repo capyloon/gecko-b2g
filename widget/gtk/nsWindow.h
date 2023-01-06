@@ -189,9 +189,7 @@ class nsWindow final : public nsBaseWidget {
   void SetIcon(const nsAString& aIconSpec) override;
   void SetWindowClass(const nsAString& xulWinType) override;
   LayoutDeviceIntPoint WidgetToScreenOffset() override;
-  void CaptureMouse(bool aCapture) override;
-  void CaptureRollupEvents(nsIRollupListener* aListener,
-                           bool aDoCapture) override;
+  void CaptureRollupEvents(bool aDoCapture) override;
   [[nodiscard]] nsresult GetAttention(int32_t aCycleCount) override;
   bool HasPendingInputEvent() override;
 
@@ -414,7 +412,7 @@ class nsWindow final : public nsBaseWidget {
 
 #ifdef MOZ_WAYLAND
   // Use xdg-activation protocol to transfer focus from gFocusWindow to aWindow.
-  static void RequestFocusWaylandWindow(RefPtr<nsWindow> aWindow);
+  static void TransferFocusToWaylandWindow(nsWindow* aWindow);
   void FocusWaylandWindow(const char* aTokenID);
 
   bool GetCSDDecorationOffset(int* aDx, int* aDy);
@@ -484,8 +482,9 @@ class nsWindow final : public nsBaseWidget {
   void SetHasMappedToplevel(bool aState);
   LayoutDeviceIntSize GetSafeWindowSize(LayoutDeviceIntSize aSize);
 
-  void DispatchContextMenuEventFromMouseEvent(uint16_t domButton,
-                                              GdkEventButton* aEvent);
+  void DispatchContextMenuEventFromMouseEvent(
+      uint16_t domButton, GdkEventButton* aEvent,
+      const mozilla::LayoutDeviceIntPoint& aRefPoint);
 
   void TryToShowNativeWindowMenu(GdkEventButton* aEvent);
 
@@ -501,7 +500,8 @@ class nsWindow final : public nsBaseWidget {
   void SetDefaultIcon(void);
   void SetWindowDecoration(nsBorderStyle aStyle);
   void InitButtonEvent(mozilla::WidgetMouseEvent& aEvent,
-                       GdkEventButton* aGdkEvent);
+                       GdkEventButton* aGdkEvent,
+                       const mozilla::LayoutDeviceIntPoint& aRefPoint);
   bool CheckForRollup(gdouble aMouseX, gdouble aMouseY, bool aIsWheel,
                       bool aAlwaysRollup);
   void CheckForRollupDuringGrab() { CheckForRollup(0, 0, false, true); }
@@ -769,6 +769,9 @@ class nsWindow final : public nsBaseWidget {
   // clear color to transparent.
   bool mGotNonBlankPaint : 1;
 
+  // Whether we need to retry capturing the mouse because we' re not mapped yet.
+  bool mNeedsToRetryCapturingMouse : 1;
+
   // This bitmap tracks which pixels are transparent. We don't support
   // full translucency at this time; each pixel is either fully opaque
   // or fully transparent.
@@ -976,13 +979,16 @@ class nsWindow final : public nsBaseWidget {
   LayoutDeviceIntPoint mNativePointerLockCenter;
   zwp_locked_pointer_v1* mLockedPointer = nullptr;
   zwp_relative_pointer_v1* mRelativePointer = nullptr;
-  xdg_activation_token_v1* mXdgToken = nullptr;
 #endif
   // An activation token from our environment (see handling of the
   // XDG_ACTIVATION_TOKEN/DESKTOP_STARTUP_ID) env vars.
   nsCString mWindowActivationTokenFromEnv;
   mozilla::widget::WindowSurfaceProvider mSurfaceProvider;
   GdkDragContext* mSourceDragContext = nullptr;
+#if MOZ_LOGGING
+  LayoutDeviceIntRect mLastLoggedBoundSize;
+  int mLastLoggedScale = -1;
+#endif
 };
 
 #endif /* __nsWindow_h__ */

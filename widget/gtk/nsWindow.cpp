@@ -432,7 +432,8 @@ nsWindow::nsWindow()
       mMovedAfterMoveToRect(false),
       mResizedAfterMoveToRect(false),
       mConfiguredClearColor(false),
-      mGotNonBlankPaint(false) {
+      mGotNonBlankPaint(false),
+      mNeedsToRetryCapturingMouse(false) {
   mWindowType = eWindowType_child;
   mSizeConstraints.mMaxSize = GetSafeWindowSize(mSizeConstraints.mMaxSize);
 
@@ -608,7 +609,6 @@ void nsWindow::Destroy() {
     mWaylandVsyncSource = nullptr;
   }
   mWaylandVsyncDispatcher = nullptr;
-  MozClearPointer(mXdgToken, xdg_activation_token_v1_destroy);
 #endif
 
   /** Need to clean our LayerManager up while still alive */
@@ -755,11 +755,7 @@ void nsWindow::SetParent(nsIWidget* aNewParent) {
   GdkWindow* parentWindow = newParent->GetToplevelGdkWindow();
   LOG("  child GdkWindow %p set parent GdkWindow %p", window, parentWindow);
   gdk_window_reparent(window, parentWindow, 0, 0);
-
-  bool parentHasMappedToplevel = newParent && newParent->mHasMappedToplevel;
-  if (mHasMappedToplevel != parentHasMappedToplevel) {
-    SetHasMappedToplevel(parentHasMappedToplevel);
-  }
+  SetHasMappedToplevel(newParent && newParent->mHasMappedToplevel);
 }
 
 bool nsWindow::WidgetTypeSupportsAcceleration() {
@@ -949,12 +945,6 @@ void nsWindow::Show(bool aState) {
     LOG("  closing Drag&Drop source window, D&D will be canceled!");
   }
 #endif
-
-  if (aState) {
-    // Now that this window is shown, mHasMappedToplevel needs to be
-    // tracked on viewable descendants.
-    SetHasMappedToplevel(mHasMappedToplevel);
-  }
 
   // Ok, someone called show on a window that isn't sized to a sane
   // value.  Mark this window as needing to have Show() called on it
@@ -2827,14 +2817,13 @@ void nsWindow::SetSizeMode(nsSizeMode aMode) {
   mLastSizeModeRequest = aMode;
 }
 
-static bool GetWindowManagerName(GdkWindow* gdk_window, nsACString& wmName) {
+static bool GetWindowManagerName(GdkScreen* screen, nsACString& wmName) {
   if (!GdkIsX11Display()) {
     return false;
   }
 
 #ifdef MOZ_X11
   Display* xdisplay = gdk_x11_get_default_xdisplay();
-  GdkScreen* screen = gdk_window_get_screen(gdk_window);
   Window root_win = GDK_WINDOW_XID(gdk_screen_get_root_window(screen));
 
   int actual_format_return;
@@ -2894,10 +2883,10 @@ static bool GetWindowManagerName(GdkWindow* gdk_window, nsACString& wmName) {
 #endif
 }
 
-#define kDesktopMutterSchema "org.gnome.mutter"
-#define kDesktopDynamicWorkspacesKey "dynamic-workspaces"
+#define kDesktopMutterSchema "org.gnome.mutter"_ns
+#define kDesktopDynamicWorkspacesKey "dynamic-workspaces"_ns
 
-static bool WorkspaceManagementDisabled(GdkWindow* gdk_window) {
+static bool WorkspaceManagementDisabled(GdkScreen* screen) {
   if (Preferences::GetBool("widget.disable-workspace-management", false)) {
     return true;
   }
@@ -2914,13 +2903,11 @@ static bool WorkspaceManagementDisabled(GdkWindow* gdk_window) {
         do_GetService(NS_GSETTINGSSERVICE_CONTRACTID);
     if (gsettings) {
       nsCOMPtr<nsIGSettingsCollection> mutterSettings;
-      gsettings->GetCollectionForSchema(nsLiteralCString(kDesktopMutterSchema),
+      gsettings->GetCollectionForSchema(kDesktopMutterSchema,
                                         getter_AddRefs(mutterSettings));
       if (mutterSettings) {
-        if (NS_SUCCEEDED(mutterSettings->GetBoolean(
-                nsLiteralCString(kDesktopDynamicWorkspacesKey),
-                &usesDynamicWorkspaces))) {
-        }
+        mutterSettings->GetBoolean(kDesktopDynamicWorkspacesKey,
+                                   &usesDynamicWorkspaces);
       }
     }
     return usesDynamicWorkspaces;
@@ -2929,7 +2916,7 @@ static bool WorkspaceManagementDisabled(GdkWindow* gdk_window) {
   // When XDG_CURRENT_DESKTOP is missing, try to get window manager name.
   if (!currentDesktop) {
     nsAutoCString wmName;
-    if (GetWindowManagerName(gdk_window, wmName)) {
+    if (GetWindowManagerName(screen, wmName)) {
       if (wmName.EqualsLiteral("bspwm")) {
         return true;
       }
@@ -2959,7 +2946,7 @@ void nsWindow::GetWorkspaceID(nsAString& workspaceID) {
     return;
   }
 
-  if (WorkspaceManagementDisabled(gdk_window)) {
+  if (WorkspaceManagementDisabled(gdk_window_get_screen(gdk_window))) {
     LOG("  WorkspaceManagementDisabled, quit.");
     return;
   }
@@ -3048,7 +3035,8 @@ void nsWindow::SetUserTimeAndStartupTokenForActivatedWindow() {
       gtk_window_set_startup_id(GTK_WINDOW(mShell),
                                 mWindowActivationTokenFromEnv.get());
       // In the case of X11, the above call is all we need. For wayland we need
-      // to keep the token around until we take it in RequestFocusWaylandWindow.
+      // to keep the token around until we take it in
+      // TransferFocusToWaylandWindow.
       mWindowActivationTokenFromEnv.Truncate();
     }
   } else if (uint32_t timestamp = toolkit->GetFocusTimestamp()) {
@@ -3093,8 +3081,6 @@ guint32 nsWindow::GetLastUserInputTime() {
 #ifdef MOZ_WAYLAND
 void nsWindow::FocusWaylandWindow(const char* aTokenID) {
   MOZ_DIAGNOSTIC_ASSERT(aTokenID);
-  auto releaseToken = MakeScopeExit(
-      [&] { MozClearPointer(mXdgToken, xdg_activation_token_v1_destroy); });
 
   LOG("nsWindow::FocusWaylandWindow(%s)", aTokenID);
   if (IsDestroyed()) {
@@ -3117,80 +3103,26 @@ void nsWindow::FocusWaylandWindow(const char* aTokenID) {
   xdg_activation_v1_activate(xdg_activation, aTokenID, surface);
 }
 
-// We've got activation token from Wayland compositor so it's time to use it.
-static void token_done(gpointer data, struct xdg_activation_token_v1* provider,
-                       const char* token) {
-  // Compensate aWindow->AddRef() from nsWindow::RequestFocusWaylandWindow().
-  RefPtr<nsWindow> window = dont_AddRef(static_cast<nsWindow*>(data));
-  window->FocusWaylandWindow(token);
-}
-
-static const struct xdg_activation_token_v1_listener token_listener = {
-    token_done,
-};
-
-void nsWindow::RequestFocusWaylandWindow(RefPtr<nsWindow> aWindow) {
-  LOGW("nsWindow::RequestFocusWaylandWindow(%p) gFocusWindow %p", aWindow.get(),
+// Transfer focus from gFocusWindow to aWindow and use xdg_activation
+// protocol for it.
+void nsWindow::TransferFocusToWaylandWindow(nsWindow* aWindow) {
+  LOGW("nsWindow::TransferFocusToWaylandWindow(%p) gFocusWindow %p", aWindow,
        gFocusWindow);
-
-  auto existingToken = std::move(aWindow->mWindowActivationTokenFromEnv);
-  if (!existingToken.IsEmpty()) {
-    LOGW("  has existing activation token.");
-    aWindow->FocusWaylandWindow(existingToken.get());
+  auto promise = mozilla::widget::RequestWaylandFocusPromise();
+  if (NS_WARN_IF(!promise)) {
+    LOGW("  quit, failed to create TransferFocusToWaylandWindow [%p]", aWindow);
     return;
   }
-
-  if (!gFocusWindow || gFocusWindow->IsDestroyed()) {
-    LOGW("  missing gFocusWindow, quit.");
-    return;
-  }
-
-  RefPtr<nsWaylandDisplay> display = WaylandDisplayGet();
-  xdg_activation_v1* xdg_activation = display->GetXdgActivation();
-  if (!xdg_activation) {
-    LOGW("  xdg-activation is missing, quit.");
-    return;
-  }
-
-  wl_surface* focusSurface;
-  uint32_t focusSerial;
-  KeymapWrapper::GetFocusInfo(&focusSurface, &focusSerial);
-  if (!focusSurface) {
-    LOGW("  We're missing KeymapWrapper focused window, quit.");
-    return;
-  }
-
-  GdkWindow* gdkWindow = gtk_widget_get_window(gFocusWindow->mShell);
-  if (!gdkWindow) {
-    LOGW("  gFocusWindow is not mapped, quit.");
-    return;
-  }
-  wl_surface* surface = gdk_wayland_window_get_wl_surface(gdkWindow);
-  if (focusSurface != surface) {
-    LOGW("  focused surface %p and gFocusWindow surface %p don't match, quit.",
-         focusSurface, surface);
-    return;
-  }
-
-  LOGW(
-      "  requesting xdg-activation token, surface %p ID %d serial %d seat ID "
-      "%d",
-      focusSurface,
-      focusSurface ? wl_proxy_get_id((struct wl_proxy*)focusSurface) : 0,
-      focusSerial, wl_proxy_get_id((struct wl_proxy*)KeymapWrapper::GetSeat()));
-
-  // Store activation token at activated window for further release.
-  MozClearPointer(aWindow->mXdgToken, xdg_activation_token_v1_destroy);
-  aWindow->mXdgToken = xdg_activation_v1_get_activation_token(xdg_activation);
-
-  // Addref aWindow to avoid potential release untill we get token_done
-  // callback.
-  xdg_activation_token_v1_add_listener(aWindow->mXdgToken, &token_listener,
-                                       do_AddRef(aWindow).take());
-  xdg_activation_token_v1_set_serial(aWindow->mXdgToken, focusSerial,
-                                     KeymapWrapper::GetSeat());
-  xdg_activation_token_v1_set_surface(aWindow->mXdgToken, focusSurface);
-  xdg_activation_token_v1_commit(aWindow->mXdgToken);
+  promise->Then(
+      GetMainThreadSerialEventTarget(), __func__,
+      /* resolve */
+      [window = RefPtr{aWindow}](nsCString token) {
+        window->FocusWaylandWindow(token.get());
+      },
+      /* reject */
+      [window = RefPtr{aWindow}](bool state) {
+        LOGW("TransferFocusToWaylandWindow [%p] failed", window.get());
+      });
 }
 #endif
 
@@ -3217,6 +3149,7 @@ void nsWindow::SetFocus(Raise aRaise, mozilla::dom::CallerType aCallerType) {
       aRaise == Raise::Yes && toplevelWidget &&
       !gtk_widget_has_focus(toplevelWidget)) {
     if (gtk_widget_get_visible(mShell)) {
+      LOG("  toplevel is not focused");
       gdk_window_show_unraised(gtk_widget_get_window(mShell));
       // Unset the urgency hint if possible.
       SetUrgencyHint(mShell, false);
@@ -3237,7 +3170,8 @@ void nsWindow::SetFocus(Raise aRaise, mozilla::dom::CallerType aCallerType) {
     if (StaticPrefs::mozilla_widget_raise_on_setfocus_AtStartup() &&
         toplevelWindow->mIsShown && toplevelWindow->mShell &&
         !gtk_window_is_active(GTK_WINDOW(toplevelWindow->mShell))) {
-      LOG("  requesting toplevel activation [%p]\n", toplevelWindow.get());
+      LOG("  toplevel is visible but not active, requesting activation [%p]",
+          toplevelWindow.get());
 
       // Take the time here explicitly for the call below.
       const uint32_t timestamp = [&] {
@@ -3256,7 +3190,16 @@ void nsWindow::SetFocus(Raise aRaise, mozilla::dom::CallerType aCallerType) {
 
 #ifdef MOZ_WAYLAND
       if (GdkIsWaylandDisplay()) {
-        RequestFocusWaylandWindow(toplevelWindow);
+        auto existingToken =
+            std::move(toplevelWindow->mWindowActivationTokenFromEnv);
+        if (!existingToken.IsEmpty()) {
+          LOG("  has existing activation token.");
+          toplevelWindow->FocusWaylandWindow(existingToken.get());
+        } else {
+          LOG("  missing activation token, try to transfer from focused "
+              "window");
+          TransferFocusToWaylandWindow(toplevelWindow);
+        }
       }
 #endif
     }
@@ -3321,10 +3264,17 @@ LayoutDeviceIntRect nsWindow::GetScreenBounds() {
   // with Resize.
   const LayoutDeviceIntRect rect(origin, mBounds.Size());
 #if MOZ_LOGGING
-  gint scale = GdkCeiledScaleFactor();
-  LOG("GetScreenBounds %d,%d -> %d x %d, unscaled %d,%d -> %d x %d\n", rect.x,
-      rect.y, rect.width, rect.height, rect.x / scale, rect.y / scale,
-      rect.width / scale, rect.height / scale);
+  if (MOZ_LOG_TEST(IsPopup() ? gWidgetPopupLog : gWidgetLog,
+                   LogLevel::Verbose)) {
+    gint scale = GdkCeiledScaleFactor();
+    if (mLastLoggedScale != scale || !(mLastLoggedBoundSize == rect)) {
+      mLastLoggedScale = scale;
+      mLastLoggedBoundSize = rect;
+      LOG("GetScreenBounds %d,%d -> %d x %d, unscaled %d,%d -> %d x %d\n",
+          rect.x, rect.y, rect.width, rect.height, rect.x / scale,
+          rect.y / scale, rect.width / scale, rect.height / scale);
+    }
+  }
 #endif
   return rect;
 }
@@ -3679,43 +3629,84 @@ LayoutDeviceIntPoint nsWindow::WidgetToScreenOffset() {
   return GdkPointToDevicePixels({origin.x, origin.y});
 }
 
-void nsWindow::CaptureMouse(bool aCapture) {
-  LOG("nsWindow::CaptureMouse()");
-
+void nsWindow::CaptureRollupEvents(bool aDoCapture) {
+  LOG("CaptureRollupEvents(%d)\n", aDoCapture);
   if (mIsDestroyed) {
     return;
   }
 
-  if (aCapture) {
-    gtk_grab_add(GTK_WIDGET(mContainer));
-  } else {
-    gtk_grab_remove(GTK_WIDGET(mContainer));
-  }
-}
+  static constexpr auto kCaptureEventsMask =
+      GdkEventMask(GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK |
+                   GDK_POINTER_MOTION_MASK | GDK_TOUCH_MASK);
 
-void nsWindow::CaptureRollupEvents(nsIRollupListener* aListener,
-                                   bool aDoCapture) {
-  LOG("CaptureRollupEvents() %i\n", int(aDoCapture));
-
-  if (mIsDestroyed) {
-    return;
-  }
-
-  if (aDoCapture) {
-    gRollupListener = aListener;
-    // Don't add a grab if a drag is in progress, or if the widget is a drag
-    // feedback popup. (panels with type="drag").
-    if (!GdkIsWaylandDisplay() && !mIsDragPopup &&
-        !nsWindow::DragInProgress()) {
-      gtk_grab_add(GTK_WIDGET(mContainer));
+  static bool sSystemNeedsPointerGrab = [&] {
+    if (GdkIsWaylandDisplay()) {
+      return false;
     }
+    // We only need to grab the pointer for X servers that move the focus with
+    // the pointer (like twm, sawfish...). Since we roll up popups on focus out,
+    // not grabbing the pointer triggers rollup when the mouse enters the popup
+    // and leaves the main window, see bug 1807482.
+    //
+    // We don't do it for most common desktops, if only because it causes X11
+    // crashes like bug 1607713.
+    if (const char* desktopSession = getenv("XDG_SESSION_DESKTOP")) {
+      if (!strcmp(desktopSession, "twm")) {
+        return true;
+      }
+    }
+
+    nsAutoCString wmName;
+    if (NS_WARN_IF(!GetWindowManagerName(gdk_screen_get_default(), wmName))) {
+      return false;
+    }
+    return wmName.EqualsLiteral("Sawfish");
+  }();
+
+  const bool grabPointer = [] {
+    switch (StaticPrefs::widget_gtk_grab_pointer()) {
+      case 0:
+        return false;
+      case 1:
+        return true;
+      default:
+        return sSystemNeedsPointerGrab;
+    }
+  }();
+
+  if (!grabPointer) {
+    return;
+  }
+
+  mNeedsToRetryCapturingMouse = false;
+  if (aDoCapture) {
+    if (mIsDragPopup || DragInProgress()) {
+      // Don't add a grab if a drag is in progress, or if the widget is a drag
+      // feedback popup. (panels with type="drag").
+      return;
+    }
+
+    if (!mHasMappedToplevel) {
+      // On X, capturing an unmapped window is pointless (returns
+      // GDK_GRAB_NOT_VIEWABLE). Avoid the X server round-trip and just retry
+      // when we're mapped.
+      mNeedsToRetryCapturingMouse = true;
+      return;
+    }
+
+    GdkGrabStatus status = gdk_device_grab(
+        GdkGetPointer(), GetToplevelGdkWindow(), GDK_OWNERSHIP_NONE,
+        /* owner_events = */ true, kCaptureEventsMask,
+        /* cursor = */ nullptr, GetLastUserInputTime());
+    Unused << NS_WARN_IF(status != GDK_GRAB_SUCCESS);
+    LOG(" > pointer grab with status %d", int(status));
+    gtk_grab_add(GTK_WIDGET(mContainer));
   } else {
     // There may not have been a drag in process when aDoCapture was set,
     // so make sure to remove any added grab.  This is a no-op if the grab
     // was not added to this widget.
-    LOG("  remove mContainer grab [%p]\n", this);
     gtk_grab_remove(GTK_WIDGET(mContainer));
-    gRollupListener = nullptr;
+    gdk_device_ungrab(GdkGetPointer(), GetLastUserInputTime());
   }
 }
 
@@ -3834,10 +3825,12 @@ gboolean nsWindow::OnExposeEvent(cairo_t* cr) {
   nsIWidgetListener* listener = GetListener();
   if (!listener) return FALSE;
 
-  LOG("received expose event %p 0x%lx (rects follow):\n", mGdkWindow,
+  LOG("nsWindow::OnExposeEvent GdkWindow [%p] XWindow [0x%lx]", mGdkWindow,
       GetX11Window());
+
   LayoutDeviceIntRegion exposeRegion;
   if (!ExtractExposeRegion(exposeRegion, cr)) {
+    LOG("  no rects, quit");
     return FALSE;
   }
 
@@ -4423,7 +4416,8 @@ void nsWindow::OnMotionNotifyEvent(GdkEventMotion* aEvent) {
   }
 
   GdkWindowEdge edge;
-  if (CheckResizerEdge(GetRefPoint(this, aEvent), edge)) {
+  const auto refPoint = GetRefPoint(this, aEvent);
+  if (CheckResizerEdge(refPoint, edge)) {
     nsCursor cursor = eCursor_none;
     switch (edge) {
       case GDK_WINDOW_EDGE_NORTH:
@@ -4461,9 +4455,11 @@ void nsWindow::OnMotionNotifyEvent(GdkEventMotion* aEvent) {
   gdk_event_get_axis((GdkEvent*)aEvent, GDK_AXIS_PRESSURE, &pressure);
   // Sometime gdk generate 0 pressure value between normal values
   // We have to ignore that and use last valid value
-  if (pressure) mLastMotionPressure = pressure;
+  if (pressure) {
+    mLastMotionPressure = pressure;
+  }
   event.mPressure = mLastMotionPressure;
-  event.mRefPoint = GetRefPoint(this, aEvent);
+  event.mRefPoint = refPoint;
   event.AssignEventTime(GetWidgetEventTime(aEvent->time));
 
   KeymapWrapper::InitInputEvent(event, aEvent->state);
@@ -4519,8 +4515,9 @@ void nsWindow::DispatchMissedButtonReleases(GdkEventCrossing* aGdkEvent) {
 }
 
 void nsWindow::InitButtonEvent(WidgetMouseEvent& aEvent,
-                               GdkEventButton* aGdkEvent) {
-  aEvent.mRefPoint = GetRefPoint(this, aGdkEvent);
+                               GdkEventButton* aGdkEvent,
+                               const LayoutDeviceIntPoint& aRefPoint) {
+  aEvent.mRefPoint = aRefPoint;
 
   guint modifierState = aGdkEvent->state;
   // aEvent's state includes the button state from immediately before this
@@ -4565,12 +4562,13 @@ static guint ButtonMaskFromGDKButton(guint button) {
   return GDK_BUTTON1_MASK << (button - 1);
 }
 
-void nsWindow::DispatchContextMenuEventFromMouseEvent(uint16_t domButton,
-                                                      GdkEventButton* aEvent) {
+void nsWindow::DispatchContextMenuEventFromMouseEvent(
+    uint16_t domButton, GdkEventButton* aEvent,
+    const LayoutDeviceIntPoint& aRefPoint) {
   if (domButton == MouseButton::eSecondary && MOZ_LIKELY(!mIsDestroyed)) {
     WidgetMouseEvent contextMenuEvent(true, eContextMenu, this,
                                       WidgetMouseEvent::eReal);
-    InitButtonEvent(contextMenuEvent, aEvent);
+    InitButtonEvent(contextMenuEvent, aEvent, aRefPoint);
     contextMenuEvent.mPressure = mLastMotionPressure;
     DispatchInputEvent(&contextMenuEvent);
   }
@@ -4606,10 +4604,11 @@ void nsWindow::OnButtonPressEvent(GdkEventButton* aEvent) {
     containerWindow->DispatchActivateEvent();
   }
 
+  const auto refPoint = GetRefPoint(this, aEvent);
+
   // check to see if we should rollup
   if (CheckForRollup(aEvent->x_root, aEvent->y_root, false, false)) {
-    if (aEvent->button == 3 &&
-        mDraggableRegion.Contains(GetRefPoint(this, aEvent))) {
+    if (aEvent->button == 3 && mDraggableRegion.Contains(refPoint)) {
       GUniquePtr<GdkEvent> eventCopy;
       if (aEvent->type != GDK_BUTTON_PRESS) {
         // If the user double-clicks too fast we'll get a 2BUTTON_PRESS event
@@ -4625,7 +4624,7 @@ void nsWindow::OnButtonPressEvent(GdkEventButton* aEvent) {
 
   // Check to see if the event is within our window's resize region
   GdkWindowEdge edge;
-  if (CheckResizerEdge(GetRefPoint(this, aEvent), edge)) {
+  if (CheckResizerEdge(refPoint, edge)) {
     gdk_window_begin_resize_drag(gtk_widget_get_window(mShell), edge,
                                  aEvent->button, aEvent->x_root, aEvent->y_root,
                                  aEvent->time);
@@ -4673,13 +4672,11 @@ void nsWindow::OnButtonPressEvent(GdkEventButton* aEvent) {
 
   WidgetMouseEvent event(true, eMouseDown, this, WidgetMouseEvent::eReal);
   event.mButton = domButton;
-  InitButtonEvent(event, aEvent);
+  InitButtonEvent(event, aEvent, refPoint);
   event.mPressure = mLastMotionPressure;
 
   nsIWidget::ContentAndAPZEventStatus eventStatus = DispatchInputEvent(&event);
 
-  LayoutDeviceIntPoint refPoint =
-      GdkEventCoordsToDevicePixels(aEvent->x, aEvent->y);
   if ((mIsWaylandPanelWindow || mDraggableRegion.Contains(refPoint)) &&
       domButton == MouseButton::ePrimary &&
       eventStatus.mContentStatus != nsEventStatus_eConsumeNoDefault) {
@@ -4689,7 +4686,7 @@ void nsWindow::OnButtonPressEvent(GdkEventButton* aEvent) {
   // right menu click on linux should also pop up a context menu
   if (!StaticPrefs::ui_context_menus_after_mouseup() &&
       eventStatus.mApzStatus != nsEventStatus_eConsumeNoDefault) {
-    DispatchContextMenuEventFromMouseEvent(domButton, aEvent);
+    DispatchContextMenuEventFromMouseEvent(domButton, aEvent, refPoint);
   }
 }
 
@@ -4723,9 +4720,11 @@ void nsWindow::OnButtonReleaseEvent(GdkEventButton* aEvent) {
 
   gButtonState &= ~ButtonMaskFromGDKButton(aEvent->button);
 
+  const auto refPoint = GetRefPoint(this, aEvent);
+
   WidgetMouseEvent event(true, eMouseUp, this, WidgetMouseEvent::eReal);
   event.mButton = domButton;
-  InitButtonEvent(event, aEvent);
+  InitButtonEvent(event, aEvent, refPoint);
   gdouble pressure = 0;
   gdk_event_get_axis((GdkEvent*)aEvent, GDK_AXIS_PRESSURE, &pressure);
   event.mPressure = pressure ? (float)pressure : (float)mLastMotionPressure;
@@ -4754,7 +4753,7 @@ void nsWindow::OnButtonReleaseEvent(GdkEventButton* aEvent) {
   // right menu click on linux should also pop up a context menu
   if (StaticPrefs::ui_context_menus_after_mouseup() &&
       eventStatus.mApzStatus != nsEventStatus_eConsumeNoDefault) {
-    DispatchContextMenuEventFromMouseEvent(domButton, aEvent);
+    DispatchContextMenuEventFromMouseEvent(domButton, aEvent, refPoint);
   }
 
   // Open window manager menu on PIP window to allow user
@@ -5123,9 +5122,7 @@ void nsWindow::OnWindowStateEvent(GtkWidget* aWidget,
     // not get VisibilityNotify events.)
     bool mapped = !(aEvent->new_window_state &
                     (GDK_WINDOW_STATE_ICONIFIED | GDK_WINDOW_STATE_WITHDRAWN));
-    if (mHasMappedToplevel != mapped) {
-      SetHasMappedToplevel(mapped);
-    }
+    SetHasMappedToplevel(mapped);
     LOG("\tquick return because IS_MOZ_CONTAINER(aWidget) is true\n");
     return;
   }
@@ -5497,7 +5494,7 @@ gboolean nsWindow::OnTouchEvent(GdkEventTouch* aEvent) {
       return FALSE;
   }
 
-  LayoutDeviceIntPoint touchPoint = GetRefPoint(this, aEvent);
+  const LayoutDeviceIntPoint touchPoint = GetRefPoint(this, aEvent);
 
   int32_t id;
   RefPtr<dom::Touch> touch;
@@ -5527,9 +5524,7 @@ gboolean nsWindow::OnTouchEvent(GdkEventTouch* aEvent) {
 
   // There's a chance that we are in drag area and the event is not consumed
   // by something on it.
-  LayoutDeviceIntPoint refPoint =
-      GdkEventCoordsToDevicePixels(aEvent->x, aEvent->y);
-  if (msg == eTouchStart && mDraggableRegion.Contains(refPoint) &&
+  if (msg == eTouchStart && mDraggableRegion.Contains(touchPoint) &&
       eventStatus.mApzStatus != nsEventStatus_eConsumeNoDefault) {
     mWindowShouldStartDragging = true;
   }
@@ -6688,11 +6683,18 @@ void nsWindow::NativeShow(bool aAction) {
 }
 
 void nsWindow::SetHasMappedToplevel(bool aState) {
-  LOG("nsWindow::SetHasMappedToplevel() state %d", aState);
+  LOG("nsWindow::SetHasMappedToplevel(%d)", aState);
+  if (aState == mHasMappedToplevel) {
+    return;
+  }
   // Even when aState == mHasMappedToplevel (as when this method is called
   // from Show()), child windows need to have their state checked, so don't
   // return early.
   mHasMappedToplevel = aState;
+  if (aState && mNeedsToRetryCapturingMouse) {
+    CaptureRollupEvents(true);
+    MOZ_ASSERT(!mNeedsToRetryCapturingMouse);
+  }
 }
 
 LayoutDeviceIntSize nsWindow::GetSafeWindowSize(LayoutDeviceIntSize aSize) {
@@ -7435,7 +7437,6 @@ bool nsWindow::CheckForRollup(gdouble aMouseX, gdouble aMouseY, bool aIsWheel,
     rollupWidget = rollupListener->GetRollupWidget();
   }
   if (!rollupWidget) {
-    nsBaseWidget::gRollupListener = nullptr;
     return false;
   }
 
@@ -7491,7 +7492,7 @@ bool nsWindow::CheckForRollup(gdouble aMouseX, gdouble aMouseY, bool aIsWheel,
 }
 
 /* static */
-bool nsWindow::DragInProgress(void) {
+bool nsWindow::DragInProgress() {
   nsCOMPtr<nsIDragService> dragService =
       do_GetService("@mozilla.org/widget/dragservice;1");
   if (!dragService) {
@@ -7500,8 +7501,7 @@ bool nsWindow::DragInProgress(void) {
 
   nsCOMPtr<nsIDragSession> currentDragSession;
   dragService->GetCurrentSession(getter_AddRefs(currentDragSession));
-
-  return currentDragSession != nullptr;
+  return !!currentDragSession;
 }
 
 // This is an ugly workaround for
@@ -8462,9 +8462,8 @@ static nsresult initialize_prefs(void) {
   if (Preferences::HasUserValue("widget.use-aspect-ratio")) {
     gUseAspectRatio = Preferences::GetBool("widget.use-aspect-ratio", true);
   } else {
-    static const char* currentDesktop = getenv("XDG_CURRENT_DESKTOP");
-    gUseAspectRatio =
-        currentDesktop ? (strstr(currentDesktop, "GNOME") != nullptr) : false;
+    const char* currentDesktop = getenv("XDG_CURRENT_DESKTOP");
+    gUseAspectRatio = currentDesktop && strstr(currentDesktop, "GNOME");
   }
 
   return NS_OK;
@@ -8945,6 +8944,9 @@ nsresult nsWindow::SynthesizeNativeMouseEvent(
     LayoutDeviceIntPoint aPoint, NativeMouseMessage aNativeMessage,
     MouseButton aButton, nsIWidget::Modifiers aModifierFlags,
     nsIObserver* aObserver) {
+  LOG("SynthesizeNativeMouseEvent(%d, %d, %d, %d, %d)", aPoint.x.value,
+      aPoint.y.value, int(aNativeMessage), int(aButton), int(aModifierFlags));
+
   AutoObserverNotifier notifier(aObserver, "mouseevent");
 
   if (!mGdkWindow) {
@@ -9301,9 +9303,9 @@ bool nsWindow::TitlebarUseShapeMask() {
     // window there (Bug 1530252).
     const char* currentDesktop = getenv("XDG_CURRENT_DESKTOP");
     if (currentDesktop) {
-      if (strstr(currentDesktop, "GNOME") != nullptr) {
+      if (strstr(currentDesktop, "GNOME")) {
         const char* sessionType = getenv("XDG_SESSION_TYPE");
-        if (sessionType && strstr(sessionType, "x11") != nullptr) {
+        if (sessionType && strstr(sessionType, "x11")) {
           return false;
         }
       }

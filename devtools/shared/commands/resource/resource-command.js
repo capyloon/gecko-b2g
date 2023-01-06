@@ -1054,6 +1054,20 @@ class ResourceCommand {
       return;
     }
 
+    // All workers target types are still not supported by the watcher
+    // so that we have to spawn legacy listener for all their resources.
+    // But some resources are irrelevant to workers, like network events.
+    // And we removed the related legacy listener as they are no longer used.
+    if (
+      targetFront.targetType.endsWith("worker") &&
+      [
+        ResourceCommand.TYPES.NETWORK_EVENT,
+        ResourceCommand.TYPES.NETWORK_EVENT_STACKTRACE,
+      ].includes(resourceType)
+    ) {
+      return;
+    }
+
     if (targetFront.isDestroyed()) {
       return;
     }
@@ -1204,6 +1218,7 @@ ResourceCommand.TYPES = ResourceCommand.prototype.TYPES = {
   SOURCE: "source",
   THREAD_STATE: "thread-state",
   SERVER_SENT_EVENT: "server-sent-event",
+  LAST_PRIVATE_CONTEXT_EXIT: "last-private-context-exit",
 };
 ResourceCommand.ALL_TYPES = ResourceCommand.prototype.ALL_TYPES = Object.values(
   ResourceCommand.TYPES
@@ -1269,11 +1284,6 @@ loader.lazyRequireGetter(
 );
 loader.lazyRequireGetter(
   LegacyListeners,
-  ResourceCommand.TYPES.NETWORK_EVENT,
-  "resource://devtools/shared/commands/resource/legacy-listeners/network-events.js"
-);
-loader.lazyRequireGetter(
-  LegacyListeners,
   ResourceCommand.TYPES.WEBSOCKET,
   "resource://devtools/shared/commands/resource/legacy-listeners/websocket.js"
 );
@@ -1309,11 +1319,6 @@ loader.lazyRequireGetter(
 );
 loader.lazyRequireGetter(
   LegacyListeners,
-  ResourceCommand.TYPES.NETWORK_EVENT_STACKTRACE,
-  "resource://devtools/shared/commands/resource/legacy-listeners/network-event-stacktraces.js"
-);
-loader.lazyRequireGetter(
-  LegacyListeners,
   ResourceCommand.TYPES.SOURCE,
   "resource://devtools/shared/commands/resource/legacy-listeners/source.js"
 );
@@ -1331,6 +1336,15 @@ loader.lazyRequireGetter(
   LegacyListeners,
   ResourceCommand.TYPES.REFLOW,
   "resource://devtools/shared/commands/resource/legacy-listeners/reflow.js"
+);
+// @backward-compat { version 110 } Once Firefox 110 is release, we can:
+// - remove this entry
+// - remove the legacy listener file and the moz.build entry
+// - remove the `lastPrivateContextExited` event from the webconsole spec
+loader.lazyRequireGetter(
+  LegacyListeners,
+  ResourceCommand.TYPES.LAST_PRIVATE_CONTEXT_EXIT,
+  "resource://devtools/shared/commands/resource/legacy-listeners/last-private-context-exit.js"
 );
 
 // Optional transformers for each type of resource.

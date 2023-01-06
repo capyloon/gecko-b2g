@@ -398,7 +398,7 @@ load 551635-1.html
 load 553504-1.xhtml
 load 564368-1.xhtml
 load 564968.xhtml
-asserts(5) load 569193-1.html # absurd sizes
+asserts(5-9) load 569193-1.html # absurd sizes
 load 570160.html
 load 570289-1.html
 load 571618-1.svg
@@ -814,3 +814,4 @@ load 1734015.html
 load 1776079.html
 asserts(0-2) load 1791606.html
 load 1799749.html
+pref(layout.css.content-visibility.enabled,true) asserts(1-4) load 1807958.html # asserts from integer overflow & bogus sizes
