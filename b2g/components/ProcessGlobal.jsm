@@ -336,6 +336,20 @@ ProcessGlobal.prototype = {
         },
         messageManagerGroups: ["browsers"],
       },
+
+      EncryptedMedia: {
+        parent: {
+          esModuleURI: "resource://gre/actors/EncryptedMediaParent.sys.mjs",
+        },
+
+        child: {
+          esModuleURI: "resource://gre/actors/EncryptedMediaChild.sys.mjs",
+          observers: ["mediakeys-request"],
+        },
+
+        messageManagerGroups: ["browsers"],
+        allFrames: true,
+      },
     };
 
     ActorManagerParent.addJSWindowActors(JSWINDOWACTORS);

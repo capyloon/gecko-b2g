@@ -84,3 +84,6 @@ JS_PREFERENCE_PP_FILES += [
 FINAL_TARGET_PP_FILES += [
     "ua-update.json.in",
 ]
+
+for cdm in CONFIG["MOZ_EME_MODULES"]:
+    DEFINES["MOZ_%s_EME" % cdm.upper()] = True

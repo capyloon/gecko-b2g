@@ -84,9 +84,7 @@ export class UrlbarInput {
                         role="listbox"/>
             </html:div>
           </html:div>
-          <menupopup class="urlbarView-result-menu">
-            <menuitem data-command="remove-from-history" data-l10n-id="urlbar-result-menu-remove-from-history"/>
-          </menupopup>
+          <menupopup class="urlbarView-result-menu"/>
           <hbox class="search-one-offs"
                 includecurrentengine="true"
                 disabletab="true"/>
@@ -3324,7 +3322,9 @@ export class UrlbarInput {
       // The check on isHandlingUserInput filters out async "select" events
       // from setSelectionRange(), which occur when autofill text is selected.
       !this.window.windowUtils.isHandlingUserInput ||
-      !Services.clipboard.supportsSelectionClipboard()
+      !Services.clipboard.isClipboardTypeSupported(
+        Services.clipboard.kSelectionClipboard
+      )
     ) {
       return;
     }

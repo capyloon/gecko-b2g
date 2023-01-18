@@ -235,8 +235,10 @@
 # the parent process.
 - name: accessibility.cache.enabled
   type: bool
-#ifdef ANDROID
+#if defined(ANDROID)
   value: true
+#elif defined(XP_WIN) || defined(XP_LINUX)
+  value: @IS_EARLY_BETA_OR_EARLIER@
 #else
   value: @IS_NOT_RELEASE_OR_BETA@
 #endif
@@ -1685,6 +1687,13 @@
 #endif
   mirror: always
 
+# When this pref is enabled, the JS validator will be enabled for
+# ORB.
+- name: browser.opaqueResponseBlocking.javascriptValidator
+  type: bool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+
 # When this pref is enabled, <object> and <embed> elements will create
 # synthetic documents when the resource type they're loading is an image.
 - name: browser.opaqueResponseBlocking.syntheticBrowsingContext
@@ -1896,7 +1905,7 @@
 # How long to stay off the event loop in perf mode.
 - name: content.sink.perf_parse_time
   type: int32_t
-  value: 360000
+  value: 30000
   mirror: always
 
 #  How long to be in interactive mode after an event.
@@ -2402,11 +2411,12 @@
   value: false
   mirror: always
 
-# Controls whether the "focus fixup rule" is enabled. Nightly-only pending
-# resolution + edits in https://github.com/whatwg/html/issues/8225
+# Controls whether the "focus fixup rule" is enabled. Subject to minor changes
+# based on https://github.com/whatwg/html/pull/8392 and
+# https://github.com/whatwg/html/issues/8225
 - name: dom.focus.fixup
   type: bool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
 
 - name: dom.mouse_capture.enabled
@@ -2983,7 +2993,7 @@
 # Is support for HTMLElement.autocapitalize enabled?
 - name: dom.forms.autocapitalize
   type: bool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
 
 # Support for input type=month, type=week. By default, disabled.
@@ -4055,7 +4065,7 @@
 # Whether the File System API is enabled
 - name: dom.fs.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
 
 # Whether the WritableFileStream is enabled or disabled.
@@ -4148,46 +4158,6 @@
 - name: dom.systemMessage.enabled
   type: RelaxedAtomicBool
   value: false
-  mirror: always
-
-# DOM Streams Prefs
-
-## Exposure Prefs: To ensure the DOM Streams don't expose more
-# than existing JS Streams implementation, we want to hide some
-# interfaces from the global until later.
-- name: dom.streams.readable_stream_default_controller.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
-- name: dom.streams.readable_stream_default_reader.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
-- name: dom.streams.byte_streams.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
-- name: dom.streams.writable_streams.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
-- name: dom.streams.transform_streams.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
-- name: dom.streams.pipeTo.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
-- name: dom.streams.transferable.enabled
-  type: RelaxedAtomicBool
-  value: true
   mirror: always
 
 # For area and anchor elements with target=_blank and no rel set to
@@ -5243,18 +5213,6 @@
   value: @IS_NOT_ANDROID@
   mirror: never
 
-# Prefs used by normandy to orchestrate the fission experiment. For more
-# details, see the comments in nsAppRunner.cpp.
-- name: fission.experiment.enrollmentStatus
-  type: uint32_t
-  value: 0
-  mirror: never
-
-- name: fission.experiment.startupEnrollmentStatus
-  type: uint32_t
-  value: 0
-  mirror: never
-
 # This pref has no effect within fission windows, it only controls the
 # behaviour within non-fission windows. If true, preserve browsing contexts
 # between process swaps.
@@ -5827,6 +5785,8 @@
   type: bool
 #if defined(XP_MACOSX) || defined(XP_LINUX) && !defined(ANDROID)
   value: true
+#elif defined(MOZ_WIDGET_ANDROID) && defined(NIGHTLY_BUILD)
+  value: true
 #else
   value: false
 #endif
@@ -6028,6 +5988,13 @@
     type: RelaxedAtomicBool
     value: false
     mirror: always
+#endif
+
+#ifdef XP_MACOSX
+-   name: gfx.core-animation.low-power-telemetry-frames
+    type: int32_t
+    value: 600
+    mirror: once
 #endif
 
 #if defined(MOZ_WIDGET_ANDROID)
@@ -8312,13 +8279,6 @@
   value: -1
   mirror: always
 
-# Whether non-standard caption-side values are enabled
-- name: layout.css.caption-side-non-standard.enabled
-  type: RelaxedAtomicBool
-  value: false
-  mirror: always
-  rust: true
-
 # Whether @layer is enabled
 - name: layout.css.cascade-layers.enabled
   type: RelaxedAtomicBool
@@ -8329,7 +8289,7 @@
 # Whether Container Queries are enabled
 - name: layout.css.container-queries.enabled
   type: RelaxedAtomicBool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
   rust: true
 
@@ -8857,6 +8817,13 @@
   value: true
   mirror: always
 
+# Enables support for the page-orientation  property inside of CSS @page rules.
+- name: layout.css.page-orientation.enabled
+  type: RelaxedAtomicBool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+  rust: true
+
 # Enables support for the size property inside of CSS @page rules.
 - name: layout.css.page-size.enabled
   type: RelaxedAtomicBool
@@ -8867,7 +8834,7 @@
 # Enables support for the named pages
 - name: layout.css.named-pages.enabled
   type: RelaxedAtomicBool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
   rust: true
 
@@ -9277,8 +9244,8 @@
   mirror: always
 
 # Pref to control how many consecutive scroll-anchoring adjustments (since the
-# most recent user scroll) we'll average, before we consider whether to
-# automatically turn off scroll anchoring. When we hit this threshold, the
+# most recent user scroll or timeout) we'll average, before we consider whether
+# to automatically turn off scroll anchoring. When we hit this threshold, the
 # actual decision to disable also depends on the
 # min-average-adjustment-threshold pref, see below for more details.
 #
@@ -9286,6 +9253,16 @@
 - name: layout.css.scroll-anchoring.max-consecutive-adjustments
   type: uint32_t
   value: 10
+  mirror: always
+
+# The time after which we reset the max-consecutive-adjustments period, in
+# milliseconds.
+#
+# This prevents sporadic back-and-forth scroll anchoring to trigger the
+# max-consecutive-adjustments heuristic.
+- name: layout.css.scroll-anchoring.max-consecutive-adjustments-timeout-ms
+  type: uint32_t
+  value: 500
   mirror: always
 
 # Pref to control whether we should disable scroll anchoring on a scroller
@@ -9298,7 +9275,7 @@
 # average offset difference between them amount to less than 3 CSS pixels.
 - name: layout.css.scroll-anchoring.min-average-adjustment-threshold
   type: uint32_t
-  value: 3
+  value: 2
   mirror: always
 
 # Pref to control disabling scroll anchoring suppression triggers, see
@@ -10712,7 +10689,7 @@
 # disabled, an older forked capture module is used.
 - name: media.getusermedia.camera.macavf.enabled
   type: bool
-  value: false
+  value: @IS_EARLY_BETA_OR_EARLIER@
   mirror: once
 
 # WebRTC prefs follow
@@ -10870,10 +10847,31 @@
   value: @IS_EARLY_BETA_OR_EARLIER@
   mirror: always
 
+#if defined(XP_MACOSX)
 - name: media.webrtc.capture.allow-iosurface
   type: RelaxedAtomicBool
   value: true
   mirror: always
+#endif
+
+#if defined(XP_WIN)
+- name: media.webrtc.capture.allow-directx
+  type: RelaxedAtomicBool
+  value: @IS_EARLY_BETA_OR_EARLIER@
+  mirror: always
+
+- name: media.webrtc.capture.allow-wgc
+  type: RelaxedAtomicBool
+  value: @IS_EARLY_BETA_OR_EARLIER@
+  mirror: always
+#endif
+
+#if defined(MOZ_WIDGET_GTK)
+- name: media.webrtc.capture.allow-pipewire
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
+#endif
 
 - name: media.block-autoplay-until-in-foreground
   type: bool
@@ -11663,6 +11661,13 @@
   value: false
   mirror: always
 
+# How long we should wait for EarlyHintPreloader to be used.
+# Under normal circumstances it should be used immidiately.
+- name: network.early-hints.parent-connect-timeout
+  type: uint32_t
+  value: 10000
+  mirror: always
+
 # Whether to use the network process or not
 # Start a separate socket process. Performing networking on the socket process
 # is control by a sepparate pref
@@ -12105,6 +12110,18 @@
   value: "https://firefox-source-docs.mozilla.org/networking/dns/trr-skip-reasons.html#"
   mirror: never
 
+# If true, display a warning before fallback to native
+- name: network.trr.display_fallback_warning
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
+# Heuristics in this list will trigger the fallback to native warning
+- name: network.trr.fallback_warning_heuristic_list
+  type: String
+  value: "canary"
+  mirror: never
+
 # Allow the network changed event to get sent when a network topology or setup
 # change is noticed while running.
 - name: network.notify.changed
@@ -12463,6 +12480,15 @@
   value: false
   mirror: always
 
+# If true nsCORSListenerProxy will reject any URL that contains user & password
+# regardless if it's a redirect or not. When false nsCORSListenerProxy will
+# only reject URLs with a username and password when they happen on a redirected
+# channel.
+- name: network.cors_preflight.block_userpass_uri
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
 # Whether to record the telemetry event when a JAR channel is failed to load.
 - name: network.jar.record_failure_reason
   type: RelaxedAtomicBool
@@ -12549,6 +12575,12 @@
 - name: network.webtransport.datagram_size
   type: RelaxedAtomicUint32
   value: 1200
+  mirror: always
+
+# WebTransport Redirect support
+- name: network.webtransport.redirect.enabled
+  type: RelaxedAtomicBool
+  value: false
   mirror: always
 
 #---------------------------------------------------------------------------
@@ -13377,7 +13409,7 @@
 # security/sandbox/win/src/sandboxbroker/sandboxBroker.cpp
 - name: security.sandbox.gpu.level
   type: int32_t
-#if defined(XP_WIN) && defined(EARLY_BETA_OR_EARLIER)
+#if defined(XP_WIN)
   value: 1
 #else
   value: 0
@@ -14664,11 +14696,6 @@
   value: false
   mirror: always
 
-- name: webgl.force-layers-readback
-  type: RelaxedAtomicBool
-  value: false
-  mirror: always
-
 - name: webgl.force-index-validation
   type: RelaxedAtomicInt32
   value: 0
@@ -14732,6 +14759,8 @@
 # (When reading the next line, know that preprocessor.py doesn't
 # understand parentheses, but && is higher precedence than ||.)
 #if defined(XP_MACOSX) || defined(XP_WIN) || defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID)
+  value: true
+#elif defined(MOZ_WIDGET_ANDROID) && defined(NIGHTLY_BUILD)
   value: true
 #else
   value: false

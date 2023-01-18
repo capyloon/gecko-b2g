@@ -728,12 +728,15 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleList {
 };
 
 struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStylePage {
+  using StylePageOrientation = mozilla::StylePageOrientation;
   using StylePageSize = mozilla::StylePageSize;
   using StylePageName = mozilla::StylePageName;
   nsStylePage(const nsStylePage& aOther) = default;
   nsStylePage& operator=(const nsStylePage& aOther) = default;
   explicit nsStylePage(const mozilla::dom::Document&)
-      : mSize(StylePageSize::Auto()), mPage(StylePageName::Auto()) {}
+      : mSize(StylePageSize::Auto()),
+        mPage(StylePageName::Auto()),
+        mPageOrientation(StylePageOrientation::Upright) {}
 
   static constexpr bool kHasTriggerImageLoads = false;
   nsChangeHint CalcDifference(const nsStylePage& aNewData) const;
@@ -742,6 +745,8 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStylePage {
   StylePageSize mSize;
   // page-name property.
   StylePageName mPage;
+  // page-orientation property.
+  StylePageOrientation mPageOrientation;
 };
 
 struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStylePosition {
@@ -1599,23 +1604,13 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleDisplay {
 
   bool IsContainAny() const { return !!mEffectiveContainment; }
 
-  bool PrecludesSizeContainment() const {
-    return IsInternalRubyDisplayType() ||
-           DisplayInside() == mozilla::StyleDisplayInside::Table ||
-           IsInnerTableStyle();
-  }
+  // This is similar to PrecludesSizeContainmentOrContentVisibility, but also
+  // takes into account whether or not the given frame is a non-atomic,
+  // inline-level box.
+  bool PrecludesSizeContainmentOrContentVisibilityWithFrame(
+      const nsIFrame&) const;
 
-  bool IsContentVisibilityVisible() const {
-    return mContentVisibility == StyleContentVisibility::Visible;
-  }
-
-  bool IsContentVisibilityHidden() const {
-    return mContentVisibility == StyleContentVisibility::Hidden;
-  }
-
-  bool IsContentVisibilityAuto() const {
-    return mContentVisibility == StyleContentVisibility::Auto;
-  }
+  StyleContentVisibility ContentVisibility(const nsIFrame&) const;
 
   /* Returns whether the element has the transform property or a related
    * property. */

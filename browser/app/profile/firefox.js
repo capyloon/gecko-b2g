@@ -350,6 +350,13 @@ pref("browser.overlink-delay", 80);
 
 pref("browser.theme.colorway-closet", true);
 
+// Whether expired built-in colorways themes that are active or retained
+// should be allowed to check for updates and be updated to an AMO hosted
+// theme with the same id (as part of preparing to remove from mozilla-central
+// all the expired built-in colorways themes, after existing users have been
+// migrated to colorways themes hosted on AMO).
+pref("browser.theme.colorway-migration", false);
+
 // Whether using `ctrl` when hitting return/enter in the URL bar
 // (or clicking 'go') should prefix 'www.' and suffix
 // browser.fixup.alternate.suffix to the URL bar value prior to
@@ -512,7 +519,7 @@ pref("browser.urlbar.sponsoredTopSites", false);
 
 // Global toggle for whether the show search terms feature
 // can be used at all, and enabled/disabled by the user.
-#ifdef NIGHTLY_BUILD
+#if defined(EARLY_BETA_OR_EARLIER)
 pref("browser.urlbar.showSearchTerms.featureGate", true);
 #else
 pref("browser.urlbar.showSearchTerms.featureGate", false);
@@ -1101,9 +1108,9 @@ pref("browser.sessionstore.resuming_after_os_restart", false);
 // Minimal interval between two save operations in milliseconds (while the user is idle).
 pref("browser.sessionstore.interval.idle", 3600000); // 1h
 
-// Time (ms) before we assume that the user is idle and that we don't need to
+// Time (seconds) before we assume that the user is idle and that we don't need to
 // collect/save the session quite as often.
-pref("browser.sessionstore.idleDelay", 180000); // 3 minutes
+pref("browser.sessionstore.idleDelay", 180); // 3 minutes
 
 // on which sites to save text data, POSTDATA and cookies
 // 0 = everywhere, 1 = unencrypted sites, 2 = nowhere
@@ -2745,28 +2752,6 @@ pref("svg.context-properties.content.allowed-domains", "profile.accounts.firefox
 #ifdef NIGHTLY_BUILD
   pref("browser.places.interactions.enabled", true);
 #endif
-
-// A set of scores for rating the relevancy of snapshots. The suffixes after the
-// last decimal are prefixed by `_score` and reference the functions called in
-// SnapshotScorer.
-pref("browser.places.snapshots.score.Visit", 1);
-pref("browser.places.snapshots.score.CurrentSession", 1);
-pref("browser.places.snapshots.score.IsUserPersisted", 1);
-pref("browser.places.snapshots.score.IsUserRemoved", -10);
-
-// A set of weights for the snapshot recommendation sources. The suffixes after
-// the last decimal map to the keys of `Snapshots.recommendationSources`.
-pref("browser.places.snapshots.source.CommonReferrer", 3);
-pref("browser.places.snapshots.source.Overlapping", 3);
-pref("browser.places.snapshots.source.TimeOfDay", 3);
-
-// Other preferences affecting snapshots scoring.
-pref("browser.places.snapshots.relevancy.timeOfDayIntervalSeconds", 3600);
-
-// Expiration days for snapshots.
-pref("browser.places.snapshots.expiration.days", 210);
-// For user managed snapshots we use more than a year, to support yearly tasks.
-pref("browser.places.snapshots.expiration.userManaged.days", 420);
 
 // If the user has seen the Firefox View feature tour this value reflects
 // the id of the last screen they saw and whether they completed the tour

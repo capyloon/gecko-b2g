@@ -79,7 +79,16 @@ class Benchmark(object):
 
     def _full_clone(self, benchmark_repository, dest):
         subprocess.check_call(
-            ["git", "clone", benchmark_repository, str(dest.resolve())]
+            [
+                "git",
+                "clone",
+                "-c",
+                "http.postBuffer=2147483648",
+                "-c",
+                "core.autocrlf=false",
+                benchmark_repository,
+                str(dest.resolve()),
+            ]
         )
 
     def _get_benchmark_folder(self, benchmark_dest, run_local):
@@ -131,7 +140,7 @@ class Benchmark(object):
                 os.symlink(benchmark_path, dest)
         else:
             # Clobber the benchmark in case a recent update removed any files.
-            mozfile.remove(dest)
+            mozfile.remove(str(dest.resolve()))
             shutil.copytree(benchmark_path, dest)
 
         if any(path.is_file() for path in benchmark_path.iterdir()):

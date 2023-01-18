@@ -1059,7 +1059,8 @@ bool nsStyleSVGReset::HasMask() const {
 
 nsChangeHint nsStylePage::CalcDifference(const nsStylePage& aNewData) const {
   // Page rule styling only matters when printing or using print preview.
-  if (aNewData.mSize != mSize || aNewData.mPage != mPage) {
+  if (aNewData.mSize != mSize || aNewData.mPage != mPage ||
+      aNewData.mPageOrientation != mPageOrientation) {
     return nsChangeHint_NeutralChange;
   }
   return nsChangeHint_Empty;
@@ -2787,7 +2788,6 @@ StyleImageOrientation nsStyleVisibility::UsedImageOrientation(
 
   nsCOMPtr<nsIPrincipal> triggeringPrincipal =
       aRequest->GetTriggeringPrincipal();
-  nsCOMPtr<nsIURI> uri = aRequest->GetURI();
 
   // If the request was for a blob, the request may not have a triggering
   // principal and we should use the input orientation.
@@ -2795,10 +2795,16 @@ StyleImageOrientation nsStyleVisibility::UsedImageOrientation(
     return aOrientation;
   }
 
+  nsCOMPtr<nsIURI> uri = aRequest->GetURI();
+  // If the image request is a data uri, then treat the request as a
+  // same origin request.
+  bool isSameOrigin =
+      uri->SchemeIs("data") || triggeringPrincipal->IsSameOrigin(uri);
+
   // If the image request is a cross-origin request, do not enforce the
   // image orientation found in the style. Use the image orientation found
   // in the exif data.
-  if (!triggeringPrincipal->IsSameOrigin(uri)) {
+  if (!isSameOrigin) {
     return StyleImageOrientation::FromImage;
   }
 
@@ -3716,6 +3722,17 @@ nscoord StyleCalcNode::Resolve(nscoord aBasis,
   return ResolveInternal(aBasis, aRounder);
 }
 
+bool nsStyleDisplay::PrecludesSizeContainmentOrContentVisibilityWithFrame(
+    const nsIFrame& aFrame) const {
+  // Note: The spec for size containment says it should have no effect on
+  // non-atomic, inline-level boxes.
+  bool isNonReplacedInline = aFrame.IsFrameOfType(nsIFrame::eLineParticipant) &&
+                             !aFrame.IsFrameOfType(nsIFrame::eReplaced);
+  return isNonReplacedInline || IsInternalRubyDisplayType() ||
+         DisplayInside() == mozilla::StyleDisplayInside::Table ||
+         IsInnerTableStyle();
+}
+
 ContainSizeAxes nsStyleDisplay::GetContainSizeAxes(
     const nsIFrame& aFrame) const {
   // Short circuit for no containment whatsoever
@@ -3723,11 +3740,7 @@ ContainSizeAxes nsStyleDisplay::GetContainSizeAxes(
     return ContainSizeAxes(false, false);
   }
 
-  // Note: The spec for size containment says it should have no effect on
-  // non-atomic, inline-level boxes.
-  bool isNonReplacedInline = aFrame.IsFrameOfType(nsIFrame::eLineParticipant) &&
-                             !aFrame.IsFrameOfType(nsIFrame::eReplaced);
-  if (isNonReplacedInline || PrecludesSizeContainment()) {
+  if (PrecludesSizeContainmentOrContentVisibilityWithFrame(aFrame)) {
     return ContainSizeAxes(false, false);
   }
 
@@ -3749,6 +3762,17 @@ ContainSizeAxes nsStyleDisplay::GetContainSizeAxes(
   return ContainSizeAxes(
       static_cast<bool>(mEffectiveContainment & StyleContain::INLINE_SIZE),
       static_cast<bool>(mEffectiveContainment & StyleContain::BLOCK_SIZE));
+}
+
+StyleContentVisibility nsStyleDisplay::ContentVisibility(
+    const nsIFrame& aFrame) const {
+  if (MOZ_LIKELY(mContentVisibility == StyleContentVisibility::Visible)) {
+    return StyleContentVisibility::Visible;
+  }
+  if (PrecludesSizeContainmentOrContentVisibilityWithFrame(aFrame)) {
+    return StyleContentVisibility::Visible;
+  }
+  return mContentVisibility;
 }
 
 static nscoord Resolve(const StyleContainIntrinsicSize& aSize,

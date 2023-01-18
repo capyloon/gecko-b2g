@@ -746,6 +746,7 @@ mozilla::ipc::IPCResult ContentChild::RecvSetXPCOMProcessAttributes(
       dont_AddRef(net::ChildDNSService::GetSingleton());
   if (dnsServiceChild) {
     dnsServiceChild->SetTRRDomain(aXPCOMInit.trrDomain());
+    dnsServiceChild->SetTRRModeInChild(aXPCOMInit.trrMode());
   }
   return IPC_OK();
 }
@@ -2496,6 +2497,16 @@ mozilla::ipc::IPCResult ContentChild::RecvSetCaptivePortalState(
   return IPC_OK();
 }
 
+mozilla::ipc::IPCResult ContentChild::RecvSetTRRMode(
+    const nsIDNSService::ResolverMode& mode) {
+  RefPtr<net::ChildDNSService> dnsServiceChild =
+      dont_AddRef(net::ChildDNSService::GetSingleton());
+  if (dnsServiceChild) {
+    dnsServiceChild->SetTRRModeInChild(mode);
+  }
+  return IPC_OK();
+}
+
 void ContentChild::ActorDestroy(ActorDestroyReason why) {
   if (mForceKillTimer) {
     mForceKillTimer->Cancel();
@@ -3615,7 +3626,7 @@ mozilla::ipc::IPCResult ContentChild::RecvInvokeDragSession(
           const IPCDataTransferItem& item = items[j];
           RefPtr<nsVariantCC> variant = new nsVariantCC();
           nsresult rv =
-              nsContentUtils::IPCTransferableItemToVariant(item, variant, this);
+              nsContentUtils::IPCTransferableItemToVariant(item, variant);
           if (NS_FAILED(rv)) {
             continue;
           }

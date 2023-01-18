@@ -686,12 +686,6 @@ const TargetingGetters = {
       host: urls[0].host,
     };
   },
-  get isFissionExperimentEnabled() {
-    return (
-      Services.appinfo.fissionExperimentStatus ===
-      Ci.nsIXULRuntime.eExperimentStatusTreatment
-    );
-  },
   get activeNotifications() {
     let bts = Cc["@mozilla.org/backgroundtasks;1"]?.getService(
       Ci.nsIBackgroundTasks
@@ -840,10 +834,13 @@ const ASRouterTargeting = {
    */
   async getEnvironmentSnapshot(target = ASRouterTargeting.Environment) {
     // One promise for each named property.  Label promises with property name.
-    let promises = Object.keys(target).map(async name => [
-      name,
-      await target[name],
-    ]);
+    let promises = Object.keys(target).map(async name => {
+      // Each promise needs to check if we're shutting down when it is evaluated.
+      if (Services.startup.shuttingDown) {
+        throw new Error("shutting down, so not querying targeting environment");
+      }
+      return [name, await target[name]];
+    });
 
     // Ignore properties that are rejected.
     let results = await Promise.allSettled(promises);

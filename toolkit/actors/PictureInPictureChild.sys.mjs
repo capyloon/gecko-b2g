@@ -861,7 +861,13 @@ export class PictureInPictureToggleChild extends JSWindowActorChild {
         (!state.clickedElement ||
           state.clickedElement.get() != event.originalTarget);
 
-      if (isMouseUpOnOtherElement || event.type == "click") {
+      if (
+        isMouseUpOnOtherElement ||
+        event.type == "click" ||
+        // pointerup event still triggers after a touchstart event. We just need to detect
+        // the pointer type and determine if we got to this part of the code through a touch event.
+        event.pointerType == "touch"
+      ) {
         // The click is complete, so now we reset the state so that
         // we stop suppressing these events.
         state.isClickingToggle = false;
@@ -1842,8 +1848,8 @@ export class PictureInPictureChild extends JSWindowActorChild {
         break;
       }
       case "PictureInPicture:SetVideoTime": {
-        const { scrubberPosition } = message.data;
-        this.setVideoTime(scrubberPosition);
+        const { scrubberPosition, wasPlaying } = message.data;
+        this.setVideoTime(scrubberPosition, wasPlaying);
         break;
       }
     }
@@ -1853,11 +1859,11 @@ export class PictureInPictureChild extends JSWindowActorChild {
    * Set the current time of the video based of the position of the scrubber
    * @param {Number} scrubberPosition A number between 0 and 1 representing the position of the scrubber
    */
-  setVideoTime(scrubberPosition) {
+  setVideoTime(scrubberPosition, wasPlaying) {
     const video = this.getWeakVideo();
     let duration = this.videoWrapper.getDuration(video);
     let currentTime = scrubberPosition * duration;
-    this.videoWrapper.setCurrentTime(video, currentTime);
+    this.videoWrapper.setCurrentTime(video, currentTime, wasPlaying);
   }
 
   /**
@@ -2635,11 +2641,13 @@ class PictureInPictureChildVideoWrapper {
    *  The originating video source element
    * @param {Number} position
    *  The current playback time of the video
+   * @param {Boolean} wasPlaying
+   *  True if the video was playing before seeking else false
    */
-  setCurrentTime(video, position) {
+  setCurrentTime(video, position, wasPlaying) {
     return this.#callWrapperMethod({
       name: "setCurrentTime",
-      args: [video, position],
+      args: [video, position, wasPlaying],
       fallback: () => {
         video.currentTime = position;
       },

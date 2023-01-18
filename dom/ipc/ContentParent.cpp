@@ -785,6 +785,7 @@ static const char* sObserverTopics[] = {
     "cookie-changed",
     "private-cookie-changed",
     NS_NETWORK_LINK_TYPE_TOPIC,
+    NS_NETWORK_TRR_MODE_CHANGED_TOPIC,
     "network:socket-process-crashed",
     DEFAULT_TIMEZONE_CHANGED_OBSERVER_TOPIC,
 };
@@ -3048,7 +3049,6 @@ ContentParent::ContentParent(const nsACString& aRemoteType, int32_t aJSPluginID)
       mChildID(gContentChildID++),
       mGeolocationWatchID(-1),
       mJSPluginID(aJSPluginID),
-      mRemoteWorkerActorData("ContentParent::mRemoteWorkerActorData"),
       mThreadsafeHandle(
           new ThreadsafeContentParentHandle(this, mChildID, mRemoteType)),
       mNumDestroyingTabs(0),
@@ -3209,14 +3209,18 @@ bool ContentParent::InitInternal(ProcessPriority aInitialPriority) {
   nsCOMPtr<nsIClipboard> clipboard(
       do_GetService("@mozilla.org/widget/clipboard;1"));
   MOZ_ASSERT(clipboard, "No clipboard?");
+  MOZ_ASSERT(
+      clipboard->IsClipboardTypeSupported(nsIClipboard::kGlobalClipboard),
+      "We should always support the global clipboard.");
 
-  rv = clipboard->SupportsSelectionClipboard(
-      &xpcomInit.clipboardCaps().supportsSelectionClipboard());
-  MOZ_ASSERT(NS_SUCCEEDED(rv));
+  xpcomInit.clipboardCaps().supportsSelectionClipboard() =
+      clipboard->IsClipboardTypeSupported(nsIClipboard::kSelectionClipboard);
 
-  rv = clipboard->SupportsFindClipboard(
-      &xpcomInit.clipboardCaps().supportsFindClipboard());
-  MOZ_ASSERT(NS_SUCCEEDED(rv));
+  xpcomInit.clipboardCaps().supportsFindClipboard() =
+      clipboard->IsClipboardTypeSupported(nsIClipboard::kFindClipboard);
+
+  xpcomInit.clipboardCaps().supportsSelectionCache() =
+      clipboard->IsClipboardTypeSupported(nsIClipboard::kSelectionCache);
 
   // Let's copy the domain policy from the parent to the child (if it's active).
   StructuredCloneData initialData;
@@ -3320,6 +3324,10 @@ bool ContentParent::InitInternal(ProcessPriority aInitialPriority) {
 
   nsCOMPtr<nsIDNSService> dns = do_GetService(NS_DNSSERVICE_CONTRACTID);
   dns->GetTrrDomain(xpcomInit.trrDomain());
+
+  nsIDNSService::ResolverMode mode;
+  dns->GetCurrentTrrMode(&mode);
+  xpcomInit.trrMode() = mode;
 
   Unused << SendSetXPCOMProcessAttributes(
       xpcomInit, initialData, lnf, fontList, std::move(sharedUASheetHandle),
@@ -4391,6 +4399,11 @@ ContentParent::Observe(nsISupports* aSubject, const char* aTopic,
     Unused << SendSocketProcessCrashed();
   } else if (!strcmp(aTopic, DEFAULT_TIMEZONE_CHANGED_OBSERVER_TOPIC)) {
     Unused << SendSystemTimezoneChanged();
+  } else if (!strcmp(aTopic, NS_NETWORK_TRR_MODE_CHANGED_TOPIC)) {
+    nsCOMPtr<nsIDNSService> dns = do_GetService(NS_DNSSERVICE_CONTRACTID);
+    nsIDNSService::ResolverMode mode;
+    dns->GetCurrentTrrMode(&mode);
+    Unused << SendSetTRRMode(mode);
   }
 
   return NS_OK;
@@ -7883,37 +7896,21 @@ mozilla::ipc::IPCResult ContentParent::RecvDiscardBrowsingContext(
   return IPC_OK();
 }
 
-void ContentParent::RegisterRemoteWorkerActor(nsIURI* aScriptURL) {
-  auto lock = mRemoteWorkerActorData.Lock();
-  ++lock->mCount;
-
-  lock->mScriptURLs.EmplaceBack(aScriptURL);
-}
-
 void ContentParent::UnregisterRemoveWorkerActor(nsIURI* aScriptURL) {
   MOZ_ASSERT(NS_IsMainThread());
 
-  // TODO: b2g, check if we can move that to ThreadsafeContentParentHandle
-  {
-    auto lock = mRemoteWorkerActorData.Lock();
-
-    auto index = lock->mScriptURLs.IndexOf(aScriptURL,
-                                           0,
-                                           [](nsIURI* a, nsIURI* b) {
-                                             bool eq = false;
-                                             a->Equals(b, &eq);
-                                             return eq ? 0 : -1;
-                                           });
-    // MOZ_ASSERT(index != nsTArray<nsCString>::NoIndex);
-    // lock->mScriptURLs.RemoveElementAt(index);
-
-    // if (--lock->mCount) {
-    //   return;
-    // }
-  }
-
   {
     MutexAutoLock lock(mThreadsafeHandle->mMutex);
+
+    auto index = mThreadsafeHandle->mScriptURLs.IndexOf(
+        aScriptURL, 0, [](nsIURI* a, nsIURI* b) {
+          bool eq = false;
+          a->Equals(b, &eq);
+          return eq ? 0 : -1;
+        });
+    MOZ_ASSERT(index != nsTArray<nsCString>::NoIndex);
+    mThreadsafeHandle->mScriptURLs.RemoveElementAt(index);
+
     if (--mThreadsafeHandle->mRemoteWorkerActorCount) {
       return;
     }
@@ -8887,11 +8884,17 @@ nsCString ThreadsafeContentParentHandle::GetRemoteType() {
   return mRemoteType;
 }
 
+nsTArray<RefPtr<nsIURI>>& ThreadsafeContentParentHandle::GetScriptURLs() {
+  MutexAutoLock lock(mMutex);
+  return mScriptURLs;
+}
+
 bool ThreadsafeContentParentHandle::MaybeRegisterRemoteWorkerActor(
-    MoveOnlyFunction<bool(uint32_t, bool)> aCallback) {
+    MoveOnlyFunction<bool(uint32_t, bool)> aCallback, nsIURI* aScriptURL) {
   MutexAutoLock lock(mMutex);
   if (aCallback(mRemoteWorkerActorCount, mShutdownStarted)) {
     ++mRemoteWorkerActorCount;
+    mScriptURLs.EmplaceBack(aScriptURL);
     return true;
   }
   return false;

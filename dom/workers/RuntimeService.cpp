@@ -2047,6 +2047,8 @@ WorkerThreadPrimaryRunnable::Run() {
           MOZ_ASSERT(!JS_IsExceptionPending(cx));
         }
 
+        mWorkerPrivate->RunShutdownTasks();
+
         BackgroundChild::CloseForCurrentThread();
 
         PROFILER_CLEAR_JS_CONTEXT();
@@ -2131,7 +2133,7 @@ WorkerThreadPrimaryRunnable::Run() {
   mWorkerPrivate = nullptr;
 
   // Now recycle this thread.
-  nsCOMPtr<nsIEventTarget> mainTarget = GetMainThreadEventTarget();
+  nsCOMPtr<nsIEventTarget> mainTarget = GetMainThreadSerialEventTarget();
   MOZ_ASSERT(mainTarget);
 
   RefPtr<FinishedRunnable> finishedRunnable =

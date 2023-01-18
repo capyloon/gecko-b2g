@@ -1390,8 +1390,8 @@ nsresult nsHttpChannel::SetupTransaction() {
   mTransaction->SetIsForWebTransport(mIsForWebTransport);
   rv = mTransaction->Init(
       mCaps, mConnectionInfo, &mRequestHead, mUploadStream, mReqContentLength,
-      LoadUploadStreamHasHeaders(), GetCurrentEventTarget(), callbacks, this,
-      mTopBrowsingContextId, category, mRequestContext, mClassOfService,
+      LoadUploadStreamHasHeaders(), GetCurrentSerialEventTarget(), callbacks,
+      this, mTopBrowsingContextId, category, mRequestContext, mClassOfService,
       mInitialRwin, LoadResponseTimeoutEnabled(), mChannelId,
       std::move(observer), std::move(pushCallback), mTransWithPushedStream,
       mPushedStreamId);
@@ -1601,7 +1601,6 @@ nsresult nsHttpChannel::CallOnStartRequest() {
     } else if (opaqueResponse == OpaqueResponse::Sniff) {
       MOZ_DIAGNOSTIC_ASSERT(mORB);
       nsresult rv = mORB->EnsureOpaqueResponseIsAllowedAfterSniff(this);
-      MOZ_DIAGNOSTIC_ASSERT(!mORB->IsSniffing());
 
       if (NS_FAILED(rv)) {
         return rv;
@@ -5118,6 +5117,15 @@ nsresult nsHttpChannel::SetupReplacementChannel(nsIURI* newURI,
   nsCOMPtr<nsILoadInfo> newLoadInfo = newChannel->LoadInfo();
   nsHTTPSOnlyUtils::PotentiallyClearExemptFlag(newLoadInfo);
 
+  // pass on the early hint observer to be able to process `103 Early Hints`
+  // responses after cross origin redirects
+  if (mEarlyHintObserver) {
+    if (RefPtr<nsHttpChannel> httpChannelImpl = do_QueryObject(newChannel)) {
+      httpChannelImpl->SetEarlyHintObserver(mEarlyHintObserver);
+    }
+    mEarlyHintObserver = nullptr;
+  }
+
   nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(newChannel);
   if (!httpChannel) return NS_OK;  // no other options to set
 
@@ -7981,7 +7989,7 @@ nsHttpChannel::RetargetDeliveryTo(nsIEventTarget* aNewTarget) {
 
     // If retarget fails for transaction pump, we must restore mCachePump.
     if (NS_FAILED(rv) && retargetableCachePump) {
-      nsCOMPtr<nsIEventTarget> main = GetMainThreadEventTarget();
+      nsCOMPtr<nsIEventTarget> main = GetMainThreadSerialEventTarget();
       NS_ENSURE_TRUE(main, NS_ERROR_UNEXPECTED);
       rv = retargetableCachePump->RetargetDeliveryTo(main);
     }
@@ -8744,7 +8752,7 @@ void nsHttpChannel::UpdateAggregateCallbacks() {
   }
   nsCOMPtr<nsIInterfaceRequestor> callbacks;
   NS_NewNotificationCallbacksAggregation(mCallbacks, mLoadGroup,
-                                         GetCurrentEventTarget(),
+                                         GetCurrentSerialEventTarget(),
                                          getter_AddRefs(callbacks));
   mTransaction->SetSecurityCallbacks(callbacks);
 }

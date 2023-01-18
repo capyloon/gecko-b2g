@@ -11,6 +11,8 @@ FINAL_TARGET_FILES.actors += [
     "AboutReaderParent.jsm",
     "AudioVolumeControlOverrideChild.jsm",
     "AudioVolumeControlOverrideParent.jsm",
+    "EncryptedMediaChild.sys.mjs",
+    "EncryptedMediaParent.sys.mjs",
     "PromptParent.jsm",
     "SelectionActionChild.jsm",
     "SelectionActionParent.jsm",

@@ -370,6 +370,7 @@ const kSettingsToObserve = {
   "layers.dump": false,
   "layers.effect.invert": false,
   "layers.enable-tiles": true,
+  "media.eme.enabled": isGonk,
   "mms.debugging.enabled": false,
   "network.debugging.enabled": false,
   "privacy.donottrackheader.enabled": false,

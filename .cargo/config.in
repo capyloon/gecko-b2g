@@ -34,6 +34,11 @@ git = "https://github.com/gfx-rs/wgpu"
 rev = "186a29c34d54d8628bbebb998a537210ac565b71"
 replace-with = "vendored-sources"
 
+[source."https://github.com/glandium/warp"]
+git = "https://github.com/glandium/warp"
+rev = "4af45fae95bc98b0eba1ef0db17e1dac471bb23d"
+replace-with = "vendored-sources"
+
 [source."https://github.com/hsivonen/chardetng"]
 git = "https://github.com/hsivonen/chardetng"
 rev = "3484d3e3ebdc8931493aa5df4d7ee9360a90e76b"
@@ -56,7 +61,7 @@ replace-with = "vendored-sources"
 
 [source."https://github.com/kinetiknz/audioipc-2"]
 git = "https://github.com/kinetiknz/audioipc-2"
-rev = "42eb59ab3b86cd43d3dbe37d159ce102a8eaf2a5"
+rev = "73c8a02da8f2ff022723307bfafa3a58a61448da"
 replace-with = "vendored-sources"
 
 [source."https://github.com/kinetiknz/mio-named-pipes"]
@@ -111,7 +116,7 @@ replace-with = "vendored-sources"
 
 [source."https://github.com/rust-minidump/minidump-writer.git"]
 git = "https://github.com/rust-minidump/minidump-writer.git"
-rev = "75ada456c92a429704691a85e1cb42fef8cafc0d"
+rev = "7d76616d27b9dc87fe3a94639b8b4f947d52a6aa"
 replace-with = "vendored-sources"
 
 [source."https://github.com/smol-rs/async-task"]

@@ -328,8 +328,15 @@ pref("media.mediasource.eviction_threshold.audio", 20971520);
 #endif
 
 // Encrypted media extensions.
+#ifdef MOZ_WIDGET_GONK
 pref("media.eme.enabled", true);
-pref("media.eme.apiVisible", true);
+#endif
+
+#ifdef MOZ_WIDEVINE_EME
+pref("media.gmp-widevinecdm.visible", true);
+pref("media.gmp-widevinecdm.enabled", true);
+#endif
+
 // The default number of decoded video frames that are enqueued in
 // MediaDecoderReader's mVideoQueue.
 pref("media.video-queue.default-size", 3);

@@ -548,6 +548,13 @@ XPCOMUtils.defineLazyServiceGetter(
         lazy.WebExtensionsEmbedding.setDelegate(delegates.webExtensions);
       }
 
+      if (delegates.eme) {
+        Services.obs.addObserver((wrappedDetail, topic, data) => {
+          _webembed_log("receive web-embedder-eme");
+          delegates.eme.show(wrappedDetail.wrappedJSObject);
+        }, "web-embedder-eme");
+      }
+
       Services.obs.addObserver((subject, topic, data) => {
         _webembed_log(
           `Get the caret-state-changed ${JSON.stringify(

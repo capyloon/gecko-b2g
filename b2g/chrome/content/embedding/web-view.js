@@ -879,6 +879,12 @@ const { AboutReaderParent } = ChromeUtils.import(
       this.active = val;
     }
 
+    // Returns a promise that resolves to the script value.
+    executeScript(source) {
+      this.log(`executeScript`);
+      return this.browser?.webViewExecuteScript(source);
+    }
+
     // Returns a promise that will resolve with the screenshot as a Blob.
     getScreenshot(max_width, max_height, mime_type) {
       this.log(`getScreenshot ${max_width}x${max_height}, ${mime_type}`);

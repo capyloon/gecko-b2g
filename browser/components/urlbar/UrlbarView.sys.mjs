@@ -38,6 +38,11 @@ const ZERO_PREFIX_SCALAR_ABANDONMENT = "urlbar.zeroprefix.abandonment";
 const ZERO_PREFIX_SCALAR_ENGAGEMENT = "urlbar.zeroprefix.engagement";
 const ZERO_PREFIX_SCALAR_EXPOSURE = "urlbar.zeroprefix.exposure";
 
+const RESULT_MENU_COMMANDS = {
+  BLOCK: "block",
+  LEARN_MORE: "learn-more",
+};
+
 const getBoundsWithoutFlushing = element =>
   element.ownerGlobal.windowUtils.getBoundsWithoutFlushing(element);
 
@@ -777,7 +782,6 @@ export class UrlbarView {
       "popuphidden",
       () => {
         anchor.toggleAttribute("open", false);
-        this.#resultMenuResult = null;
       },
       { once: true }
     );
@@ -1295,31 +1299,25 @@ export class UrlbarView {
       item._buttons.get("tip").textContent = result.payload.buttonText;
     }
 
-    if (result.payload.isBlockable) {
-      this.#addRowButton(item, {
-        name: "block",
-        l10n: result.payload.blockL10n,
-      });
-    }
-    if (result.payload.helpUrl) {
-      this.#addRowButton(item, {
-        name: "help",
-        url: result.payload.helpUrl,
-        l10n: result.payload.helpL10n,
-      });
-    }
-    if (lazy.UrlbarPrefs.get("resultMenu")) {
-      let menuCommands = [];
-      if (result.source == lazy.UrlbarUtils.RESULT_SOURCE.HISTORY) {
-        menuCommands.push("remove-from-history");
-      }
-      if (menuCommands.length) {
-        this.#resultMenuCommands.set(result, menuCommands);
+    if (!lazy.UrlbarPrefs.get("resultMenu")) {
+      if (result.payload.isBlockable) {
         this.#addRowButton(item, {
-          name: "menu",
-          l10n: { id: "urlbar-result-menu-button" },
+          name: "block",
+          l10n: result.payload.blockL10n,
         });
       }
+      if (result.payload.helpUrl) {
+        this.#addRowButton(item, {
+          name: "help",
+          url: result.payload.helpUrl,
+          l10n: result.payload.helpL10n,
+        });
+      }
+    } else if (this.#getResultMenuCommands(result)) {
+      this.#addRowButton(item, {
+        name: "menu",
+        l10n: { id: "urlbar-result-menu-button" },
+      });
     }
   }
 
@@ -1380,8 +1378,10 @@ export class UrlbarView {
       // always need updating.
       provider.getViewTemplate ||
       oldResult.isBestMatch != result.isBestMatch ||
-      !!result.payload.helpUrl != item._buttons.has("help") ||
-      !!result.payload.isBlockable != item._buttons.has("block") ||
+      (!lazy.UrlbarPrefs.get("resultMenu") &&
+        (!!result.payload.helpUrl != item._buttons.has("block") ||
+          !!result.payload.isBlockable != item._buttons.has("block"))) ||
+      !!this.#getResultMenuCommands(result) != item._buttons.has("menu") ||
       !lazy.ObjectUtils.deepEqual(
         oldResult.payload.buttons,
         result.payload.buttons
@@ -1863,39 +1863,47 @@ export class UrlbarView {
    *   returns an l10n object for the label's l10n string: `{ id, args }`
    */
   #rowLabel(row, currentLabel) {
-    // Labels aren't shown for top sites, i.e., when the search string is empty.
-    if (
-      lazy.UrlbarPrefs.get("groupLabels.enabled") &&
-      this.#queryContext?.searchString &&
-      !row.result.heuristic
-    ) {
-      if (row.result.isBestMatch) {
+    if (!lazy.UrlbarPrefs.get("groupLabels.enabled") || row.result.heuristic) {
+      return null;
+    }
+
+    if (!this.#queryContext?.searchString) {
+      if (row.result.payload.isWeather) {
+        // Add top pick label for weather suggestion
         return { id: "urlbar-group-best-match" };
       }
-      switch (row.result.type) {
-        case lazy.UrlbarUtils.RESULT_TYPE.KEYWORD:
-        case lazy.UrlbarUtils.RESULT_TYPE.REMOTE_TAB:
-        case lazy.UrlbarUtils.RESULT_TYPE.TAB_SWITCH:
-        case lazy.UrlbarUtils.RESULT_TYPE.URL:
-          return { id: "urlbar-group-firefox-suggest" };
-        case lazy.UrlbarUtils.RESULT_TYPE.SEARCH:
-          // Show "{ $engine } suggestions" if it's not the first label.
-          if (currentLabel && row.result.payload.suggestion) {
-            let engineName =
-              row.result.payload.engine || Services.search.defaultEngine.name;
-            return {
-              id: "urlbar-group-search-suggestions",
-              args: { engine: engineName },
-            };
-          }
-          break;
-        case lazy.UrlbarUtils.RESULT_TYPE.DYNAMIC:
-          if (row.result.providerName == "quickactions") {
-            return { id: "urlbar-group-quickactions" };
-          }
-          break;
-      }
+
+      return null;
     }
+
+    if (row.result.isBestMatch) {
+      return { id: "urlbar-group-best-match" };
+    }
+
+    switch (row.result.type) {
+      case lazy.UrlbarUtils.RESULT_TYPE.KEYWORD:
+      case lazy.UrlbarUtils.RESULT_TYPE.REMOTE_TAB:
+      case lazy.UrlbarUtils.RESULT_TYPE.TAB_SWITCH:
+      case lazy.UrlbarUtils.RESULT_TYPE.URL:
+        return { id: "urlbar-group-firefox-suggest" };
+      case lazy.UrlbarUtils.RESULT_TYPE.SEARCH:
+        // Show "{ $engine } suggestions" if it's not the first label.
+        if (currentLabel && row.result.payload.suggestion) {
+          let engineName =
+            row.result.payload.engine || Services.search.defaultEngine.name;
+          return {
+            id: "urlbar-group-search-suggestions",
+            args: { engine: engineName },
+          };
+        }
+        break;
+      case lazy.UrlbarUtils.RESULT_TYPE.DYNAMIC:
+        if (row.result.providerName == "quickactions") {
+          return { id: "urlbar-group-quickactions" };
+        }
+        break;
+    }
+
     return null;
   }
 
@@ -2498,6 +2506,55 @@ export class UrlbarView {
     }
   }
 
+  /**
+   * @param {UrlbarResult} result
+   *   The result to get menu commands for.
+   * @returns {Map}
+   *   Map of menu commands available for the result, null if there are none.
+   */
+  #getResultMenuCommands(result) {
+    if (!lazy.UrlbarPrefs.get("resultMenu")) {
+      return null;
+    }
+    if (this.#resultMenuCommands.has(result)) {
+      return this.#resultMenuCommands.get(result);
+    }
+    let commands = new Map();
+    if (result.source == lazy.UrlbarUtils.RESULT_SOURCE.HISTORY) {
+      commands.set(RESULT_MENU_COMMANDS.BLOCK, {
+        l10n: { id: "urlbar-result-menu-remove-from-history" },
+      });
+    }
+    if (result.payload.isBlockable) {
+      commands.set(RESULT_MENU_COMMANDS.BLOCK, {
+        l10n: result.payload.blockL10n,
+      });
+    }
+    if (result.payload.helpUrl) {
+      commands.set(RESULT_MENU_COMMANDS.LEARN_MORE, {
+        l10n: result.payload.helpL10n,
+      });
+    }
+    let rv = commands.size ? commands : null;
+    this.#resultMenuCommands.set(result, rv);
+    return rv;
+  }
+
+  #populateResultMenu() {
+    this.resultMenu.textContent = "";
+    for (const [command, data] of this.#getResultMenuCommands(
+      this.#resultMenuResult
+    )) {
+      let menuitem = this.document.createElementNS(
+        "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul",
+        "menuitem"
+      );
+      menuitem.dataset.command = command;
+      this.#setElementL10n(menuitem, data.l10n);
+      this.resultMenu.appendChild(menuitem);
+    }
+  }
+
   // Event handlers below.
 
   on_SelectedOneOffButtonChanged() {
@@ -2769,10 +2826,14 @@ export class UrlbarView {
   on_command(event) {
     if (event.currentTarget == this.resultMenu) {
       let result = this.#resultMenuResult;
+      this.#resultMenuResult = null;
       let menuitem = event.target;
       switch (menuitem.dataset.command) {
-        case "remove-from-history":
+        case RESULT_MENU_COMMANDS.BLOCK:
           this.controller.handleDeleteEntry(null, result);
+          break;
+        case RESULT_MENU_COMMANDS.LEARN_MORE:
+          this.window.openTrustedLinkIn(result.payload.helpUrl, "tab");
           break;
       }
     }
@@ -2780,12 +2841,7 @@ export class UrlbarView {
 
   on_popupshowing(event) {
     if (event.currentTarget == this.resultMenu) {
-      let availableCommands = this.#resultMenuCommands.get(
-        this.#resultMenuResult
-      );
-      for (let menuitem of this.resultMenu.querySelector("[data-command]")) {
-        menuitem.hidden = !availableCommands.includes(menuitem.dataset.command);
-      }
+      this.#populateResultMenu();
     }
   }
 }

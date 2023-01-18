@@ -3,7 +3,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 
-import copy
+import itertools
 import os
 import re
 from datetime import datetime, timedelta
@@ -111,10 +111,9 @@ def filter_by_uncommon_try_tasks(task, optional_filters=None):
     """
     filters = UNCOMMON_TRY_TASK_LABELS
     if optional_filters:
-        filters = copy.deepcopy(filters)
-        filters.extend(optional_filters)
+        filters = itertools.chain(filters, optional_filters)
 
-    return not any(re.search(pattern, task) for pattern in UNCOMMON_TRY_TASK_LABELS)
+    return not any(re.search(pattern, task) for pattern in filters)
 
 
 def filter_by_regex(task_label, regexes, mode="include"):
@@ -779,6 +778,9 @@ def target_tasks_general_perf_testing(full_task_graph, parameters, graph_config)
                     if "speedometer" in try_name:
                         return True
                 if "safari" and "benchmark" in try_name:
+                    # Speedometer 3 is broken on Safari, see bug 1802922
+                    if "speedometer3" in try_name:
+                        return False
                     return True
             else:
                 # Don't run tp6 raptor tests

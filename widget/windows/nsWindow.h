@@ -456,8 +456,16 @@ class nsWindow final : public nsBaseWidget {
     explicit FrameState(nsWindow* aWindow);
 
     void ConsumePreXULSkeletonState(bool aWasMaximized);
-    void EnsureSizeMode(nsSizeMode aMode);
-    void EnsureFullscreenMode(bool aFullScreen);
+
+    // Whether we should call ShowWindow with the relevant size mode and focus
+    // the window if needed. We want to avoid that when Windows is already
+    // performing the change for us (via the SWP_FRAMECHANGED messages).
+    enum class ShowWindowAndFocus : bool { No, Yes };
+
+    void EnsureSizeMode(nsSizeMode,
+                        ShowWindowAndFocus = ShowWindowAndFocus::Yes);
+    void EnsureFullscreenMode(bool,
+                              ShowWindowAndFocus = ShowWindowAndFocus::Yes);
     void OnFrameChanging();
     void OnFrameChanged();
 
@@ -466,9 +474,10 @@ class nsWindow final : public nsBaseWidget {
     void CheckInvariant() const;
 
    private:
-    void SetSizeModeInternal(nsSizeMode aMode);
+    void SetSizeModeInternal(nsSizeMode, ShowWindowAndFocus);
 
     nsSizeMode mSizeMode = nsSizeMode_Normal;
+    // XXX mLastSizeMode is rather bizarre and needs some documentation.
     nsSizeMode mLastSizeMode = nsSizeMode_Normal;
     // The old size mode before going into fullscreen mode. This should never
     // be nsSizeMode_Fullscreen.
@@ -592,8 +601,8 @@ class nsWindow final : public nsBaseWidget {
   bool OnTouch(WPARAM wParam, LPARAM lParam);
   bool OnHotKey(WPARAM wParam, LPARAM lParam);
   bool OnPaint(HDC aDC, uint32_t aNestingLevel);
+  void OnWindowPosChanging(WINDOWPOS* info);
   void OnWindowPosChanged(WINDOWPOS* wp);
-  void OnWindowPosChanging(LPWINDOWPOS& info);
   void OnSysColorChanged();
   void OnDPIChanged(int32_t x, int32_t y, int32_t width, int32_t height);
   bool OnPointerEvents(UINT msg, WPARAM wParam, LPARAM lParam);
@@ -692,7 +701,7 @@ class nsWindow final : public nsBaseWidget {
                         uint32_t aOrientation = 90);
 
   void OnFullscreenWillChange(bool aFullScreen);
-  void OnFullscreenChanged(bool aFullScreen);
+  void OnFullscreenChanged(nsSizeMode aOldSizeMode, bool aFullScreen);
 
   static void OnCloakEvent(HWND aWnd, bool aCloaked);
   void OnCloakChanged(bool aCloaked);
