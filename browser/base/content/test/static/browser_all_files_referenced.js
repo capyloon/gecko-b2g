@@ -52,7 +52,7 @@ var gExceptionPaths = [
   "resource://gre/modules/services-automation/",
   "resource://services-automation/ServicesAutomation.jsm",
 
-  // Paths from this folder are constructed in NetErrorParent.jsm based on
+  // Paths from this folder are constructed in NetErrorParent.sys.mjs based on
   // the type of cert or net error the user is encountering.
   "chrome://global/content/neterror/supportpages/",
 
@@ -290,10 +290,6 @@ var whitelist = [
 
   // References to esm generated from jsm programmatically
   { file: "resource://gre/modules/LangPackMatcher.sys.mjs" },
-
-  // FIXME: Bug 1770447 - The moz-support-link component isn't in use yet.
-  // This entry will be removed as part of Bug 1804695 or Bug 1804695.
-  { file: "chrome://global/content/elements/moz-support-link.mjs" },
 ];
 
 if (AppConstants.NIGHTLY_BUILD && AppConstants.platform != "win") {

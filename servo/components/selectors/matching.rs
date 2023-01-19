@@ -821,22 +821,12 @@ where
             nth_of_data.nth_data(),
             nth_of_data.selectors(),
         ),
-        Component::Is(ref list) | Component::Where(ref list) => context.shared.nest(|context| {
-            for selector in &**list {
-                if matches_complex_selector(selector.iter(), element, context) {
-                    return true;
-                }
-            }
-            false
-        }),
-        Component::Negation(ref list) => context.shared.nest_for_negation(|context| {
-            for selector in &**list {
-                if matches_complex_selector(selector.iter(), element, context) {
-                    return false;
-                }
-            }
-            true
-        }),
+        Component::Is(ref list) | Component::Where(ref list) => context
+            .shared
+            .nest(|context| list_matches_complex_selector(list, element, context)),
+        Component::Negation(ref list) => context
+            .shared
+            .nest_for_negation(|context| !list_matches_complex_selector(list, element, context)),
         Component::Has(ref list) => context
             .shared
             .nest(|context| has_children_matching(list, element, context)),
@@ -891,18 +881,6 @@ where
     if element.ignores_nth_child_selectors() {
         return false;
     }
-    /*
-     * This condition could be bound as element_matches_selectors and used in
-     * nth_child_index() as element_matches_selectors &&
-     *     list_matches_complex_selector(selectors, &curr, context)
-     * , but since element_matches_selectors would need still need to be
-     * computed in that case in order to utilize the cache, there would be no
-     * performance benefit for building up nth-{,last-}child(.. of ..) caches
-     * where the element does not match the selector list.
-     */
-    if !selectors.is_empty() && !list_matches_complex_selector(selectors, element, context) {
-        return false;
-    }
 
     let NthSelectorData { ty, a, b, .. } = *nth_data;
     let is_of_type = ty.is_of_type();
@@ -938,6 +916,10 @@ where
         } else {
             ElementSelectorFlags::HAS_SLOW_SELECTOR_LATER_SIBLINGS
         });
+    }
+
+    if !selectors.is_empty() && !list_matches_complex_selector(selectors, element, context) {
+        return false;
     }
 
     // :first/last-child are rather trivial to match, don't bother with the

@@ -91,6 +91,9 @@ class MOZ_RAII IRGenerator {
 
   void emitCalleeGuard(ObjOperandId calleeId, JSFunction* callee);
 
+  void emitOptimisticClassGuard(ObjOperandId objId, JSObject* obj,
+                                GuardClassKind kind);
+
   friend class CacheIRSpewer;
 
  public:
@@ -445,6 +448,7 @@ class MOZ_RAII TypeOfIRGenerator : public IRGenerator {
 
 class MOZ_RAII GetIteratorIRGenerator : public IRGenerator {
   HandleValue val_;
+  Handle<PropertyIteratorObject*> iterObj_;
 
   AttachDecision tryAttachNativeIterator(ValOperandId valId);
   AttachDecision tryAttachNullOrUndefined(ValOperandId valId);
@@ -452,7 +456,8 @@ class MOZ_RAII GetIteratorIRGenerator : public IRGenerator {
 
  public:
   GetIteratorIRGenerator(JSContext* cx, HandleScript, jsbytecode* pc,
-                         ICState state, HandleValue value);
+                         ICState state, HandleValue value,
+                         Handle<PropertyIteratorObject*> iterObj);
 
   AttachDecision tryAttachStub();
 
@@ -535,6 +540,10 @@ class MOZ_RAII InlinableNativeIRGenerator {
   bool ignoresResult() const { return generator_.op_ == JSOp::CallIgnoresRv; }
 
   void emitNativeCalleeGuard();
+  void emitOptimisticClassGuard(ObjOperandId objId, JSObject* obj,
+                                GuardClassKind kind) {
+    generator_.emitOptimisticClassGuard(objId, obj, kind);
+  }
 
   ObjOperandId emitLoadArgsArray();
 
@@ -710,8 +719,6 @@ class MOZ_RAII CompareIRGenerator : public IRGenerator {
   AttachDecision tryAttachInt32(ValOperandId lhsId, ValOperandId rhsId);
   AttachDecision tryAttachNumber(ValOperandId lhsId, ValOperandId rhsId);
   AttachDecision tryAttachBigInt(ValOperandId lhsId, ValOperandId rhsId);
-  AttachDecision tryAttachNumberUndefined(ValOperandId lhsId,
-                                          ValOperandId rhsId);
   AttachDecision tryAttachAnyNullUndefined(ValOperandId lhsId,
                                            ValOperandId rhsId);
   AttachDecision tryAttachNullUndefined(ValOperandId lhsId, ValOperandId rhsId);

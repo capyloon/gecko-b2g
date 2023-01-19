@@ -210,6 +210,7 @@ class ServoStyleSet;
 enum class StyleOrigin : uint8_t;
 class SMILAnimationController;
 enum class StyleCursorKind : uint8_t;
+class SVGContextPaint;
 enum class ColorScheme : uint8_t;
 enum class StyleRuleChangeKind : uint32_t;
 template <typename>
@@ -1232,6 +1233,14 @@ class Document : public nsINode,
     }
   }
 
+  void SetCurrentContextPaint(const SVGContextPaint* aContextPaint) {
+    mCurrentContextPaint = aContextPaint;
+  }
+
+  const SVGContextPaint* GetCurrentContextPaint() const {
+    return mCurrentContextPaint;
+  }
+
   /**
    * Are plugins allowed in this document ?
    */
@@ -1884,26 +1893,24 @@ class Document : public nsINode,
    */
   nsTArray<Element*> GetTopLayer() const;
 
+  // Do the "fullscreen element ready check" from the fullscreen spec.
+  // It returns true if the given element is allowed to go into fullscreen.
+  // It is responsive to dispatch "fullscreenerror" event when necessary.
+  bool FullscreenElementReadyCheck(FullscreenRequest&);
+
   /**
-   * Asynchronously requests that the document make aElement the fullscreen
-   * element, and move into fullscreen mode. The current fullscreen element
-   * (if any) is pushed onto the top layer, and it can be
-   * returned to fullscreen status by calling RestorePreviousFullscreenState().
+   * When this is called on content process, this asynchronously requests that
+   * the document make aElement the fullscreen element, and move into fullscreen
+   * mode. The current fullscreen element (if any) is pushed onto the top layer,
+   * and it can be returned to fullscreen status by calling
+   * RestorePreviousFullscreenState().
+   * If on chrome process, this is synchronously.
    *
    * Note that requesting fullscreen in a document also makes the element which
    * contains this document in this document's parent document fullscreen. i.e.
    * the <iframe> or <browser> that contains this document is also mode
    * fullscreen. This happens recursively in all ancestor documents.
    */
-  void AsyncRequestFullscreen(UniquePtr<FullscreenRequest>);
-
-  // Do the "fullscreen element ready check" from the fullscreen spec.
-  // It returns true if the given element is allowed to go into fullscreen.
-  // It is responsive to dispatch "fullscreenerror" event when necessary.
-  bool FullscreenElementReadyCheck(FullscreenRequest&);
-
-  // This is called asynchronously by Document::AsyncRequestFullscreen()
-  // to move this document into fullscreen mode if allowed.
   void RequestFullscreen(UniquePtr<FullscreenRequest> aRequest,
                          bool aApplyFullscreenDirectly = false);
 
@@ -1933,6 +1940,9 @@ class Document : public nsINode,
   // Pushes the given element into the top of top layer and set fullscreen
   // flag.
   void SetFullscreenElement(Element&);
+
+  // Whether we has pending fullscreen request.
+  bool HasPendingFullscreenRequests();
 
   // Cancel the dialog element if the document is blocked by the dialog
   void TryCancelDialog();
@@ -2018,6 +2028,11 @@ class Document : public nsINode,
    * Returns whether there is any fullscreen request handled.
    */
   static bool HandlePendingFullscreenRequests(Document* aDocument);
+
+  /**
+   * Clear pending fullscreen in aDocument.
+   */
+  static void ClearPendingFullscreenRequests(Document* aDocument);
 
   // ScreenOrientation related APIs
 
@@ -4460,6 +4475,9 @@ class Document : public nsINode,
   // A reference to the element last returned from GetRootElement().
   Element* mCachedRootElement;
 
+  // This is maintained by AutoSetRestoreSVGContextPaint.
+  const SVGContextPaint* mCurrentContextPaint = nullptr;
+
   // This is a weak reference, but we hold a strong reference to mNodeInfo,
   // which in turn holds a strong reference to this mNodeInfoManager.
   nsNodeInfoManager* mNodeInfoManager;
@@ -4866,8 +4884,6 @@ class Document : public nsINode,
 
   // Whether we should resist fingerprinting.
   bool mShouldResistFingerprinting : 1;
-
-  uint8_t mPendingFullscreenRequests;
 
   uint8_t mXMLDeclarationBits;
 
