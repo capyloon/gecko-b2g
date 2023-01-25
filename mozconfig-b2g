@@ -29,9 +29,10 @@ if [ "${B2G_DEBUG:-0}" != "0" ]; then
   ac_add_options --enable-debug
 else
   if [ "${MOZ_DISABLE_LTO:-0}" = "0" ]; then
-    # Enable Rust <-> C++ LTO
     ac_add_options --enable-lto
-    export MOZ_LTO=cross
+    # Disable Rustc <-> C++ LTO because rustc 1.66 and the ndk r25b use
+    # incompatible LLVM versions.
+    # export MOZ_LTO=cross
   fi
 fi
 
