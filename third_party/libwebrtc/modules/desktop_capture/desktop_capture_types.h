@@ -22,7 +22,7 @@ typedef int pid_t; // matching what used to be in
 
 namespace webrtc {
 
-enum class CaptureType { kWindow, kScreen };
+enum class CaptureType { kWindow, kScreen, kAnyScreenContent };
 
 // Type used to identify windows on the desktop. Values are platform-specific:
 //   - On Windows: HWND cast to intptr_t.
@@ -70,6 +70,8 @@ constexpr uint32_t kScreenCapturerWinMagnifier = 2;
 constexpr uint32_t kWindowCapturerWinGdi = 3;
 constexpr uint32_t kScreenCapturerWinGdi = CreateFourCC('G', 'D', 'I', ' ');
 constexpr uint32_t kScreenCapturerWinDirectx = CreateFourCC('D', 'X', 'G', 'I');
+constexpr uint32_t kX11CapturerLinux = CreateFourCC('X', '1', '1', ' ');
+constexpr uint32_t kWaylandCapturerLinux = CreateFourCC('W', 'L', ' ', ' ');
 }  // namespace DesktopCapturerId
 
 }  // namespace webrtc

@@ -95,7 +95,6 @@ void SVGGeometryFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
                             nsIFrame* aPrevInFlow) {
   AddStateBits(aParent->GetStateBits() & NS_STATE_SVG_CLIPPATH_CHILD);
   nsIFrame::Init(aContent, aParent, aPrevInFlow);
-  AddStateBits(NS_FRAME_MAY_BE_TRANSFORMED);
 }
 
 nsresult SVGGeometryFrame::AttributeChanged(int32_t aNameSpaceID,
@@ -155,28 +154,7 @@ void SVGGeometryFrame::DidSetComputedStyle(ComputedStyle* aOldComputedStyle) {
 
 bool SVGGeometryFrame::IsSVGTransformed(
     gfx::Matrix* aOwnTransform, gfx::Matrix* aFromParentTransform) const {
-  bool foundTransform = false;
-
-  // Check if our parent has children-only transforms:
-  nsIFrame* parent = GetParent();
-  if (parent &&
-      parent->IsFrameOfType(nsIFrame::eSVG | nsIFrame::eSVGContainer)) {
-    foundTransform =
-        static_cast<SVGContainerFrame*>(parent)->HasChildrenOnlyTransform(
-            aFromParentTransform);
-  }
-
-  SVGElement* content = static_cast<SVGElement*>(GetContent());
-  SVGAnimatedTransformList* transformList = content->GetAnimatedTransformList();
-  if ((transformList && transformList->HasTransform()) ||
-      content->GetAnimateMotionTransform()) {
-    if (aOwnTransform) {
-      *aOwnTransform = gfx::ToMatrix(
-          content->PrependLocalTransformsTo(gfxMatrix(), eUserSpaceToParent));
-    }
-    foundTransform = true;
-  }
-  return foundTransform;
+  return SVGUtils::IsSVGTransformed(this, aOwnTransform, aFromParentTransform);
 }
 
 void SVGGeometryFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
@@ -193,9 +171,9 @@ void SVGGeometryFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
       return;
     }
     const auto* styleSVG = StyleSVG();
-    if (Type() != LayoutFrameType::SVGImage && styleSVG->mFill.kind.IsNone() &&
-        styleSVG->mStroke.kind.IsNone() && styleSVG->mMarkerEnd.IsNone() &&
-        styleSVG->mMarkerMid.IsNone() && styleSVG->mMarkerStart.IsNone()) {
+    if (styleSVG->mFill.kind.IsNone() && styleSVG->mStroke.kind.IsNone() &&
+        styleSVG->mMarkerEnd.IsNone() && styleSVG->mMarkerMid.IsNone() &&
+        styleSVG->mMarkerStart.IsNone()) {
       return;
     }
 
@@ -343,7 +321,7 @@ void SVGGeometryFrame::ReflowSVG() {
   gfxRect extent = GetBBoxContribution(Matrix(), flags).ToThebesRect();
   mRect = nsLayoutUtils::RoundGfxRectToAppRect(extent, AppUnitsPerCSSPixel());
 
-  if (mState & NS_FRAME_FIRST_REFLOW) {
+  if (HasAnyStateBits(NS_FRAME_FIRST_REFLOW)) {
     // Make sure we have our filter property (if any) before calling
     // FinishAndStoreOverflow (subsequent filter changes are handled off
     // nsChangeHint_UpdateEffects):
@@ -717,24 +695,19 @@ void SVGGeometryFrame::Render(gfxContext* aContext, uint32_t aRenderComponents,
 
 bool SVGGeometryFrame::IsInvisible() const {
   if (!StyleVisibility()->IsVisible()) {
-    return false;
+    return true;
+  }
+
+  // Anything below will round to zero later down the pipeline.
+  constexpr float opacity_threshold = 1.0 / 128.0;
+
+  if (StyleEffects()->mOpacity <= opacity_threshold) {
+    return true;
   }
 
   const nsStyleSVG* style = StyleSVG();
   SVGContextPaint* contextPaint =
       SVGContextPaint::GetContextPaint(GetContent());
-
-  // Anything below will round to zero later down the pipeline.
-  float opacity_threshold = 1.0 / 128.0;
-
-  float elemOpacity = StyleEffects()->mOpacity;
-  if (elemOpacity <= opacity_threshold) {
-    return true;
-  }
-
-  if (IsSVGImageFrame()) {
-    return false;
-  }
 
   if (!style->mFill.kind.IsNone()) {
     float opacity = SVGUtils::GetOpacity(style->mFillOpacity, contextPaint);

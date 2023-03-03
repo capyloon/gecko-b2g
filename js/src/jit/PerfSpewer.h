@@ -10,9 +10,9 @@
 #ifdef JS_ION_PERF
 #  include <stdio.h>
 #endif
+#include "jit/BaselineFrameInfo.h"
 #include "jit/CacheIR.h"
 #include "jit/JitCode.h"
-#include "jit/Label.h"
 #include "jit/LIR.h"
 #include "js/AllocPolicy.h"
 #include "js/JitCodeAPI.h"
@@ -27,11 +27,6 @@ namespace js::jit {
 
 using ProfilerJitCodeVector = Vector<JS::JitCodeRecord, 0, SystemAllocPolicy>;
 
-#ifdef JS_ION_PERF
-void CheckPerf();
-#else
-inline void CheckPerf() {}
-#endif
 void ResetPerfSpewer(bool enabled);
 
 class MBasicBlock;
@@ -42,8 +37,39 @@ bool PerfEnabled();
 class PerfSpewer {
  protected:
   struct OpcodeEntry {
-    Label addr;
+    uint32_t offset = 0;
     unsigned opcode = 0;
+    jsbytecode* bytecodepc = nullptr;
+
+    // This string is used to replace the opcode, to define things like
+    // Prologue/Epilogue, or to add operand info.
+    UniqueChars str;
+
+    OpcodeEntry(uint32_t offset_, unsigned opcode_, UniqueChars& str_,
+                jsbytecode* pc)
+        : offset(offset_), opcode(opcode_), bytecodepc(pc) {
+      str = std::move(str_);
+    }
+
+    OpcodeEntry(uint32_t offset_, unsigned opcode_, UniqueChars& str_)
+        : offset(offset_), opcode(opcode_) {
+      str = std::move(str_);
+    }
+    OpcodeEntry(uint32_t offset_, UniqueChars& str_) : offset(offset_) {
+      str = std::move(str_);
+    }
+    OpcodeEntry(uint32_t offset_, unsigned opcode_)
+        : offset(offset_), opcode(opcode_) {}
+
+    OpcodeEntry(OpcodeEntry&& copy) {
+      offset = copy.offset;
+      opcode = copy.opcode;
+      bytecodepc = copy.bytecodepc;
+      str = std::move(copy.str);
+    }
+
+    // Do not copy the UniqueChars member.
+    OpcodeEntry(OpcodeEntry& copy) = delete;
   };
   Vector<OpcodeEntry, 0, SystemAllocPolicy> opcodes_;
 
@@ -57,12 +83,13 @@ class PerfSpewer {
  public:
   PerfSpewer() = default;
 
+  static void Init();
+
+  void recordOffset(MacroAssembler& masm, const char*);
+
   void saveJitCodeIRInfo(const char* desc, JitCode* code,
                          JS::JitCodeRecord* profilerRecord,
                          AutoLockPerfSpewer& lock);
-  void saveJitCodeSourceInfo(JSScript* script, JitCode* code,
-                             JS::JitCodeRecord* record,
-                             AutoLockPerfSpewer& lock);
 
   static void CollectJitCodeInfo(UniqueChars& function_name, JitCode* code,
                                  JS::JitCodeRecord*, AutoLockPerfSpewer& lock);
@@ -73,6 +100,8 @@ class PerfSpewer {
 };
 
 void CollectPerfSpewerJitCodeProfile(JitCode* code, const char* msg);
+void CollectPerfSpewerJitCodeProfile(uintptr_t base, uint64_t size,
+                                     const char* msg);
 
 void CollectPerfSpewerWasmMap(uintptr_t base, uintptr_t size,
                               const char* filename, const char* annotation);
@@ -85,8 +114,12 @@ class IonPerfSpewer : public PerfSpewer {
   virtual const char* CodeName(unsigned op) override;
 
  public:
-  void recordInstruction(MacroAssembler& masm, LNode::Opcode op);
+  void recordInstruction(MacroAssembler& masm, LInstruction* ins);
   void saveProfile(JSContext* cx, JSScript* script, JitCode* code);
+
+  void saveJitCodeSourceInfo(JSScript* script, JitCode* code,
+                             JS::JitCodeRecord* record,
+                             AutoLockPerfSpewer& lock);
 };
 
 class BaselinePerfSpewer : public PerfSpewer {
@@ -94,8 +127,13 @@ class BaselinePerfSpewer : public PerfSpewer {
   virtual const char* CodeName(unsigned op) override;
 
  public:
-  void recordInstruction(MacroAssembler& masm, JSOp op);
+  void recordInstruction(JSContext* cx, MacroAssembler& masm, jsbytecode* pc,
+                         CompilerFrameInfo& frame);
   void saveProfile(JSContext* cx, JSScript* script, JitCode* code);
+
+  void saveJitCodeSourceInfo(JSScript* script, JitCode* code,
+                             JS::JitCodeRecord* record,
+                             AutoLockPerfSpewer& lock);
 };
 
 class InlineCachePerfSpewer : public PerfSpewer {
@@ -105,6 +143,18 @@ class InlineCachePerfSpewer : public PerfSpewer {
  public:
   void recordInstruction(MacroAssembler& masm, CacheOp op);
   void saveProfile(JitCode* code, const char* name);
+};
+
+class PerfSpewerRangeRecorder {
+  using OffsetPair = std::tuple<uint32_t, UniqueChars>;
+  Vector<OffsetPair, 0, js::SystemAllocPolicy> ranges;
+
+  MacroAssembler& masm;
+
+ public:
+  explicit PerfSpewerRangeRecorder(MacroAssembler& masm_) : masm(masm_){};
+  void RecordOffset(const char* name);
+  void CollectRangesForJitCode(JitCode* code);
 };
 
 }  // namespace js::jit

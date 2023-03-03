@@ -65,6 +65,10 @@ const { ExtensionUtils } = ChromeUtils.import(
   "resource://gre/modules/ExtensionUtils.jsm"
 );
 
+const DUMMY_PAGE_URI = Services.io.newURI(
+  "chrome://extensions/content/dummy.xhtml"
+);
+
 var {
   BaseContext,
   CanOfAPIs,
@@ -556,6 +560,10 @@ class ProxyContextParent extends BaseContext {
     this.runListenerPromises = new Set();
 
     apiManager.emit("proxy-context-load", this);
+  }
+
+  get isProxyContextParent() {
+    return true;
   }
 
   trackRunListenerPromise(runListenerPromise) {
@@ -1238,7 +1246,7 @@ ParentAPIManager = {
 
     // Store pending listener additions so we can be sure they're all
     // fully initialize before we consider extension startup complete.
-    if (context.viewType === "background" && context.listenerPromises) {
+    if (context.isBackgroundContext && context.listenerPromises) {
       const { listenerPromises } = context;
       listenerPromises.add(promise);
       let remove = () => {
@@ -1363,7 +1371,7 @@ class HiddenXULWindow {
     }
 
     windowlessBrowser.browsingContext.useGlobalHistory = false;
-    chromeShell.loadURI("chrome://extensions/content/dummy.xhtml", {
+    chromeShell.loadURI(DUMMY_PAGE_URI, {
       triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
     });
 

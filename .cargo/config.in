@@ -12,11 +12,16 @@ replace-with = "vendored-sources"
 
 [source."https://github.com/FirefoxGraphics/wpf-gpu-raster"]
 git = "https://github.com/FirefoxGraphics/wpf-gpu-raster"
-rev = "e07e3741d1613b1b7ddb85a1120ed4071b3d6a56"
+rev = "a6514854d4518b02f2805719ff6cd74dae7dfde6"
 replace-with = "vendored-sources"
 
 [source."https://github.com/capyloon/b2ghald.git"]
 git = "https://github.com/capyloon/b2ghald.git"
+replace-with = "vendored-sources"
+
+[source."https://github.com/bendk/application-services"]
+git = "https://github.com/bendk/application-services"
+rev = "ecb35df5fc40357c49922f90e86bf4147fa52953"
 replace-with = "vendored-sources"
 
 [source."https://github.com/chris-zen/coremidi.git"]
@@ -24,14 +29,19 @@ git = "https://github.com/chris-zen/coremidi.git"
 rev = "fc68464b5445caf111e41f643a2e69ccce0b4f83"
 replace-with = "vendored-sources"
 
+[source."https://github.com/gfx-rs/d3d12-rs"]
+git = "https://github.com/gfx-rs/d3d12-rs"
+rev = "b940b1d71"
+replace-with = "vendored-sources"
+
 [source."https://github.com/gfx-rs/naga"]
 git = "https://github.com/gfx-rs/naga"
-rev = "e7fc8e6"
+rev = "9742f1616c3e3dd2cc9a5880616fc886c391bb9f"
 replace-with = "vendored-sources"
 
 [source."https://github.com/gfx-rs/wgpu"]
 git = "https://github.com/gfx-rs/wgpu"
-rev = "186a29c34d54d8628bbebb998a537210ac565b71"
+rev = "74303308cd6030071889e865c40aa638214ed938"
 replace-with = "vendored-sources"
 
 [source."https://github.com/glandium/warp"]
@@ -61,7 +71,7 @@ replace-with = "vendored-sources"
 
 [source."https://github.com/kinetiknz/audioipc-2"]
 git = "https://github.com/kinetiknz/audioipc-2"
-rev = "73c8a02da8f2ff022723307bfafa3a58a61448da"
+rev = "89de5602c7a2d6624832417813e97030573456b2"
 replace-with = "vendored-sources"
 
 [source."https://github.com/kinetiknz/mio-named-pipes"]
@@ -72,11 +82,6 @@ replace-with = "vendored-sources"
 [source."https://github.com/mozilla-spidermonkey/jsparagus"]
 git = "https://github.com/mozilla-spidermonkey/jsparagus"
 rev = "688a6574cf830b4a3adaf9c5d41efc1f7dd4017f"
-replace-with = "vendored-sources"
-
-[source."https://github.com/mozilla/application-services"]
-git = "https://github.com/mozilla/application-services"
-rev = "51b984ecb21ba00694c3eee33364123a064a7cbb"
 replace-with = "vendored-sources"
 
 [source."https://github.com/mozilla/audioipc"]
@@ -101,17 +106,17 @@ replace-with = "vendored-sources"
 
 [source."https://github.com/mozilla/mp4parse-rust"]
 git = "https://github.com/mozilla/mp4parse-rust"
-rev = "3bfc47d9a571d0842676043ba60716318e946c06"
+rev = "2b572e83608a3d0867b935e076f45d9fe248069d"
 replace-with = "vendored-sources"
 
 [source."https://github.com/mozilla/neqo"]
 git = "https://github.com/mozilla/neqo"
-tag = "v0.6.3"
+tag = "v0.6.4"
 replace-with = "vendored-sources"
 
 [source."https://github.com/mozilla/uniffi-rs.git"]
 git = "https://github.com/mozilla/uniffi-rs.git"
-rev = "846612a1d4fb5d11e246bf0682da4a499409424c"
+rev = "bc7ff8977bf38d0fdd1a458810b14f434d4dc4de"
 replace-with = "vendored-sources"
 
 [source."https://github.com/rust-minidump/minidump-writer.git"]
@@ -119,9 +124,9 @@ git = "https://github.com/rust-minidump/minidump-writer.git"
 rev = "7d76616d27b9dc87fe3a94639b8b4f947d52a6aa"
 replace-with = "vendored-sources"
 
-[source."https://github.com/smol-rs/async-task"]
-git = "https://github.com/smol-rs/async-task"
-rev = "f6488e35beccb26eb6e85847b02aa78a42cd3d0e"
+[source."https://github.com/servo/rust-cssparser"]
+git = "https://github.com/servo/rust-cssparser"
+rev = "b196a164dcbb317016d4aa6c58c13147e6045ebb"
 replace-with = "vendored-sources"
 
 

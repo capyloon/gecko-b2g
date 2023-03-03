@@ -18,12 +18,12 @@
 #include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/dom/NameSpaceConstants.h"
 #include "mozilla/dom/AncestorIterator.h"
+#include "mozilla/dom/XULMenuBarElement.h"
 #include "nsGkAtoms.h"
 #include "nsITimer.h"
 #include "nsLayoutUtils.h"
 #include "nsCaseTreatment.h"
 #include "nsChangeHint.h"
-#include "nsMenuBarFrame.h"
 #include "nsMenuPopupFrame.h"
 #include "nsPlaceholderFrame.h"
 #include "nsPresContext.h"
@@ -75,9 +75,9 @@ void XULButtonElement::PopupClosed(bool aDeselectMenu) {
       new nsUnsetAttrRunnable(this, nsGkAtoms::open));
 
   if (aDeselectMenu) {
-    if (RefPtr<XULMenuParentElement> menu = GetMenuParent()) {
-      if (menu->GetActiveMenuChild() == this) {
-        menu->SetActiveMenuChild(nullptr);
+    if (RefPtr<XULMenuParentElement> parent = GetMenuParent()) {
+      if (parent->GetActiveMenuChild() == this) {
+        parent->SetActiveMenuChild(nullptr);
       }
     }
   }
@@ -95,9 +95,9 @@ void XULButtonElement::HandleEnterKeyPress(WidgetEvent& aEvent) {
 #ifdef XP_WIN
     if (XULPopupElement* popup = GetContainingPopupElement()) {
       if (nsXULPopupManager* pm = nsXULPopupManager::GetInstance()) {
-        pm->HidePopup(popup, /* aHideChain = */ true,
-                      /* aDeselectMenu = */ true, /* aAsynchronous = */ true,
-                      /* aIsCancel = */ false);
+        pm->HidePopup(
+            popup, {HidePopupOption::HideChain, HidePopupOption::DeselectMenu,
+                    HidePopupOption::Async});
       }
     }
 #endif
@@ -120,10 +120,8 @@ bool XULButtonElement::IsMenuPopupOpen() {
 }
 
 bool XULButtonElement::IsOnMenu() const {
-  if (XULMenuParentElement* menu = GetMenuParent()) {
-    return !menu->IsMenuBar();
-  }
-  return false;
+  auto* popup = XULPopupElement::FromNodeOrNull(GetMenuParent());
+  return popup && popup->IsMenu();
 }
 
 bool XULButtonElement::IsOnMenuList() const {
@@ -211,7 +209,11 @@ void XULButtonElement::CloseMenuPopup(bool aDeselectMenu) {
     return;
   }
   if (auto* popup = GetMenuPopupContent()) {
-    pm->HidePopup(popup, false, aDeselectMenu, true, false);
+    HidePopupOptions options{HidePopupOption::Async};
+    if (aDeselectMenu) {
+      options += HidePopupOption::DeselectMenu;
+    }
+    pm->HidePopup(popup, options);
   }
 }
 
@@ -434,6 +436,33 @@ void XULButtonElement::PostHandleEventForMenus(
     aVisitor.mEventStatus = nsEventStatus_eConsumeNoDefault;
   } else if (event->mMessage == eMouseOut) {
     KillMenuOpenTimer();
+    if (RefPtr<XULMenuParentElement> parent = GetMenuParent()) {
+      if (parent->GetActiveMenuChild() == this) {
+        // Deactivate the menu on mouse out in some cases...
+        const bool shouldDeactivate = [&] {
+          if (IsMenuPopupOpen()) {
+            // If we're open we never deselect. PopupClosed will do as needed.
+            return false;
+          }
+          if (auto* menubar = XULMenuBarElement::FromNode(*parent)) {
+            // De-select when exiting a menubar item, if the menubar wasn't
+            // activated by keyboard.
+            return !menubar->IsActiveByKeyboard();
+          }
+          if (IsOnMenuList()) {
+            // Don't de-select if on a menu-list. That matches Chromium and our
+            // historical Windows behavior, see bug 1197913.
+            return false;
+          }
+          // De-select elsewhere.
+          return true;
+        }();
+
+        if (shouldDeactivate) {
+          parent->SetActiveMenuChild(nullptr);
+        }
+      }
+    }
   } else if (event->mMessage == eMouseMove && (IsOnMenu() || IsOnMenuBar())) {
     // Use a tolerance to address situations where a user might perform a
     // "wiggly" click that is accompanied by near-simultaneous mousemove events.
@@ -728,17 +757,11 @@ auto XULButtonElement::GetMenuType() const -> Maybe<MenuType> {
   }
 }
 
-nsMenuBarFrame* XULButtonElement::GetMenuBar(FlushType aFlushType) {
+XULMenuBarElement* XULButtonElement::GetMenuBar() const {
   if (!IsMenu()) {
     return nullptr;
   }
-  nsIFrame* frame = GetPrimaryFrame(aFlushType);
-  for (; frame; frame = frame->GetParent()) {
-    if (nsMenuBarFrame* menubar = do_QueryFrame(frame)) {
-      return menubar;
-    }
-  }
-  return nullptr;
+  return FirstAncestorOfType<XULMenuBarElement>();
 }
 
 XULMenuParentElement* XULButtonElement::GetMenuParent() const {
@@ -749,11 +772,15 @@ XULMenuParentElement* XULButtonElement::GetMenuParent() const {
 }
 
 XULPopupElement* XULButtonElement::GetMenuPopupContent() const {
-  auto* popup = GetMenuPopupWithoutFlushing();
-  if (!popup) {
+  if (!IsMenu()) {
     return nullptr;
   }
-  return &popup->PopupElement();
+  for (auto* child = GetFirstChild(); child; child = child->GetNextSibling()) {
+    if (auto* popup = XULPopupElement::FromNode(child)) {
+      return popup;
+    }
+  }
+  return nullptr;
 }
 
 nsMenuPopupFrame* XULButtonElement::GetMenuPopupWithoutFlushing() const {
@@ -761,27 +788,15 @@ nsMenuPopupFrame* XULButtonElement::GetMenuPopupWithoutFlushing() const {
 }
 
 nsMenuPopupFrame* XULButtonElement::GetMenuPopup(FlushType aFlushType) {
-  if (!IsMenu()) {
+  RefPtr popup = GetMenuPopupContent();
+  if (!popup) {
     return nullptr;
   }
-  nsIFrame* frame = GetPrimaryFrame(aFlushType);
-  if (!frame) {
-    return nullptr;
-  }
-  for (auto* child : frame->PrincipalChildList()) {
-    if (!child->IsPlaceholderFrame()) {
-      continue;
-    }
-    auto* ph = static_cast<nsPlaceholderFrame*>(child);
-    if (nsMenuPopupFrame* popup = do_QueryFrame(ph->GetOutOfFlowFrame())) {
-      return popup;
-    }
-  }
-  return nullptr;
+  return do_QueryFrame(popup->GetPrimaryFrame(aFlushType));
 }
 
-bool XULButtonElement::OpenedWithKey() {
-  nsMenuBarFrame* menubar = GetMenuBar(FlushType::Frames);
+bool XULButtonElement::OpenedWithKey() const {
+  auto* menubar = GetMenuBar();
   return menubar && menubar->IsActiveByKeyboard();
 }
 

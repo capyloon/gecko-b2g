@@ -3,6 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "ErrorList.h"
 #include "HTMLEditor.h"
 #include "HTMLEditorInlines.h"
 #include "HTMLEditorNestedClasses.h"
@@ -20,19 +21,22 @@
 #include "mozilla/Assertions.h"
 #include "mozilla/ContentIterator.h"
 #include "mozilla/EditorForwards.h"
-#include "mozilla/SelectionState.h"
 #include "mozilla/mozalloc.h"
+#include "mozilla/SelectionState.h"
 #include "mozilla/StaticPrefs_editor.h"
 #include "mozilla/dom/AncestorIterator.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/HTMLBRElement.h"
+#include "mozilla/dom/NameSpaceConstants.h"
 #include "mozilla/dom/Selection.h"
 #include "mozilla/dom/Text.h"
 
 #include "nsAString.h"
 #include "nsAtom.h"
 #include "nsAttrName.h"
+#include "nsAttrValue.h"
 #include "nsCaseTreatment.h"
+#include "nsColor.h"
 #include "nsComponentManagerUtils.h"
 #include "nsDebug.h"
 #include "nsError.h"
@@ -112,6 +116,23 @@ nsresult HTMLEditor::SetInlinePropertyAsAction(nsStaticAtom& aProperty,
   nsStaticAtom* property = &aProperty;
   nsStaticAtom* attribute = aAttribute;
   nsString value(aValue);
+  if (attribute == nsGkAtoms::color || attribute == nsGkAtoms::bgcolor) {
+    if (!IsCSSEnabled()) {
+      // We allow CSS style color value even in the HTML mode.  In the cases,
+      // we will apply the style with CSS.  For considering it in the value
+      // as-is if it's a known CSS keyboard, `rgb()` or `rgba()` style.
+      // NOTE: It may be later that we set the color into the DOM tree and at
+      // that time, IsCSSEnabled() may return true.  E.g., setting color value
+      // to collapsed selection, then, change the CSS enabled, finally, user
+      // types text there.
+      if (!HTMLEditUtils::MaybeCSSSpecificColorValue(value)) {
+        HTMLEditUtils::GetNormalizedHTMLColorValue(value, value);
+      }
+    } else {
+      HTMLEditUtils::GetNormalizedCSSColorValue(
+          value, HTMLEditUtils::ZeroAlphaColor::RGBAValue, value);
+    }
+  }
 
   AutoTArray<EditorInlineStyle, 1> stylesToRemove;
   if (&aProperty == nsGkAtoms::sup) {
@@ -291,15 +312,48 @@ nsresult HTMLEditor::SetInlinePropertiesAroundRanges(
     AutoInlineStyleSetter inlineStyleSetter(styleToSet);
     for (OwningNonNull<nsRange>& domRange : aRanges.Ranges()) {
       inlineStyleSetter.Reset();
-      const EditorDOMRange range = [&]() {
+      auto rangeOrError =
+          [&]() MOZ_CAN_RUN_SCRIPT -> Result<EditorDOMRange, nsresult> {
         if (aRanges.HasSavedRanges()) {
           return EditorDOMRange(
               GetExtendedRangeWrappingEntirelySelectedElements(
                   EditorRawDOMRange(domRange)));
         }
+        EditorDOMRange range(domRange);
+        // If we're setting <font>, we want to remove ancestors which set
+        // `font-size` or <font size="..."> recursively.  Therefore, for
+        // extending the ranges to contain all ancestors in the range, we need
+        // to split ancestors first.
+        // XXX: Blink and WebKit inserts <font> elements to inner most
+        // elements, however, we cannot do it under current design because
+        // once we contain ancestors which have `font-size` or are
+        // <font size="...">, we lost the original ranges which we wanted to
+        // apply the style.  For fixing this, we need to manage both ranges, but
+        // it's too expensive especially we allow to run script when we touch
+        // the DOM tree.  Additionally, font-size value affects the height
+        // of the element, but does not affect the height of ancestor inline
+        // elements.  Therefore, following the behavior may cause similar issue
+        // as bug 1808906.  So at least for now, we should not do this big work.
+        if (styleToSet.IsStyleOfFontElement()) {
+          Result<SplitRangeOffResult, nsresult> splitAncestorsResult =
+              SplitAncestorStyledInlineElementsAtRangeEdges(
+                  range, styleToSet, SplitAtEdges::eDoNotCreateEmptyContainer);
+          if (MOZ_UNLIKELY(splitAncestorsResult.isErr())) {
+            NS_WARNING(
+                "HTMLEditor::SplitAncestorStyledInlineElementsAtRangeEdges() "
+                "failed");
+            return splitAncestorsResult.propagateErr();
+          }
+          SplitRangeOffResult unwrappedResult = splitAncestorsResult.unwrap();
+          unwrappedResult.IgnoreCaretPointSuggestion();
+          range = unwrappedResult.RangeRef();
+          if (NS_WARN_IF(!range.IsPositionedAndValid())) {
+            return Err(NS_ERROR_EDITOR_UNEXPECTED_DOM_TREE);
+          }
+        }
         Result<EditorRawDOMRange, nsresult> rangeOrError =
-            inlineStyleSetter.ExtendOrShrinkRangeToApplyTheStyle(
-                *this, EditorDOMRange(domRange), aEditingHost);
+            inlineStyleSetter.ExtendOrShrinkRangeToApplyTheStyle(*this, range,
+                                                                 aEditingHost);
         if (MOZ_UNLIKELY(rangeOrError.isErr())) {
           NS_WARNING(
               "HTMLEditor::ExtendOrShrinkRangeToApplyTheStyle() failed, but "
@@ -308,6 +362,11 @@ nsresult HTMLEditor::SetInlinePropertiesAroundRanges(
         }
         return EditorDOMRange(rangeOrError.unwrap());
       }();
+      if (MOZ_UNLIKELY(rangeOrError.isErr())) {
+        return rangeOrError.unwrapErr();
+      }
+
+      const EditorDOMRange range = rangeOrError.unwrap();
       if (!range.IsPositioned()) {
         continue;
       }
@@ -572,7 +631,7 @@ HTMLEditor::AutoInlineStyleSetter::ElementIsGoodContainerForTheStyle(
     HTMLEditor& aHTMLEditor, Element& aElement) const {
   // If the editor is in the CSS mode and the style can be specified with CSS,
   // we should not use existing HTML element as a new container.
-  const bool isCSSEditable = IsCSSEditable(aElement);
+  const bool isCSSEditable = IsCSSSettable(aElement);
   if (!aHTMLEditor.IsCSSEnabled() || !isCSSEditable) {
     // First check for <b>, <i>, etc.
     if (aElement.IsHTMLElement(&HTMLPropertyRef()) &&
@@ -585,13 +644,24 @@ HTMLEditor::AutoInlineStyleSetter::ElementIsGoodContainerForTheStyle(
       nsString attrValue;
       if (aElement.IsHTMLElement(&HTMLPropertyRef()) &&
           !HTMLEditUtils::ElementHasAttributeExcept(aElement, *mAttribute) &&
-          aElement.GetAttr(kNameSpaceID_None, mAttribute, attrValue) &&
-          attrValue.Equals(mAttributeValue,
-                           nsCaseInsensitiveStringComparator)) {
-        // This is not quite correct, because it excludes cases like
-        // <font face=000> being the same as <font face=#000000>.
-        // Property-specific handling is needed (bug 760211).
-        return true;
+          aElement.GetAttr(kNameSpaceID_None, mAttribute, attrValue)) {
+        if (attrValue.Equals(mAttributeValue,
+                             nsCaseInsensitiveStringComparator)) {
+          return true;
+        }
+        if (mAttribute == nsGkAtoms::color ||
+            mAttribute == nsGkAtoms::bgcolor) {
+          if (aHTMLEditor.IsCSSEnabled()) {
+            if (HTMLEditUtils::IsSameCSSColorValue(mAttributeValue,
+                                                   attrValue)) {
+              return true;
+            }
+          } else if (HTMLEditUtils::IsSameHTMLColorValue(
+                         mAttributeValue, attrValue,
+                         HTMLEditUtils::TransparentKeyword::Allowed)) {
+            return true;
+          }
+        }
       }
     }
 
@@ -757,7 +827,7 @@ HTMLEditor::AutoInlineStyleSetter::SplitTextNodeAndApplyStyleToMiddleNode(
   }
 
   // Don't need to do anything if property already set on node
-  if (IsCSSEditable(*element)) {
+  if (IsCSSSettable(*element)) {
     // The HTML styles defined by this have a CSS equivalence for node;
     // let's check if it carries those CSS styles
     nsAutoString value(mAttributeValue);
@@ -1055,7 +1125,7 @@ Result<CaretPoint, nsresult> HTMLEditor::AutoInlineStyleSetter::ApplyStyle(
 
   // Don't need to do anything if property already set on node
   if (const RefPtr<Element> element = aContent.GetAsElementOrParentElement()) {
-    if (IsCSSEditable(*element)) {
+    if (IsCSSSettable(*element)) {
       nsAutoString value(mAttributeValue);
       // MOZ_KnownLive(element) because it's aContent.
       Result<bool, nsresult> isComputedCSSEquivalentToStyleOrError =
@@ -1077,14 +1147,25 @@ Result<CaretPoint, nsresult> HTMLEditor::AutoInlineStyleSetter::ApplyStyle(
   }
 
   auto ShouldUseCSS = [&]() {
-    return (aHTMLEditor.IsCSSEnabled() &&
-            aContent.GetAsElementOrParentElement() &&
-            IsCSSEditable(*aContent.GetAsElementOrParentElement())) ||
-           // bgcolor is always done using CSS
-           mAttribute == nsGkAtoms::bgcolor ||
-           // called for removing parent style, we should use CSS with
-           // `<span>` element.
-           IsStyleToInvert();
+    if (aHTMLEditor.IsCSSEnabled() && aContent.GetAsElementOrParentElement() &&
+        IsCSSSettable(*aContent.GetAsElementOrParentElement())) {
+      return true;
+    }
+    // bgcolor is always done using CSS
+    if (mAttribute == nsGkAtoms::bgcolor) {
+      return true;
+    }
+    // called for removing parent style, we should use CSS with <span> element.
+    if (IsStyleToInvert()) {
+      return true;
+    }
+    // If we set color value, the value may be able to specified only with CSS.
+    // In that case, we need to use CSS even in the HTML mode.
+    if (mAttribute == nsGkAtoms::color) {
+      return mAttributeValue.First() != '#' &&
+             !HTMLEditUtils::CanConvertToHTMLColorValue(mAttributeValue);
+    }
+    return false;
   };
 
   if (ShouldUseCSS()) {
@@ -1132,7 +1213,7 @@ Result<CaretPoint, nsresult> HTMLEditor::AutoInlineStyleSetter::ApplyStyle(
     }
 
     // Add the CSS styles corresponding to the HTML style request
-    if (IsCSSEditable(*styledElement)) {
+    if (IsCSSSettable(*styledElement)) {
       Result<size_t, nsresult> result = CSSEditUtils::SetCSSEquivalentToStyle(
           WithTransaction::Yes, aHTMLEditor, *styledElement, *this,
           &mAttributeValue);
@@ -1148,6 +1229,14 @@ Result<CaretPoint, nsresult> HTMLEditor::AutoInlineStyleSetter::ApplyStyle(
     return CaretPoint(pointToPutCaret);
   }
 
+  nsAutoString attributeValue(mAttributeValue);
+  if (mAttribute == nsGkAtoms::color && mAttributeValue.First() != '#') {
+    // At here, all color values should be able to be parsed as a CSS color
+    // value.  Therefore, we need to convert it to normalized HTML color value.
+    HTMLEditUtils::ConvertToNormalizedHTMLColorValue(attributeValue,
+                                                     attributeValue);
+  }
+
   // is it already the right kind of node, but with wrong attribute?
   if (aContent.IsHTMLElement(&HTMLPropertyRef())) {
     if (NS_WARN_IF(!mAttribute)) {
@@ -1155,7 +1244,7 @@ Result<CaretPoint, nsresult> HTMLEditor::AutoInlineStyleSetter::ApplyStyle(
     }
     // Just set the attribute on it.
     nsresult rv = aHTMLEditor.SetAttributeWithTransaction(
-        MOZ_KnownLive(*aContent.AsElement()), *mAttribute, mAttributeValue);
+        MOZ_KnownLive(*aContent.AsElement()), *mAttribute, attributeValue);
     if (NS_WARN_IF(aHTMLEditor.Destroyed())) {
       return Err(NS_ERROR_EDITOR_DESTROYED);
     }
@@ -1171,7 +1260,17 @@ Result<CaretPoint, nsresult> HTMLEditor::AutoInlineStyleSetter::ApplyStyle(
   Result<CreateElementResult, nsresult> wrapWithNewElementToFormatResult =
       aHTMLEditor.InsertContainerWithTransaction(
           aContent, MOZ_KnownLive(HTMLPropertyRef()),
-          mAttribute ? *mAttribute : *nsGkAtoms::_empty, mAttributeValue);
+          !mAttribute ? HTMLEditor::DoNothingForNewElement
+                      // MOZ_CAN_RUN_SCRIPT_BOUNDARY due to bug 1758868
+                      : [&](HTMLEditor& aHTMLEditor, Element& aNewElement,
+                            const EditorDOMPoint&) MOZ_CAN_RUN_SCRIPT_BOUNDARY {
+                          nsresult rv =
+                              aNewElement.SetAttr(kNameSpaceID_None, mAttribute,
+                                                  attributeValue, false);
+                          NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
+                                               "Element::SetAttr() failed");
+                          return rv;
+                        });
   if (MOZ_UNLIKELY(wrapWithNewElementToFormatResult.isErr())) {
     NS_WARNING("HTMLEditor::InsertContainerWithTransaction() failed");
     return wrapWithNewElementToFormatResult.propagateErr();
@@ -1200,7 +1299,7 @@ HTMLEditor::AutoInlineStyleSetter::ApplyCSSTextDecoration(
         "Was new value added in "
         "IsStyleOfTextDecoration(IgnoreSElement::No))?");
   }
-  if (styledElement && IsCSSEditable(*styledElement) &&
+  if (styledElement && IsCSSSettable(*styledElement) &&
       ElementIsGoodContainerToSetStyle(*styledElement)) {
     nsAutoString textDecorationValue;
     nsresult rv = CSSEditUtils::GetSpecifiedProperty(
@@ -1597,12 +1696,18 @@ EditorRawDOMPoint HTMLEditor::AutoInlineStyleSetter::
   MOZ_ASSERT(aStartPoint.IsSetAndValid());
 
   EditorRawDOMPoint startPoint = aStartPoint;
-  if (!startPoint.IsStartOfContainer()) {
+  // FIXME: This should handle ignore invisible white-spaces before the position
+  // if it's in a text node or invisible white-spaces.
+  if (!startPoint.IsStartOfContainer() ||
+      startPoint.GetContainer()->GetPreviousSibling()) {
     return startPoint;
   }
 
-  const bool useCSS = aHTMLEditor.IsCSSEnabled();
-  const bool isFontElementStyle = IsStyleOfFontElement();
+  // FYI: Currently, we don't support setting `font-size` even in the CSS mode.
+  // Therefore, if the style is <font size="...">, we always set a <font>.
+  const bool isSettingFontElement =
+      IsStyleOfFontSize() ||
+      (!aHTMLEditor.IsCSSEnabled() && IsStyleOfFontElement());
   Element* mostDistantStartParentHavingStyle = nullptr;
   for (Element* parent :
        startPoint.GetContainer()->InclusiveAncestorsOfType<Element>()) {
@@ -1616,8 +1721,7 @@ EditorRawDOMPoint HTMLEditor::AutoInlineStyleSetter::
     }
     // If we're setting <font> element and there is a <font> element which is
     // entirely selected, we should use it.
-    else if (!useCSS && isFontElementStyle &&
-             parent->IsHTMLElement(nsGkAtoms::font)) {
+    else if (isSettingFontElement && parent->IsHTMLElement(nsGkAtoms::font)) {
       mostDistantStartParentHavingStyle = parent;
     }
     if (parent->GetPreviousSibling()) {
@@ -1637,12 +1741,18 @@ EditorRawDOMPoint HTMLEditor::AutoInlineStyleSetter::
   MOZ_ASSERT(aEndPoint.IsSetAndValid());
 
   EditorRawDOMPoint endPoint = aEndPoint;
-  if (!endPoint.IsEndOfContainer()) {
+  // FIXME: This should ignore invisible white-spaces after the position if it's
+  // in a text node, invisible <br> or following invisible text nodes.
+  if (!endPoint.IsEndOfContainer() ||
+      endPoint.GetContainer()->GetNextSibling()) {
     return endPoint;
   }
 
-  const bool useCSS = aHTMLEditor.IsCSSEnabled();
-  const bool isFontElementStyle = IsStyleOfFontElement();
+  // FYI: Currently, we don't support setting `font-size` even in the CSS mode.
+  // Therefore, if the style is <font size="...">, we always set a <font>.
+  const bool isSettingFontElement =
+      IsStyleOfFontSize() ||
+      (!aHTMLEditor.IsCSSEnabled() && IsStyleOfFontElement());
   Element* mostDistantEndParentHavingStyle = nullptr;
   for (Element* parent :
        endPoint.GetContainer()->InclusiveAncestorsOfType<Element>()) {
@@ -1656,8 +1766,7 @@ EditorRawDOMPoint HTMLEditor::AutoInlineStyleSetter::
     }
     // If we're setting <font> element and there is a <font> element which is
     // entirely selected, we should use it.
-    else if (!useCSS && isFontElementStyle &&
-             parent->IsHTMLElement(nsGkAtoms::font)) {
+    else if (isSettingFontElement && parent->IsHTMLElement(nsGkAtoms::font)) {
       mostDistantEndParentHavingStyle = parent;
     }
     if (parent->GetNextSibling()) {
@@ -1717,7 +1826,7 @@ EditorRawDOMRange HTMLEditor::AutoInlineStyleSetter::
   // should have the new style into the range to avoid creating new <span>
   // element.
   if (!IsRepresentableWithHTML() ||
-      (aHTMLEditor.IsCSSEnabled() && IsCSSEditable(*nsGkAtoms::span))) {
+      (aHTMLEditor.IsCSSEnabled() && IsCSSSettable(*nsGkAtoms::span))) {
     // First, if pointing in a text node, use parent point.
     if (aStartPoint.IsInContentNode() && aStartPoint.IsStartOfContainer() &&
         aStartPoint.GetContainerParentAs<nsIContent>() &&
@@ -1902,7 +2011,8 @@ HTMLEditor::AutoInlineStyleSetter::ExtendOrShrinkRangeToApplyTheStyle(
 
 Result<SplitRangeOffResult, nsresult>
 HTMLEditor::SplitAncestorStyledInlineElementsAtRangeEdges(
-    const EditorDOMRange& aRange, const EditorInlineStyle& aStyle) {
+    const EditorDOMRange& aRange, const EditorInlineStyle& aStyle,
+    SplitAtEdges aSplitAtEdges) {
   MOZ_ASSERT(IsEditActionDataAvailable());
 
   if (NS_WARN_IF(!aRange.IsPositioned())) {
@@ -1916,9 +2026,8 @@ HTMLEditor::SplitAncestorStyledInlineElementsAtRangeEdges(
       [&]() MOZ_CAN_RUN_SCRIPT -> Result<SplitNodeResult, nsresult> {
     AutoTrackDOMRange tracker(RangeUpdaterRef(), &range);
     Result<SplitNodeResult, nsresult> result =
-        SplitAncestorStyledInlineElementsAt(
-            range.StartRef(), aStyle,
-            SplitAtEdges::eAllowToCreateEmptyContainer);
+        SplitAncestorStyledInlineElementsAt(range.StartRef(), aStyle,
+                                            aSplitAtEdges);
     if (MOZ_UNLIKELY(result.isErr())) {
       NS_WARNING("HTMLEditor::SplitAncestorStyledInlineElementsAt() failed");
       return result;
@@ -1947,8 +2056,8 @@ HTMLEditor::SplitAncestorStyledInlineElementsAtRangeEdges(
       [&]() MOZ_CAN_RUN_SCRIPT -> Result<SplitNodeResult, nsresult> {
     AutoTrackDOMRange tracker(RangeUpdaterRef(), &range);
     Result<SplitNodeResult, nsresult> result =
-        SplitAncestorStyledInlineElementsAt(
-            range.EndRef(), aStyle, SplitAtEdges::eAllowToCreateEmptyContainer);
+        SplitAncestorStyledInlineElementsAt(range.EndRef(), aStyle,
+                                            aSplitAtEdges);
     if (MOZ_UNLIKELY(result.isErr())) {
       NS_WARNING("HTMLEditor::SplitAncestorStyledInlineElementsAt() failed");
       return result;
@@ -2001,15 +2110,15 @@ HTMLEditor::SplitAncestorStyledInlineElementsAt(
   const bool handleCSS =
       aStyle.mHTMLProperty != nsGkAtoms::tt || IsCSSEnabled();
 
-  AutoTArray<OwningNonNull<nsIContent>, 24> arrayOfParents;
-  for (nsIContent* content :
-       aPointToSplit.GetContainer()->InclusiveAncestorsOfType<nsIContent>()) {
-    if (HTMLEditUtils::IsBlockElement(*content) || !content->GetParent() ||
-        !EditorUtils::IsEditableContent(*content->GetParent(),
+  AutoTArray<OwningNonNull<Element>, 24> arrayOfParents;
+  for (Element* element :
+       aPointToSplit.GetContainer()->InclusiveAncestorsOfType<Element>()) {
+    if (HTMLEditUtils::IsBlockElement(*element) || !element->GetParent() ||
+        !EditorUtils::IsEditableContent(*element->GetParent(),
                                         EditorType::HTML)) {
       break;
     }
-    arrayOfParents.AppendElement(*content);
+    arrayOfParents.AppendElement(*element);
   }
 
   // Split any matching style nodes above the point.
@@ -2017,7 +2126,7 @@ HTMLEditor::SplitAncestorStyledInlineElementsAt(
       SplitNodeResult::NotHandled(aPointToSplit, GetSplitNodeDirection());
   MOZ_ASSERT(!result.Handled());
   EditorDOMPoint pointToPutCaret;
-  for (OwningNonNull<nsIContent>& content : arrayOfParents) {
+  for (OwningNonNull<Element>& element : arrayOfParents) {
     auto isSetByCSSOrError = [&]() -> Result<bool, nsresult> {
       if (!handleCSS) {
         return false;
@@ -2025,11 +2134,10 @@ HTMLEditor::SplitAncestorStyledInlineElementsAt(
       // The HTML style defined by aStyle has a CSS equivalence in this
       // implementation for the node; let's check if it carries those CSS
       // styles
-      if (MOZ_LIKELY(content->GetAsElementOrParentElement()) &&
-          aStyle.IsCSSEditable(*content->GetAsElementOrParentElement())) {
+      if (aStyle.IsCSSRemovable(*element)) {
         nsAutoString firstValue;
         Result<bool, nsresult> isSpecifiedByCSSOrError =
-            CSSEditUtils::IsSpecifiedCSSEquivalentTo(*this, *content, aStyle,
+            CSSEditUtils::IsSpecifiedCSSEquivalentTo(*this, *element, aStyle,
                                                      firstValue);
         if (MOZ_UNLIKELY(isSpecifiedByCSSOrError.isErr())) {
           result.IgnoreCaretPointSuggestion();
@@ -2049,7 +2157,7 @@ HTMLEditor::SplitAncestorStyledInlineElementsAt(
       if (aStyle.IsStyleConflictingWithVerticalAlign()) {
         nsAutoString value;
         nsresult rv = CSSEditUtils::GetSpecifiedProperty(
-            *content, *nsGkAtoms::vertical_align, value);
+            *element, *nsGkAtoms::vertical_align, value);
         if (NS_FAILED(rv)) {
           NS_WARNING("CSSEditUtils::GetSpecifiedProperty() failed");
           result.IgnoreCaretPointSuggestion();
@@ -2065,23 +2173,54 @@ HTMLEditor::SplitAncestorStyledInlineElementsAt(
       return isSetByCSSOrError.propagateErr();
     }
     if (!isSetByCSSOrError.inspect()) {
-      if (!content->IsElement()) {
-        continue;
-      }
       if (!aStyle.IsStyleToClearAllInlineStyles()) {
-        // If the content is an inline element represents the style or
-        // the content is a link element and the style is `href`, we should
-        // split the content.
-        if (!content->IsHTMLElement(aStyle.mHTMLProperty) &&
-            !(aStyle.mHTMLProperty == nsGkAtoms::href &&
-              HTMLEditUtils::IsLink(content))) {
+        // If we're removing a link style and the element is an <a href>, we
+        // need to split it.
+        if (aStyle.mHTMLProperty == nsGkAtoms::href &&
+            HTMLEditUtils::IsLink(element)) {
+        }
+        // If we're removing HTML style, we should split only the element
+        // which represents the style.
+        else if (!element->IsHTMLElement(aStyle.mHTMLProperty) ||
+                 (aStyle.mAttribute && !element->HasAttr(aStyle.mAttribute))) {
           continue;
+        }
+        // If we're setting <font> related styles, it means that we're not
+        // toggling the style.  In this case, we need to remove parent <font>
+        // elements and/or update parent <font> elements if there are some
+        // elements which have the attribute.  However, we should not touch if
+        // the value is same as what the caller setting to keep the DOM tree
+        // as-is as far as possible.
+        if (aStyle.IsStyleOfFontElement() && aStyle.MaybeHasValue()) {
+          const nsAttrValue* const attrValue =
+              element->GetParsedAttr(aStyle.mAttribute);
+          if (attrValue) {
+            if (aStyle.mAttribute == nsGkAtoms::size) {
+              if (nsContentUtils::ParseLegacyFontSize(
+                      aStyle.AsInlineStyleAndValue().mAttributeValue) ==
+                  attrValue->GetIntegerValue()) {
+                continue;
+              }
+            } else if (aStyle.mAttribute == nsGkAtoms::color) {
+              nsAttrValue newValue;
+              nscolor oldColor, newColor;
+              if (attrValue->GetColorValue(oldColor) &&
+                  newValue.ParseColor(
+                      aStyle.AsInlineStyleAndValue().mAttributeValue) &&
+                  newValue.GetColorValue(newColor) && oldColor == newColor) {
+                continue;
+              }
+            } else if (attrValue->Equals(
+                           aStyle.AsInlineStyleAndValue().mAttributeValue,
+                           eIgnoreCase)) {
+              continue;
+            }
+          }
         }
       }
       // If aProperty is nullptr, we need to split any style.
-      else if (!EditorUtils::IsEditableContent(content, EditorType::HTML) ||
-               !HTMLEditUtils::IsRemovableInlineStyleElement(
-                   *content->AsElement())) {
+      else if (!EditorUtils::IsEditableContent(element, EditorType::HTML) ||
+               !HTMLEditUtils::IsRemovableInlineStyleElement(*element)) {
         continue;
       }
     }
@@ -2093,7 +2232,7 @@ HTMLEditor::SplitAncestorStyledInlineElementsAt(
     //     is a block, we do nothing but return as handled.
     AutoTrackDOMPoint trackPointToPutCaret(RangeUpdaterRef(), &pointToPutCaret);
     Result<SplitNodeResult, nsresult> splitNodeResult =
-        SplitNodeDeepWithTransaction(MOZ_KnownLive(content),
+        SplitNodeDeepWithTransaction(MOZ_KnownLive(element),
                                      result.AtSplitPoint<EditorDOMPoint>(),
                                      aSplitAtEdges);
     if (MOZ_UNLIKELY(splitNodeResult.isErr())) {
@@ -2269,11 +2408,14 @@ Result<EditorDOMPoint, nsresult> HTMLEditor::ClearStyleAt(
     }
   }
 
+  if (!unwrappedSplitResultAtStartOfNextNode.Handled()) {
+    return std::move(pointToPutCaret);
+  }
+
   // If there is no content, we should return here.
   // XXX Is this possible case without mutation event listener?
-  if (NS_WARN_IF(!unwrappedSplitResultAtStartOfNextNode.Handled()) ||
-      !unwrappedSplitResultAtStartOfNextNode.GetPreviousContent()) {
-    // XXX This is really odd, but we retrun this value...
+  if (!unwrappedSplitResultAtStartOfNextNode.GetPreviousContent()) {
+    // XXX This is really odd, but we return this value...
     const auto splitPoint =
         unwrappedSplitNodeResult.AtSplitPoint<EditorRawDOMPoint>();
     const auto splitPointAtStartOfNextNode =
@@ -2429,9 +2571,8 @@ Result<EditorDOMPoint, nsresult> HTMLEditor::RemoveStyleInside(
 
   // Next, remove CSS style first.  Then, `style` attribute will be removed if
   // the corresponding CSS property is last one.
-  const bool isCSSEditable = aStyleToRemove.IsCSSEditable(aElement);
   auto isStyleSpecifiedOrError = [&]() -> Result<bool, nsresult> {
-    if (!isCSSEditable) {
+    if (!aStyleToRemove.IsCSSRemovable(aElement)) {
       return false;
     }
     MOZ_ASSERT(!aStyleToRemove.IsStyleToClearAllInlineStyles());
@@ -2794,7 +2935,7 @@ nsresult HTMLEditor::GetInlinePropertyBase(const EditorInlineStyle& aStyle,
           nsIContent::FromNode(range->GetStartContainer());
       if (MOZ_LIKELY(collapsedContent &&
                      collapsedContent->GetAsElementOrParentElement()) &&
-          aStyle.IsCSSEditable(
+          aStyle.IsCSSSettable(
               *collapsedContent->GetAsElementOrParentElement())) {
         if (aValue) {
           tOutString.Assign(*aValue);
@@ -2860,7 +3001,7 @@ nsresult HTMLEditor::GetInlinePropertyBase(const EditorInlineStyle& aStyle,
       bool isSet = false;
       if (first) {
         if (element) {
-          if (aStyle.IsCSSEditable(*element)) {
+          if (aStyle.IsCSSSettable(*element)) {
             // The HTML styles defined by aHTMLProperty/aAttribute have a CSS
             // equivalence in this implementation for node; let's check if it
             // carries those CSS styles
@@ -2887,7 +3028,7 @@ nsresult HTMLEditor::GetInlinePropertyBase(const EditorInlineStyle& aStyle,
         }
       } else {
         if (element) {
-          if (aStyle.IsCSSEditable(*element)) {
+          if (aStyle.IsCSSSettable(*element)) {
             // The HTML styles defined by aHTMLProperty/aAttribute have a CSS
             // equivalence in this implementation for node; let's check if it
             // carries those CSS styles
@@ -3233,7 +3374,8 @@ nsresult HTMLEditor::RemoveInlinePropertiesAsSubAction(
       // Remove this style from ancestors of our range endpoints, splitting
       // them as appropriate
       Result<SplitRangeOffResult, nsresult> splitRangeOffResult =
-          SplitAncestorStyledInlineElementsAtRangeEdges(range, styleToRemove);
+          SplitAncestorStyledInlineElementsAtRangeEdges(
+              range, styleToRemove, SplitAtEdges::eAllowToCreateEmptyContainer);
       if (MOZ_UNLIKELY(splitRangeOffResult.isErr())) {
         NS_WARNING(
             "HTMLEditor::SplitAncestorStyledInlineElementsAtRangeEdges() "
@@ -3601,7 +3743,7 @@ Result<bool, nsresult> HTMLEditor::IsRemovableParentStyleWithNewSpanElement(
 
   // If parent block has invertible style, we should remove the style with
   // creating new `<span>` element even in HTML mode because Chrome does it.
-  if (!aStyle.IsCSSEditable(*element)) {
+  if (!aStyle.IsCSSSettable(*element)) {
     return false;
   }
   nsAutoString emptyString;

@@ -104,6 +104,7 @@ include = [
   "FontFaceSourceListComponent",
   "FontFaceSourceTechFlags",
   "FontLanguageOverride",
+  "FontSynthesis",
   "GenericFontFamily",
   "FontFamily",
   "FontFamilyNameSyntax",
@@ -121,6 +122,7 @@ include = [
   "ScrollSnapStrictness",
   "ScrollSnapType",
   "ScrollTimelineName",
+  "ViewTimelineInset",
   "OverflowAnchor",
   "OverflowClipBox",
   "Resize",
@@ -256,6 +258,7 @@ include = [
   "DProperty",
   "ImageRendering",
   "PrintColorAdjust",
+  "ForcedColorAdjust",
   "ScrollbarGutter",
   "ScrollDirection",
   "HyphenateCharacter",
@@ -420,6 +423,8 @@ renaming_overrides_prefixing = true
   // Just some convenient aliases for LengthOrAuto, to avoid confusing naming.
   inline bool IsLength() const;
   inline const StyleLength& AsLength() const;
+
+  static inline StyleGenericLengthPercentageOrAuto Zero();
 """
 
 "GenericSize" = """
@@ -796,42 +801,10 @@ renaming_overrides_prefixing = true
   inline nsRect ToLayoutRect(nscoord aAutoSize = NS_MAXSIZE) const;
 """
 
-"GenericRotate" = """
- public:
-  // The implementation of IPC LayersMessages needs this to be public.
-  StyleGenericRotate(): tag(Tag::None) {}
-"""
-
-"GenericScale" = """
- public:
-  // The implementation of IPC LayersMessages needs this to be public.
-  StyleGenericScale(): tag(Tag::None) {}
-"""
-
-"GenericTranslate" = """
- public:
-  // The implementation of IPC LayersMessages needs this to be public.
-  StyleGenericTranslate(): tag(Tag::None) {}
-"""
-
-"GenericOffsetPath" = """
- public:
-  // The implementation of IPC LayersMessages needs this to be public.
-  StyleGenericOffsetPath(): tag(Tag::None) {}
-"""
-
-"GenericPositionOrAuto" = """
- public:
-  // The implementation of IPC LayersMessages needs this to be public.
-  StyleGenericPositionOrAuto(): tag(Tag::Auto) {}
-"""
-
 "TimingFunction" = """
  public:
-  // The implementation of IPC LayersMessages needs this to be public.
-  StyleTimingFunction() : tag(Tag::Keyword) { ::new (&keyword._0) (StyleTimingKeyword) (StyleTimingKeyword::Linear); }
-
   bool IsLinearKeyword() const { return IsKeyword() && AsKeyword() == StyleTimingKeyword::Linear; }
+  static StyleTimingFunction LinearKeyword() { return Keyword(StyleTimingKeyword::Linear); }
 
   inline double At(double, bool aBeforeFlag) const;
   inline void AppendToString(nsACString&) const;
@@ -919,11 +892,6 @@ renaming_overrides_prefixing = true
   bool IsNamedFamily(const nsAString&) const;
 """
 
-"AnimationTimeline" = """
- public:
-  StyleAnimationTimeline(): tag(Tag::Auto) {}
-"""
-
 "TimelineOrKeyframesName" = """
  public:
   inline nsAtom* AsAtom() const;
@@ -940,16 +908,23 @@ renaming_overrides_prefixing = true
 
  inline bool IsItalic() const;
  inline bool IsOblique() const;
- inline float ObliqueAngle() const;
+ inline float ObliqueAngle() const;  // Only for use when IsOblique() is true
+ inline float SlantAngle() const;  // Returns angle for any font-style, including
+                                   // normal/italic as well as explicit oblique
 """
 
 "FontStretch" = """
  SERVO_FIXED_POINT_HELPERS(StyleFontStretch, uint16_t, StyleFONT_STRETCH_FRACTION_BITS);
 """
 
-"ScrollTimelineName" = """
+"AnimationName" = """
  public:
-  StyleScrollTimelineName(): _0(RefPtr<nsAtom>(nsGkAtoms::_empty).forget()) {}
+  StyleAnimationName(): _0(RefPtr<nsAtom>(nsGkAtoms::_empty).forget()) {}
+"""
+
+"GenericViewTimelineInset" = """
+ public:
+  inline StyleGenericViewTimelineInset();
 """
 
 "Time" = """

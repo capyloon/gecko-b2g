@@ -172,7 +172,8 @@ async function testHelper(
   prefValue,
   expectedURL,
   expectCallingChooseCertificate,
-  options = undefined
+  options = undefined,
+  expectStringInPage = undefined
 ) {
   gClientAuthDialogs.chooseCertificateCalled = false;
   await SpecialPowers.pushPrefEnv({
@@ -181,7 +182,7 @@ async function testHelper(
 
   let win = await BrowserTestUtils.openNewBrowserWindow(options);
 
-  BrowserTestUtils.loadURI(
+  BrowserTestUtils.loadURIString(
     win.gBrowser.selectedBrowser,
     "https://requireclientcert.example.com:443"
   );
@@ -202,6 +203,17 @@ async function testHelper(
     expectCallingChooseCertificate,
     "chooseCertificate should have been called if we were expecting it to be called"
   );
+
+  if (expectStringInPage) {
+    let pageContent = await SpecialPowers.spawn(
+      win.gBrowser.selectedBrowser,
+      [],
+      async function() {
+        return content.document.body.textContent;
+      }
+    );
+    Assert.ok(pageContent.includes(expectStringInPage));
+  }
 
   await win.close();
 
@@ -232,7 +244,12 @@ add_task(async function testCertNotChosenByUser() {
   await testHelper(
     "Ask Every Time",
     "about:neterror?e=nssFailure2&u=https%3A//requireclientcert.example.com/",
-    true
+    true,
+    undefined,
+    // bug 1818556: ssltunnel doesn't behave as expected here on Windows
+    AppConstants.platform != "win"
+      ? "SSL_ERROR_RX_CERTIFICATE_REQUIRED_ALERT"
+      : undefined
   );
   cars.clearRememberedDecisions();
 });

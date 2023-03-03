@@ -33,11 +33,13 @@
 #include "js/ScalarType.h"       // js::Scalar::Type
 #include "vm/ArgumentsObject.h"
 #include "vm/ArrayBufferViewObject.h"
+#include "vm/BoundFunctionObject.h"
 #include "vm/FunctionFlags.h"  // js::FunctionFlags
 #include "vm/Iteration.h"
 #include "vm/JSContext.h"
 #include "vm/TypedArrayObject.h"
 #include "wasm/WasmBuiltins.h"
+#include "wasm/WasmCodegenConstants.h"
 #include "wasm/WasmCodegenTypes.h"
 #include "wasm/WasmInstanceData.h"
 #include "wasm/WasmMemory.h"
@@ -1990,6 +1992,21 @@ void MacroAssembler::isCallableOrConstructor(bool isCallable, Register obj,
 
   bind(&notFunction);
 
+  if (!isCallable) {
+    // For bound functions, we need to check the isConstructor flag.
+    Label notBoundFunction;
+    branchPtr(Assembler::NotEqual, output, ImmPtr(&BoundFunctionObject::class_),
+              &notBoundFunction);
+
+    static_assert(BoundFunctionObject::IsConstructorFlag == 0b1,
+                  "AND operation results in boolean value");
+    unboxInt32(Address(obj, BoundFunctionObject::offsetOfFlagsSlot()), output);
+    and32(Imm32(BoundFunctionObject::IsConstructorFlag), output);
+    jump(&done);
+
+    bind(&notBoundFunction);
+  }
+
   // Just skim proxies off. Their notion of isCallable()/isConstructor() is
   // more complicated.
   branchTestClassIsProxy(true, output, isProxy);
@@ -2131,6 +2148,9 @@ void MacroAssembler::setIsDefinitelyTypedArrayConstructor(Register obj,
 
 void MacroAssembler::loadMegamorphicCache(Register dest) {
   movePtr(ImmPtr(runtime()->addressOfMegamorphicCache()), dest);
+}
+void MacroAssembler::loadMegamorphicSetPropCache(Register dest) {
+  movePtr(ImmPtr(runtime()->addressOfMegamorphicSetPropCache()), dest);
 }
 
 void MacroAssembler::loadStringToAtomCacheLastLookups(Register dest) {
@@ -2439,6 +2459,169 @@ void MacroAssembler::emitMegamorphicCacheLookupExists(
   bind(&cacheMiss);
 }
 
+void MacroAssembler::extractCurrentIndexAndKindFromIterator(Register iterator,
+                                                            Register outIndex,
+                                                            Register outKind) {
+  // Load iterator object
+  Address nativeIterAddr(iterator,
+                         PropertyIteratorObject::offsetOfIteratorSlot());
+  loadPrivate(nativeIterAddr, outIndex);
+
+  // Compute offset of propertyCursor_ from propertiesBegin()
+  loadPtr(Address(outIndex, NativeIterator::offsetOfPropertyCursor()), outKind);
+  subPtr(Address(outIndex, NativeIterator::offsetOfShapesEnd()), outKind);
+
+  // Compute offset of current index from indicesBegin(). Note that because
+  // propertyCursor has already been incremented, this is actually the offset
+  // of the next index. We adjust accordingly below.
+  size_t indexAdjustment =
+      sizeof(GCPtr<JSLinearString*>) / sizeof(PropertyIndex);
+  if (indexAdjustment != 1) {
+    MOZ_ASSERT(indexAdjustment == 2);
+    rshift32(Imm32(1), outKind);
+  }
+
+  // Load current index.
+  loadPtr(Address(outIndex, NativeIterator::offsetOfPropertiesEnd()), outIndex);
+  load32(BaseIndex(outIndex, outKind, Scale::TimesOne,
+                   -int32_t(sizeof(PropertyIndex))),
+         outIndex);
+
+  // Extract kind.
+  move32(outIndex, outKind);
+  rshift32(Imm32(PropertyIndex::KindShift), outKind);
+
+  // Extract index.
+  and32(Imm32(PropertyIndex::IndexMask), outIndex);
+}
+
+void MacroAssembler::emitMegamorphicCachedSetSlot(
+    ValueOperand id, Register obj, Register scratch1,
+#ifndef JS_CODEGEN_X86  // See MegamorphicSetElement in LIROps.yaml
+    Register scratch2, Register scratch3,
+#endif
+    ValueOperand value, Label* cacheHit,
+    void (*emitPreBarrier)(MacroAssembler&, const Address&, MIRType)) {
+  Label cacheMiss, dynamicSlot, doAdd, doSet;
+
+#ifdef JS_CODEGEN_X86
+  pushValue(value);
+  Register scratch2 = value.typeReg();
+  Register scratch3 = value.payloadReg();
+#endif
+
+  // outEntryPtr = obj->shape()
+  loadPtr(Address(obj, JSObject::offsetOfShape()), scratch3);
+
+  movePtr(scratch3, scratch2);
+
+  // scratch3 = (scratch3 >> 3) ^ (scratch3 >> 13) + idHash
+  rshiftPtr(Imm32(MegamorphicSetPropCache::ShapeHashShift1), scratch3);
+  rshiftPtr(Imm32(MegamorphicSetPropCache::ShapeHashShift2), scratch2);
+  xorPtr(scratch2, scratch3);
+
+  loadAtomOrSymbolAndHash(id, scratch1, scratch2, &cacheMiss);
+  addPtr(scratch2, scratch3);
+
+  // scratch3 %= MegamorphicSetPropCache::NumEntries
+  constexpr size_t cacheSize = MegamorphicSetPropCache::NumEntries;
+  static_assert(mozilla::IsPowerOfTwo(cacheSize));
+  size_t cacheMask = cacheSize - 1;
+  and32(Imm32(cacheMask), scratch3);
+
+  loadMegamorphicSetPropCache(scratch2);
+  // scratch3 = &scratch2->entries_[scratch3]
+  constexpr size_t entrySize = sizeof(MegamorphicSetPropCache::Entry);
+  mul32(Imm32(entrySize), scratch3);
+  computeEffectiveAddress(BaseIndex(scratch2, scratch3, TimesOne,
+                                    MegamorphicSetPropCache::offsetOfEntries()),
+                          scratch3);
+
+  // if (scratch3->key_ != scratch1) goto cacheMiss
+  branchPtr(Assembler::NotEqual,
+            Address(scratch3, MegamorphicSetPropCache::Entry::offsetOfKey()),
+            scratch1, &cacheMiss);
+
+  loadPtr(Address(obj, JSObject::offsetOfShape()), scratch1);
+  // if (scratch3->shape_ != scratch1) goto cacheMiss
+  branchPtr(Assembler::NotEqual,
+            Address(scratch3, MegamorphicSetPropCache::Entry::offsetOfShape()),
+            scratch1, &cacheMiss);
+
+  // scratch2 = scratch2->generation_
+  load16ZeroExtend(
+      Address(scratch2, MegamorphicSetPropCache::offsetOfGeneration()),
+      scratch2);
+  load16ZeroExtend(
+      Address(scratch3, MegamorphicSetPropCache::Entry::offsetOfGeneration()),
+      scratch1);
+  // if (scratch3->generation_ != scratch2) goto cacheMiss
+  branch32(Assembler::NotEqual, scratch1, scratch2, &cacheMiss);
+
+  // scratch2 = obj->numFixedSlots()
+  loadPtr(Address(obj, JSObject::offsetOfShape()), scratch2);
+  load32(Address(scratch2, Shape::offsetOfImmutableFlags()), scratch2);
+  and32(Imm32(NativeShape::fixedSlotsMask()), scratch2);
+  rshift32(Imm32(NativeShape::fixedSlotsShift()), scratch2);
+
+  // scratch1 = scratch3->slot()
+  load16ZeroExtend(
+      Address(scratch3, MegamorphicSetPropCache::Entry::offsetOfSlot()),
+      scratch1);
+
+  // scratch3 = scratch3->afterShape()
+  loadPtr(
+      Address(scratch3, MegamorphicSetPropCache::Entry::offsetOfAfterShape()),
+      scratch3);
+
+  // if (scratch1 >= scratch2) goto dynamicSlot
+  branch32(Assembler::AboveOrEqual, scratch1, scratch2, &dynamicSlot);
+
+  static_assert(sizeof(HeapSlot) == 8);
+  // output = obj->fixedSlots()[scratch1]
+
+  computeEffectiveAddress(BaseValueIndex(obj, scratch1, sizeof(NativeObject)),
+                          scratch1);
+  branchTestPtr(Assembler::Zero, scratch3, scratch3, &doSet);
+  jump(&doAdd);
+
+  bind(&dynamicSlot);
+  // scratch1 -= scratch2
+  sub32(scratch2, scratch1);
+  // output = outputScratch->slots_[scratch1]
+  loadPtr(Address(obj, NativeObject::offsetOfSlots()), scratch2);
+  computeEffectiveAddress(BaseValueIndex(scratch2, scratch1, 0), scratch1);
+  branchTestPtr(Assembler::Zero, scratch3, scratch3, &doSet);
+
+  Address slotAddr(scratch1, 0);
+
+  bind(&doAdd);
+  storeObjShape(scratch3, obj,
+                [emitPreBarrier](MacroAssembler& masm, const Address& addr) {
+                  emitPreBarrier(masm, addr, MIRType::Shape);
+                });
+#ifdef JS_CODEGEN_X86
+  popValue(value);
+#endif
+  storeValue(value, slotAddr);
+  jump(cacheHit);
+
+  bind(&doSet);
+
+  guardedCallPreBarrier(slotAddr, MIRType::Value);
+
+#ifdef JS_CODEGEN_X86
+  popValue(value);
+#endif
+  storeValue(value, slotAddr);
+  jump(cacheHit);
+
+  bind(&cacheMiss);
+#ifdef JS_CODEGEN_X86
+  popValue(value);
+#endif
+}
+
 void MacroAssembler::guardNonNegativeIntPtrToInt32(Register reg, Label* fail) {
 #ifdef DEBUG
   Label ok;
@@ -2687,6 +2870,10 @@ void MacroAssembler::loadJitCodeRaw(Register func, Register dest) {
                     SelfHostedLazyScript::offsetOfJitCodeRaw(),
                 "SelfHostedLazyScript and BaseScript must use same layout for "
                 "jitCodeRaw_");
+  static_assert(
+      BaseScript::offsetOfJitCodeRaw() == wasm::JumpTableJitEntryOffset,
+      "Wasm exported functions jit entries must use same layout for "
+      "jitCodeRaw_");
   loadPrivate(Address(func, JSFunction::offsetOfJitInfoOrScript()), dest);
   loadPtr(Address(dest, BaseScript::offsetOfJitCodeRaw()), dest);
 }
@@ -2870,7 +3057,7 @@ void MacroAssembler::outOfLineTruncateSlow(FloatRegister src, Register dest,
 
 #if defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_ARM64) ||     \
     defined(JS_CODEGEN_MIPS32) || defined(JS_CODEGEN_MIPS64) || \
-    defined(JS_CODEGEN_LOONG64)
+    defined(JS_CODEGEN_LOONG64) || defined(JS_CODEGEN_RISCV64)
   ScratchDoubleScope fpscratch(*this);
   if (widenFloatToDouble) {
     convertFloat32ToDouble(src, fpscratch);
@@ -2909,7 +3096,7 @@ void MacroAssembler::outOfLineTruncateSlow(FloatRegister src, Register dest,
 
 #if defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_ARM64) ||     \
     defined(JS_CODEGEN_MIPS32) || defined(JS_CODEGEN_MIPS64) || \
-    defined(JS_CODEGEN_LOONG64)
+    defined(JS_CODEGEN_LOONG64) || defined(JS_CODEGEN_RISCV64)
   // Nothing
 #elif defined(JS_CODEGEN_X86) || defined(JS_CODEGEN_X64)
   if (widenFloatToDouble) {
@@ -2938,10 +3125,6 @@ void MacroAssembler::convertDoubleToInt(FloatRegister src, Register output,
     case IntConversionBehavior::Truncate:
       branchTruncateDoubleMaybeModUint32(src, output,
                                          truncateFail ? truncateFail : fail);
-      break;
-    case IntConversionBehavior::TruncateNoWrap:
-      branchTruncateDoubleToInt32(src, output,
-                                  truncateFail ? truncateFail : fail);
       break;
     case IntConversionBehavior::ClampToUint8:
       // Clamping clobbers the input register, so use a temp.
@@ -2987,7 +3170,6 @@ void MacroAssembler::convertValueToInt(
           break;
 
         case IntConversionBehavior::Truncate:
-        case IntConversionBehavior::TruncateNoWrap:
         case IntConversionBehavior::ClampToUint8:
           branchTestNull(Equal, tag, &isNull);
           if (handleStrings) {
@@ -3990,23 +4172,13 @@ void MacroAssembler::loadFunctionLength(Register func,
   // NOTE: `funFlagsAndArgCount` and `output` must be allowed to alias.
 
   // Load the target function's length.
-  Label isInterpreted, isBound, lengthLoaded;
-  branchTest32(Assembler::NonZero, funFlagsAndArgCount,
-               Imm32(FunctionFlags::BOUND_FUN), &isBound);
+  Label isInterpreted, lengthLoaded;
   branchTest32(Assembler::NonZero, funFlagsAndArgCount,
                Imm32(FunctionFlags::BASESCRIPT), &isInterpreted);
   {
     // The length property of a native function stored with the flags.
     move32(funFlagsAndArgCount, output);
     rshift32(Imm32(JSFunction::ArgCountShift), output);
-    jump(&lengthLoaded);
-  }
-  bind(&isBound);
-  {
-    // Load the length property of a bound function.
-    Address boundLength(func,
-                        FunctionExtended::offsetOfBoundFunctionLengthSlot());
-    fallibleUnboxInt32(boundLength, output, slowPath);
     jump(&lengthLoaded);
   }
   bind(&isInterpreted);
@@ -4033,31 +4205,10 @@ void MacroAssembler::loadFunctionName(Register func, Register output,
   branchTest32(Assembler::NonZero, output, Imm32(FunctionFlags::RESOLVED_NAME),
                slowPath);
 
-  Label notBoundTarget, loadName;
-  branchTest32(Assembler::Zero, output, Imm32(FunctionFlags::BOUND_FUN),
-               &notBoundTarget);
-  {
-    // Call into the VM if the target's name atom doesn't contain the bound
-    // function prefix.
-    branchTest32(Assembler::Zero, output,
-                 Imm32(FunctionFlags::HAS_BOUND_FUNCTION_NAME_PREFIX),
-                 slowPath);
-
-    // Bound functions reuse HAS_GUESSED_ATOM for
-    // HAS_BOUND_FUNCTION_NAME_PREFIX, so skip the guessed atom check below.
-    static_assert(
-        FunctionFlags::HAS_BOUND_FUNCTION_NAME_PREFIX ==
-            FunctionFlags::HAS_GUESSED_ATOM,
-        "HAS_BOUND_FUNCTION_NAME_PREFIX is shared with HAS_GUESSED_ATOM");
-    jump(&loadName);
-  }
-  bind(&notBoundTarget);
-
   Label noName, done;
   branchTest32(Assembler::NonZero, output,
                Imm32(FunctionFlags::HAS_GUESSED_ATOM), &noName);
 
-  bind(&loadName);
   Address atomAddr(func, JSFunction::offsetOfAtom());
   branchTestUndefined(Assembler::Equal, atomAddr, &noName);
   unboxString(atomAddr, output);
@@ -4750,6 +4901,8 @@ void MacroAssembler::emitPreBarrierFastPath(JSRuntime* rt, MIRType type,
   ma_dsll(temp1, temp1, temp3);
 #elif JS_CODEGEN_LOONG64
   as_sll_d(temp1, temp1, temp3);
+#elif JS_CODEGEN_RISCV64
+  sll(temp1, temp1, temp3);
 #elif JS_CODEGEN_WASM32
   MOZ_CRASH();
 #elif JS_CODEGEN_NONE

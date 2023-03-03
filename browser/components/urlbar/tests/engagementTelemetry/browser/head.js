@@ -3,7 +3,6 @@
 
 "use strict";
 
-/* import-globals-from ../../browser/head-common.js */
 Services.scriptloader.loadSubScript(
   "chrome://mochitests/content/browser/browser/components/urlbar/tests/browser/head-common.js",
   this
@@ -358,12 +357,22 @@ async function selectRowByProvider(provider) {
   }
 }
 
+async function selectRowByType(type) {
+  for (let i = 0; i < UrlbarTestUtils.getResultCount(window); i++) {
+    const detail = await UrlbarTestUtils.getDetailsOfResultAt(window, i);
+    if (detail.result.payload.type === type) {
+      UrlbarTestUtils.setSelectedRowIndex(window, i);
+      return;
+    }
+  }
+}
+
 async function setup() {
   await SpecialPowers.pushPrefEnv({
     set: [
       ["browser.urlbar.searchEngagementTelemetry.enabled", true],
       ["browser.urlbar.quickactions.enabled", true],
-      ["browser.urlbar.quickactions.showInZeroPrefix", true],
+      ["browser.urlbar.quickactions.minimumSearchString", 0],
       ["browser.urlbar.suggest.quickactions", true],
       ["browser.urlbar.shortcuts.quickactions", true],
       [

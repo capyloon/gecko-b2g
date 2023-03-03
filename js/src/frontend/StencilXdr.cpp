@@ -287,14 +287,15 @@ XDRResult StencilXDR::codeSharedData(XDRState<mode>* xdr,
   static_assert(frontend::CanCopyDataToDisk<TryNote>::value,
                 "TryNote cannot be bulk-copied to disk");
 
-  JSContext* cx = xdr->cx();
-
   uint32_t size;
+  uint32_t hash;
   if (mode == XDR_ENCODE) {
     if (sisd) {
       size = sisd->immutableDataLength();
+      hash = sisd->hash();
     } else {
       size = 0;
+      hash = 0;
     }
   }
   MOZ_TRY(xdr->codeUint32(&size));
@@ -309,6 +310,8 @@ XDRResult StencilXDR::codeSharedData(XDRState<mode>* xdr,
 
   MOZ_TRY(xdr->align32());
   static_assert(alignof(ImmutableScriptData) <= alignof(uint32_t));
+
+  MOZ_TRY(xdr->codeUint32(&hash));
 
   if constexpr (mode == XDR_ENCODE) {
     uint8_t* data = const_cast<uint8_t*>(sisd->get()->immutableData().data());
@@ -326,7 +329,7 @@ XDRResult StencilXDR::codeSharedData(XDRState<mode>* xdr,
       MOZ_ASSERT(options.borrowBuffer);
       ImmutableScriptData* isd;
       MOZ_TRY(xdr->borrowedData(&isd, size));
-      sisd->setExternal(isd);
+      sisd->setExternal(isd, hash);
     } else {
       auto isd = ImmutableScriptData::new_(xdr->cx(), size);
       if (!isd) {
@@ -334,7 +337,7 @@ XDRResult StencilXDR::codeSharedData(XDRState<mode>* xdr,
       }
       uint8_t* data = reinterpret_cast<uint8_t*>(isd.get());
       MOZ_TRY(xdr->codeBytes(data, size));
-      sisd->setOwn(std::move(isd));
+      sisd->setOwn(std::move(isd), hash);
     }
 
     if (!sisd->get()->validateLayout(size)) {
@@ -344,7 +347,7 @@ XDRResult StencilXDR::codeSharedData(XDRState<mode>* xdr,
   }
 
   if (mode == XDR_DECODE) {
-    if (!SharedImmutableScriptData::shareScriptData(cx, xdr->fc(), sisd)) {
+    if (!SharedImmutableScriptData::shareScriptData(xdr->fc(), sisd)) {
       return xdr->fail(JS::TranscodeResult::Throw);
     }
   }
@@ -1217,7 +1220,6 @@ template <XDRMode mode>
 XDRResult StencilXDR::codeSource(XDRState<mode>* xdr,
                                  const JS::DecodeOptions* maybeOptions,
                                  RefPtr<ScriptSource>& source) {
-  JSContext* cx = xdr->cx();
   FrontendContext* fc = xdr->fc();
 
   if (mode == XDR_DECODE) {
@@ -1273,7 +1275,7 @@ XDRResult StencilXDR::codeSource(XDRState<mode>* xdr,
     }
     MOZ_TRY(xdr->codeCharsZ(chars));
     if (mode == XDR_DECODE) {
-      if (!source->setDisplayURL(cx, fc,
+      if (!source->setDisplayURL(fc,
                                  std::move(chars.ref<UniqueTwoByteChars>()))) {
         return xdr->fail(JS::TranscodeResult::Throw);
       }
@@ -1310,7 +1312,7 @@ XDRResult StencilXDR::codeSource(XDRState<mode>* xdr,
     source->introductionType_ = maybeOptions->introductionType;
     source->setIntroductionOffset(maybeOptions->introductionOffset);
     if (maybeOptions->introducerFilename) {
-      if (!source->setIntroducerFilename(cx, fc,
+      if (!source->setIntroducerFilename(fc,
                                          maybeOptions->introducerFilename)) {
         return xdr->fail(JS::TranscodeResult::Throw);
       }

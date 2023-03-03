@@ -30,6 +30,7 @@ XPCOMUtils.defineLazyGetter(lazy, "logger", () => lazy.Log.get());
  **/
 export const SessionDataCategory = {
   Event: "event",
+  PreloadScript: "preload-script",
 };
 
 /**
@@ -170,7 +171,7 @@ export class SessionData {
    */
   applySessionData(sessionDataItemUpdates = []) {
     // The subset of session data item updates, which are cleaned up from
-    // dublicates and unknown items.
+    // duplicates and unknown items.
     let updates = [];
     for (const sessionDataItemUpdate of sessionDataItemUpdates) {
       const {
@@ -359,7 +360,7 @@ export class SessionData {
       item1.moduleName === item2.moduleName &&
       item1.category === item2.category &&
       this._isSameContextDescriptor(descriptor1, descriptor2) &&
-      item1.value === item2.value
+      this._isSameValue(item1.category, item1.value, item2.value)
     );
   }
 
@@ -373,6 +374,14 @@ export class SessionData {
       contextDescriptor1.type === contextDescriptor2.type &&
       contextDescriptor1.id === contextDescriptor2.id
     );
+  }
+
+  _isSameValue(category, value1, value2) {
+    if (category === SessionDataCategory.PreloadScript) {
+      return value1.script === value2.script;
+    }
+
+    return value1 === value2;
   }
 
   _findIndex(item) {

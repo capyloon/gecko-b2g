@@ -6,11 +6,8 @@
 
 var EXPORTED_SYMBOLS = ["GeckoViewContent"];
 
-const { GeckoViewModule } = ChromeUtils.import(
-  "resource://gre/modules/GeckoViewModule.jsm"
-);
-const { XPCOMUtils } = ChromeUtils.importESModule(
-  "resource://gre/modules/XPCOMUtils.sys.mjs"
+const { GeckoViewModule } = ChromeUtils.importESModule(
+  "resource://gre/modules/GeckoViewModule.sys.mjs"
 );
 
 class GeckoViewContent extends GeckoViewModule {
@@ -20,6 +17,7 @@ class GeckoViewContent extends GeckoViewModule {
       "GeckoView:ClearMatches",
       "GeckoView:DisplayMatches",
       "GeckoView:FindInPage",
+      "GeckoView:HasCookieBannerRuleForBrowsingContextTree",
       "GeckoView:RestoreState",
       "GeckoView:ContainsFormData",
       "GeckoView:ScrollBy",
@@ -29,6 +27,7 @@ class GeckoViewContent extends GeckoViewModule {
       "GeckoView:SetPriorityHint",
       "GeckoView:UpdateInitData",
       "GeckoView:ZoomToInput",
+      "GeckoView:IsPdfJs",
     ]);
   }
 
@@ -95,6 +94,12 @@ class GeckoViewContent extends GeckoViewModule {
     return this.getActor("GeckoViewContent");
   }
 
+  get isPdfJs() {
+    return (
+      this.browser.contentPrincipal.spec === "resource://pdf.js/web/viewer.html"
+    );
+  }
+
   // Goes up the browsingContext chain and sends the message every time
   // we cross the process boundary so that every process in the chain is
   // notified.
@@ -129,15 +134,21 @@ class GeckoViewContent extends GeckoViewModule {
         this.browser.ownerDocument.exitFullscreen();
         break;
       case "GeckoView:ClearMatches": {
-        this._clearMatches();
+        if (!this.isPdfJs) {
+          this._clearMatches();
+        }
         break;
       }
       case "GeckoView:DisplayMatches": {
-        this._displayMatches(aData);
+        if (!this.isPdfJs) {
+          this._displayMatches(aData);
+        }
         break;
       }
       case "GeckoView:FindInPage": {
-        this._findInPage(aData, aCallback);
+        if (!this.isPdfJs) {
+          this._findInPage(aData, aCallback);
+        }
         break;
       }
       case "GeckoView:ZoomToInput":
@@ -179,6 +190,12 @@ class GeckoViewContent extends GeckoViewModule {
         break;
       case "GeckoView:ContainsFormData":
         this._containsFormData(aCallback);
+        break;
+      case "GeckoView:IsPdfJs":
+        aCallback.onSuccess(this.isPdfJs);
+        break;
+      case "GeckoView:HasCookieBannerRuleForBrowsingContextTree":
+        this._hasCookieBannerRuleForBrowsingContextTree(aCallback);
         break;
     }
   }
@@ -288,6 +305,13 @@ class GeckoViewContent extends GeckoViewModule {
 
   async _containsFormData(aCallback) {
     aCallback.onSuccess(await this.actor.containsFormData());
+  }
+
+  async _hasCookieBannerRuleForBrowsingContextTree(aCallback) {
+    const { browsingContext } = this.actor;
+    aCallback.onSuccess(
+      Services.cookieBanners.hasRuleForBrowsingContextTree(browsingContext)
+    );
   }
 
   _findInPage(aData, aCallback) {

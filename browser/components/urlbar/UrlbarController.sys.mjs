@@ -328,6 +328,11 @@ export class UrlbarController {
         }
         event.preventDefault();
         break;
+      case KeyEvent.DOM_VK_SPACE:
+        if (!this.view.shouldSpaceActivateSelectedElement()) {
+          break;
+        }
+      // Fall through, we want the SPACE key to activate this element.
       case KeyEvent.DOM_VK_RETURN:
         if (executeAction) {
           this.input.handleCommand(event);
@@ -608,7 +613,7 @@ export class UrlbarController {
    */
   handleDeleteEntry(event, result = undefined) {
     if (!this._lastQueryContextWrapper) {
-      Cu.reportError("Cannot delete - the latest query is not present");
+      console.error("Cannot delete - the latest query is not present");
       return false;
     }
     let { queryContext } = this._lastQueryContextWrapper;
@@ -640,7 +645,7 @@ export class UrlbarController {
     // First call `provider.blockResult()`.
     let provider = lazy.UrlbarProvidersManager.getProvider(result.providerName);
     if (!provider) {
-      Cu.reportError(`Provider not found: ${result.providerName}`);
+      console.error(`Provider not found: ${result.providerName}`);
     }
     let blockedByProvider = provider?.tryMethod(
       "blockResult",
@@ -659,7 +664,7 @@ export class UrlbarController {
 
     let index = queryContext.results.indexOf(result);
     if (index < 0) {
-      Cu.reportError("Failed to find the selected result in the results");
+      console.error("Failed to find the selected result in the results");
       return false;
     }
 
@@ -677,21 +682,28 @@ export class UrlbarController {
       }
       // Generate the search url to remove it from browsing history.
       let { url } = lazy.UrlbarUtils.getUrlFromResult(result);
-      lazy.PlacesUtils.history.remove(url).catch(Cu.reportError);
+      lazy.PlacesUtils.history.remove(url).catch(console.error);
       // Now remove form history.
       lazy.FormHistory.update({
         op: "remove",
         fieldname: queryContext.formHistoryName,
         value: result.payload.suggestion,
       }).catch(error =>
-        Cu.reportError(`Removing form history failed: ${error}`)
+        console.error(`Removing form history failed: ${error}`)
       );
       return true;
     }
 
     // Remove browsing history entries from Places.
-    lazy.PlacesUtils.history.remove(result.payload.url).catch(Cu.reportError);
+    lazy.PlacesUtils.history.remove(result.payload.url).catch(console.error);
     return true;
+  }
+
+  /**
+   * Clear the previous query context cache.
+   */
+  clearLastQueryContextCache() {
+    this._lastQueryContextWrapper = null;
   }
 
   /**
@@ -707,7 +719,7 @@ export class UrlbarController {
         try {
           listener[name](...params);
         } catch (ex) {
-          Cu.reportError(ex);
+          console.error(ex);
         }
       }
     }
@@ -779,7 +791,7 @@ class TelemetryEvent {
       return;
     }
     if (!event) {
-      Cu.reportError("Must always provide an event");
+      console.error("Must always provide an event");
       return;
     }
     const validEvents = [
@@ -793,7 +805,7 @@ class TelemetryEvent {
       "focus",
     ];
     if (!validEvents.includes(event.type)) {
-      Cu.reportError("Can't start recording from event type: " + event.type);
+      console.error("Can't start recording from event type: ", event.type);
       return;
     }
 
@@ -846,7 +858,7 @@ class TelemetryEvent {
     try {
       this._internalRecord(event, details);
     } catch (ex) {
-      Cu.reportError("Could not record event: " + ex);
+      console.error("Could not record event: ", ex);
     } finally {
       this._startEventInfo = null;
       this._discarded = false;
@@ -1013,7 +1025,7 @@ class TelemetryEvent {
       1
     );
 
-    if (method === "engagement" && queryContext.results?.[0].autofill) {
+    if (method === "engagement" && queryContext?.results?.[0].autofill) {
       // Record autofill impressions upon engagement.
       const type = lazy.UrlbarUtils.telemetryTypeFromResult(
         queryContext.results[0]
@@ -1081,7 +1093,22 @@ class TelemetryEvent {
 
     let eventInfo;
     if (method === "engagement") {
-      const selectedResult = currentResults[selIndex];
+      let selected_result;
+      let selected_result_subtype;
+      if (numResults) {
+        const selectedResult = currentResults[selIndex];
+        selected_result = lazy.UrlbarUtils.searchEngagementTelemetryType(
+          selectedResult
+        );
+        selected_result_subtype = lazy.UrlbarUtils.searchEngagementTelemetrySubtype(
+          selectedResult,
+          selectedElement
+        );
+      } else {
+        selected_result = "input_field";
+        selected_result_subtype = "";
+      }
+
       eventInfo = {
         sap,
         interaction,
@@ -1089,13 +1116,8 @@ class TelemetryEvent {
         n_chars: numChars,
         n_words: numWords,
         n_results: numResults,
-        selected_result: lazy.UrlbarUtils.searchEngagementTelemetryType(
-          selectedResult
-        ),
-        selected_result_subtype: lazy.UrlbarUtils.searchEngagementTelemetrySubtype(
-          selectedResult,
-          selectedElement
-        ),
+        selected_result,
+        selected_result_subtype,
         provider,
         engagement_type:
           selType === "help" || selType === "dismiss" ? selType : action,
@@ -1126,7 +1148,7 @@ class TelemetryEvent {
         results,
       };
     } else {
-      Cu.reportError(`Unknown telemetry event method: ${method}`);
+      console.error(`Unknown telemetry event method: ${method}`);
       return;
     }
 

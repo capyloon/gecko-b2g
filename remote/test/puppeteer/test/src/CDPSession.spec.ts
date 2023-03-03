@@ -14,14 +14,15 @@
  * limitations under the License.
  */
 
-import {waitEvent} from './utils.js';
 import expect from 'expect';
+import {isErrorLike} from 'puppeteer-core/internal/util/ErrorLike.js';
+
 import {
   getTestState,
   setupTestBrowserHooks,
   setupTestPageAndContextHooks,
 } from './mocha-utils.js';
-import {isErrorLike} from '../../lib/cjs/puppeteer/util/ErrorLike.js';
+import {waitEvent} from './utils.js';
 
 describe('Target.createCDPSession', function () {
   setupTestBrowserHooks();
@@ -64,7 +65,10 @@ describe('Target.createCDPSession', function () {
     client.on('Network.requestWillBeSent', event => {
       return events.push(event);
     });
-    await page.goto(server.EMPTY_PAGE);
+    await Promise.all([
+      waitEvent(client, 'Network.requestWillBeSent'),
+      page.goto(server.EMPTY_PAGE),
+    ]);
     expect(events.length).toBe(1);
   });
   it('should enable and disable domains independently', async () => {

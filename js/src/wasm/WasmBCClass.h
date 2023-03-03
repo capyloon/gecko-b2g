@@ -150,6 +150,14 @@ struct FunctionCall {
   size_t stackArgAreaSize;
 };
 
+enum class PreBarrierKind {
+  // No pre-write barrier is required because the previous value is undefined.
+  None,
+  // Perform a pre-write barrier to mark the previous value if an incremental
+  // GC is underway.
+  Normal,
+};
+
 enum class PostBarrierKind {
   // Remove an existing store buffer entry if the new value does not require
   // one. This is required to preserve invariants with HeapPtr when used for
@@ -211,6 +219,7 @@ struct BaseCompiler final {
   // We call this address from the breakable point when the breakpoint handler
   // is not null.
   NonAssertingLabel debugTrapStub_;
+  uint32_t previousBreakablePoint_;
 
   // BaselineCompileFunctions() "lends" us the StkVector to use in this
   // BaseCompiler object, and that is installed in |stk_| in our constructor.
@@ -1305,7 +1314,8 @@ struct BaseCompiler final {
   // Preserves `object` and `value`. Consumes `valueAddr`.
   [[nodiscard]] bool emitBarrieredStore(const Maybe<RegRef>& object,
                                         RegPtr valueAddr, RegRef value,
-                                        PostBarrierKind kind);
+                                        PreBarrierKind preBarrierKind,
+                                        PostBarrierKind postBarrierKind);
 
   // Emits a store of nullptr to a JS object pointer at the address valueAddr.
   // Preserves `valueAddr`.
@@ -1612,6 +1622,7 @@ struct BaseCompiler final {
   void memFillInlineM32();
   [[nodiscard]] bool emitTableInit();
   [[nodiscard]] bool emitTableFill();
+  [[nodiscard]] bool emitMemDiscard();
   [[nodiscard]] bool emitTableGet();
   [[nodiscard]] bool emitTableGrow();
   [[nodiscard]] bool emitTableSet();
@@ -1639,6 +1650,8 @@ struct BaseCompiler final {
   [[nodiscard]] bool emitRefTest();
   [[nodiscard]] bool emitRefCast();
   [[nodiscard]] bool emitBrOnCastCommon(bool onSuccess);
+  [[nodiscard]] bool emitRefAsStruct();
+  [[nodiscard]] bool emitBrOnNonStruct();
   [[nodiscard]] bool emitExternInternalize();
   [[nodiscard]] bool emitExternExternalize();
 
@@ -1653,11 +1666,15 @@ struct BaseCompiler final {
     static void emitTrapSite(BaseCompiler* bc);
   };
 
+  // Load a pointer to the TypeDefInstanceData for a given type index
+  RegPtr loadTypeDefInstanceData(uint32_t typeIndex);
+  // Load a pointer to the TypeDef for a given type index
   RegPtr loadTypeDef(uint32_t typeIndex);
+
   // Branch to the label if the WasmGcObject `object` is/is not a subtype of
   // `typeIndex`.
   void branchGcObjectType(RegRef object, uint32_t typeIndex, Label* label,
-                          bool onSuccess);
+                          bool succeedOnNull, bool onSuccess);
   RegPtr emitGcArrayGetData(RegRef rp);
   template <typename NullCheckPolicy>
   RegI32 emitGcArrayGetNumElements(RegRef rp);
@@ -1675,10 +1692,12 @@ struct BaseCompiler final {
   template <typename NullCheckPolicy>
   [[nodiscard]] bool emitGcStructSet(RegRef object, RegPtr areaBase,
                                      uint32_t areaOffset, FieldType fieldType,
-                                     AnyReg value);
+                                     AnyReg value,
+                                     PreBarrierKind preBarrierKind);
 
   [[nodiscard]] bool emitGcArraySet(RegRef object, RegPtr data, RegI32 index,
-                                    const ArrayType& array, AnyReg value);
+                                    const ArrayType& array, AnyReg value,
+                                    PreBarrierKind preBarrierKind);
 #endif  // ENABLE_WASM_GC
 
 #ifdef ENABLE_WASM_SIMD

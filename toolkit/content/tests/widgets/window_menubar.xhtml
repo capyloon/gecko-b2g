@@ -10,12 +10,6 @@
   <script src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"></script>
   <script type="application/javascript" src="popup_shared.js"></script>
 
-<!--
-  Need to investigate these tests a bit more. Some of the accessibility events
-  are firing multiple times or in different orders in different circumstances.
-  Note that this was also the case before bug 279703.
--->
-
 <hbox style="margin-left: 275px; margin-top: 275px;">
 <menubar id="menubar">
   <menu id="filemenu" label="File" accesskey="F">
@@ -76,10 +70,22 @@
     </menupopup>
   </menu>
 </menubar>
+<hbox>
+  <description id="outside">Outside menubar</description>
+</hbox>
 </hbox>
 
 <script class="testbody" type="application/javascript">
 <![CDATA[
+
+async function moveMouseOver(id) {
+  // A single synthesized mouse move isn't always enough in some platforms.
+  let el = document.getElementById(id);
+  synthesizeMouse(el, 5, 5, { type: "mousemove" });
+  await new Promise(r => setTimeout(r, 0));
+  synthesizeMouse(el, 8, 8, { type: "mousemove" });
+}
+
 let gFilePopup;
 window.opener.SimpleTest.waitForFocus(function () {
   gFilePopup = document.getElementById("filepopup");
@@ -898,6 +904,77 @@ var popupTests = [
   }
 },
 
+// bug 1811466
+{
+  testname: "Menubar activation / deactivation on mouse over",
+  events: [ "DOMMenuBarActive menubar", "DOMMenuItemActive filemenu", "DOMMenuItemInactive filemenu", "DOMMenuBarInactive menubar" ],
+  async test() {
+    await moveMouseOver("filemenu");
+    await moveMouseOver("outside");
+  },
+},
+
+// bug 1811466
+{
+  testname: "Menubar hover in and out after key activation (part 1)",
+  events: [
+    "DOMMenuBarActive menubar",
+    "DOMMenuItemActive filemenu",
+    /* Shouldn't deactivate the menubar nor filemenu! */
+  ],
+  async test() {
+    synthesizeKey("KEY_Alt");
+    await moveMouseOver("filemenu");
+    await moveMouseOver("outside");
+  },
+},
+{
+  testname: "Deactivate the menubar by mouse",
+  events: [
+    "DOMMenuItemInactive filemenu",
+    "DOMMenuBarInactive menubar",
+  ],
+  test() {
+    synthesizeMouse(document.getElementById("outside"), 8, 8, {});
+  },
+},
+
+
+// bug 1818241
+{
+  testname: "Shortcut navigation on mouse-activated menubar",
+  events: [ "DOMMenuBarActive menubar", "DOMMenuItemActive filemenu", "DOMMenuItemInactive filemenu", "DOMMenuBarInactive menubar" ],
+  async test() {
+    await moveMouseOver("filemenu");
+    synthesizeKey("F");
+    await moveMouseOver("outside");
+  },
+},
+
+{
+  testname: "Trying to activate menubar without activatable items shouldn't crash",
+  events: [ "TestDone menubar" ],
+  test() {
+    const items = document.querySelectorAll("menubar > menu");
+    let wasDisabled = {};
+    for (let item of items) {
+      wasDisabled[item] = item.disabled;
+      item.disabled = true;
+    }
+
+    synthesizeKey("KEY_F10");
+    setTimeout(function() {
+      synthesizeKey("KEY_F10");
+
+      for (let item of items) {
+        item.disabled = wasDisabled[item];
+      }
+
+      document.getElementById("menubar").dispatchEvent(new CustomEvent("TestDone", { bubbles: true }));
+    }, 0);
+  }
+},
+
 // bug 625151
 {
   testname: "Alt key state before deactivating the window shouldn't prevent " +
@@ -920,7 +997,7 @@ var popupTests = [
       thisWindow.focus();
     }, {once: true});
   }
-}
+},
 
 ];
 

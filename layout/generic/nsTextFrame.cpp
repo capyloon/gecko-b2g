@@ -437,6 +437,10 @@ class nsTextPaintStyle {
    */
   bool GetSelectionColors(nscolor* aForeColor, nscolor* aBackColor);
   void GetHighlightColors(nscolor* aForeColor, nscolor* aBackColor);
+  // Computes colors for custom highlights.
+  // Returns false if there are no rules associated with `aHighlightName`.
+  bool GetCustomHighlightColors(const nsAtom* aHighlightName,
+                                nscolor* aForeColor, nscolor* aBackColor);
   void GetURLSecondaryColor(nscolor* aForeColor);
   void GetIMESelectionColors(int32_t aIndex, nscolor* aForeColor,
                              nscolor* aBackColor);
@@ -498,6 +502,8 @@ class nsTextPaintStyle {
   nscolor mSelectionTextColor;
   nscolor mSelectionBGColor;
   RefPtr<ComputedStyle> mSelectionPseudoStyle;
+  nsTHashMap<RefPtr<const nsAtom>, RefPtr<ComputedStyle>>
+      mCustomHighlightPseudoStyles;
 
   // Common data
 
@@ -745,7 +751,7 @@ static void InvalidateFrameDueToGlyphsChanged(nsIFrame* aFrame) {
     // SVGTextFrame::DidSetComputedStyle.)
     if (SVGUtils::IsInSVGTextSubtree(f) &&
         f->HasAnyStateBits(NS_FRAME_IS_NONDISPLAY)) {
-      auto svgTextFrame = static_cast<SVGTextFrame*>(
+      auto* svgTextFrame = static_cast<SVGTextFrame*>(
           nsLayoutUtils::GetClosestFrameOfType(f, LayoutFrameType::SVGText));
       svgTextFrame->ScheduleReflowSVGNonDisplayText(IntrinsicDirty::None);
     } else {
@@ -785,7 +791,7 @@ struct FlowLengthProperty {
 };
 
 int32_t nsTextFrame::GetInFlowContentLength() {
-  if (!(mState & NS_FRAME_IS_BIDI)) {
+  if (!HasAnyStateBits(NS_FRAME_IS_BIDI)) {
     return mContent->TextLength() - mContentOffset;
   }
 
@@ -1886,7 +1892,7 @@ static float GetSVGFontSizeScaleFactor(nsIFrame* aFrame) {
   if (!SVGUtils::IsInSVGTextSubtree(aFrame)) {
     return 1.0f;
   }
-  auto container =
+  auto* container =
       nsLayoutUtils::GetClosestFrameOfType(aFrame, LayoutFrameType::SVGText);
   MOZ_ASSERT(container);
   return static_cast<SVGTextFrame*>(container)->GetFontSizeScaleFactor();
@@ -2252,7 +2258,7 @@ static gfxFontGroup* GetInflatedFontGroupForFrame(nsTextFrame* aFrame) {
 
 static already_AddRefed<DrawTarget> CreateReferenceDrawTarget(
     const nsTextFrame* aTextFrame) {
-  RefPtr<gfxContext> ctx =
+  UniquePtr<gfxContext> ctx =
       aTextFrame->PresShell()->CreateReferenceRenderingContext();
   RefPtr<DrawTarget> dt = ctx->GetDrawTarget();
   return dt.forget();
@@ -4145,6 +4151,33 @@ void nsTextPaintStyle::GetHighlightColors(nscolor* aForeColor,
   *aBackColor = NS_TRANSPARENT;
 }
 
+bool nsTextPaintStyle::GetCustomHighlightColors(const nsAtom* aHighlightName,
+                                                nscolor* aForeColor,
+                                                nscolor* aBackColor) {
+  NS_ASSERTION(aForeColor, "aForeColor is null");
+  NS_ASSERTION(aBackColor, "aBackColor is null");
+
+  // non-existing highlights will be stored as `aHighlightName->nullptr`,
+  // so subsequent calls only need a hashtable lookup and don't have
+  // to enter the style engine.
+  RefPtr<ComputedStyle> highlightStyle =
+      mCustomHighlightPseudoStyles.LookupOrInsertWith(
+          aHighlightName, [this, &aHighlightName] {
+            return mFrame->ComputeHighlightSelectionStyle(aHighlightName);
+          });
+  if (!highlightStyle) {
+    // highlight `aHighlightName` doesn't exist or has no style rules.
+    return false;
+  }
+  // this is just copied from here:
+  // `InitSelectionColorsAndShadow()`.
+  *aBackColor = highlightStyle->GetVisitedDependentColor(
+      &nsStyleBackground::mBackgroundColor);
+  *aForeColor = highlightStyle->GetVisitedDependentColor(
+      &nsStyleText::mWebkitTextFillColor);
+  return true;
+}
+
 void nsTextPaintStyle::GetURLSecondaryColor(nscolor* aForeColor) {
   NS_ASSERTION(aForeColor, "aForeColor is null");
 
@@ -5416,7 +5449,7 @@ void nsTextFrame::GetTextDecorations(
 static float GetInflationForTextDecorations(nsIFrame* aFrame,
                                             nscoord aInflationMinFontSize) {
   if (SVGUtils::IsInSVGTextSubtree(aFrame)) {
-    auto container =
+    auto* container =
         nsLayoutUtils::GetClosestFrameOfType(aFrame, LayoutFrameType::SVGText);
     MOZ_ASSERT(container);
     return static_cast<SVGTextFrame*>(container)->GetFontSizeScaleFactor();
@@ -5865,7 +5898,7 @@ void nsTextFrame::UnionAdditionalOverflow(nsPresContext* aPresContext,
 }
 
 nscoord nsTextFrame::ComputeLineHeight() const {
-  return ReflowInput::CalcLineHeight(GetContent(), Style(), PresContext(),
+  return ReflowInput::CalcLineHeight(*Style(), PresContext(), GetContent(),
                                      NS_UNCONSTRAINEDSIZE,
                                      GetFontSizeInflation());
 }
@@ -6016,7 +6049,8 @@ void nsTextFrame::DrawSelectionDecorations(
     case SelectionType::eIMESelectedRawClause:
     case SelectionType::eIMEConvertedClause:
     case SelectionType::eIMESelectedClause:
-    case SelectionType::eSpellCheck: {
+    case SelectionType::eSpellCheck:
+    case SelectionType::eHighlight: {
       int32_t index = nsTextPaintStyle::GetUnderlineStyleIndexForSelectionType(
           aSelectionType);
       bool weDefineSelectionUnderline =
@@ -6035,7 +6069,8 @@ void nsTextFrame::DrawSelectionDecorations(
           styleText->mTextUnderlineOffset, aFontMetrics, appUnitsPerDevPixel,
           this, wm.IsCentralBaseline(), swapUnderline);
 
-      bool isIMEType = aSelectionType != SelectionType::eSpellCheck;
+      bool isIMEType = aSelectionType != SelectionType::eSpellCheck &&
+                       aSelectionType != SelectionType::eHighlight;
 
       if (isIMEType) {
         // IME decoration lines should not be drawn on the both ends, i.e., we
@@ -6080,8 +6115,8 @@ void nsTextFrame::DrawSelectionDecorations(
         else if (aRangeStyle.IsForegroundColorDefined() ||
                  aRangeStyle.IsBackgroundColorDefined()) {
           nscolor bg;
-          GetSelectionTextColors(aSelectionType, aTextPaintStyle, aRangeStyle,
-                                 &params.color, &bg);
+          GetSelectionTextColors(aSelectionType, nullptr, aTextPaintStyle,
+                                 aRangeStyle, &params.color, &bg);
         }
         // Otherwise, use the foreground color of the frame.
         else {
@@ -6127,6 +6162,7 @@ void nsTextFrame::DrawSelectionDecorations(
 
 /* static */
 bool nsTextFrame::GetSelectionTextColors(SelectionType aSelectionType,
+                                         const nsAtom* aHighlightName,
                                          nsTextPaintStyle& aTextPaintStyle,
                                          const TextRangeStyle& aRangeStyle,
                                          nscolor* aForeground,
@@ -6137,6 +6173,9 @@ bool nsTextFrame::GetSelectionTextColors(SelectionType aSelectionType,
     case SelectionType::eFind:
       aTextPaintStyle.GetHighlightColors(aForeground, aBackground);
       return true;
+    case SelectionType::eHighlight:
+      return aTextPaintStyle.GetCustomHighlightColors(aHighlightName,
+                                                      aForeground, aBackground);
     case SelectionType::eURLSecondary:
       aTextPaintStyle.GetURLSecondaryColor(aForeground);
       *aBackground = NS_RGBA(0, 0, 0, 0);
@@ -6199,113 +6238,108 @@ static void GetSelectionTextShadow(nsIFrame* aFrame,
 }
 
 /**
- * This class lets us iterate over chunks of text in a uniform selection state,
- * observing cluster boundaries, in content order, maintaining the current
- * x-offset as we go, and telling whether the text chunk has a hyphen after
- * it or not. The caller is responsible for actually computing the advance
- * width of each chunk.
+ * This class lets us iterate over chunks of text recorded in an array of
+ * resolved selection ranges, observing cluster boundaries, in content order,
+ * maintaining the current x-offset as we go, and telling whether the text
+ * chunk has a hyphen after it or not.
+ * In addition to returning the selected chunks, the iterator is responsible
+ * to interpolate unselected chunks in any gaps between them.
+ * The caller is responsible for actually computing the advance width of each
+ * chunk.
  */
-class SelectionIterator {
-  typedef nsTextFrame::PropertyProvider PropertyProvider;
+class MOZ_STACK_CLASS SelectionRangeIterator {
+  using PropertyProvider = nsTextFrame::PropertyProvider;
+  using SelectionRange = nsTextFrame::SelectionRange;
 
  public:
-  /**
-   * aStart and aLength are in the original string. aSelectionDetails is
-   * according to the original string.
-   * @param aXOffset the offset from the origin of the frame to the start
-   * of the text (the left baseline origin for LTR, the right baseline origin
-   * for RTL)
-   */
-  SelectionIterator(SelectionDetails** aSelectionDetails,
-                    gfxTextRun::Range aRange, PropertyProvider& aProvider,
-                    gfxTextRun* aTextRun, gfxFloat aXOffset);
+  // aSelectionRanges and aRange are according to the original string.
+  SelectionRangeIterator(const nsTArray<SelectionRange>& aSelectionRanges,
+                         gfxTextRun::Range aRange, PropertyProvider& aProvider,
+                         gfxTextRun* aTextRun, gfxFloat aXOffset);
 
-  /**
-   * Returns the next segment of uniformly selected (or not) text.
-   * @param aXOffset the offset from the origin of the frame to the start
-   * of the text (the left baseline origin for LTR, the right baseline origin
-   * for RTL)
-   * @param aRange the transformed string range of the text for this segment
-   * @param aHyphenWidth if a hyphen is to be rendered after the text, the
-   * width of the hyphen, otherwise zero
-   * @param aSelectionType the selection type for this segment
-   * @param aStyle the selection style for this segment
-   * @return false if there are no more segments
-   */
   bool GetNextSegment(gfxFloat* aXOffset, gfxTextRun::Range* aRange,
                       gfxFloat* aHyphenWidth, SelectionType* aSelectionType,
+                      RefPtr<const nsAtom>* aHighlightName,
                       TextRangeStyle* aStyle);
+
   void UpdateWithAdvance(gfxFloat aAdvance) {
     mXOffset += aAdvance * mTextRun->GetDirection();
   }
 
  private:
-  SelectionDetails** mSelectionDetails;
+  const nsTArray<SelectionRange>& mSelectionRanges;
   PropertyProvider& mProvider;
-  RefPtr<gfxTextRun> mTextRun;
+  gfxTextRun* mTextRun;
   gfxSkipCharsIterator mIterator;
   gfxTextRun::Range mOriginalRange;
   gfxFloat mXOffset;
+  uint32_t mIndex;
 };
 
-SelectionIterator::SelectionIterator(SelectionDetails** aSelectionDetails,
-                                     gfxTextRun::Range aRange,
-                                     PropertyProvider& aProvider,
-                                     gfxTextRun* aTextRun, gfxFloat aXOffset)
-    : mSelectionDetails(aSelectionDetails),
+SelectionRangeIterator::SelectionRangeIterator(
+    const nsTArray<nsTextFrame::SelectionRange>& aSelectionRanges,
+    gfxTextRun::Range aRange, PropertyProvider& aProvider, gfxTextRun* aTextRun,
+    gfxFloat aXOffset)
+    : mSelectionRanges(aSelectionRanges),
       mProvider(aProvider),
       mTextRun(aTextRun),
       mIterator(aProvider.GetStart()),
       mOriginalRange(aRange),
-      mXOffset(aXOffset) {
-  mIterator.SetOriginalOffset(aRange.start);
+      mXOffset(aXOffset),
+      mIndex(0) {
+  mIterator.SetOriginalOffset(int32_t(aRange.start));
 }
 
-bool SelectionIterator::GetNextSegment(gfxFloat* aXOffset,
-                                       gfxTextRun::Range* aRange,
-                                       gfxFloat* aHyphenWidth,
-                                       SelectionType* aSelectionType,
-                                       TextRangeStyle* aStyle) {
-  if (mIterator.GetOriginalOffset() >= int32_t(mOriginalRange.end))
+bool SelectionRangeIterator::GetNextSegment(
+    gfxFloat* aXOffset, gfxTextRun::Range* aRange, gfxFloat* aHyphenWidth,
+    SelectionType* aSelectionType, RefPtr<const nsAtom>* aHighlightName,
+    TextRangeStyle* aStyle) {
+  if (mIterator.GetOriginalOffset() >= int32_t(mOriginalRange.end)) {
     return false;
+  }
 
-  // save offset into transformed string now
   uint32_t runOffset = mIterator.GetSkippedOffset();
+  uint32_t segmentEnd = mOriginalRange.end;
 
-  uint32_t index = mIterator.GetOriginalOffset() - mOriginalRange.start;
-  SelectionDetails* sdptr = mSelectionDetails[index];
-  SelectionType selectionType =
-      sdptr ? sdptr->mSelectionType : SelectionType::eNone;
-  TextRangeStyle style;
-  if (sdptr) {
-    style = sdptr->mTextRangeStyle;
-  }
-  for (++index; index < mOriginalRange.Length(); ++index) {
-    if (sdptr != mSelectionDetails[index]) {
-      break;
+  if (mIndex == mSelectionRanges.Length() ||
+      mIterator.GetOriginalOffset() <
+          int32_t(mSelectionRanges[mIndex].mRange.start)) {
+    // There's an unselected segment before the next range (or at the end).
+    *aSelectionType = SelectionType::eNone;
+    *aHighlightName = nullptr;
+    *aStyle = TextRangeStyle();
+    if (mIndex < mSelectionRanges.Length()) {
+      segmentEnd = mSelectionRanges[mIndex].mRange.start;
     }
+  } else {
+    // Get the selection details for the next segment, and increment index.
+    const SelectionDetails* sdptr = mSelectionRanges[mIndex].mDetails;
+    *aSelectionType = sdptr->mSelectionType;
+    *aHighlightName = sdptr->mHighlightName;
+    *aStyle = sdptr->mTextRangeStyle;
+    segmentEnd = mSelectionRanges[mIndex].mRange.end;
+    ++mIndex;
   }
-  mIterator.SetOriginalOffset(index + mOriginalRange.start);
 
-  // Advance to the next cluster boundary
+  // Advance iterator to the end of the segment.
+  mIterator.SetOriginalOffset(int32_t(segmentEnd));
+
+  // Further advance if necessary to a cluster boundary.
   while (mIterator.GetOriginalOffset() < int32_t(mOriginalRange.end) &&
          !mIterator.IsOriginalCharSkipped() &&
          !mTextRun->IsClusterStart(mIterator.GetSkippedOffset())) {
     mIterator.AdvanceOriginal(1);
   }
 
-  bool haveHyphenBreak =
-      mProvider.GetFrame()->HasAnyStateBits(TEXT_HYPHEN_BREAK);
   aRange->start = runOffset;
   aRange->end = mIterator.GetSkippedOffset();
   *aXOffset = mXOffset;
   *aHyphenWidth = 0;
   if (mIterator.GetOriginalOffset() == int32_t(mOriginalRange.end) &&
-      haveHyphenBreak) {
+      mProvider.GetFrame()->HasAnyStateBits(TEXT_HYPHEN_BREAK)) {
     *aHyphenWidth = mProvider.GetHyphenWidth();
   }
-  *aSelectionType = selectionType;
-  *aStyle = style;
+
   return true;
 }
 
@@ -6420,65 +6454,128 @@ void nsTextFrame::PaintOneShadow(const PaintShadowParams& aParams,
   aParams.context->Restore();
 }
 
+SelectionTypeMask nsTextFrame::ResolveSelections(
+    const PaintTextSelectionParams& aParams, const SelectionDetails* aDetails,
+    nsTArray<SelectionRange>& aResult, SelectionType aSelectionType,
+    bool* aAnyBackgrounds) const {
+  const gfxTextRun::Range& contentRange = aParams.contentRange;
+
+  SelectionTypeMask allTypes = 0;
+  bool anyBackgrounds = false;
+
+  uint32_t i = 0;
+  for (const SelectionDetails* sd = aDetails; sd; sd = sd->mNext.get()) {
+    MOZ_ASSERT(sd->mStart >= 0 && sd->mEnd >= 0);  // XXX make unsigned?
+    uint32_t start = std::max(contentRange.start, uint32_t(sd->mStart));
+    uint32_t end = std::min(contentRange.end, uint32_t(sd->mEnd));
+    if (start < end) {
+      // The PaintTextWithSelectionColors caller passes SelectionType::eNone,
+      // so we collect all selections that set colors, and prioritize them
+      // according to selection type (lower types take precedence).
+      if (aSelectionType == SelectionType::eNone) {
+        allTypes |= ToSelectionTypeMask(sd->mSelectionType);
+        // Ignore selections that don't set colors.
+        nscolor foreground, background;
+        if (GetSelectionTextColors(sd->mSelectionType, sd->mHighlightName,
+                                   *aParams.textPaintStyle, sd->mTextRangeStyle,
+                                   &foreground, &background)) {
+          if (NS_GET_A(background) > 0) {
+            anyBackgrounds = true;
+          }
+          uint32_t prio = kSelectionTypeCount - uint32_t(sd->mSelectionType);
+          aResult.AppendElement(SelectionRange{sd, {start, end}, prio});
+        }
+      } else if (sd->mSelectionType == aSelectionType) {
+        // The PaintSelectionTextDecorations caller passes a specific type,
+        // so we include only ranges of that type, and keep them in order
+        // so that later ones take precedence over earlier.
+        aResult.AppendElement(SelectionRange{sd, {start, end}, i++});
+      }
+    }
+  }
+  if (aAnyBackgrounds) {
+    *aAnyBackgrounds = anyBackgrounds;
+  }
+
+  if (aResult.Length() < 1) {
+    return allTypes;
+  }
+
+  // Sort by starting offset.
+  struct SelectionRangeStartCmp {
+    bool Equals(const SelectionRange& a, const SelectionRange& b) const {
+      return a.mRange.start == b.mRange.start;
+    }
+    bool LessThan(const SelectionRange& a, const SelectionRange& b) const {
+      return a.mRange.start < b.mRange.start;
+    }
+  };
+  aResult.Sort(SelectionRangeStartCmp());
+
+  // Resolve overlapping selections according to priority.
+  uint32_t currentIndex = 0;
+  while (currentIndex < aResult.Length() - 1) {
+    auto& current = aResult[currentIndex];
+    uint32_t probeIndex = currentIndex + 1;
+    while (probeIndex < aResult.Length()) {
+      auto& probe = aResult[probeIndex];
+      if (probe.mRange.start >= current.mRange.end) {
+        break;
+      }
+      // TODO: ordering of highlight selections
+      if (current.mDetails->mSelectionType <= probe.mDetails->mSelectionType) {
+        // current overwrites (beginning or all of) probe
+        if (current.mRange.end >= probe.mRange.end) {
+          aResult.RemoveElementAt(probeIndex);
+        } else {
+          probe.mRange.start = current.mRange.end;
+          ++probeIndex;
+        }
+      } else {
+        // probe overwrites current (possibly splitting it)
+        if (probe.mRange.start > current.mRange.start) {
+          uint32_t prevEnd = current.mRange.end;
+          current.mRange.end = probe.mRange.start;
+          if (probe.mRange.end < prevEnd) {
+            aResult.InsertElementSorted(
+                SelectionRange{current.mDetails,
+                               {probe.mRange.end, prevEnd},
+                               current.mPriority},
+                SelectionRangeStartCmp());
+          }
+          break;
+        }
+        if (probe.mRange.end < current.mRange.end) {
+          aResult.InsertElementSorted(
+              SelectionRange{current.mDetails,
+                             {probe.mRange.end, current.mRange.end},
+                             current.mPriority},
+              SelectionRangeStartCmp());
+        }
+        aResult.RemoveElementAt(currentIndex);
+        --currentIndex;  // This is OK even when currentIndex is zero, because
+                         // unsigned under/overflow is defined as wrapping.
+      }
+    }
+    ++currentIndex;
+  }
+
+  return allTypes;
+}
+
 // Paints selection backgrounds and text in the correct colors. Also computes
-// aAllTypes, the union of all selection types that are applying to this text.
+// aAllSelectionTypeMask, the union of all selection types that are applying to
+// this text.
 bool nsTextFrame::PaintTextWithSelectionColors(
     const PaintTextSelectionParams& aParams,
     const UniquePtr<SelectionDetails>& aDetails,
     SelectionTypeMask* aAllSelectionTypeMask, const ClipEdges& aClipEdges) {
-  const gfxTextRun::Range& contentRange = aParams.contentRange;
-
-  // Figure out which selections control the colors to use for each character.
-  // Note: prevailingSelectionsBuffer is keeping extra raw pointers to
-  // uniquely-owned resources, but it's safe because it's temporary and the
-  // resources are owned by the caller. Therefore, they'll outlive this object.
-  AutoTArray<SelectionDetails*, BIG_TEXT_NODE_SIZE> prevailingSelectionsBuffer;
-  SelectionDetails** prevailingSelections =
-      prevailingSelectionsBuffer.AppendElements(contentRange.Length(),
-                                                fallible);
-  if (!prevailingSelections) {
-    return false;
-  }
-
-  SelectionTypeMask allSelectionTypeMask = 0;
-  for (uint32_t i = 0; i < contentRange.Length(); ++i) {
-    prevailingSelections[i] = nullptr;
-  }
-
   bool anyBackgrounds = false;
-  for (SelectionDetails* sdptr = aDetails.get(); sdptr;
-       sdptr = sdptr->mNext.get()) {
-    int32_t start = std::max(0, sdptr->mStart - int32_t(contentRange.start));
-    int32_t end = std::min(int32_t(contentRange.Length()),
-                           sdptr->mEnd - int32_t(contentRange.start));
-    SelectionType selectionType = sdptr->mSelectionType;
-    if (start < end) {
-      allSelectionTypeMask |= ToSelectionTypeMask(selectionType);
-      // Ignore selections that don't set colors
-      nscolor foreground, background;
-      if (GetSelectionTextColors(selectionType, *aParams.textPaintStyle,
-                                 sdptr->mTextRangeStyle, &foreground,
-                                 &background)) {
-        if (NS_GET_A(background) > 0) {
-          anyBackgrounds = true;
-        }
-        for (int32_t i = start; i < end; ++i) {
-          // Favour normal selection over IME selections
-          if (!prevailingSelections[i] ||
-              selectionType < prevailingSelections[i]->mSelectionType) {
-            prevailingSelections[i] = sdptr;
-          }
-        }
-      }
-    }
-  }
-  *aAllSelectionTypeMask = allSelectionTypeMask;
+  AutoTArray<SelectionRange, 8> selectionRanges;
 
-  if (!allSelectionTypeMask) {
-    // Nothing is selected in the given text range. XXX can this still occur?
-    return false;
-  }
-
+  *aAllSelectionTypeMask =
+      ResolveSelections(aParams, aDetails.get(), selectionRanges,
+                        SelectionType::eNone, &anyBackgrounds);
   bool vertical = mTextRun->IsVertical();
   const gfxFloat startIOffset =
       vertical ? aParams.textBaselinePt.y - aParams.framePt.y
@@ -6486,21 +6583,24 @@ bool nsTextFrame::PaintTextWithSelectionColors(
   gfxFloat iOffset, hyphenWidth;
   Range range;  // in transformed string
   TextRangeStyle rangeStyle;
-  // Draw background colors
 
+  const gfxTextRun::Range& contentRange = aParams.contentRange;
   auto* textDrawer = aParams.context->GetTextDrawer();
 
   if (anyBackgrounds && !aParams.IsGenerateTextMask()) {
     int32_t appUnitsPerDevPixel =
         aParams.textPaintStyle->PresContext()->AppUnitsPerDevPixel();
-    SelectionIterator iterator(prevailingSelections, contentRange,
-                               *aParams.provider, mTextRun, startIOffset);
+    SelectionRangeIterator iterator(selectionRanges, contentRange,
+                                    *aParams.provider, mTextRun, startIOffset);
     SelectionType selectionType;
+    RefPtr<const nsAtom> highlightName;
     while (iterator.GetNextSegment(&iOffset, &range, &hyphenWidth,
-                                   &selectionType, &rangeStyle)) {
+                                   &selectionType, &highlightName,
+                                   &rangeStyle)) {
       nscolor foreground, background;
-      GetSelectionTextColors(selectionType, *aParams.textPaintStyle, rangeStyle,
-                             &foreground, &background);
+      GetSelectionTextColors(selectionType, highlightName,
+                             *aParams.textPaintStyle, rangeStyle, &foreground,
+                             &background);
       // Draw background color
       gfxFloat advance =
           hyphenWidth + mTextRun->GetAdvanceWidth(range, aParams.provider);
@@ -6550,17 +6650,19 @@ bool nsTextFrame::PaintTextWithSelectionColors(
 
   // Draw text
   const nsStyleText* textStyle = StyleText();
-  SelectionIterator iterator(prevailingSelections, contentRange,
-                             *aParams.provider, mTextRun, startIOffset);
+  SelectionRangeIterator iterator(selectionRanges, contentRange,
+                                  *aParams.provider, mTextRun, startIOffset);
   SelectionType selectionType;
+  RefPtr<const nsAtom> highlightName;
   while (iterator.GetNextSegment(&iOffset, &range, &hyphenWidth, &selectionType,
-                                 &rangeStyle)) {
+                                 &highlightName, &rangeStyle)) {
     nscolor foreground, background;
     if (aParams.IsGenerateTextMask()) {
       foreground = NS_RGBA(0, 0, 0, 255);
     } else {
-      GetSelectionTextColors(selectionType, *aParams.textPaintStyle, rangeStyle,
-                             &foreground, &background);
+      GetSelectionTextColors(selectionType, highlightName,
+                             *aParams.textPaintStyle, rangeStyle, &foreground,
+                             &background);
     }
 
     gfx::Point textBaselinePt =
@@ -6606,32 +6708,8 @@ void nsTextFrame::PaintTextSelectionDecorations(
     return;
   }
 
-  // Figure out which characters will be decorated for this selection.
-  // Note: selectedCharsBuffer is keeping extra raw pointers to
-  // uniquely-owned resources, but it's safe because it's temporary and the
-  // resources are owned by the caller. Therefore, they'll outlive this object.
-  const gfxTextRun::Range& contentRange = aParams.contentRange;
-  AutoTArray<SelectionDetails*, BIG_TEXT_NODE_SIZE> selectedCharsBuffer;
-  SelectionDetails** selectedChars =
-      selectedCharsBuffer.AppendElements(contentRange.Length(), fallible);
-  if (!selectedChars) {
-    return;
-  }
-  for (uint32_t i = 0; i < contentRange.Length(); ++i) {
-    selectedChars[i] = nullptr;
-  }
-
-  for (SelectionDetails* sdptr = aDetails.get(); sdptr;
-       sdptr = sdptr->mNext.get()) {
-    if (sdptr->mSelectionType == aSelectionType) {
-      int32_t start = std::max(0, sdptr->mStart - int32_t(contentRange.start));
-      int32_t end = std::min(int32_t(contentRange.Length()),
-                             sdptr->mEnd - int32_t(contentRange.start));
-      for (int32_t i = start; i < end; ++i) {
-        selectedChars[i] = sdptr;
-      }
-    }
-  }
+  AutoTArray<SelectionRange, 8> selectionRanges;
+  ResolveSelections(aParams, aDetails.get(), selectionRanges, aSelectionType);
 
   RefPtr<gfxFont> firstFont =
       aParams.provider->GetFontGroup()->GetFirstValidFont();
@@ -6646,11 +6724,12 @@ void nsTextFrame::PaintTextSelectionDecorations(
   decorationMetrics.underlineOffset =
       aParams.provider->GetFontGroup()->GetUnderlineOffset();
 
+  const gfxTextRun::Range& contentRange = aParams.contentRange;
   gfxFloat startIOffset = verticalRun
                               ? aParams.textBaselinePt.y - aParams.framePt.y
                               : aParams.textBaselinePt.x - aParams.framePt.x;
-  SelectionIterator iterator(selectedChars, contentRange, *aParams.provider,
-                             mTextRun, startIOffset);
+  SelectionRangeIterator iterator(selectionRanges, contentRange,
+                                  *aParams.provider, mTextRun, startIOffset);
   gfxFloat iOffset, hyphenWidth;
   Range range;
   int32_t app = aParams.textPaintStyle->PresContext()->AppUnitsPerDevPixel();
@@ -6662,10 +6741,12 @@ void nsTextFrame::PaintTextSelectionDecorations(
     pt.y = (aParams.textBaselinePt.y - mAscent) / app;
   }
   SelectionType nextSelectionType;
+  RefPtr<const nsAtom> highlightName;
   TextRangeStyle selectedStyle;
 
   while (iterator.GetNextSegment(&iOffset, &range, &hyphenWidth,
-                                 &nextSelectionType, &selectedStyle)) {
+                                 &nextSelectionType, &highlightName,
+                                 &selectedStyle)) {
     gfxFloat advance =
         hyphenWidth + mTextRun->GetAdvanceWidth(range, aParams.provider);
     if (nextSelectionType == aSelectionType) {
@@ -6820,9 +6901,9 @@ nscolor nsTextFrame::GetCaretColorAt(int32_t aOffset) {
         (selectionType == SelectionType::eNone ||
          sdptr->mSelectionType < selectionType)) {
       nscolor foreground, background;
-      if (GetSelectionTextColors(sdptr->mSelectionType, textPaintStyle,
-                                 sdptr->mTextRangeStyle, &foreground,
-                                 &background)) {
+      if (GetSelectionTextColors(sdptr->mSelectionType, sdptr->mHighlightName,
+                                 textPaintStyle, sdptr->mTextRangeStyle,
+                                 &foreground, &background)) {
         if (!isSolidTextColor && NS_IS_SELECTION_SPECIAL_COLOR(foreground)) {
           result = NS_RGBA(0, 0, 0, 255);
         } else {
@@ -6991,6 +7072,17 @@ void nsTextFrame::PaintText(const PaintTextParams& aParams,
                             const nsPoint& aToReferenceFrame,
                             const bool aIsSelected,
                             float aOpacity /* = 1.0f */) {
+#ifdef DEBUG
+  if (SVGUtils::IsInSVGTextSubtree(this)) {
+    auto* container =
+        nsLayoutUtils::GetClosestFrameOfType(this, LayoutFrameType::SVGText);
+    MOZ_ASSERT(container);
+    MOZ_ASSERT(!container->HasAnyStateBits(NS_STATE_SVG_CLIPPATH_CHILD) ||
+                   !aParams.IsPaintText(),
+               "Expecting IsPaintText to be false for a clipPath");
+  }
+#endif
+
   // Don't pass in the rendering context here, because we need a
   // *reference* context and rendering context might have some transform
   // in it
@@ -7086,7 +7178,7 @@ void nsTextFrame::PaintText(const PaintTextParams& aParams,
   }
 
   range = Range(startOffset, startOffset + maxLength);
-  if (!aParams.callbacks && aParams.IsPaintText()) {
+  if (aParams.IsPaintText()) {
     const nsStyleText* textStyle = StyleText();
     PaintShadowParams shadowParams(aParams);
     shadowParams.range = range;
@@ -7443,12 +7535,16 @@ void nsTextFrame::DrawText(Range aRange, const gfx::Point& aTextBaselinePt,
 NS_DECLARE_FRAME_PROPERTY_DELETABLE(WebRenderTextBounds, nsRect)
 
 nsRect nsTextFrame::WebRenderBounds() {
+  // WR text bounds is just our ink overflow rect but without shadows. So if we
+  // have no shadows, just use the layout bounds.
+  if (!StyleText()->HasTextShadow()) {
+    return InkOverflowRect();
+  }
   nsRect* cachedBounds = GetProperty(WebRenderTextBounds());
   if (!cachedBounds) {
     OverflowAreas overflowAreas;
     ComputeCustomOverflowInternal(overflowAreas, false);
-    cachedBounds = new nsRect();
-    *cachedBounds = overflowAreas.InkOverflow();
+    cachedBounds = new nsRect(overflowAreas.InkOverflow());
     SetProperty(WebRenderTextBounds(), cachedBounds);
   }
   return *cachedBounds;
@@ -7760,7 +7856,7 @@ void nsTextFrame::SelectionStateChanged(uint32_t aStart, uint32_t aEnd,
                                         SelectionType aSelectionType) {
   NS_ASSERTION(!GetPrevContinuation(),
                "Should only be called for primary frame");
-  DEBUG_VERIFY_NOT_DIRTY(mState);
+  DEBUG_VERIFY_NOT_DIRTY(GetStateBits());
 
   InvalidateSelectionState();
 
@@ -7852,8 +7948,8 @@ nsresult nsTextFrame::GetPointFromOffset(int32_t inOffset, nsPoint* outPoint) {
     return NS_ERROR_NULL_POINTER;
   }
 
-  DEBUG_VERIFY_NOT_DIRTY(mState);
-  if (mState & NS_FRAME_IS_DIRTY) {
+  DEBUG_VERIFY_NOT_DIRTY(GetStateBits());
+  if (HasAnyStateBits(NS_FRAME_IS_DIRTY)) {
     return NS_ERROR_UNEXPECTED;
   }
 
@@ -7883,8 +7979,8 @@ nsresult nsTextFrame::GetPointFromOffset(int32_t inOffset, nsPoint* outPoint) {
 nsresult nsTextFrame::GetCharacterRectsInRange(int32_t aInOffset,
                                                int32_t aLength,
                                                nsTArray<nsRect>& aRects) {
-  DEBUG_VERIFY_NOT_DIRTY(mState);
-  if (mState & NS_FRAME_IS_DIRTY) {
+  DEBUG_VERIFY_NOT_DIRTY(GetStateBits());
+  if (HasAnyStateBits(NS_FRAME_IS_DIRTY)) {
     return NS_ERROR_UNEXPECTED;
   }
 
@@ -7974,9 +8070,9 @@ nsresult nsTextFrame::GetChildFrameContainingOffset(int32_t aContentOffset,
                                                     bool aHint,
                                                     int32_t* aOutOffset,
                                                     nsIFrame** aOutFrame) {
-  DEBUG_VERIFY_NOT_DIRTY(mState);
+  DEBUG_VERIFY_NOT_DIRTY(GetStateBits());
 #if 0  // XXXrbs disable due to bug 310227
-  if (mState & NS_FRAME_IS_DIRTY)
+  if (HasAnyStateBits(NS_FRAME_IS_DIRTY))
     return NS_ERROR_UNEXPECTED;
 #endif
 
@@ -10464,9 +10560,9 @@ nsIFrame::RenderedText nsTextFrame::GetRenderedText(
 
 /* virtual */
 bool nsTextFrame::IsEmpty() {
-  NS_ASSERTION(!(mState & TEXT_IS_ONLY_WHITESPACE) ||
-                   !(mState & TEXT_ISNOT_ONLY_WHITESPACE),
-               "Invalid state");
+  NS_ASSERTION(
+      !HasAllStateBits(TEXT_IS_ONLY_WHITESPACE | TEXT_ISNOT_ONLY_WHITESPACE),
+      "Invalid state");
 
   // XXXldb Should this check compatibility mode as well???
   const nsStyleText* textStyle = StyleText();
@@ -10480,11 +10576,11 @@ bool nsTextFrame::IsEmpty() {
            !GetContent()->GetParent()->IsHTMLElement(nsGkAtoms::input);
   }
 
-  if (mState & TEXT_ISNOT_ONLY_WHITESPACE) {
+  if (HasAnyStateBits(TEXT_ISNOT_ONLY_WHITESPACE)) {
     return false;
   }
 
-  if (mState & TEXT_IS_ONLY_WHITESPACE) {
+  if (HasAnyStateBits(TEXT_IS_ONLY_WHITESPACE)) {
     return true;
   }
 
@@ -10608,9 +10704,14 @@ bool nsTextFrame::IsAtEndOfLine() const {
   return HasAnyStateBits(TEXT_END_OF_LINE);
 }
 
-nscoord nsTextFrame::GetLogicalBaseline(WritingMode aWM) const {
+Maybe<nscoord> nsTextFrame::GetNaturalBaselineBOffset(
+    WritingMode aWM, BaselineSharingGroup aBaselineGroup) const {
+  if (aBaselineGroup == BaselineSharingGroup::Last) {
+    return Nothing{};
+  }
+
   if (!aWM.IsOrthogonalTo(GetWritingMode())) {
-    return mAscent;
+    return Some(mAscent);
   }
 
   // When the text frame has a writing mode orthogonal to the desired
@@ -10621,9 +10722,9 @@ nscoord nsTextFrame::GetLogicalBaseline(WritingMode aWM) const {
   if (aWM.IsVerticalRL()) {
     nscoord parentDescent = parent->GetSize().width - parentAscent;
     nscoord descent = parentDescent - position.x;
-    return GetSize().width - descent;
+    return Some(GetSize().width - descent);
   }
-  return parentAscent - (aWM.IsVertical() ? position.x : position.y);
+  return Some(parentAscent - (aWM.IsVertical() ? position.x : position.y));
 }
 
 bool nsTextFrame::HasAnyNoncollapsedCharacters() {

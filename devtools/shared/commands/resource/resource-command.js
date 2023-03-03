@@ -1021,10 +1021,7 @@ class ResourceCommand {
    * being fetched from these targets.
    */
   _shouldRunLegacyListenerEvenWithWatcherSupport(resourceType) {
-    return (
-      resourceType == ResourceCommand.TYPES.SOURCE ||
-      resourceType == ResourceCommand.TYPES.THREAD_STATE
-    );
+    return WORKER_RESOURCE_TYPES.includes(resourceType);
   }
 
   async _forwardExistingResources(resourceTypes, onAvailable) {
@@ -1060,10 +1057,7 @@ class ResourceCommand {
     // And we removed the related legacy listener as they are no longer used.
     if (
       targetFront.targetType.endsWith("worker") &&
-      [
-        ResourceCommand.TYPES.NETWORK_EVENT,
-        ResourceCommand.TYPES.NETWORK_EVENT_STACKTRACE,
-      ].includes(resourceType)
+      !WORKER_RESOURCE_TYPES.includes(resourceType)
     ) {
       return;
     }
@@ -1225,6 +1219,16 @@ ResourceCommand.ALL_TYPES = ResourceCommand.prototype.ALL_TYPES = Object.values(
 );
 module.exports = ResourceCommand;
 
+// This is the list of resource types supported by workers.
+// We need such list to know when forcing to run the legacy listeners
+// and when to avoid try to spawn some unsupported ones for workers.
+const WORKER_RESOURCE_TYPES = [
+  ResourceCommand.TYPES.CONSOLE_MESSAGE,
+  ResourceCommand.TYPES.ERROR_MESSAGE,
+  ResourceCommand.TYPES.SOURCE,
+  ResourceCommand.TYPES.THREAD_STATE,
+];
+
 // Backward compat code for each type of resource.
 // Each section added here should eventually be removed once the equivalent server
 // code is implement in Firefox, in its release channel.
@@ -1277,11 +1281,17 @@ loader.lazyRequireGetter(
   ResourceCommand.TYPES.ROOT_NODE,
   "resource://devtools/shared/commands/resource/legacy-listeners/root-node.js"
 );
+
+// @backward-compat { version 111 } The WebSocket legacy listener can be removed
+// once 111 is released.
 loader.lazyRequireGetter(
   LegacyListeners,
   ResourceCommand.TYPES.WEBSOCKET,
   "resource://devtools/shared/commands/resource/legacy-listeners/websocket.js"
 );
+
+// @backward-compat { version 111 } All storage legacy listeners can be removed once 111 is released.
+// This codepath was only used when connecting to older servers.
 loader.lazyRequireGetter(
   LegacyListeners,
   ResourceCommand.TYPES.COOKIE,
@@ -1312,6 +1322,8 @@ loader.lazyRequireGetter(
   ResourceCommand.TYPES.INDEXED_DB,
   "resource://devtools/shared/commands/resource/legacy-listeners/indexed-db.js"
 );
+// --- end of storage legacy listeners
+
 loader.lazyRequireGetter(
   LegacyListeners,
   ResourceCommand.TYPES.SOURCE,
@@ -1322,6 +1334,8 @@ loader.lazyRequireGetter(
   ResourceCommand.TYPES.THREAD_STATE,
   "resource://devtools/shared/commands/resource/legacy-listeners/thread-states.js"
 );
+// @backward-compat { version 111 } The serverSentEvent legacy listener can be
+// removed once 111 is released.
 loader.lazyRequireGetter(
   LegacyListeners,
   ResourceCommand.TYPES.SERVER_SENT_EVENT,
@@ -1367,6 +1381,11 @@ loader.lazyRequireGetter(
   ResourceTransformers,
   ResourceCommand.TYPES.COOKIE,
   "resource://devtools/shared/commands/resource/transformers/storage-cookie.js"
+);
+loader.lazyRequireGetter(
+  ResourceTransformers,
+  ResourceCommand.TYPES.EXTENSION_STORAGE,
+  "resource://devtools/shared/commands/resource/transformers/storage-extension.js"
 );
 loader.lazyRequireGetter(
   ResourceTransformers,

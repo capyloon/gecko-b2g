@@ -10,11 +10,10 @@
 #include "ErrorList.h"
 #include "mozilla/dom/FlippedOnce.h"
 #include "mozilla/dom/PFileSystemManagerParent.h"
+#include "mozilla/dom/quota/DebugOnlyMacro.h"
 #include "nsISupports.h"
 
 namespace mozilla::dom {
-
-class FileSystemStreamCallbacks;
 
 namespace fs::data {
 class FileSystemDataManager;
@@ -77,19 +76,13 @@ class FileSystemManagerParent : public PFileSystemManagerParent {
   virtual ~FileSystemManagerParent();
 
  private:
-  void EnsureStreamCallbacks();
-
-  void CleanupAfterClose();
-
   RefPtr<fs::data::FileSystemDataManager> mDataManager;
-
-  RefPtr<FileSystemStreamCallbacks> mStreamCallbacks;
 
   FileSystemGetHandleResponse mRootResponse;
 
   FlippedOnce<false> mRequestedAllowToClose;
 
-  bool mActorDestroyed = false;
+  DEBUGONLY(bool mActorDestroyed = false);
 };
 
 }  // namespace mozilla::dom

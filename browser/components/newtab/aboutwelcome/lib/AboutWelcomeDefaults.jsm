@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const EXPORTED_SYMBOLS = ["AboutWelcomeDefaults", "DEFAULT_WELCOME_CONTENT"];
+const EXPORTED_SYMBOLS = ["AboutWelcomeDefaults"];
 
 const { XPCOMUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/XPCOMUtils.sys.mjs"
@@ -16,11 +16,11 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   BrowserUtils: "resource://gre/modules/BrowserUtils.sys.mjs",
+  AttributionCode: "resource:///modules/AttributionCode.sys.mjs",
 });
 
 XPCOMUtils.defineLazyModuleGetters(lazy, {
   AddonRepository: "resource://gre/modules/addons/AddonRepository.jsm",
-  AttributionCode: "resource:///modules/AttributionCode.jsm",
 });
 
 XPCOMUtils.defineLazyPreferenceGetter(
@@ -35,235 +35,6 @@ XPCOMUtils.defineLazyPreferenceGetter(
   "services.sync.clients.devices.mobile",
   0
 );
-
-const DEFAULT_WELCOME_CONTENT = {
-  id: "DEFAULT_ABOUTWELCOME_PROTON",
-  template: "multistage",
-  // Allow tests to easily disable transitions.
-  transitions: Services.prefs.getBoolPref(
-    "browser.aboutwelcome.transitions",
-    true
-  ),
-  backdrop:
-    "#212121 url('chrome://activity-stream/content/data/content/assets/proton-bkg.avif') center/cover no-repeat fixed",
-  screens: [
-    {
-      id: "AW_PIN_FIREFOX",
-      content: {
-        position: "corner",
-        logo: {},
-        title: {
-          string_id: "mr1-onboarding-pin-header",
-        },
-        hero_text: {
-          string_id: "mr1-welcome-screen-hero-text",
-        },
-        help_text: {
-          string_id: "mr1-onboarding-welcome-image-caption",
-        },
-        has_noodles: true,
-        primary_button: {
-          label: {
-            string_id: "mr1-onboarding-pin-primary-button-label",
-          },
-          action: {
-            navigate: true,
-            type: "PIN_FIREFOX_TO_TASKBAR",
-          },
-        },
-        secondary_button: {
-          label: {
-            string_id: "mr1-onboarding-set-default-secondary-button-label",
-          },
-          action: {
-            navigate: true,
-          },
-        },
-        secondary_button_top: {
-          label: {
-            string_id: "mr1-onboarding-sign-in-button-label",
-          },
-          action: {
-            data: {
-              entrypoint: "activity-stream-firstrun",
-            },
-            type: "SHOW_FIREFOX_ACCOUNTS",
-            addFlowParams: true,
-          },
-        },
-      },
-    },
-    {
-      id: "AW_LANGUAGE_MISMATCH",
-      content: {
-        logo: {},
-        title: { string_id: "onboarding-live-language-header" },
-        has_noodles: true,
-        languageSwitcher: {
-          downloading: {
-            string_id: "onboarding-live-language-button-label-downloading",
-          },
-          cancel: {
-            string_id: "onboarding-live-language-secondary-cancel-download",
-          },
-          waiting: { string_id: "onboarding-live-language-waiting-button" },
-          skip: { string_id: "onboarding-live-language-skip-button-label" },
-          action: {
-            navigate: true,
-          },
-        },
-      },
-    },
-    {
-      id: "AW_SET_DEFAULT",
-      content: {
-        logo: {},
-        title: {
-          string_id: "mr1-onboarding-default-header",
-        },
-        subtitle: {
-          string_id: "mr1-onboarding-default-subtitle",
-        },
-        has_noodles: true,
-        primary_button: {
-          label: {
-            string_id: "mr1-onboarding-default-primary-button-label",
-          },
-          action: {
-            navigate: true,
-            type: "SET_DEFAULT_BROWSER",
-          },
-        },
-        secondary_button: {
-          label: {
-            string_id: "mr1-onboarding-set-default-secondary-button-label",
-          },
-          action: {
-            navigate: true,
-          },
-        },
-      },
-    },
-    {
-      id: "AW_IMPORT_SETTINGS",
-      content: {
-        logo: {},
-        title: {
-          string_id: "mr1-onboarding-import-header",
-        },
-        subtitle: {
-          string_id: "mr1-onboarding-import-subtitle",
-        },
-        has_noodles: true,
-        primary_button: {
-          label: {
-            string_id:
-              "mr1-onboarding-import-primary-button-label-no-attribution",
-          },
-          action: {
-            type: "SHOW_MIGRATION_WIZARD",
-            data: {},
-            navigate: true,
-          },
-        },
-        secondary_button: {
-          label: {
-            string_id: "mr1-onboarding-import-secondary-button-label",
-          },
-          action: {
-            navigate: true,
-          },
-        },
-      },
-    },
-    {
-      id: "AW_CHOOSE_THEME",
-      content: {
-        logo: {},
-        title: {
-          string_id: "mr1-onboarding-theme-header",
-        },
-        subtitle: {
-          string_id: "mr1-onboarding-theme-subtitle",
-        },
-        has_noodles: true,
-        tiles: {
-          type: "theme",
-          action: {
-            theme: "<event>",
-          },
-          data: [
-            {
-              theme: "automatic",
-              label: {
-                string_id: "mr1-onboarding-theme-label-system",
-              },
-              tooltip: {
-                string_id: "mr1-onboarding-theme-tooltip-system",
-              },
-              description: {
-                string_id: "mr1-onboarding-theme-description-system",
-              },
-            },
-            {
-              theme: "light",
-              label: {
-                string_id: "mr1-onboarding-theme-label-light",
-              },
-              tooltip: {
-                string_id: "mr1-onboarding-theme-tooltip-light",
-              },
-              description: {
-                string_id: "mr1-onboarding-theme-description-light",
-              },
-            },
-            {
-              theme: "dark",
-              label: {
-                string_id: "mr1-onboarding-theme-label-dark",
-              },
-              tooltip: {
-                string_id: "mr1-onboarding-theme-tooltip-dark",
-              },
-              description: {
-                string_id: "mr1-onboarding-theme-description-dark",
-              },
-            },
-            {
-              theme: "alpenglow",
-              label: {
-                string_id: "mr1-onboarding-theme-label-alpenglow",
-              },
-              tooltip: {
-                string_id: "mr1-onboarding-theme-tooltip-alpenglow",
-              },
-              description: {
-                string_id: "mr1-onboarding-theme-description-alpenglow",
-              },
-            },
-          ],
-        },
-        primary_button: {
-          label: {
-            string_id: "onboarding-theme-primary-button-label",
-          },
-          action: {
-            navigate: true,
-          },
-        },
-        secondary_button: {
-          label: {
-            string_id: "mr1-onboarding-theme-secondary-button-label",
-          },
-          action: {
-            theme: "automatic",
-            navigate: true,
-          },
-        },
-      },
-    },
-  ],
-};
 
 // Message to be updated based on finalized MR designs
 const MR_ABOUT_WELCOME_DEFAULT = {
@@ -598,11 +369,8 @@ async function getAttributionContent() {
 }
 
 // Return default multistage welcome content
-function getDefaults(templateMR = false) {
-  const defaultContent = templateMR
-    ? MR_ABOUT_WELCOME_DEFAULT
-    : DEFAULT_WELCOME_CONTENT;
-  return Cu.cloneInto(defaultContent, {});
+function getDefaults() {
+  return Cu.cloneInto(MR_ABOUT_WELCOME_DEFAULT, {});
 }
 
 let gSourceL10n = null;
@@ -631,20 +399,16 @@ function removeScreens(check, screens) {
 }
 
 // Function to evalute the appropriate string for the welcome screen button label
-function evaluateWelcomeScreenButtonLabel(removeDefault, content) {
-  if (content.templateMR) {
-    return removeDefault
-      ? "mr2022-onboarding-get-started-primary-button-label"
-      : "mr2022-onboarding-set-default-primary-button-label";
-  }
+function evaluateWelcomeScreenButtonLabel(removeDefault) {
   return removeDefault
-    ? "mr1-onboarding-get-started-primary-button-label"
-    : "mr1-onboarding-set-default-only-primary-button-label";
+    ? "mr2022-onboarding-get-started-primary-button-label"
+    : "mr2022-onboarding-set-default-primary-button-label";
 }
 
 function prepareMobileDownload(screens) {
-  let mobileContent = screens.find(screen => screen.id === "AW_MOBILE_DOWNLOAD")
-    ?.content;
+  let mobileContent = screens?.find(
+    screen => screen.id === "AW_MOBILE_DOWNLOAD"
+  )?.content;
 
   if (!mobileContent) {
     return;
@@ -716,7 +480,7 @@ async function prepareContentForReact(content) {
     if (label?.string_id) {
       label.string_id = browserStr
         ? "mr1-onboarding-import-primary-button-label-attribution"
-        : "mr1-onboarding-import-primary-button-label-no-attribution";
+        : "mr2022-onboarding-import-primary-button-label-no-attribution";
 
       label.args = browserStr ? { previous: browserStr } : {};
     }
@@ -731,18 +495,15 @@ async function prepareContentForReact(content) {
     if (pinScreen?.content) {
       pinScreen.id = removeDefault ? "AW_GET_STARTED" : "AW_ONLY_DEFAULT";
       pinScreen.content.title = {
-        string_id: content.templateMR
-          ? "mr2022-onboarding-welcome-pin-header"
-          : "mr1-onboarding-welcome-header",
+        string_id: "mr2022-onboarding-welcome-pin-header",
       };
 
-      if (content.templateMR) {
-        pinScreen.content.subtitle = {
-          string_id: removeDefault
-            ? "mr2022-onboarding-get-started-primary-subtitle"
-            : "mr2022-onboarding-set-default-only-subtitle",
-        };
-      }
+      pinScreen.content.subtitle = {
+        string_id: removeDefault
+          ? "mr2022-onboarding-get-started-primary-subtitle"
+          : "mr2022-onboarding-set-default-only-subtitle",
+      };
+
       pinScreen.content.primary_button = {
         label: {
           string_id: evaluateWelcomeScreenButtonLabel(removeDefault, content),
@@ -751,11 +512,8 @@ async function prepareContentForReact(content) {
           navigate: true,
         },
       };
-
       // Get started content will navigate without action, so remove "Not now."
-      if (removeDefault) {
-        if (!content.templateMR) delete pinScreen.content.secondary_button;
-      } else {
+      if (!removeDefault) {
         // The "pin" screen will now handle "default" so remove other "default."
         pinScreen.content.primary_button.action.type = "SET_DEFAULT_BROWSER";
         removeDefault = true;
@@ -806,11 +564,7 @@ async function prepareContentForReact(content) {
     removeScreens(screen => screen.id === "AW_LANGUAGE_MISMATCH", screens);
   }
 
-  if (content.templateMR) {
-    return prepareMRContent(content);
-  }
-
-  return content;
+  return prepareMRContent(content);
 }
 
 const AboutWelcomeDefaults = {

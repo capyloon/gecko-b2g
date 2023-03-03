@@ -122,7 +122,7 @@ pub struct WebRenderOptions {
     /// Enable sub-pixel anti-aliasing if a fast implementation is available.
     pub enable_subpixel_aa: bool,
     pub clear_color: ColorF,
-    pub enable_clear_scissor: bool,
+    pub enable_clear_scissor: Option<bool>,
     pub max_internal_texture_size: Option<i32>,
     pub image_tiling_threshold: i32,
     pub upload_method: UploadMethod,
@@ -190,6 +190,7 @@ pub struct WebRenderOptions {
     /// items, if the zoom factor is relatively small, bilinear filtering should
     /// make the result look quite close to the high-quality zoom, except for glyphs.
     pub low_quality_pinch_zoom: bool,
+    pub max_shared_surface_size: i32,
 }
 
 impl WebRenderOptions {
@@ -218,7 +219,7 @@ impl Default for WebRenderOptions {
             precache_flags: ShaderPrecacheFlags::empty(),
             enable_subpixel_aa: false,
             clear_color: ColorF::new(1.0, 1.0, 1.0, 1.0),
-            enable_clear_scissor: true,
+            enable_clear_scissor: None,
             max_internal_texture_size: None,
             image_tiling_threshold: 4096,
             // This is best as `Immediate` on Angle, or `Pixelbuffer(Dynamic)` on GL,
@@ -258,6 +259,7 @@ impl Default for WebRenderOptions {
             enable_instancing: true,
             reject_software_rasterizer: false,
             low_quality_pinch_zoom: false,
+            max_shared_surface_size: 2048,
         }
     }
 }
@@ -330,6 +332,10 @@ pub fn create_webrender_instance(
         device.get_capabilities().supports_advanced_blend_equation;
     let ext_blend_equation_advanced_coherent =
         device.supports_extension("GL_KHR_blend_equation_advanced_coherent");
+
+    let enable_clear_scissor = options
+        .enable_clear_scissor
+        .unwrap_or(device.get_capabilities().prefers_clear_scissor);
 
     // 2048 is the minimum that the texture cache can work with.
     const MIN_TEXTURE_SIZE: i32 = 2048;
@@ -501,7 +507,7 @@ pub fn create_webrender_instance(
             CompositorKind::Draw { max_partial_present_rects, draw_previous_partial_present_regions }
         }
         CompositorConfig::Native { ref compositor } => {
-            let capabilities = compositor.get_capabilities();
+            let capabilities = compositor.get_capabilities(&mut device);
 
             CompositorKind::Native {
                 capabilities,
@@ -528,6 +534,8 @@ pub fn create_webrender_instance(
         force_invalidation: false,
         is_software,
         low_quality_pinch_zoom: options.low_quality_pinch_zoom,
+        uses_native_antialiasing: device.get_capabilities().uses_native_antialiasing,
+        max_shared_surface_size: options.max_shared_surface_size,
     };
     info!("WR {:?}", config);
 
@@ -718,7 +726,7 @@ pub fn create_webrender_instance(
         profiler: Profiler::new(),
         max_recorded_profiles: options.max_recorded_profiles,
         clear_color: options.clear_color,
-        enable_clear_scissor: options.enable_clear_scissor,
+        enable_clear_scissor,
         enable_advanced_blend_barriers: !ext_blend_equation_advanced_coherent,
         clear_caches_with_quads: options.clear_caches_with_quads,
         clear_alpha_targets_with_quads,

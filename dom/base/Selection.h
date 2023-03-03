@@ -457,6 +457,11 @@ class Selection final : public nsSupportsWeakReference,
   SelectionType Type() const { return mSelectionType; }
 
   /**
+   * @brief Set a highlight name, if this is a highlight selection.
+   */
+  void SetHighlightName(const nsAtom* aHighlightName);
+
+  /**
    * See documentation of `GetRangesForInterval` in Selection.webidl.
    *
    * @param aReturn references, not copies, of the internal ranges.
@@ -809,6 +814,7 @@ class Selection final : public nsSupportsWeakReference,
   void Disconnect();
 
   struct StyledRanges {
+    explicit StyledRanges(Selection& aSelection) : mSelection(aSelection) {}
     void Clear();
 
     StyledRange* FindRangeData(nsRange* aRange);
@@ -866,8 +872,8 @@ class Selection final : public nsSupportsWeakReference,
      *                  it. Hence it'll always be in [0, mRanges.Length()).
      *                  This is nothing only when the method returns an error.
      */
-    MOZ_CAN_RUN_SCRIPT nsresult MaybeAddRangeAndTruncateOverlaps(
-        nsRange* aRange, Maybe<size_t>* aOutIndex, Selection& aSelection);
+    MOZ_CAN_RUN_SCRIPT nsresult
+    MaybeAddRangeAndTruncateOverlaps(nsRange* aRange, Maybe<size_t>* aOutIndex);
 
     /**
      * GetCommonEditingHost() returns common editing host of all
@@ -924,9 +930,11 @@ class Selection final : public nsSupportsWeakReference,
     // a possible solution, allowing the calculation of the overlap interval in
     // O(log n) time, though this would require rebalancing and other overhead.
     Elements mRanges;
+
+    Selection& mSelection;
   };
 
-  StyledRanges mStyledRanges;
+  StyledRanges mStyledRanges{*this};
 
   RefPtr<nsRange> mAnchorFocusRange;
   RefPtr<nsFrameSelection> mFrameSelection;
@@ -938,6 +946,7 @@ class Selection final : public nsSupportsWeakReference,
   CachedOffsetForFrame* mCachedOffsetForFrame;
   nsDirection mDirection;
   const SelectionType mSelectionType;
+  RefPtr<const nsAtom> mHighlightName;
   UniquePtr<SelectionCustomColors> mCustomColors;
 
   // Non-zero if we don't want any changes we make to the selection to be

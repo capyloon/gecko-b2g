@@ -3,16 +3,13 @@
 const { BaseAction } = ChromeUtils.import(
   "resource://normandy/actions/BaseAction.jsm"
 );
-const { ShowHeartbeatAction } = ChromeUtils.import(
-  "resource://normandy/actions/ShowHeartbeatAction.jsm"
-);
 const { ClientEnvironment } = ChromeUtils.import(
   "resource://normandy/lib/ClientEnvironment.jsm"
 );
 const { Heartbeat } = ChromeUtils.import(
   "resource://normandy/lib/Heartbeat.jsm"
 );
-const { Storage } = ChromeUtils.import("resource://normandy/lib/Storage.jsm");
+
 const { Uptake } = ChromeUtils.import("resource://normandy/lib/Uptake.jsm");
 const { NormandyTestUtils } = ChromeUtils.import(
   "resource://testing-common/NormandyTestUtils.jsm"
@@ -43,52 +40,6 @@ function heartbeatRecipeFactory(overrides = {}) {
   }
 
   return recipeFactory(Object.assign(defaults, overrides));
-}
-
-class MockHeartbeat {
-  constructor() {
-    this.eventEmitter = new MockEventEmitter();
-  }
-}
-
-class MockEventEmitter {
-  constructor() {
-    this.once = sinon.stub();
-  }
-}
-
-function withStubbedHeartbeat() {
-  return function(testFunction) {
-    return async function wrappedTestFunction(args) {
-      const heartbeatInstanceStub = new MockHeartbeat();
-      const heartbeatClassStub = sinon.stub();
-      heartbeatClassStub.returns(heartbeatInstanceStub);
-      ShowHeartbeatAction.overrideHeartbeatForTests(heartbeatClassStub);
-
-      try {
-        await testFunction({
-          ...args,
-          heartbeatClassStub,
-          heartbeatInstanceStub,
-        });
-      } finally {
-        ShowHeartbeatAction.overrideHeartbeatForTests();
-      }
-    };
-  };
-}
-
-function withClearStorage() {
-  return function(testFunction) {
-    return async function wrappedTestFunction(args) {
-      Storage.clearAllStorage();
-      try {
-        await testFunction(args);
-      } finally {
-        Storage.clearAllStorage();
-      }
-    };
-  };
 }
 
 // Test that a normal heartbeat works as expected

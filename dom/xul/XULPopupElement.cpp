@@ -7,7 +7,6 @@
 #include "XULMenuParentElement.h"
 #include "nsCOMPtr.h"
 #include "nsIContent.h"
-#include "nsMenuBarListener.h"
 #include "nsNameSpaceManager.h"
 #include "nsGkAtoms.h"
 #include "nsMenuPopupFrame.h"
@@ -106,9 +105,14 @@ void XULPopupElement::OpenPopupAtScreenRect(const nsAString& aPosition,
 
 void XULPopupElement::HidePopup(bool aCancel) {
   nsXULPopupManager* pm = nsXULPopupManager::GetInstance();
-  if (pm) {
-    pm->HidePopup(this, false, true, false, aCancel);
+  if (!pm) {
+    return;
   }
+  HidePopupOptions options{HidePopupOption::DeselectMenu};
+  if (aCancel) {
+    options += HidePopupOption::IsRollup;
+  }
+  pm->HidePopup(this, options);
 }
 
 static Modifiers ConvertModifiers(const ActivateMenuItemOptions& aModifiers) {
@@ -320,8 +324,8 @@ void XULPopupElement::SetConstraintRect(dom::DOMRectReadOnly& aRect) {
 
 bool XULPopupElement::IsWaylandDragSource() const {
 #ifdef MOZ_WAYLAND
-  nsMenuPopupFrame* menuPopupFrame = do_QueryFrame(GetPrimaryFrame());
-  return menuPopupFrame->IsDragSource();
+  nsMenuPopupFrame* f = do_QueryFrame(GetPrimaryFrame());
+  return f && f->IsDragSource();
 #else
   return false;
 #endif

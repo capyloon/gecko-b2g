@@ -20,6 +20,8 @@
 #include "mozilla/OperatorNewExtensions.h"
 #include "mozilla/StaticPrefs_timer.h"
 
+#include "mozilla/glean/GleanMetrics.h"
+
 #include <math.h>
 
 using namespace mozilla;
@@ -314,6 +316,92 @@ void TimerEventAllocator::Free(void* aPtr) {
 
 }  // namespace
 
+struct TimerMarker {
+  static constexpr Span<const char> MarkerTypeName() {
+    return MakeStringSpan("Timer");
+  }
+  static void StreamJSONMarkerData(baseprofiler::SpliceableJSONWriter& aWriter,
+                                   uint32_t aDelay, uint8_t aType,
+                                   MarkerThreadId aThreadId, bool aCanceled) {
+    aWriter.IntProperty("delay", aDelay);
+    if (!aThreadId.IsUnspecified()) {
+      // Tech note: If `ToNumber()` returns a uint64_t, the conversion to
+      // int64_t is "implementation-defined" before C++20. This is
+      // acceptable here, because this is a one-way conversion to a unique
+      // identifier that's used to visually separate data by thread on the
+      // front-end.
+      aWriter.IntProperty(
+          "threadId", static_cast<int64_t>(aThreadId.ThreadId().ToNumber()));
+    }
+    if (aCanceled) {
+      aWriter.BoolProperty("canceled", true);
+      // Show a red 'X' as a prefix on the marker chart for canceled timers.
+      aWriter.StringProperty("prefix", "❌");
+    }
+
+    // The string property for the timer type is not written when the type is
+    // one shot, as that's the type used almost all the time, and that would
+    // consume space in the profiler buffer and then in the profile JSON,
+    // getting in the way of capturing long power profiles.
+    // Bug 1815677 might make this cheap to capture.
+    if (aType != nsITimer::TYPE_ONE_SHOT) {
+      if (aType == nsITimer::TYPE_REPEATING_SLACK) {
+        aWriter.StringProperty("ttype", "repeating slack");
+      } else if (aType == nsITimer::TYPE_REPEATING_PRECISE) {
+        aWriter.StringProperty("ttype", "repeating precise");
+      } else if (aType == nsITimer::TYPE_REPEATING_PRECISE_CAN_SKIP) {
+        aWriter.StringProperty("ttype", "repeating precise can skip");
+      } else if (aType == nsITimer::TYPE_REPEATING_SLACK_LOW_PRIORITY) {
+        aWriter.StringProperty("ttype", "repeating slack low priority");
+      } else if (aType == nsITimer::TYPE_ONE_SHOT_LOW_PRIORITY) {
+        aWriter.StringProperty("ttype", "low priority");
+      }
+    }
+  }
+  static MarkerSchema MarkerTypeDisplay() {
+    using MS = MarkerSchema;
+    MS schema{MS::Location::MarkerChart, MS::Location::MarkerTable};
+    schema.AddKeyLabelFormat("delay", "Delay", MS::Format::Milliseconds);
+    schema.AddKeyLabelFormat("ttype", "Timer Type", MS::Format::String);
+    schema.AddKeyLabelFormat("canceled", "Canceled", MS::Format::String);
+    schema.SetChartLabel("{marker.data.prefix} {marker.data.delay}");
+    schema.SetTableLabel(
+        "{marker.name} - {marker.data.prefix} {marker.data.delay}");
+    return schema;
+  }
+};
+
+struct AddRemoveTimerMarker {
+  static constexpr Span<const char> MarkerTypeName() {
+    return MakeStringSpan("AddRemoveTimer");
+  }
+  static void StreamJSONMarkerData(baseprofiler::SpliceableJSONWriter& aWriter,
+                                   const ProfilerString8View& aTimerName,
+                                   uint32_t aDelay, MarkerThreadId aThreadId) {
+    aWriter.StringProperty("name", aTimerName);
+    aWriter.IntProperty("delay", aDelay);
+    if (!aThreadId.IsUnspecified()) {
+      // Tech note: If `ToNumber()` returns a uint64_t, the conversion to
+      // int64_t is "implementation-defined" before C++20. This is
+      // acceptable here, because this is a one-way conversion to a unique
+      // identifier that's used to visually separate data by thread on the
+      // front-end.
+      aWriter.IntProperty(
+          "threadId", static_cast<int64_t>(aThreadId.ThreadId().ToNumber()));
+    }
+  }
+  static MarkerSchema MarkerTypeDisplay() {
+    using MS = MarkerSchema;
+    MS schema{MS::Location::MarkerChart, MS::Location::MarkerTable};
+    schema.AddKeyLabelFormatSearchable("name", "Name", MS::Format::String,
+                                       MS::Searchable::Searchable);
+    schema.AddKeyLabelFormat("delay", "Delay", MS::Format::Milliseconds);
+    schema.SetTableLabel(
+        "{marker.name} - {marker.data.name} - {marker.data.delay}");
+    return schema;
+  }
+};
+
 void nsTimerEvent::Init() { sAllocator = new TimerEventAllocator(); }
 
 void nsTimerEvent::Shutdown() {
@@ -351,15 +439,31 @@ nsTimerEvent::Run() {
   }
 
   if (profiler_thread_is_being_profiled_for_markers(mTimerThreadId)) {
+    MutexAutoLock lock(mTimer->mMutex);
     nsAutoCString name;
-    mTimer->GetName(name);
-    PROFILER_MARKER_TEXT(
-        "PostTimerEvent", OTHER,
+    mTimer->GetName(name, lock);
+    // This adds a marker with the timer name as the marker name, to make it
+    // obvious which timers are being used. This marker will be useful to
+    // understand which timers might be added and firing excessively often.
+    profiler_add_marker(
+        name, geckoprofiler::category::TIMER,
+        MarkerOptions(MOZ_LIKELY(mInitTime)
+                          ? MarkerTiming::Interval(
+                                mTimer->mTimeout - mTimer->mDelay, mInitTime)
+                          : MarkerTiming::IntervalUntilNowFrom(
+                                mTimer->mTimeout - mTimer->mDelay),
+                      MarkerThreadId(mTimerThreadId)),
+        TimerMarker{}, mTimer->mDelay.ToMilliseconds(), mTimer->mType,
+        MarkerThreadId::CurrentThread(), false);
+    // This marker is meant to help understand the behavior of the timer thread.
+    profiler_add_marker(
+        "PostTimerEvent", geckoprofiler::category::OTHER,
         MarkerOptions(MOZ_LIKELY(mInitTime)
                           ? MarkerTiming::IntervalUntilNowFrom(mInitTime)
                           : MarkerTiming::InstantNow(),
                       MarkerThreadId(mTimerThreadId)),
-        name);
+        AddRemoveTimerMarker{}, name, mTimer->mDelay.ToMilliseconds(),
+        MarkerThreadId::CurrentThread());
   }
 
   mTimer->Fire(mGeneration);
@@ -427,17 +531,19 @@ nsresult TimerThread::Shutdown() {
     // might potentially call some code reentering the same lock
     // that leads to unexpected behavior or deadlock.
     // See bug 422472.
-    for (const UniquePtr<Entry>& entry : mTimers) {
-      timers.AppendElement(entry->Take());
+    timers.SetCapacity(mTimers.Length());
+    for (Entry& entry : mTimers) {
+      if (entry.Value()) {
+        timers.AppendElement(entry.Take());
+      }
     }
 
     mTimers.Clear();
   }
 
   for (const RefPtr<nsTimerImpl>& timer : timers) {
-    if (timer) {
-      timer->Cancel();
-    }
+    MOZ_ASSERT(timer);
+    timer->Cancel();
   }
 
   mThread->Shutdown();  // wait for the thread to die
@@ -463,6 +569,53 @@ struct IntervalComparator {
 };
 
 }  // namespace
+
+#ifdef DEBUG
+void TimerThread::VerifyTimerListConsistency() const {
+  mMonitor.AssertCurrentThreadOwns();
+
+  // Find the first non-canceled timer (and check its cached timeout if we find
+  // it).
+  const size_t timerCount = mTimers.Length();
+  size_t lastNonCanceledTimerIndex = 0;
+  while (lastNonCanceledTimerIndex < timerCount &&
+         !mTimers[lastNonCanceledTimerIndex].Value()) {
+    ++lastNonCanceledTimerIndex;
+  }
+  MOZ_ASSERT(lastNonCanceledTimerIndex == timerCount ||
+             mTimers[lastNonCanceledTimerIndex].Value());
+  MOZ_ASSERT(lastNonCanceledTimerIndex == timerCount ||
+             mTimers[lastNonCanceledTimerIndex].Value()->mTimeout ==
+                 mTimers[lastNonCanceledTimerIndex].Timeout());
+
+  // Verify that mTimers is sorted and the cached timeouts are consistent.
+  for (size_t timerIndex = lastNonCanceledTimerIndex + 1;
+       timerIndex < timerCount; ++timerIndex) {
+    if (mTimers[timerIndex].Value()) {
+      MOZ_ASSERT(mTimers[timerIndex].Timeout() ==
+                 mTimers[timerIndex].Value()->mTimeout);
+      MOZ_ASSERT(mTimers[timerIndex].Timeout() >=
+                 mTimers[lastNonCanceledTimerIndex].Timeout());
+      lastNonCanceledTimerIndex = timerIndex;
+    }
+  }
+}
+#endif
+
+size_t TimerThread::ComputeTimerInsertionIndex(const TimeStamp& timeout) const {
+  mMonitor.AssertCurrentThreadOwns();
+
+  const size_t timerCount = mTimers.Length();
+
+  size_t firstGtIndex = 0;
+  while (firstGtIndex < timerCount &&
+         (!mTimers[firstGtIndex].Value() ||
+          mTimers[firstGtIndex].Timeout() <= timeout)) {
+    ++firstGtIndex;
+  }
+
+  return firstGtIndex;
+}
 
 NS_IMETHODIMP
 TimerThread::Run() {
@@ -490,11 +643,24 @@ TimerThread::Run() {
   mAllowedEarlyFiringMicroseconds = usIntervalResolution / 2;
   bool forceRunNextTimer = false;
 
+  // Queue for tracking of how many timers are fired on each wake-up. We need to
+  // buffer these locally and only send off to glean occasionally to avoid
+  // performance hit.
+  static constexpr size_t kMaxQueuedTimerFired = 128;
+  size_t queuedTimerFiredCount = 0;
+  AutoTArray<uint64_t, kMaxQueuedTimerFired> queuedTimersFiredPerWakeup;
+  queuedTimersFiredPerWakeup.SetLengthAndRetainStorage(kMaxQueuedTimerFired);
+
+  uint64_t timersFiredThisWakeup = 0;
   while (!mShutdown) {
     // Have to use PRIntervalTime here, since PR_WaitCondVar takes it
     TimeDuration waitFor;
     bool forceRunThisTimer = forceRunNextTimer;
     forceRunNextTimer = false;
+
+#ifdef DEBUG
+    VerifyTimerListConsistency();
+#endif
 
     if (mSleeping) {
       // Sleep for 0.1 seconds while not firing timers.
@@ -510,7 +676,7 @@ TimerThread::Run() {
       RemoveLeadingCanceledTimersInternal();
 
       if (!mTimers.IsEmpty()) {
-        if (now >= mTimers[0]->Value()->mTimeout || forceRunThisTimer) {
+        if (now >= mTimers[0].Value()->mTimeout || forceRunThisTimer) {
         next:
           // NB: AddRef before the Release under RemoveTimerInternal to avoid
           // mRefCnt passing through zero, in case all other refs than the one
@@ -518,9 +684,8 @@ TimerThread::Run() {
           // must be racing with us, blocked in gThread->RemoveTimer waiting
           // for TimerThread::mMonitor, under nsTimerImpl::Release.
 
-          RefPtr<nsTimerImpl> timerRef(mTimers[0]->Take());
+          RefPtr<nsTimerImpl> timerRef(mTimers[0].Take());
           RemoveFirstTimerInternal();
-
           MOZ_LOG(GetTimerLog(), LogLevel::Debug,
                   ("Timer thread woke up %fms from when it was supposed to\n",
                    fabs((now - timerRef->mTimeout).ToMilliseconds())));
@@ -529,6 +694,7 @@ TimerThread::Run() {
           // release of the timer so that we don't end up releasing the timer
           // on the TimerThread instead of on the thread it targets.
           {
+            ++timersFiredThisWakeup;
             LogTimerEvent::Run run(timerRef.get());
             PostTimerEvent(timerRef.forget());
           }
@@ -546,7 +712,7 @@ TimerThread::Run() {
       RemoveLeadingCanceledTimersInternal();
 
       if (!mTimers.IsEmpty()) {
-        TimeStamp timeout = mTimers[0]->Value()->mTimeout;
+        TimeStamp timeout = mTimers[0].Value()->mTimeout;
 
         // Don't wait at all (even for PR_INTERVAL_NO_WAIT) if the next timer
         // is due now or overdue.
@@ -591,6 +757,16 @@ TimerThread::Run() {
     mWaiting = true;
     mNotified = false;
     {
+      // About to sleep - let's make note of how many timers we processed and
+      // see if we should send out a new batch of telemetry.
+      queuedTimersFiredPerWakeup[queuedTimerFiredCount] = timersFiredThisWakeup;
+      ++queuedTimerFiredCount;
+      if (queuedTimerFiredCount == kMaxQueuedTimerFired) {
+        glean::timer_thread::timers_fired_per_wakeup.AccumulateSamples(
+            queuedTimersFiredPerWakeup);
+        queuedTimerFiredCount = 0;
+      }
+      timersFiredThisWakeup = 0;
       AUTO_PROFILER_TRACING_MARKER("TimerThread", "Wait", OTHER);
       mMonitor.Wait(waitFor);
     }
@@ -598,6 +774,13 @@ TimerThread::Run() {
       forceRunNextTimer = false;
     }
     mWaiting = false;
+  }
+
+  // About to shut down - let's send out the final batch of timers fired counts.
+  if (queuedTimerFiredCount != 0) {
+    queuedTimersFiredPerWakeup.SetLengthAndRetainStorage(queuedTimerFiredCount);
+    glean::timer_thread::timers_fired_per_wakeup.AccumulateSamples(
+        queuedTimersFiredPerWakeup);
   }
 
   return NS_OK;
@@ -617,57 +800,34 @@ nsresult TimerThread::AddTimer(nsTimerImpl* aTimer,
     return rv;
   }
 
-  // Add the timer to our list.
-  if (!AddTimerInternal(aTimer)) {
-    return NS_ERROR_OUT_OF_MEMORY;
-  }
-
   // Awaken the timer thread if:
-  // - This is the new front timer, which may require the TimerThread to wake up
-  //   earlier than previously planned. AND/OR
+  // - This timer wants to fire *before* the Timer Thread is scheduled to wake
+  //   up. We don't track this directly but we know that we will have attempted
+  //   to wake up at the timeout for the first time in our list (if it exists),
+  //   so we can use that. Note: This is true even if the timer has since been
+  //   canceled.
+  // AND/OR
   // - The delay is 0, which is usually meant to be run as soon as possible.
   //   Note: Even if the thread is scheduled to wake up now/soon, on some
   //   systems there could be a significant delay compared to notifying, which
   //   is almost immediate; and some users of 0-delay depend on it being this
   //   fast!
-  if (mWaiting && (mTimers[0]->Value() == aTimer || aTimer->mDelay.IsZero())) {
+  const bool wakeUpTimerThread =
+      mWaiting &&
+      (mTimers.Length() == 0 || aTimer->mTimeout < mTimers[0].Timeout() ||
+       aTimer->mDelay.IsZero());
+
+  // Add the timer to our list.
+  if (!AddTimerInternal(aTimer)) {
+    return NS_ERROR_OUT_OF_MEMORY;
+  }
+
+  if (wakeUpTimerThread) {
     mNotified = true;
     mMonitor.Notify();
   }
 
   if (profiler_thread_is_being_profiled_for_markers(mProfilerThreadId)) {
-    struct TimerMarker {
-      static constexpr Span<const char> MarkerTypeName() {
-        return MakeStringSpan("Timer");
-      }
-      static void StreamJSONMarkerData(
-          baseprofiler::SpliceableJSONWriter& aWriter,
-          const ProfilerString8View& aTimerName, uint32_t aDelay,
-          MarkerThreadId aThreadId) {
-        aWriter.StringProperty("name", aTimerName);
-        aWriter.IntProperty("delay", aDelay);
-        if (!aThreadId.IsUnspecified()) {
-          // Tech note: If `ToNumber()` returns a uint64_t, the conversion to
-          // int64_t is "implementation-defined" before C++20. This is
-          // acceptable here, because this is a one-way conversion to a unique
-          // identifier that's used to visually separate data by thread on the
-          // front-end.
-          aWriter.IntProperty("threadId", static_cast<int64_t>(
-                                              aThreadId.ThreadId().ToNumber()));
-        }
-      }
-      static MarkerSchema MarkerTypeDisplay() {
-        using MS = MarkerSchema;
-        MS schema{MS::Location::MarkerChart, MS::Location::MarkerTable};
-        schema.AddKeyLabelFormatSearchable("name", "Name", MS::Format::String,
-                                           MS::Searchable::Searchable);
-        schema.AddKeyLabelFormat("delay", "Delay", MS::Format::Milliseconds);
-        schema.SetTableLabel(
-            "{marker.name} - {marker.data.name} - {marker.data.delay}");
-        return schema;
-      }
-    };
-
     nsAutoCString name;
     aTimer->GetName(name, aProofOfLock);
 
@@ -676,8 +836,9 @@ nsresult TimerThread::AddTimer(nsTimerImpl* aTimer,
         "AddTimer", geckoprofiler::category::OTHER,
         MarkerOptions(MarkerThreadId(mProfilerThreadId),
                       MarkerStack::MaybeCapture(
+                          name.Equals("nonfunction:JS") ||
                           StringHead(name, prefix.Length()) == prefix)),
-        TimerMarker{}, name, aTimer->mDelay.ToMilliseconds(),
+        AddRemoveTimerMarker{}, name, aTimer->mDelay.ToMilliseconds(),
         MarkerThreadId::CurrentThread());
   }
 
@@ -710,12 +871,24 @@ nsresult TimerThread::RemoveTimer(nsTimerImpl* aTimer,
     aTimer->GetName(name, aProofOfLock);
 
     nsLiteralCString prefix("Anonymous_");
-    PROFILER_MARKER_TEXT(
-        "RemoveTimer", OTHER,
+    // This marker is meant to help understand the behavior of the timer thread.
+    profiler_add_marker(
+        "RemoveTimer", geckoprofiler::category::OTHER,
         MarkerOptions(MarkerThreadId(mProfilerThreadId),
                       MarkerStack::MaybeCapture(
+                          name.Equals("nonfunction:JS") ||
                           StringHead(name, prefix.Length()) == prefix)),
-        name);
+        AddRemoveTimerMarker{}, name, aTimer->mDelay.ToMilliseconds(),
+        MarkerThreadId::CurrentThread());
+    // This adds a marker with the timer name as the marker name, to make it
+    // obvious which timers are being used. This marker will be useful to
+    // understand which timers might be added and removed excessively often.
+    profiler_add_marker(name, geckoprofiler::category::TIMER,
+                        MarkerOptions(MarkerTiming::IntervalUntilNowFrom(
+                                          aTimer->mTimeout - aTimer->mDelay),
+                                      MarkerThreadId(mProfilerThreadId)),
+                        TimerMarker{}, aTimer->mDelay.ToMilliseconds(),
+                        aTimer->mType, MarkerThreadId::CurrentThread(), true);
   }
 
   return NS_OK;
@@ -725,25 +898,12 @@ TimeStamp TimerThread::FindNextFireTimeForCurrentThread(TimeStamp aDefault,
                                                         uint32_t aSearchBound) {
   MonitorAutoLock lock(mMonitor);
   AUTO_TIMERS_STATS(TimerThread_FindNextFireTimeForCurrentThread);
-  TimeStamp timeStamp = aDefault;
-  uint32_t index = 0;
 
-#ifdef DEBUG
-  TimeStamp firstTimeStamp;
-  Entry* initialFirstEntry = nullptr;
-  if (!mTimers.IsEmpty()) {
-    initialFirstEntry = mTimers[0].get();
-    firstTimeStamp = mTimers[0]->Timeout();
-  }
-#endif
-
-  auto end = mTimers.end();
-  while (end != mTimers.begin()) {
-    nsTimerImpl* timer = mTimers[0]->Value();
+  for (const Entry& entry : mTimers) {
+    const nsTimerImpl* timer = entry.Value();
     if (timer) {
-      if (timer->mTimeout > aDefault) {
-        timeStamp = aDefault;
-        break;
+      if (entry.Timeout() > aDefault) {
+        return aDefault;
       }
 
       // Don't yield to timers created with the *_LOW_PRIORITY type.
@@ -752,47 +912,24 @@ TimeStamp TimerThread::FindNextFireTimeForCurrentThread(TimeStamp aDefault,
         nsresult rv =
             timer->mEventTarget->IsOnCurrentThread(&isOnCurrentThread);
         if (NS_SUCCEEDED(rv) && isOnCurrentThread) {
-          timeStamp = timer->mTimeout;
-          break;
+          return entry.Timeout();
         }
       }
 
-      if (++index > aSearchBound) {
-        // Track the currently highest timeout so that we can bail out when we
-        // reach the bound or when we find a timer for the current thread.
+      if (aSearchBound == 0) {
+        // Return the currently highest timeout when we reach the bound.
         // This won't give accurate information if we stop before finding
         // any timer for the current thread, but at least won't report too
         // long idle period.
-        timeStamp = timer->mTimeout;
-        break;
+        return timer->mTimeout;
       }
-    }
 
-    std::pop_heap(mTimers.begin(), end, Entry::UniquePtrLessThan);
-    --end;
-  }
-
-  while (end != mTimers.end()) {
-    ++end;
-    std::push_heap(mTimers.begin(), end, Entry::UniquePtrLessThan);
-  }
-
-#ifdef DEBUG
-  if (!mTimers.IsEmpty()) {
-    if (firstTimeStamp != mTimers[0]->Timeout()) {
-      TimeStamp now = TimeStamp::Now();
-      printf_stderr(
-          "firstTimeStamp %f, mTimers[0]->Timeout() %f, "
-          "initialFirstTimer %p, current first %p\n",
-          (firstTimeStamp - now).ToMilliseconds(),
-          (mTimers[0]->Timeout() - now).ToMilliseconds(), initialFirstEntry,
-          mTimers[0].get());
+      --aSearchBound;
     }
   }
-  MOZ_ASSERT_IF(!mTimers.IsEmpty(), firstTimeStamp == mTimers[0]->Timeout());
-#endif
 
-  return timeStamp;
+  // No timers for this thread, return the default.
+  return aDefault;
 }
 
 // This function must be called from within a lock
@@ -805,18 +942,75 @@ bool TimerThread::AddTimerInternal(nsTimerImpl* aTimer) {
     return false;
   }
 
-  TimeStamp now = TimeStamp::Now();
-
   LogTimerEvent::LogDispatch(aTimer);
 
-  UniquePtr<Entry>* entry = mTimers.AppendElement(
-      MakeUnique<Entry>(now, aTimer->mTimeout, aTimer), mozilla::fallible);
-  if (!entry) {
-    return false;
+  const TimeStamp& timeout = aTimer->mTimeout;
+  const size_t insertionIndex = ComputeTimerInsertionIndex(timeout);
+
+  if (insertionIndex != 0 && !mTimers[insertionIndex - 1].Value()) {
+    // Very common scenario in practice: The timer just before the insertion
+    // point is canceled, overwrite it.
+    AUTO_TIMERS_STATS(TimerThread_AddTimerInternal_overwrite_before);
+    mTimers[insertionIndex - 1] = Entry{aTimer};
+    return true;
   }
 
-  std::push_heap(mTimers.begin(), mTimers.end(), Entry::UniquePtrLessThan);
+  const size_t length = mTimers.Length();
+  if (insertionIndex == length) {
+    // We're at the end (including it's the very first insertion), add new timer
+    // at the end.
+    AUTO_TIMERS_STATS(TimerThread_AddTimerInternal_append);
+    return mTimers.AppendElement(Entry{aTimer}, mozilla::fallible);
+  }
 
+  if (!mTimers[insertionIndex].Value()) {
+    // The timer at the insertion point is canceled, overwrite it.
+    AUTO_TIMERS_STATS(TimerThread_AddTimerInternal_overwrite);
+    mTimers[insertionIndex] = Entry{aTimer};
+    return true;
+  }
+
+  // The new timer has to be inserted.
+  AUTO_TIMERS_STATS(TimerThread_AddTimerInternal_insert);
+  // The capacity should be checked first, because if it needs to be increased
+  // and the memory allocation fails, only the new timer should be lost.
+  if (length == mTimers.Capacity() && mTimers[length - 1].Value()) {
+    // We have reached capacity, and the last entry is not canceled, so we
+    // really want to increase the capacity in case the extra slot is required.
+    // To force-expand the array, append a canceled-timer entry with a timestamp
+    // far in the future.
+    // This empty Entry may be used below to receive the moved-from previous
+    // entry. If not, it may be used in a later call if we need to append a new
+    // timer at the end.
+    AUTO_TIMERS_STATS(TimerThread_AddTimerInternal_insert_expand);
+    if (!mTimers.AppendElement(
+            Entry{mTimers[length - 1].Timeout() +
+                  TimeDuration::FromSeconds(365.0 * 24.0 * 60.0 * 60.0)},
+            mozilla::fallible)) {
+      return false;
+    }
+  }
+
+  // Extract the timer at the insertion point, and put the new timer in its
+  // place.
+  Entry extractedEntry = std::exchange(mTimers[insertionIndex], Entry{aTimer});
+  // Following entries can be pushed until we hit a canceled timer or the end.
+  for (size_t i = insertionIndex + 1; i < length; ++i) {
+    Entry& entryRef = mTimers[i];
+    if (!entryRef.Value()) {
+      // Canceled entry, overwrite it with the extracted entry from before.
+      COUNT_TIMERS_STATS(TimerThread_AddTimerInternal_insert_overwrite);
+      entryRef = std::move(extractedEntry);
+      return true;
+    }
+    // Write extracted entry from before, and extract current entry.
+    COUNT_TIMERS_STATS(TimerThread_AddTimerInternal_insert_shifts);
+    std::swap(entryRef, extractedEntry);
+  }
+  // We've reached the end of the list, with still one extracted entry to
+  // re-insert. We've checked the capacity above, this cannot fail.
+  COUNT_TIMERS_STATS(TimerThread_AddTimerInternal_insert_append);
+  mTimers.AppendElement(std::move(extractedEntry));
   return true;
 }
 
@@ -830,45 +1024,38 @@ bool TimerThread::RemoveTimerInternal(nsTimerImpl* aTimer) {
     COUNT_TIMERS_STATS(TimerThread_RemoveTimerInternal_nullptr);
     return false;
   }
-  if (!aTimer->mHolder) {
+  if (!aTimer->IsInTimerThread()) {
     COUNT_TIMERS_STATS(TimerThread_RemoveTimerInternal_not_in_list);
     return false;
   }
   AUTO_TIMERS_STATS(TimerThread_RemoveTimerInternal_in_list);
-  aTimer->mHolder->Forget(aTimer);
-  return true;
+  for (auto& entry : mTimers) {
+    if (entry.Value() == aTimer) {
+      entry.Forget();
+      return true;
+    }
+  }
+  MOZ_ASSERT(!aTimer->IsInTimerThread(),
+             "Not found in the list but it should be!?");
+  return false;
 }
 
 void TimerThread::RemoveLeadingCanceledTimersInternal() {
   mMonitor.AssertCurrentThreadOwns();
   AUTO_TIMERS_STATS(TimerThread_RemoveLeadingCanceledTimersInternal);
 
-  // Move all canceled timers from the front of the list to
-  // the back of the list using std::pop_heap().  We do this
-  // without actually removing them from the list so we can
-  // modify the nsTArray in a single bulk operation.
-  auto sortedEnd = mTimers.end();
-  while (sortedEnd != mTimers.begin() && !mTimers[0]->Value()) {
-    std::pop_heap(mTimers.begin(), sortedEnd, Entry::UniquePtrLessThan);
-    --sortedEnd;
+  size_t toRemove = 0;
+  while (toRemove < mTimers.Length() && !mTimers[toRemove].Value()) {
+    ++toRemove;
   }
-
-  // If there were no canceled timers then we are done.
-  if (sortedEnd == mTimers.end()) {
-    return;
-  }
-
-  // Finally, remove the canceled timers from the back of the
-  // nsTArray.
-  mTimers.RemoveLastElements(mTimers.end() - sortedEnd);
+  mTimers.RemoveElementsAt(0, toRemove);
 }
 
 void TimerThread::RemoveFirstTimerInternal() {
   mMonitor.AssertCurrentThreadOwns();
   AUTO_TIMERS_STATS(TimerThread_RemoveFirstTimerInternal);
   MOZ_ASSERT(!mTimers.IsEmpty());
-  std::pop_heap(mTimers.begin(), mTimers.end(), Entry::UniquePtrLessThan);
-  mTimers.RemoveLastElement();
+  mTimers.RemoveElementAt(0);
 }
 
 void TimerThread::PostTimerEvent(already_AddRefed<nsTimerImpl> aTimerRef) {

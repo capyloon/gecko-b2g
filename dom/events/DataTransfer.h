@@ -255,7 +255,7 @@ class DataTransfer final : public nsISupports, public nsWrapperCache {
 
   already_AddRefed<nsINode> GetMozSourceNode();
 
-  already_AddRefed<WindowContext> GetSourceWindowContext();
+  already_AddRefed<WindowContext> GetSourceTopWindowContext();
 
   /*
    * Integer version of dropEffect, set to one of the constants in
@@ -365,7 +365,7 @@ class DataTransfer final : public nsISupports, public nsWrapperCache {
                  DataTransfer** aResult);
 
   // converts some formats used for compatibility in aInFormat into aOutFormat.
-  // Text and text/unicode become text/plain, and URL becomes text/uri-list
+  // Text becomes text/plain, and URL becomes text/uri-list
   void GetRealFormat(const nsAString& aInFormat, nsAString& aOutFormat) const;
 
   static bool PrincipalMaySetData(const nsAString& aFormat, nsIVariant* aData,

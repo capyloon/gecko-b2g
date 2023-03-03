@@ -325,6 +325,10 @@ const PermissionsTable = {
     pwa: DENY_ACTION,
     signed: ALLOW_ACTION,
   },
+  "themeable": {
+    pwa: DENY_ACTION,
+    signed: ALLOW_ACTION,
+  },
   "tcp-socket": {
     pwa: DENY_ACTION,
     signed: ALLOW_ACTION,

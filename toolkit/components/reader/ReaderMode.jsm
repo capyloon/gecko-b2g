@@ -143,7 +143,7 @@ var ReaderMode = {
         win.document.nodePrincipal.originAttributes
       );
     } catch (e) {
-      Cu.reportError(e);
+      console.error(e);
       return;
     }
     let loadFlags = webNav.LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL;
@@ -162,7 +162,7 @@ var ReaderMode = {
       ),
     };
     // This could possibly move to the parent. See bug 1664982.
-    webNav.loadURI(originalURL, loadURIOptions);
+    webNav.fixupAndLoadURIString(originalURL, loadURIOptions);
   },
 
   /**
@@ -278,7 +278,7 @@ var ReaderMode = {
         return null;
       }
     } catch (ex) {
-      Cu.reportError(
+      console.error(
         new Error(`Couldn't create URI from ${url} to download: ${ex}`)
       );
       return null;
@@ -422,7 +422,7 @@ var ReaderMode = {
         options,
       ]);
     } catch (e) {
-      Cu.reportError("Error in ReaderWorker: " + e);
+      console.error("Error in ReaderWorker: ", e);
       histogram.add(PARSE_ERROR_WORKER);
     }
 

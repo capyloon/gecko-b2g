@@ -67,7 +67,7 @@ const kSubviewEvents = ["ViewShowing", "ViewHiding"];
  * The current version. We can use this to auto-add new default widgets as necessary.
  * (would be const but isn't because of testing purposes)
  */
-var kVersion = 18;
+var kVersion = 19;
 
 /**
  * Buttons removed from built-ins by version they were removed. kVersion must be
@@ -223,7 +223,6 @@ var CustomizableUIInternal = {
     this.loadSavedState();
     this._updateForNewVersion();
     this._updateForNewProtonVersion();
-    this._updateForUnifiedExtensions();
     this._markObsoleteBuiltinButtonsSeen();
 
     this.registerArea(
@@ -632,6 +631,46 @@ var CustomizableUIInternal = {
         tabstripPlacements.unshift("firefox-view-button");
       }
     }
+
+    // Unified Extensions addon button migration, which puts any browser action
+    // buttons in the overflow menu into the addons panel instead.
+    if (currentVersion < 19) {
+      let overflowPlacements =
+        gSavedState.placements[CustomizableUI.AREA_FIXED_OVERFLOW_PANEL] || [];
+      // The most likely case is that there are no AREA_ADDONS placements, in which case the
+      // array won't exist.
+      let addonsPlacements =
+        gSavedState.placements[CustomizableUI.AREA_ADDONS] || [];
+
+      // Migration algorithm for transitioning to Unified Extensions:
+      //
+      // 1. Create two arrays, one for extension widgets, one for built-in widgets.
+      // 2. Iterate all items in the overflow panel, and push them into the
+      //    appropriate array based on whether or not its an extension widget.
+      // 3. Overwrite the overflow panel placements with the built-in widgets array.
+      // 4. Prepend the extension widgets to the addonsPlacements array. Note that this
+      //    does not overwrite this array as a precaution because it's possible
+      //    (though pretty unlikely) that some widgets are already there.
+      //
+      // For extension widgets that were in the palette, they will be appended to the
+      // addons area when they're created within createWidget.
+      let extWidgets = [];
+      let builtInWidgets = [];
+      for (let widgetId of overflowPlacements) {
+        if (CustomizableUI.isWebExtensionWidget(widgetId)) {
+          extWidgets.push(widgetId);
+        } else {
+          builtInWidgets.push(widgetId);
+        }
+      }
+      gSavedState.placements[
+        CustomizableUI.AREA_FIXED_OVERFLOW_PANEL
+      ] = builtInWidgets;
+      gSavedState.placements[CustomizableUI.AREA_ADDONS] = [
+        ...extWidgets,
+        ...addonsPlacements,
+      ];
+    }
   },
 
   _updateForNewProtonVersion() {
@@ -686,48 +725,6 @@ var CustomizableUIInternal = {
     }
 
     Services.prefs.setIntPref(kPrefProtonToolbarVersion, VERSION);
-  },
-
-  _updateForUnifiedExtensions() {
-    if (!gSavedState?.placements) {
-      return;
-    }
-
-    let overflowPlacements =
-      gSavedState.placements[CustomizableUI.AREA_FIXED_OVERFLOW_PANEL] || [];
-    // The most likely case is that there are no AREA_ADDONS placements, in which case the
-    // array won't exist.
-    let addonsPlacements =
-      gSavedState.placements[CustomizableUI.AREA_ADDONS] || [];
-
-    // Migration algorithm for transitioning to Unified Extensions:
-    //
-    // 1. Create two arrays, one for extension widgets, one for built-in widgets.
-    // 2. Iterate all items in the overflow panel, and push them into the
-    //    appropriate array based on whether or not its an extension widget.
-    // 3. Overwrite the overflow panel placements with the built-in widgets array.
-    // 4. Prepend the extension widgets to the addonsPlacements array. Note that this
-    //    does not overwrite this array as a precaution because it's possible
-    //    (though pretty unlikely) that some widgets are already there.
-    //
-    // For extension widgets that were in the palette, they will be appended to the
-    // addons area when they're created within createWidget.
-    let extWidgets = [];
-    let builtInWidgets = [];
-    for (let widgetId of overflowPlacements) {
-      if (CustomizableUI.isWebExtensionWidget(widgetId)) {
-        extWidgets.push(widgetId);
-      } else {
-        builtInWidgets.push(widgetId);
-      }
-    }
-    gSavedState.placements[
-      CustomizableUI.AREA_FIXED_OVERFLOW_PANEL
-    ] = builtInWidgets;
-    gSavedState.placements[CustomizableUI.AREA_ADDONS] = [
-      ...extWidgets,
-      ...addonsPlacements,
-    ];
   },
 
   /**
@@ -1204,12 +1201,14 @@ var CustomizableUIInternal = {
                   widget.currentArea = null;
                 }
               }
-              if (palette && !this.isSpecialWidget(node.id)) {
-                palette.appendChild(node);
-                this.removeLocationAttributes(node);
-              } else {
-                container.removeChild(node);
-              }
+              this.notifyDOMChange(node, null, container, true, () => {
+                if (palette && !this.isSpecialWidget(node.id)) {
+                  palette.appendChild(node);
+                  this.removeLocationAttributes(node);
+                } else {
+                  container.removeChild(node);
+                }
+              });
             } else {
               node.setAttribute("removable", false);
               lazy.log.debug(
@@ -1419,31 +1418,18 @@ var CustomizableUIInternal = {
         continue;
       }
 
-      this.notifyListeners(
-        "onWidgetBeforeDOMChange",
-        widgetNode,
-        null,
-        container,
-        true
-      );
-
-      // We remove location attributes here to make sure they're gone too when a
-      // widget is removed from a toolbar to the palette. See bug 930950.
-      this.removeLocationAttributes(widgetNode);
-      // We also need to remove the panel context menu if it's there:
-      this.ensureButtonContextMenu(widgetNode);
-      if (gPalette.has(aWidgetId) || this.isSpecialWidget(aWidgetId)) {
-        container.removeChild(widgetNode);
-      } else {
-        window.gNavToolbox.palette.appendChild(widgetNode);
-      }
-      this.notifyListeners(
-        "onWidgetAfterDOMChange",
-        widgetNode,
-        null,
-        container,
-        true
-      );
+      this.notifyDOMChange(widgetNode, null, container, true, () => {
+        // We remove location attributes here to make sure they're gone too when a
+        // widget is removed from a toolbar to the palette. See bug 930950.
+        this.removeLocationAttributes(widgetNode);
+        // We also need to remove the panel context menu if it's there:
+        this.ensureButtonContextMenu(widgetNode);
+        if (gPalette.has(aWidgetId) || this.isSpecialWidget(aWidgetId)) {
+          container.removeChild(widgetNode);
+        } else {
+          window.gNavToolbox.palette.appendChild(widgetNode);
+        }
+      });
 
       let windowCache = gSingleWrapperCache.get(window);
       if (windowCache) {
@@ -1663,19 +1649,27 @@ var CustomizableUIInternal = {
   },
 
   insertWidgetBefore(aNode, aNextNode, aContainer, aArea) {
+    this.notifyDOMChange(aNode, aNextNode, aContainer, false, () => {
+      this.setLocationAttributes(aNode, aArea);
+      aContainer.insertBefore(aNode, aNextNode);
+    });
+  },
+
+  notifyDOMChange(aNode, aNextNode, aContainer, aIsRemove, aCallback) {
     this.notifyListeners(
       "onWidgetBeforeDOMChange",
       aNode,
       aNextNode,
-      aContainer
+      aContainer,
+      aIsRemove
     );
-    this.setLocationAttributes(aNode, aArea);
-    aContainer.insertBefore(aNode, aNextNode);
+    aCallback();
     this.notifyListeners(
       "onWidgetAfterDOMChange",
       aNode,
       aNextNode,
-      aContainer
+      aContainer,
+      aIsRemove
     );
   },
 
@@ -2214,7 +2208,7 @@ var CustomizableUIInternal = {
       try {
         aWidget.onClick.call(null, aEvent);
       } catch (e) {
-        Cu.reportError(e);
+        console.error(e);
       }
     } else {
       // XXXunf Need to think this through more, and formalize.
@@ -2951,7 +2945,7 @@ var CustomizableUIInternal = {
           }
         },
         err => {
-          Cu.reportError(err);
+          console.error(err);
         }
       );
     }
@@ -3125,7 +3119,7 @@ var CustomizableUIInternal = {
           aArgs
         );
       } catch (e) {
-        Cu.reportError(e);
+        console.error(e);
         return undefined;
       }
     };
@@ -3680,6 +3674,24 @@ var CustomizableUIInternal = {
     }
 
     return true;
+  },
+
+  getCollapsedToolbarIds(window) {
+    let collapsedToolbars = new Set();
+    for (let toolbarId of CustomizableUIInternal._builtinToolbars) {
+      let toolbar = window.document.getElementById(toolbarId);
+
+      // Menubar toolbars are special in that they're hidden with the autohide
+      // attribute.
+      let hidingAttribute =
+        toolbar.getAttribute("type") == "menubar" ? "autohide" : "collapsed";
+
+      if (toolbar.getAttribute(hidingAttribute) == "true") {
+        collapsedToolbars.add(toolbarId);
+      }
+    }
+
+    return collapsedToolbars;
   },
 
   setToolbarVisibility(aToolbarId, aIsVisible) {
@@ -4529,6 +4541,19 @@ var CustomizableUI = {
    */
   setToolbarVisibility(aToolbarId, aIsVisible) {
     CustomizableUIInternal.setToolbarVisibility(aToolbarId, aIsVisible);
+  },
+
+  /**
+   * Returns a Set with the IDs of any registered toolbar areas that are
+   * currently collapsed in a particular window. Menubars that are set to
+   * autohide and are in the temporary "open" state are still considered
+   * collapsed by default.
+   *
+   * @param {Window} window The browser window to check for collapsed toolbars.
+   * @return {Set<string>}
+   */
+  getCollapsedToolbarIds(window) {
+    return CustomizableUIInternal.getCollapsedToolbarIds(window);
   },
 
   /**

@@ -258,11 +258,6 @@ aboutwelcome:
     transitions:
       type: boolean
       description: Enable transition effect between screens
-    templateMR:
-      type: boolean
-      fallbackPref: browser.aboutwelcome.templateMR
-      description: >-
-        Should users see the MR 50-50 split template?
     showModal:
       type: boolean
       fallbackPref: browser.aboutwelcome.showModal
@@ -633,8 +628,88 @@ spotlight:
     path: "browser/components/newtab/content-src/asrouter/schemas/MessagingExperiment.schema.json"
   variables: {}
 
+# More info about the fx-message-* feature id prototype is available at:
+# https://docs.google.com/document/d/1KdtaNycZL5j240nXofbibm9yKh7qVvu1-uZFLdmYM7Y/
+#
+# Before each Nightly leaves the station for Beta, we're currently
+# experimenting with ensuring that we have enough fx-messages-* messages to
+# accomodate all the rollout possibilities for Release that we're aware of,
+# plus one for a buffer just-in-case.
+#
+# When adding an fxms-message-* feature id, be sure to also add it to the
+# MESSAGING_EXPERIMENTS_DEFAULT_FEATURES list in ASRouter.
+
+# currently in use by 107+ exp/rollout pair of Import Bookmarks Infrequent
+# Existing Users with 5 bookmarks:
+# https://experimenter.services.mozilla.com/nimbus/import-infrequent-rollout-make-yourself-at-home/summary
 fxms-message-1:
   description: "A Firefox Messaging System message"
+  owner: omc@mozilla.com
+  hasExposure: true
+  exposureDescription: >-
+    "Exposure is sent if the message is about to be shown after trigger and targeting conditions on the message matched."
+  isEarlyStartup: false
+  schema:
+    uri: "resource://activity-stream/schemas/MessagingExperiment.schema.json"
+    path: "browser/components/newtab/content-src/asrouter/schemas/MessagingExperiment.schema.json"
+  variables: {}
+
+# next planned use: 110+ exp/rollout pair of Fox Doodle: Pin experiment winner
+# (Existing Users)
+# More info about the fx-message-* feature id prototype is available at:
+# https://docs.google.com/document/d/1KdtaNycZL5j240nXofbibm9yKh7qVvu1-uZFLdmYM7Y/
+fxms-message-2:
+  description: "Firefox Messaging System message 2"
+  owner: omc@mozilla.com
+  hasExposure: true
+  exposureDescription: >-
+    "Exposure is sent if the message is about to be shown after trigger and targeting conditions on the message matched."
+  isEarlyStartup: false
+  schema:
+    uri: "resource://activity-stream/schemas/MessagingExperiment.schema.json"
+    path: "browser/components/newtab/content-src/asrouter/schemas/MessagingExperiment.schema.json"
+  variables: {}
+
+# next planned use: 110+ exp/rollout pair of Fox Doodle: Set Default (Existing
+# Users)
+# More info about the fx-message-* feature id prototype is available at:
+# https://docs.google.com/document/d/1KdtaNycZL5j240nXofbibm9yKh7qVvu1-uZFLdmYM7Y/
+fxms-message-3:
+  description: "Firefox Messaging System message 3"
+  owner: omc@mozilla.com
+  hasExposure: true
+  exposureDescription: >-
+    "Exposure is sent if the message is about to be shown after trigger and targeting conditions on the message matched."
+  isEarlyStartup: false
+  schema:
+    uri: "resource://activity-stream/schemas/MessagingExperiment.schema.json"
+    path: "browser/components/newtab/content-src/asrouter/schemas/MessagingExperiment.schema.json"
+  variables: {}
+
+# next potential planned use: 111+ exp/rollout pair for PDF annotations callout
+# (https://mozilla-hub.atlassian.net/browse/FXE-83) experiment.
+#
+# More info about the fx-message-* feature id prototype is available at:
+# https://docs.google.com/document/d/1KdtaNycZL5j240nXofbibm9yKh7qVvu1-uZFLdmYM7Y/
+fxms-message-4:
+  description: "Firefox Messaging System message 4"
+  owner: omc@mozilla.com
+  hasExposure: true
+  exposureDescription: >-
+    "Exposure is sent if the message is about to be shown after trigger and targeting conditions on the message matched."
+  isEarlyStartup: false
+  schema:
+    uri: "resource://activity-stream/schemas/MessagingExperiment.schema.json"
+    path: "browser/components/newtab/content-src/asrouter/schemas/MessagingExperiment.schema.json"
+  variables: {}
+
+# next planned use: buffer, just in case we need to rollout something we're
+# we're not expecting
+
+# More info about the fx-message-* feature id prototype is available at:
+# https://docs.google.com/document/d/1KdtaNycZL5j240nXofbibm9yKh7qVvu1-uZFLdmYM7Y/
+fxms-message-5:
+  description: "Firefox Messaging System message 5"
   owner: omc@mozilla.com
   hasExposure: true
   exposureDescription: >-
@@ -711,6 +786,10 @@ glean:
       type: "boolean"
       fallbackPref: "browser.newtabpage.ping.enabled"
       description: "Whether to submit the 'newtab' ping"
+    metricsDisabled:
+      type: json
+      description: >-
+        "A map of metric base-identifiers to booleans representing the state of the 'disabled' flag for that metric"
 
 majorRelease2022:
   description: Major Release 2022
@@ -758,14 +837,9 @@ featureCallout:
   isEarlyStartup: false
   variables:
     pdfJsTourProgress:
-      description: A JSON blob capturing a user's progress in the PDF.js feature tour
+      description: A JSON String representing the intitial state of the pref that holds the progress of the PDF.js feature tour.
       type: string
       setPref: "browser.pdfjs.feature-tour"
-    firefoxViewTourProgress:
-      description: A JSON blob capturing a user's progress in the Firefox View feature tour
-      type: string
-      setPref: "browser.firefox-view.feature-tour"
-
 browserLowMemoryPrefs:
   description: Prefs which control the browser's behaviour under low memory.
   owner: haftandilian@mozilla.com
@@ -799,17 +873,41 @@ scriptLoaderPrefs:
 
 echPrefs:
   description: Prefs that control Encrypted Client Hello.
-  owner: kershaw@mozilla.com
+  owner: djackson@mozilla.com
   hasExposure: false
   variables:
-    configEnabled:
-      description: Whether to enable encrypted client hello.
+    tlsEnabled:
+      description: Whether to enable ECH for connections using TLS
       type: boolean
       setPref: "network.dns.echconfig.enabled"
-    greaseProbability:
+    h3Enabled:
+      description: Whether to enable ECH for connections using H3/QUIC
+      type: boolean
+      setPref: "network.dns.http3_echconfig.enabled"
+    forceWaitHttpsRR:
+      description: Whether to force waiting for HTTPS DNS records, which ECH requires.
+      type: boolean
+      setPref: "network.dns.force_waiting_https_rr"
+    insecureFallback:
+      description: Whether to fallback to non-ECH connections if all ECH RRs fail.
+      type: boolean
+      setPref: "network.dns.echconfig.fallback_to_origin_when_all_failed"
+    tlsGreaseProb:
       description: Probability of GREASEing a TLS connection with ECH (0-100).
       type: int
       setPref: "security.tls.ech.grease_probability"
+    h3GreaseEnabled:
+      description: Whether to apply GREASE settings to H3/QUIC connections.
+      type: boolean
+      setPref: "security.tls.ech.grease_http3"
+    disableGreaseOnFallback:
+      description: Whether to disable GREASE when retrying a connection.
+      type: boolean
+      setPref: "security.tls.ech.disable_grease_on_fallback"
+    greasePaddingSize:
+      description: Assumed echConfig padding length for GREASE extensions (1-255).
+      type: int
+      setPref: "security.tls.ech.grease_size"
 
 pingsender:
   description: "In-product usage of the pingsender telemetry reporter."
@@ -845,3 +943,50 @@ etpLevel2PBMPref:
       description: Whether to enable ETP level 2 list in the private browsing mode.
       type: boolean
       setPref: "privacy.annotate_channels.strict_list.pbmode.enabled"
+
+cookieBannerHandling:
+  description: Prefs to control Cookie Banner Handling
+  owner: dwalker@mozilla.com
+  hasExposure: false
+  isEarlyStartup: true
+  variables:
+    desktopCfrVariant:
+      type: int
+      description: Which variant of the doorhanger the user should receive. 0=unenrolled; 1=control; 2=A; 3=B
+    retargetingDelayInDays:
+      type: int
+      description: How many days to wait before attempting to show the doorhanger a second time.
+
+accessibilityCache:
+  description: Caches all accessibility information from all documents in the Firefox main process.
+  owner: jteh@mozilla.com
+  hasExposure: false
+  isEarlyStartup: true
+  variables:
+    enabled:
+      description: Whether to enable the accessibility cache.
+      type: boolean
+      setPref: accessibility.cache.enabled
+
+fxaButtonVisibility:
+  description: Prefs to control the visibility of the Firefox Accounts toolbar button when not signed in.
+  owner: mconley@mozilla.com
+  hasExposure: false
+  isEarlyStartup: true
+  variables:
+    boolean:
+      description: True if the Firefox Accounts toolbar button should be visible when not signed in.
+      type: boolean
+      setPref: identity.fxaccounts.toolbar.defaultVisible
+
+legacyHeartbeat:
+  description: Normandy Heartbeat exposed to Nimbus
+  owner: barret@mozilla.com
+  hasExposure: false
+  schema:
+    uri: "resource://normandy/schemas/LegacyHeartbeat.schema.json"
+    path: "toolkit/components/normandy/schemas/LegacyHeartbeat.schema.json"
+  variables:
+    survey:
+      type: json
+      description: The Heartbeat survey parameters.

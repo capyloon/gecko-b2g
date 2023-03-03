@@ -464,6 +464,11 @@ using RootedValVector = Rooted<ValVector>;
 using HandleValVector = Handle<ValVector>;
 using MutableHandleValVector = MutableHandle<ValVector>;
 
+template <int N>
+using ValVectorN = GCVector<Val, N, SystemAllocPolicy>;
+template <int N>
+using RootedValVectorN = Rooted<ValVectorN<N>>;
+
 // Check a value against the given reference type.  If the targetType
 // is RefType::Extern then the test always passes, but the value may be boxed.
 // If the test passes then the value is stored either in fnval (for
@@ -481,9 +486,28 @@ using MutableHandleValVector = MutableHandle<ValVector>;
 [[nodiscard]] extern bool CheckFuncRefValue(JSContext* cx, HandleValue v,
                                             MutableHandleFunction fun);
 
+// The same as above for when the target type is 'anyref'.
+[[nodiscard]] extern bool CheckAnyRefValue(JSContext* cx, HandleValue v,
+                                           MutableHandleAnyRef vp);
+
 // The same as above for when the target type is 'eqref'.
 [[nodiscard]] extern bool CheckEqRefValue(JSContext* cx, HandleValue v,
                                           MutableHandleAnyRef vp);
+
+// The same as above for when the target type is 'structref'.
+[[nodiscard]] extern bool CheckStructRefValue(JSContext* cx, HandleValue v,
+                                              MutableHandleAnyRef vp);
+
+// The same as above for when the target type is 'arrayref'.
+[[nodiscard]] extern bool CheckArrayRefValue(JSContext* cx, HandleValue v,
+                                             MutableHandleAnyRef vp);
+
+// The same as above for when the target type is '(ref T)'.
+[[nodiscard]] extern bool CheckTypeRefValue(JSContext* cx,
+                                            const TypeDef* typeDef,
+                                            HandleValue v,
+                                            MutableHandleAnyRef vp);
+
 class NoDebug;
 class DebugCodegenVal;
 

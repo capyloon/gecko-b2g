@@ -68,10 +68,6 @@ SVGViewportElement::PreserveAspectRatio() {
   return mPreserveAspectRatio.ToDOMAnimatedPreserveAspectRatio(this);
 }
 
-bool SVGViewportElement::IsNodeOfType(uint32_t aFlags) const {
-  return !(aFlags & ~eUSE_TARGET);
-}
-
 //----------------------------------------------------------------------
 // nsIContent methods
 
@@ -140,7 +136,7 @@ void SVGViewportElement::UpdateHasChildrenOnlyTransform() {
 
 void SVGViewportElement::ChildrenOnlyTransformChanged(uint32_t aFlags) {
   // Avoid wasteful calls:
-  MOZ_ASSERT(!(GetPrimaryFrame()->GetStateBits() & NS_FRAME_IS_NONDISPLAY),
+  MOZ_ASSERT(!GetPrimaryFrame()->HasAnyStateBits(NS_FRAME_IS_NONDISPLAY),
              "Non-display SVG frames don't maintain overflow rects");
 
   nsChangeHint changeHint;

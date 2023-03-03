@@ -14,16 +14,18 @@
  * limitations under the License.
  */
 
-import utils from './utils.js';
+import {ServerResponse} from 'http';
+
 import expect from 'expect';
+import {TimeoutError} from 'puppeteer';
+import {HTTPRequest} from 'puppeteer-core/internal/common/HTTPRequest.js';
+
 import {
   getTestState,
   setupTestBrowserHooks,
   setupTestPageAndContextHooks,
 } from './mocha-utils.js';
-import os from 'os';
-import {ServerResponse} from 'http';
-import {HTTPRequest} from '../../lib/cjs/puppeteer/common/HTTPRequest.js';
+import utils from './utils.js';
 
 describe('navigation', function () {
   setupTestBrowserHooks();
@@ -152,20 +154,8 @@ describe('navigation', function () {
       }
     });
 
-    function getExpectedSSLCertMessage(): string {
-      const {headless} = getTestState();
-      /**
-       * If you are running this on pre-Catalina versions of macOS this will fail
-       * locally. Mac OSX Catalina outputs a different message than other
-       * platforms. See https://support.google.com/chrome/thread/18125056?hl=en
-       * for details. If you're running pre-Catalina Mac OSX this test will fail
-       * locally.
-       * In chrome-headless, the message is also different.
-       */
-      return os.platform() === 'darwin' && headless !== 'chrome'
-        ? 'net::ERR_CERT_INVALID'
-        : 'net::ERR_CERT_AUTHORITY_INVALID';
-    }
+    const EXPECTED_SSL_CERT_MESSAGE_REGEX =
+      /net::ERR_CERT_INVALID|net::ERR_CERT_AUTHORITY_INVALID/;
 
     it('should fail when navigating to bad SSL', async () => {
       const {page, httpsServer, isChrome} = getTestState();
@@ -188,7 +178,7 @@ describe('navigation', function () {
         return (error = error_);
       });
       if (isChrome) {
-        expect(error.message).toContain(getExpectedSSLCertMessage());
+        expect(error.message).toMatch(EXPECTED_SSL_CERT_MESSAGE_REGEX);
       } else {
         expect(error.message).toContain('SSL_ERROR_UNKNOWN');
       }
@@ -207,7 +197,7 @@ describe('navigation', function () {
         return (error = error_);
       });
       if (isChrome) {
-        expect(error.message).toContain(getExpectedSSLCertMessage());
+        expect(error.message).toMatch(EXPECTED_SSL_CERT_MESSAGE_REGEX);
       } else {
         expect(error.message).toContain('SSL_ERROR_UNKNOWN');
       }
@@ -228,7 +218,7 @@ describe('navigation', function () {
       }
     });
     it('should fail when exceeding maximum navigation timeout', async () => {
-      const {page, server, puppeteer} = getTestState();
+      const {page, server} = getTestState();
 
       // Hang for request to the empty.html
       server.setRoute('/empty.html', () => {});
@@ -239,10 +229,10 @@ describe('navigation', function () {
           return (error = error_);
         });
       expect(error.message).toContain('Navigation timeout of 1 ms exceeded');
-      expect(error).toBeInstanceOf(puppeteer.errors.TimeoutError);
+      expect(error).toBeInstanceOf(TimeoutError);
     });
     it('should fail when exceeding default maximum navigation timeout', async () => {
-      const {page, server, puppeteer} = getTestState();
+      const {page, server} = getTestState();
 
       // Hang for request to the empty.html
       server.setRoute('/empty.html', () => {});
@@ -252,10 +242,10 @@ describe('navigation', function () {
         return (error = error_);
       });
       expect(error.message).toContain('Navigation timeout of 1 ms exceeded');
-      expect(error).toBeInstanceOf(puppeteer.errors.TimeoutError);
+      expect(error).toBeInstanceOf(TimeoutError);
     });
     it('should fail when exceeding default maximum timeout', async () => {
-      const {page, server, puppeteer} = getTestState();
+      const {page, server} = getTestState();
 
       // Hang for request to the empty.html
       server.setRoute('/empty.html', () => {});
@@ -265,10 +255,10 @@ describe('navigation', function () {
         return (error = error_);
       });
       expect(error.message).toContain('Navigation timeout of 1 ms exceeded');
-      expect(error).toBeInstanceOf(puppeteer.errors.TimeoutError);
+      expect(error).toBeInstanceOf(TimeoutError);
     });
     it('should prioritize default navigation timeout over default timeout', async () => {
-      const {page, server, puppeteer} = getTestState();
+      const {page, server} = getTestState();
 
       // Hang for request to the empty.html
       server.setRoute('/empty.html', () => {});
@@ -279,7 +269,7 @@ describe('navigation', function () {
         return (error = error_);
       });
       expect(error.message).toContain('Navigation timeout of 1 ms exceeded');
-      expect(error).toBeInstanceOf(puppeteer.errors.TimeoutError);
+      expect(error).toBeInstanceOf(TimeoutError);
     });
     it('should disable timeout when its set to 0', async () => {
       const {page, server} = getTestState();
@@ -315,6 +305,30 @@ describe('navigation', function () {
       const response = (await page.goto(server.PREFIX + '/not-found'))!;
       expect(response.ok()).toBe(false);
       expect(response.status()).toBe(404);
+    });
+    it('should not throw an error for a 404 response with an empty body', async () => {
+      const {page, server} = getTestState();
+
+      server.setRoute('/404-error', (_, res) => {
+        res.statusCode = 404;
+        res.end();
+      });
+
+      const response = (await page.goto(server.PREFIX + '/404-error'))!;
+      expect(response.ok()).toBe(false);
+      expect(response.status()).toBe(404);
+    });
+    it('should not throw an error for a 500 response with an empty body', async () => {
+      const {page, server} = getTestState();
+
+      server.setRoute('/500-error', (_, res) => {
+        res.statusCode = 500;
+        res.end();
+      });
+
+      const response = (await page.goto(server.PREFIX + '/500-error'))!;
+      expect(response.ok()).toBe(false);
+      expect(response.status()).toBe(500);
     });
     it('should return last response in redirect chain', async () => {
       const {page, server} = getTestState();
@@ -504,6 +518,20 @@ describe('navigation', function () {
       ]);
       expect(request1.headers['referer']).toBe('http://google.com/');
       // Make sure subresources do not inherit referer.
+      expect(request2.headers['referer']).toBe(server.PREFIX + '/grid.html');
+    });
+
+    it('should send referer policy', async () => {
+      const {page, server} = getTestState();
+
+      const [request1, request2] = await Promise.all([
+        server.waitForRequest('/grid.html'),
+        server.waitForRequest('/digits/1.png'),
+        page.goto(server.PREFIX + '/grid.html', {
+          referrerPolicy: 'no-referer',
+        }),
+      ]);
+      expect(request1.headers['referer']).toBeUndefined();
       expect(request2.headers['referer']).toBe(server.PREFIX + '/grid.html');
     });
   });

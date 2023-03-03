@@ -9,16 +9,17 @@ import classnames from "classnames";
 import actions from "../actions";
 
 import { getEditor } from "../utils/editor";
-import { highlightMatches } from "../utils/project-search";
 
 import { statusType } from "../reducers/project-text-search";
 import { getRelativePath } from "../utils/sources-tree/utils";
+import { getFormattedSourceId } from "../utils/source";
 import {
   getActiveSearch,
-  getTextSearchResults,
-  getTextSearchStatus,
-  getTextSearchQuery,
+  getProjectSearchResults,
+  getProjectSearchStatus,
+  getProjectSearchQuery,
   getContext,
+  getTextSearchModifiers,
 } from "../selectors";
 
 import ManagedTree from "./shared/ManagedTree";
@@ -33,11 +34,6 @@ function getFilePath(item, index) {
   return item.type === "RESULT"
     ? `${item.sourceId}-${index || "$"}`
     : `${item.sourceId}-${item.line}-${item.column}-${index || "$"}`;
-}
-
-function sanitizeQuery(query) {
-  // no '\' at end of query
-  return query.replace(/\\$/, "");
 }
 
 export class ProjectSearch extends Component {
@@ -69,6 +65,8 @@ export class ProjectSearch extends Component {
         "DONE",
         "ERROR",
       ]).isRequired,
+      modifiers: PropTypes.object,
+      toggleProjectSearchModifier: PropTypes.func,
     };
   }
 
@@ -99,7 +97,9 @@ export class ProjectSearch extends Component {
   }
 
   doSearch(searchTerm) {
-    this.props.searchSources(this.props.cx, searchTerm);
+    if (searchTerm) {
+      this.props.searchSources(this.props.cx, searchTerm);
+    }
   }
 
   toggleProjectTextSearch = e => {
@@ -131,6 +131,25 @@ export class ProjectSearch extends Component {
     );
   };
 
+  highlightMatches = lineMatch => {
+    const { value, matchIndex, match } = lineMatch;
+    const len = match.length;
+
+    return (
+      <span className="line-value">
+        <span className="line-match" key={0}>
+          {value.slice(0, matchIndex)}
+        </span>
+        <span className="query-match" key={1}>
+          {value.substr(matchIndex, len)}
+        </span>
+        <span className="line-match" key={2}>
+          {value.slice(matchIndex + len, value.length)}
+        </span>
+      </span>
+    );
+  };
+
   getResultCount = () =>
     this.props.results.reduce((count, file) => count + file.matches.length, 0);
 
@@ -145,10 +164,7 @@ export class ProjectSearch extends Component {
       return;
     }
     this.setState({ focusedItem: null });
-    const query = sanitizeQuery(this.state.inputValue);
-    if (query) {
-      this.doSearch(query);
-    }
+    this.doSearch(this.state.inputValue);
   };
 
   onHistoryScroll = query => {
@@ -186,7 +202,6 @@ export class ProjectSearch extends Component {
   renderFile = (file, focused, expanded) => {
     const matchesLength = file.matches.length;
     const matches = ` (${matchesLength} match${matchesLength > 1 ? "es" : ""})`;
-
     return (
       <div
         className={classnames("file-result", { focused })}
@@ -194,7 +209,11 @@ export class ProjectSearch extends Component {
       >
         <AccessibleImage className={classnames("arrow", { expanded })} />
         <AccessibleImage className="file" />
-        <span className="file-path">{getRelativePath(file.filepath)}</span>
+        <span className="file-path">
+          {file.filepath
+            ? getRelativePath(file.filepath)
+            : getFormattedSourceId(file.sourceId)}
+        </span>
         <span className="matches-summary">{matches}</span>
       </div>
     );
@@ -209,7 +228,7 @@ export class ProjectSearch extends Component {
         <span className="line-number" key={match.line}>
           {match.line}
         </span>
-        {highlightMatches(match)}
+        {this.highlightMatches(match)}
       </div>
     );
   };
@@ -264,7 +283,14 @@ export class ProjectSearch extends Component {
   }
 
   renderInput() {
-    const { cx, closeProjectSearch, status } = this.props;
+    const {
+      cx,
+      closeProjectSearch,
+      status,
+      modifiers,
+      toggleProjectSearchModifier,
+    } = this.props;
+
     return (
       <SearchInput
         query={this.state.inputValue}
@@ -279,8 +305,15 @@ export class ProjectSearch extends Component {
         onBlur={() => this.setState({ inputFocused: false })}
         onKeyDown={this.onKeyDown}
         onHistoryScroll={this.onHistoryScroll}
-        handleClose={() => closeProjectSearch(cx)}
+        showClose={true}
+        handleClose={closeProjectSearch}
         ref="searchInput"
+        showSearchModifiers={true}
+        modifiers={modifiers}
+        onToggleSearchModifier={value => {
+          toggleProjectSearchModifier(cx, value);
+          this.doSearch(this.state.inputValue);
+        }}
       />
     );
   }
@@ -308,9 +341,10 @@ ProjectSearch.contextTypes = {
 const mapStateToProps = state => ({
   cx: getContext(state),
   activeSearch: getActiveSearch(state),
-  results: getTextSearchResults(state),
-  query: getTextSearchQuery(state),
-  status: getTextSearchStatus(state),
+  results: getProjectSearchResults(state),
+  query: getProjectSearchQuery(state),
+  status: getProjectSearchStatus(state),
+  modifiers: getTextSearchModifiers(state),
 });
 
 export default connect(mapStateToProps, {
@@ -320,4 +354,5 @@ export default connect(mapStateToProps, {
   selectSpecificLocation: actions.selectSpecificLocation,
   setActiveSearch: actions.setActiveSearch,
   doSearchForHighlight: actions.doSearchForHighlight,
+  toggleProjectSearchModifier: actions.toggleProjectSearchModifier,
 })(ProjectSearch);

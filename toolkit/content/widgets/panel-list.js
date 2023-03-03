@@ -178,7 +178,8 @@
     }
 
     async setAlign() {
-      if (!this.parentElement || this.parentIsXULPanel()) {
+      const hostElement = this.parentElement || this.getRootNode().host;
+      if (!hostElement || this.parentIsXULPanel()) {
         // This could get called before we're added to the DOM.
         // Nothing to do in that case.
         //
@@ -188,9 +189,9 @@
 
       // Set the showing attribute to hide the panel until its alignment is set.
       this.setAttribute("showing", "true");
-      // Tell the parent node to hide any overflow in case the panel extends off
+      // Tell the host element to hide any overflow in case the panel extends off
       // the page before the alignment is set.
-      this.parentElement.style.overflow = "hidden";
+      hostElement.style.overflow = "hidden";
 
       // Wait for a layout flush, then find the bounds.
       let {
@@ -211,7 +212,7 @@
         requestAnimationFrame(() =>
           setTimeout(() => {
             let target = this.getTargetForEvent(this.triggeringEvent);
-            let anchorNode = target || this.parentElement;
+            let anchorElement = target || hostElement;
             // It's possible this is being used in a context where windowUtils is
             // not available. In that case, fallback to using the element.
             let getBounds = el =>
@@ -219,7 +220,7 @@
                 ? window.windowUtils.getBoundsWithoutFlushing(el)
                 : el.getBoundingClientRect();
             // Use y since top is reserved.
-            let anchorBounds = getBounds(anchorNode);
+            let anchorBounds = getBounds(anchorElement);
             let panelBounds = getBounds(this);
             resolve({
               anchorHeight: anchorBounds.height,
@@ -266,7 +267,7 @@
       // Set the alignments and show the panel.
       this.setAttribute("align", align);
       this.setAttribute("valign", valign);
-      this.parentElement.style.overflow = "";
+      hostElement.style.overflow = "";
 
       this.style.left = `${leftOffset + winScrollX}px`;
       this.style.top = `${topOffset + winScrollY}px`;
@@ -489,6 +490,9 @@
   customElements.define("panel-list", PanelList);
 
   class PanelItem extends HTMLElement {
+    #initialized = false;
+    #defaultSlot;
+
     static get observedAttributes() {
       return ["accesskey"];
     }
@@ -503,12 +507,6 @@
         ? "./panel-item.css"
         : "chrome://global/content/elements/panel-item.css";
 
-      // When click listeners are added to the panel-item it creates a node in
-      // the a11y tree for this element. This breaks the association between the
-      // menu and the button[role="menuitem"] in this shadow DOM and causes
-      // announcement issues with screen readers. (bug 995064)
-      this.setAttribute("role", "presentation");
-
       this.button = document.createElement("button");
       this.button.setAttribute("role", "menuitem");
       this.button.setAttribute("part", "button");
@@ -522,29 +520,37 @@
       let supportLinkSlot = document.createElement("slot");
       supportLinkSlot.name = "support-link";
 
-      let defaultSlot = document.createElement("slot");
-      defaultSlot.style.display = "none";
+      this.#defaultSlot = document.createElement("slot");
+      this.#defaultSlot.style.display = "none";
 
-      this.shadowRoot.append(style, this.button, supportLinkSlot, defaultSlot);
-
-      this.setLabelContents = () => {
-        this.label.textContent = defaultSlot
-          .assignedNodes()
-          .map(node => node.textContent)
-          .join("");
-      };
-      this.setLabelContents();
-
-      // When our content changes, move the text into the label. It doesn't work
-      // with a <slot>, unfortunately.
-      new MutationObserver(this.setLabelContents).observe(this, {
-        characterData: true,
-        childList: true,
-        subtree: true,
-      });
+      this.shadowRoot.append(
+        style,
+        this.button,
+        supportLinkSlot,
+        this.#defaultSlot
+      );
     }
 
     connectedCallback() {
+      if (!this.#initialized) {
+        this.#initialized = true;
+        // When click listeners are added to the panel-item it creates a node in
+        // the a11y tree for this element. This breaks the association between the
+        // menu and the button[role="menuitem"] in this shadow DOM and causes
+        // announcement issues with screen readers. (bug 995064)
+        this.setAttribute("role", "presentation");
+
+        this.#setLabelContents();
+
+        // When our content changes, move the text into the label. It doesn't work
+        // with a <slot>, unfortunately.
+        new MutationObserver(() => this.#setLabelContents()).observe(this, {
+          characterData: true,
+          childList: true,
+          subtree: true,
+        });
+      }
+
       this.panel = this.closest("panel-list");
 
       if (this.panel) {
@@ -587,6 +593,13 @@
           this._accessKey = null;
         }
       }
+    }
+
+    #setLabelContents() {
+      this.label.textContent = this.#defaultSlot
+        .assignedNodes()
+        .map(node => node.textContent)
+        .join("");
     }
 
     get disabled() {

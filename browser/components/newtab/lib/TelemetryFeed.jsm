@@ -840,7 +840,8 @@ class TelemetryFeed {
     if (this.telemetryEnabled) {
       this.pingCentre.sendStructuredIngestionPing(
         eventObject,
-        this._generateStructuredIngestionEndpoint(namespace, pingType, version)
+        this._generateStructuredIngestionEndpoint(namespace, pingType, version),
+        namespace
       );
     }
   }
@@ -1252,6 +1253,10 @@ class TelemetryFeed {
         newtab_visit_id: session.session_id,
         source,
       });
+      // Temporary event used for validation of Glean Server Knobs
+      // functionality. This event is disabled by default.
+      // See Bug 1811561 for more information.
+      Glean.serverKnobs.validation.record();
     }
   }
 

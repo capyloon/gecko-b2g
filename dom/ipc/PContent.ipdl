@@ -172,8 +172,8 @@ using mozilla::dom::ServiceWorkerShutdownState::Progress from "mozilla/dom/Servi
 using mozilla::ContentBlockingNotifier::StorageAccessPermissionGrantedReason from "mozilla/ContentBlockingNotifier.h";
 using mozilla::ContentBlockingNotifier::BlockingDecision from "mozilla/ContentBlockingNotifier.h";
 using mozilla::StorageAccessAPIHelper::StorageAccessPromptChoices from "mozilla/StorageAccessAPIHelper.h";
-using JSActorMessageKind from "mozilla/dom/JSActor.h";
-using JSActorMessageMeta from "mozilla/dom/PWindowGlobal.h";
+using mozilla::dom::JSActorMessageKind from "mozilla/dom/JSActor.h";
+using mozilla::dom::JSActorMessageMeta from "mozilla/dom/PWindowGlobal.h";
 using mozilla::PermissionDelegateHandler::DelegatedPermissionList from "mozilla/PermissionDelegateHandler.h";
 [RefCounted] using class nsILayoutHistoryState from "nsILayoutHistoryState.h";
 using class mozilla::dom::SessionHistoryInfo from "mozilla/dom/SessionHistoryEntry.h";
@@ -183,7 +183,7 @@ using mozilla::media::MediaCodecsSupported from "MediaCodecsSupport.h";
 using mozilla::RemoteDecodeIn from "mozilla/RemoteDecoderManagerChild.h";
 using mozilla::dom::PerformanceTimingData from "mozilla/dom/PerformanceTiming.h";
 [RefCounted] using mozilla::dom::FeaturePolicy from "mozilla/dom/FeaturePolicy.h";
-using Wireframe from "mozilla/dom/DocumentBinding.h";
+using mozilla::dom::Wireframe from "mozilla/dom/DocumentBinding.h";
 using mozilla::PerfStats::MetricMask from "mozilla/PerfStats.h";
 [RefCounted] using class nsIX509Cert from "nsIX509Cert.h";
 using nsIDNSService::ResolverMode from "nsIDNSService.h";
@@ -1069,7 +1069,8 @@ child:
      */
     async NotifyIdleObserver(uint64_t observerId, nsCString topic, nsString str);
 
-    async InvokeDragSession(MaybeDiscardedWindowContext aContext,
+    async InvokeDragSession(MaybeDiscardedWindowContext aSourceWindowContext,
+                            MaybeDiscardedWindowContext aSourceTopWindowContext,
                             IPCDataTransfer[] transfers, uint32_t action);
 
     async EndDragSession(bool aDoneDrag, bool aUserCancelled,

@@ -281,8 +281,6 @@ toolbarbutton menupopup[placespopup] > menu > .menu-right {
   fill-opacity: 0.6;
   width: unset;
   height: unset;
-  /* Reset the rect we inherit from the button */
-  -moz-image-region: auto;
 }
 
 toolbarbutton menupopup[placespopup] > menu > .menu-right:-moz-locale-dir(rtl) {
@@ -705,10 +703,12 @@ toolbarbutton[constrain-size="true"][cui-areatype="panel"] > .toolbarbutton-badg
   display: none;
 }
 
-/* Hide the FxA toolbar button when its in the nav-bar, until in use */
-:root[fxastatus="not_configured"] #widget-overflow-list > #fxa-toolbar-menu-button,
-:root[fxastatus="not_configured"] #nav-bar-customization-target > #fxa-toolbar-menu-button {
-  display: none;
+@supports not -moz-bool-pref("identity.fxaccounts.toolbar.defaultVisible") {
+  /* Hide the FxA toolbar button when its in the nav-bar, until in use */
+  :root[fxastatus="not_configured"] #widget-overflow-list > #fxa-toolbar-menu-button,
+  :root[fxastatus="not_configured"] #nav-bar-customization-target > #fxa-toolbar-menu-button {
+    display: none;
+  }
 }
 
 #fxa-avatar-image,
@@ -757,10 +757,6 @@ toolbarbutton[constrain-size="true"][cui-areatype="panel"] > .toolbarbutton-badg
 
 #PanelUI-fxa-menu-monitor-button {
   list-style-image: url(chrome://browser/skin/fxa/monitor.svg);
-}
-
-#PanelUI-fxa-menu-connect-device-button {
-  list-style-image: url(chrome://browser/skin/fxa/add-device.svg);
 }
 
 :root:not([fxastatus="signedin"]) #PanelUI-fxa-menu-connect-device-button {
@@ -1106,7 +1102,6 @@ panelview .toolbarbutton-1,
 }
 
 #protections-popup-mainView .subviewbutton-nav:not(.notFound)::after,
-#identity-credential-notification .subviewbutton-nav::after,
 .widget-overflow-list .subviewbutton-nav::after,
 .PanelUI-subView .subviewbutton-nav::after {
   -moz-context-properties: fill, fill-opacity;
@@ -1117,7 +1112,6 @@ panelview .toolbarbutton-1,
 }
 
 #protections-popup-mainView .subviewbutton-nav:not(.notFound):-moz-locale-dir(rtl)::after,
-#identity-credential-notification .subviewbutton-nav:-moz-locale-dir(rtl)::after,
 .widget-overflow-list .subviewbutton-nav:-moz-locale-dir(rtl)::after,
 .PanelUI-subView .subviewbutton-nav:-moz-locale-dir(rtl)::after {
   content: url(chrome://global/skin/icons/arrow-left.svg);
@@ -1366,13 +1360,6 @@ toolbarpaletteitem[place="panel"] > toolbaritem {
   margin: 0;
 }
 
-toolbaritem[overflowedItem=true],
-.widget-overflow-list .toolbarbutton-1 {
-  max-width: var(--menu-panel-width-wide);
-  background-repeat: no-repeat;
-  background-position: 0 center;
-}
-
 .widget-overflow-list .toolbarbutton-1 {
   -moz-box-align: center;
   -moz-box-orient: horizontal;
@@ -1619,9 +1606,16 @@ radiogroup:focus-visible > .subviewradio[focused="true"] > .radio-label-box {
   margin-inline-start: calc(var(--arrowpanel-header-info-icon-full-width) + var(--arrowpanel-header-info-icon-margin-inline-end));
 }
 
-.panel-header > .subviewbutton-back + h1 {
+.panel-header:not(.panel-header-with-info-button) > .subviewbutton-back + h1 {
   /* Add the size of the back button to center properly. */
   margin-inline-end: var(--arrowpanel-header-back-icon-full-width);
+}
+
+.panel-header.panel-header-with-info-button > .subviewbutton-back + h1 {
+  margin-inline-start: 0;
+  margin-inline-end: calc(var(--arrowpanel-header-back-icon-full-width)
+                          - var(--arrowpanel-header-info-icon-full-width)
+                          - var(--arrowpanel-header-info-icon-margin-inline-end));
 }
 
 .panel-header > h1 > span {
@@ -1844,10 +1838,6 @@ panelview:not([mainview]) #PanelUI-whatsNew-title {
 
 :where(#PanelUI-profiler) :is(description, label) {
   margin: 0;
-}
-
-#widget-overflow #PanelUI-profiler-header {
-  display: none;
 }
 
 #PanelUI-profiler-header[isinfocollapsed="false"] {

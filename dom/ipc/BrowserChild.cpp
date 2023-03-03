@@ -328,10 +328,6 @@ BrowserChild::BrowserChild(ContentChild* aManager, const TabId& aTabId,
       mShouldSendWebProgressEventsToParent(false),
       mRenderLayers(true),
       mIsPreservingLayers(false),
-      mPendingDocShellIsActive(false),
-      mPendingDocShellReceivedMessage(false),
-      mPendingRenderLayers(false),
-      mPendingRenderLayersReceivedMessage(false),
       mLayersObserverEpoch{1},
 #if defined(XP_WIN) && defined(ACCESSIBILITY)
       mNativeWindowHandle(0),
@@ -339,8 +335,6 @@ BrowserChild::BrowserChild(ContentChild* aManager, const TabId& aTabId,
 #if defined(ACCESSIBILITY)
       mTopLevelDocAccessibleChild(nullptr),
 #endif
-      mPendingLayersObserverEpoch{0},
-      mPendingDocShellBlockers(0),
       mCancelContentJSEpoch(0) {
   mozilla::HoldJSObjects(this);
 
@@ -2398,30 +2392,6 @@ bool BrowserChild::DeallocPDocAccessibleChild(
 }
 #endif
 
-PColorPickerChild* BrowserChild::AllocPColorPickerChild(
-    const nsAString&, const nsAString&, const nsTArray<nsString>&) {
-  MOZ_CRASH("unused");
-  return nullptr;
-}
-
-bool BrowserChild::DeallocPColorPickerChild(PColorPickerChild* aColorPicker) {
-  nsColorPickerProxy* picker = static_cast<nsColorPickerProxy*>(aColorPicker);
-  NS_RELEASE(picker);
-  return true;
-}
-
-PFilePickerChild* BrowserChild::AllocPFilePickerChild(const nsAString&,
-                                                      const int16_t&) {
-  MOZ_CRASH("unused");
-  return nullptr;
-}
-
-bool BrowserChild::DeallocPFilePickerChild(PFilePickerChild* actor) {
-  nsFilePickerProxy* filePicker = static_cast<nsFilePickerProxy*>(actor);
-  NS_RELEASE(filePicker);
-  return true;
-}
-
 RefPtr<VsyncMainChild> BrowserChild::GetVsyncChild() {
   // Initializing mVsyncChild here turns on per-BrowserChild Vsync for a
   // given platform. Note: this only makes sense if nsWindow returns a
@@ -2650,7 +2620,7 @@ mozilla::ipc::IPCResult BrowserChild::RecvPrintPreview(
   auto sendCallbackError = MakeScopeExit([&] {
     if (aCallback) {
       // signal error
-      aCallback(PrintPreviewResultInfo(0, 0, false, false, false, {}));
+      aCallback(PrintPreviewResultInfo(0, 0, false, false, false, {}, {}, {}));
     }
   });
 
@@ -2819,13 +2789,6 @@ mozilla::ipc::IPCResult BrowserChild::RecvDestroy() {
 
 mozilla::ipc::IPCResult BrowserChild::RecvRenderLayers(
     const bool& aEnabled, const layers::LayersObserverEpoch& aEpoch) {
-  if (mPendingDocShellBlockers > 0) {
-    mPendingRenderLayersReceivedMessage = true;
-    mPendingRenderLayers = aEnabled;
-    mPendingLayersObserverEpoch = aEpoch;
-    return IPC_OK();
-  }
-
   // Since requests to change the rendering state come in from both the hang
   // monitor channel and the PContent channel, we have an ordering problem. This
   // code ensures that we respect the order in which the requests were made and
@@ -3635,6 +3598,19 @@ void BrowserChild::PaintWhileInterruptingJS(
   MOZ_DIAGNOSTIC_ASSERT(nsContentUtils::IsSafeToRunScript());
   nsAutoScriptBlocker scriptBlocker;
   RecvRenderLayers(true /* aEnabled */, aEpoch);
+}
+
+void BrowserChild::UnloadLayersWhileInterruptingJS(
+    const layers::LayersObserverEpoch& aEpoch) {
+  if (!IPCOpen() || !mPuppetWidget || !mPuppetWidget->HasWindowRenderer()) {
+    // Don't bother doing anything now. Better to wait until we receive the
+    // message on the PContent channel.
+    return;
+  }
+
+  MOZ_DIAGNOSTIC_ASSERT(nsContentUtils::IsSafeToRunScript());
+  nsAutoScriptBlocker scriptBlocker;
+  RecvRenderLayers(false /* aEnabled */, aEpoch);
 }
 
 nsresult BrowserChild::CanCancelContentJS(

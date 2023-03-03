@@ -651,6 +651,16 @@ static bool DecodeFunctionBodyExprs(const ModuleEnvironment& env,
             CHECK(iter.readBrOnCastFail(&unusedRelativeDepth, &typeIndex,
                                         &unusedType, &nothings));
           }
+          case uint16_t(GcOp::RefAsStruct): {
+            CHECK(iter.readConversion(
+                ValType(RefType::any()),
+                ValType(RefType::struct_().asNonNullable()), &nothing));
+          }
+          case uint16_t(GcOp::BrOnNonStruct): {
+            uint32_t unusedRelativeDepth;
+            CHECK(iter.readBrOnNonStruct(&unusedRelativeDepth, &unusedType,
+                                         &nothings));
+          }
           case uint16_t(GcOp::ExternInternalize): {
             CHECK(iter.readRefConversion(RefType::extern_(), RefType::any(),
                                          &nothing));
@@ -1138,6 +1148,14 @@ static bool DecodeFunctionBodyExprs(const ModuleEnvironment& env,
             CHECK(iter.readTableFill(&unusedTableIndex, &nothing, &nothing,
                                      &nothing));
           }
+#ifdef ENABLE_WASM_MEMORY_CONTROL
+          case uint32_t(MiscOp::MemoryDiscard): {
+            if (!env.memoryControlEnabled()) {
+              return iter.unrecognizedOpcode(&op);
+            }
+            CHECK(iter.readMemDiscard(&nothing, &nothing));
+          }
+#endif
           case uint32_t(MiscOp::TableGrow): {
             uint32_t unusedTableIndex;
             CHECK(iter.readTableGrow(&unusedTableIndex, &nothing, &nothing));

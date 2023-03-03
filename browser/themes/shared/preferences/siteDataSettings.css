@@ -29,7 +29,6 @@
  * Confirmation dialog of removing sites selected
  */
 #SiteDataRemoveSelectedDialog {
-  -moz-box-layout: flex;
   padding: 16px;
   min-width: 50px;
 }
@@ -43,7 +42,7 @@
 }
 
 #SiteDataRemoveSelectedDialog.multi-entry #removalList {
-  height: 36em;
+  max-height: 20em;
 }
 
 #SiteDataRemoveSelectedDialog > dialog {

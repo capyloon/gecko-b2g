@@ -979,6 +979,13 @@ class Raptor(
         # Extra arguments
         if args is not None:
             options += args
+        if os.getenv("PERF_FLAGS"):
+            for option in os.getenv("PERF_FLAGS").split():
+                if "=" in option:
+                    kw_option, value = option.split("=")
+                    kw_options[kw_option] = value
+                else:
+                    options.extend(["--" + option])
 
         if self.config.get("run_local", False):
             options.extend(["--run-local"])
@@ -1290,7 +1297,10 @@ class Raptor(
         # Run Raptor tests
         run_tests = os.path.join(self.raptor_path, "raptor", "raptor.py")
 
-        mozlog_opts = ["--log-tbpl-level=debug"]
+        # Dynamically set the log level based on the raptor config for consistency
+        # throughout the test
+        mozlog_opts = [f"--log-tbpl-level={self.config['log_level']}"]
+
         if not self.run_local and "suite" in self.config:
             fname_pattern = "%s_%%s.log" % self.config["test"]
             mozlog_opts.append(

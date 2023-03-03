@@ -116,14 +116,28 @@ static INLINE void uint32_to_mem(uint8_t *buf, uint32_t a) {
 static INLINE uint8x8_t load_unaligned_u8(const uint8_t *buf,
                                           ptrdiff_t stride) {
   uint32_t a;
-  uint32x2_t a_u32 = vdup_n_u32(0);
+  uint32x2_t a_u32;
   if (stride == 4) return vld1_u8(buf);
   memcpy(&a, buf, 4);
   buf += stride;
-  a_u32 = vset_lane_u32(a, a_u32, 0);
+  a_u32 = vdup_n_u32(a);
   memcpy(&a, buf, 4);
   a_u32 = vset_lane_u32(a, a_u32, 1);
   return vreinterpret_u8_u32(a_u32);
+}
+
+// Load 2 sets of 8 bytes when alignment is not guaranteed.
+static INLINE uint16x8_t load_unaligned_u16q(const uint16_t *buf,
+                                             ptrdiff_t stride) {
+  uint64_t a;
+  uint64x2_t a_u64;
+  if (stride == 4) return vld1q_u16(buf);
+  memcpy(&a, buf, 8);
+  buf += stride;
+  a_u64 = vdupq_n_u64(a);
+  memcpy(&a, buf, 8);
+  a_u64 = vsetq_lane_u64(a, a_u64, 1);
+  return vreinterpretq_u16_u64(a_u64);
 }
 
 // Store 2 sets of 4 bytes when alignment is not guaranteed.
@@ -143,11 +157,11 @@ static INLINE void store_unaligned_u8(uint8_t *buf, ptrdiff_t stride,
 static INLINE uint8x16_t load_unaligned_u8q(const uint8_t *buf,
                                             ptrdiff_t stride) {
   uint32_t a;
-  uint32x4_t a_u32 = vdupq_n_u32(0);
+  uint32x4_t a_u32;
   if (stride == 4) return vld1q_u8(buf);
   memcpy(&a, buf, 4);
   buf += stride;
-  a_u32 = vsetq_lane_u32(a, a_u32, 0);
+  a_u32 = vdupq_n_u32(a);
   memcpy(&a, buf, 4);
   buf += stride;
   a_u32 = vsetq_lane_u32(a, a_u32, 1);
@@ -201,4 +215,161 @@ static INLINE void store_u8(uint8_t *buf, ptrdiff_t stride, const uint8x8_t a) {
   buf += stride;
   vst1_lane_u32((uint32_t *)buf, a_u32, 1);
 }
+
+static INLINE void load_u8_8x4(const uint8_t *s, const ptrdiff_t p,
+                               uint8x8_t *const s0, uint8x8_t *const s1,
+                               uint8x8_t *const s2, uint8x8_t *const s3) {
+  *s0 = vld1_u8(s);
+  s += p;
+  *s1 = vld1_u8(s);
+  s += p;
+  *s2 = vld1_u8(s);
+  s += p;
+  *s3 = vld1_u8(s);
+}
+
+static INLINE void store_u8_8x4(uint8_t *s, const ptrdiff_t p,
+                                const uint8x8_t s0, const uint8x8_t s1,
+                                const uint8x8_t s2, const uint8x8_t s3) {
+  vst1_u8(s, s0);
+  s += p;
+  vst1_u8(s, s1);
+  s += p;
+  vst1_u8(s, s2);
+  s += p;
+  vst1_u8(s, s3);
+}
+
+static INLINE void load_u8_16x4(const uint8_t *s, const ptrdiff_t p,
+                                uint8x16_t *const s0, uint8x16_t *const s1,
+                                uint8x16_t *const s2, uint8x16_t *const s3) {
+  *s0 = vld1q_u8(s);
+  s += p;
+  *s1 = vld1q_u8(s);
+  s += p;
+  *s2 = vld1q_u8(s);
+  s += p;
+  *s3 = vld1q_u8(s);
+}
+
+static INLINE void store_u8_16x4(uint8_t *s, const ptrdiff_t p,
+                                 const uint8x16_t s0, const uint8x16_t s1,
+                                 const uint8x16_t s2, const uint8x16_t s3) {
+  vst1q_u8(s, s0);
+  s += p;
+  vst1q_u8(s, s1);
+  s += p;
+  vst1q_u8(s, s2);
+  s += p;
+  vst1q_u8(s, s3);
+}
+
+static INLINE void load_u8_8x7(const uint8_t *s, const ptrdiff_t p,
+                               uint8x8_t *const s0, uint8x8_t *const s1,
+                               uint8x8_t *const s2, uint8x8_t *const s3,
+                               uint8x8_t *const s4, uint8x8_t *const s5,
+                               uint8x8_t *const s6) {
+  *s0 = vld1_u8(s);
+  s += p;
+  *s1 = vld1_u8(s);
+  s += p;
+  *s2 = vld1_u8(s);
+  s += p;
+  *s3 = vld1_u8(s);
+  s += p;
+  *s4 = vld1_u8(s);
+  s += p;
+  *s5 = vld1_u8(s);
+  s += p;
+  *s6 = vld1_u8(s);
+}
+
+static INLINE void load_u8_8x8(const uint8_t *s, const ptrdiff_t p,
+                               uint8x8_t *const s0, uint8x8_t *const s1,
+                               uint8x8_t *const s2, uint8x8_t *const s3,
+                               uint8x8_t *const s4, uint8x8_t *const s5,
+                               uint8x8_t *const s6, uint8x8_t *const s7) {
+  *s0 = vld1_u8(s);
+  s += p;
+  *s1 = vld1_u8(s);
+  s += p;
+  *s2 = vld1_u8(s);
+  s += p;
+  *s3 = vld1_u8(s);
+  s += p;
+  *s4 = vld1_u8(s);
+  s += p;
+  *s5 = vld1_u8(s);
+  s += p;
+  *s6 = vld1_u8(s);
+  s += p;
+  *s7 = vld1_u8(s);
+}
+
+static INLINE void store_u8_8x8(uint8_t *s, const ptrdiff_t p,
+                                const uint8x8_t s0, const uint8x8_t s1,
+                                const uint8x8_t s2, const uint8x8_t s3,
+                                const uint8x8_t s4, const uint8x8_t s5,
+                                const uint8x8_t s6, const uint8x8_t s7) {
+  vst1_u8(s, s0);
+  s += p;
+  vst1_u8(s, s1);
+  s += p;
+  vst1_u8(s, s2);
+  s += p;
+  vst1_u8(s, s3);
+  s += p;
+  vst1_u8(s, s4);
+  s += p;
+  vst1_u8(s, s5);
+  s += p;
+  vst1_u8(s, s6);
+  s += p;
+  vst1_u8(s, s7);
+}
+
+static INLINE void load_u8_16x8(const uint8_t *s, const ptrdiff_t p,
+                                uint8x16_t *const s0, uint8x16_t *const s1,
+                                uint8x16_t *const s2, uint8x16_t *const s3,
+                                uint8x16_t *const s4, uint8x16_t *const s5,
+                                uint8x16_t *const s6, uint8x16_t *const s7) {
+  *s0 = vld1q_u8(s);
+  s += p;
+  *s1 = vld1q_u8(s);
+  s += p;
+  *s2 = vld1q_u8(s);
+  s += p;
+  *s3 = vld1q_u8(s);
+  s += p;
+  *s4 = vld1q_u8(s);
+  s += p;
+  *s5 = vld1q_u8(s);
+  s += p;
+  *s6 = vld1q_u8(s);
+  s += p;
+  *s7 = vld1q_u8(s);
+}
+
+static INLINE void store_u8_16x8(uint8_t *s, const ptrdiff_t p,
+                                 const uint8x16_t s0, const uint8x16_t s1,
+                                 const uint8x16_t s2, const uint8x16_t s3,
+                                 const uint8x16_t s4, const uint8x16_t s5,
+                                 const uint8x16_t s6, const uint8x16_t s7) {
+  vst1q_u8(s, s0);
+  s += p;
+  vst1q_u8(s, s1);
+  s += p;
+  vst1q_u8(s, s2);
+  s += p;
+  vst1q_u8(s, s3);
+  s += p;
+  vst1q_u8(s, s4);
+  s += p;
+  vst1q_u8(s, s5);
+  s += p;
+  vst1q_u8(s, s6);
+  s += p;
+  vst1q_u8(s, s7);
+}
+
 #endif  // VPX_VPX_DSP_ARM_MEM_NEON_H_

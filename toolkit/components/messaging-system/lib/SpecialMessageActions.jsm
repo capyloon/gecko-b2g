@@ -14,13 +14,13 @@ const NETWORK_TRR_MODE_PREF = "network.trr.mode";
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  FxAccounts: "resource://gre/modules/FxAccounts.sys.mjs",
   MigrationUtils: "resource:///modules/MigrationUtils.sys.mjs",
 });
 
 XPCOMUtils.defineLazyModuleGetters(lazy, {
   AddonManager: "resource://gre/modules/AddonManager.jsm",
   UITour: "resource:///modules/UITour.jsm",
-  FxAccounts: "resource://gre/modules/FxAccounts.jsm",
   Spotlight: "resource://activity-stream/lib/Spotlight.jsm",
   ColorwayClosetOpener: "resource:///modules/ColorwayClosetOpener.jsm",
 });
@@ -81,7 +81,7 @@ const SpecialMessageActions = {
         install
       );
     } catch (e) {
-      Cu.reportError(e);
+      console.error(e);
     }
   },
 
@@ -190,12 +190,13 @@ const SpecialMessageActions = {
       "browser.privateWindowSeparation.enabled",
       "browser.firefox-view.feature-tour",
       "browser.pdfjs.feature-tour",
+      "cookiebanners.service.mode",
+      "cookiebanners.service.mode.privateBrowsing",
+      "cookiebanners.service.detectOnly",
     ];
 
     if (!allowedPrefs.includes(pref.name)) {
-      throw new Error(
-        `Special message action with type SET_PREF and pref of "${pref.name}" is unsupported.`
-      );
+      pref.name = `messaging-system-action.${pref.name}`;
     }
     // If pref has no value, reset it, otherwise set it to desired value
     switch (typeof pref.value) {
@@ -398,6 +399,9 @@ const SpecialMessageActions = {
         lazy.ColorwayClosetOpener.openModal({
           source: "firefoxview",
         });
+        break;
+      case "ENABLE_CBH":
+        window.gCookieBannerHandlingExperiment.onActivate();
         break;
     }
   },

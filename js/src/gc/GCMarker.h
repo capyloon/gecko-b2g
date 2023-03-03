@@ -192,8 +192,8 @@ class MarkStack {
 
   [[nodiscard]] bool ensureSpace(size_t count);
 
-  bool hasStealableWork() const;
-  void stealWorkFrom(MarkStack& other);
+  bool canDonateWork() const;
+  static void moveWork(MarkStack& dst, MarkStack& src);
 
   size_t sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) const;
 
@@ -288,7 +288,11 @@ enum ShouldReportMarkTime : bool {
 
 } /* namespace gc */
 
-class GCMarker {
+// To prevent false sharing, some data structures are aligned to a typical cache
+// line size.
+static constexpr size_t TypicalCacheLineSize = 64;
+
+class alignas(TypicalCacheLineSize) GCMarker {
   enum MarkingState : uint8_t {
     // Have not yet started marking.
     NotActive,
@@ -336,7 +340,7 @@ class GCMarker {
   bool isDrained() const { return stack.isEmpty(); }
 
   bool hasEntries(gc::MarkColor color) const { return stack.hasEntries(color); }
-  bool hasStealableWork() const { return stack.hasStealableWork(); }
+  bool canDonateWork() const { return stack.canDonateWork(); }
 
   void start();
   void stop();
@@ -378,7 +382,7 @@ class GCMarker {
   template <uint32_t markingOptions, gc::MarkColor>
   bool markOneColor(SliceBudget& budget);
 
-  void stealWorkFrom(GCMarker* other);
+  static void moveWork(GCMarker* dst, GCMarker* src);
 
   size_t sizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf) const;
 
@@ -417,7 +421,7 @@ class GCMarker {
   void setMarkingStateAndTracer(MarkingState prev, MarkingState next);
 
   template <uint32_t markingOptions>
-  void processMarkStackTop(SliceBudget& budget);
+  bool processMarkStackTop(SliceBudget& budget);
   friend class gc::GCRuntime;
 
   // Helper methods that coerce their second argument to the base pointer

@@ -39,7 +39,6 @@
 #include "mozilla/Unused.h"
 #include "RetainedDisplayListBuilder.h"
 #include "nsAbsoluteContainingBlock.h"
-#include "nsMenuBarListener.h"
 #include "nsCSSPseudoElements.h"
 #include "nsCheckboxRadioFrame.h"
 #include "nsCRT.h"
@@ -210,8 +209,6 @@ nsIFrame* NS_NewLeafBoxFrame(PresShell* aPresShell, ComputedStyle* aStyle);
 
 nsIFrame* NS_NewRangeFrame(PresShell* aPresShell, ComputedStyle* aStyle);
 
-nsIFrame* NS_NewImageBoxFrame(PresShell* aPresShell, ComputedStyle* aStyle);
-
 nsIFrame* NS_NewTextBoxFrame(PresShell* aPresShell, ComputedStyle* aStyle);
 
 nsIFrame* NS_NewSplitterFrame(PresShell* aPresShell, ComputedStyle* aStyle);
@@ -220,8 +217,6 @@ nsIFrame* NS_NewMenuPopupFrame(PresShell* aPresShell, ComputedStyle* aStyle);
 
 nsIFrame* NS_NewMenuFrame(PresShell* aPresShell, ComputedStyle* aStyle,
                           uint32_t aFlags);
-
-nsIFrame* NS_NewMenuBarFrame(PresShell* aPresShell, ComputedStyle* aStyle);
 
 nsIFrame* NS_NewTreeBodyFrame(PresShell* aPresShell, ComputedStyle* aStyle);
 
@@ -238,6 +233,7 @@ nsIFrame* NS_NewScrollbarFrame(PresShell* aPresShell, ComputedStyle* aStyle);
 nsIFrame* NS_NewScrollbarButtonFrame(PresShell* aPresShell,
                                      ComputedStyle* aStyle);
 
+nsIFrame* NS_NewXULImageFrame(PresShell*, ComputedStyle*);
 nsIFrame* NS_NewImageFrameForContentProperty(PresShell*, ComputedStyle*);
 nsIFrame* NS_NewImageFrameForGeneratedContentIndex(PresShell*, ComputedStyle*);
 nsIFrame* NS_NewImageFrameForListStyleImage(PresShell*, ComputedStyle*);
@@ -1609,7 +1605,7 @@ void nsCSSFrameConstructor::CreateGeneratedContent(
     case Type::MozLabelContent: {
       nsAutoString accesskey;
       if (!aOriginatingElement.GetAttr(nsGkAtoms::accesskey, accesskey) ||
-          accesskey.IsEmpty() || !nsMenuBarListener::GetMenuAccessKey()) {
+          accesskey.IsEmpty() || !LookAndFeel::GetMenuAccessKey()) {
         // Easy path: just return a regular value attribute content.
         nsCOMPtr<nsIContent> content;
         NS_NewAttributeContent(mDocument->NodeInfoManager(), kNameSpaceID_None,
@@ -2636,13 +2632,11 @@ nsIFrame* nsCSSFrameConstructor::ConstructRootFrame() {
   viewportFrame->AddStateBits(NS_FRAME_OWNS_ANON_BOXES);
 
   // Bind the viewport frame to the root view
-  nsView* rootView = mPresShell->GetViewManager()->GetRootView();
-  viewportFrame->SetView(rootView);
-
-  viewportFrame->SyncFrameViewProperties(rootView);
-  nsContainerFrame::SyncWindowProperties(mPresShell->GetPresContext(),
-                                         viewportFrame, rootView, nullptr,
-                                         nsContainerFrame::SET_ASYNC);
+  if (nsView* rootView = mPresShell->GetViewManager()->GetRootView()) {
+    viewportFrame->SetView(rootView);
+    viewportFrame->SyncFrameViewProperties(rootView);
+    rootView->SetNeedsWindowPropertiesSync();
+  }
 
   // Make it an absolute container for fixed-pos elements
   viewportFrame->AddStateBits(NS_FRAME_CAN_HAVE_ABSPOS_CHILDREN);
@@ -4149,7 +4143,7 @@ nsCSSFrameConstructor::FindXULTagData(const Element& aElement,
       NS_NewMenuPopupFrame, FCDATA_IS_POPUP | FCDATA_SKIP_ABSPOS_PUSH);
 
   static constexpr FrameConstructionDataByTag sXULTagData[] = {
-      SIMPLE_XUL_CREATE(image, NS_NewImageBoxFrame),
+      SIMPLE_XUL_CREATE(image, NS_NewXULImageFrame),
       SIMPLE_XUL_CREATE(treechildren, NS_NewTreeBodyFrame),
       SIMPLE_XUL_CREATE(treecol, NS_NewTreeColFrame),
       SIMPLE_TAG_CHAIN(label,
@@ -4158,8 +4152,6 @@ nsCSSFrameConstructor::FindXULTagData(const Element& aElement,
                        nsCSSFrameConstructor::FindXULLabelOrDescriptionData),
 #ifdef XP_MACOSX
       SIMPLE_TAG_CHAIN(menubar, nsCSSFrameConstructor::FindXULMenubarData),
-#else
-      SIMPLE_XUL_CREATE(menubar, NS_NewMenuBarFrame),
 #endif /* XP_MACOSX */
       SIMPLE_XUL_CREATE(iframe, NS_NewSubDocumentFrame),
       SIMPLE_XUL_CREATE(editor, NS_NewSubDocumentFrame),
@@ -4212,9 +4204,7 @@ nsCSSFrameConstructor::FindXULMenubarData(const Element& aElement,
     }
   }
 
-  static constexpr FrameConstructionData sMenubarData =
-      SIMPLE_XUL_FCDATA(NS_NewMenuBarFrame);
-  return &sMenubarData;
+  return nullptr;
 }
 #endif /* XP_MACOSX */
 

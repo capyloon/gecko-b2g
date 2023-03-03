@@ -51,18 +51,13 @@ export var PlacesTestUtils = Object.freeze({
         throw new Error("Unsupported type passed to addVisits");
       }
 
-      let referrer;
+      let referrer = place.referrer
+        ? lazy.PlacesUtils.toURI(place.referrer)
+        : null;
       let info = { url: place.uri || place.url };
       let spec =
         info.url instanceof Ci.nsIURI ? info.url.spec : new URL(info.url).href;
       info.title = "title" in place ? place.title : "test visit for " + spec;
-      if (typeof place.referrer == "string") {
-        referrer = Services.io.newURI(place.referrer);
-      } else if (place.referrer) {
-        referrer = URL.isInstance(place.referrer)
-          ? Services.io.newURI(place.referrer.href)
-          : place.referrer;
-      }
       let visitDate = place.visitDate;
       if (visitDate) {
         if (visitDate.constructor.name != "Date") {
@@ -270,7 +265,7 @@ export var PlacesTestUtils = Object.freeze({
    * @rejects JavaScript exception.
    */
   fieldInDB(aURI, field) {
-    let url = aURI instanceof Ci.nsIURI ? new URL(aURI.spec) : new URL(aURI);
+    let url = aURI instanceof Ci.nsIURI ? URL.fromURI(aURI) : new URL(aURI);
     return lazy.PlacesUtils.withConnectionWrapper(
       "PlacesTestUtils.jsm: fieldInDb",
       async db => {
@@ -411,43 +406,45 @@ export var PlacesTestUtils = Object.freeze({
     }));
   },
 
-  waitForNotification(notification, conditionFn, type = "bookmarks") {
-    if (type == "places") {
-      return new Promise(resolve => {
-        function listener(events) {
-          if (!conditionFn || conditionFn(events)) {
-            PlacesObservers.removeListener([notification], listener);
-            resolve(events);
-          }
-        }
-        PlacesObservers.addListener([notification], listener);
-      });
-    }
-
+  /**
+   * Returns a promise that waits until happening Places events specified by
+   * notification parameter.
+   *
+   * @param {string} notification
+   *        Available values are:
+   *          bookmark-added
+   *          bookmark-removed
+   *          bookmark-moved
+   *          bookmark-guid_changed
+   *          bookmark-keyword_changed
+   *          bookmark-tags_changed
+   *          bookmark-time_changed
+   *          bookmark-title_changed
+   *          bookmark-url_changed
+   *          favicon-changed
+   *          history-cleared
+   *          page-removed
+   *          page-title-changed
+   *          page-visited
+   *          pages-rank-changed
+   *          purge-caches
+   * @param {Function} conditionFn [optional]
+   *        If need some more condition to wait, please use conditionFn.
+   *        This is an optional, but if set, should returns true when the wait
+   *        condition is met.
+   * @return {Promise}
+   *         A promise that resolved if the wait condition is met.
+   *         The resolved value is an array of PlacesEvent object.
+   */
+  waitForNotification(notification, conditionFn) {
     return new Promise(resolve => {
-      let proxifiedObserver = new Proxy(
-        {},
-        {
-          get: (target, name) => {
-            if (name == "QueryInterface") {
-              return ChromeUtils.generateQI([Ci.nsINavBookmarkObserver]);
-            }
-            if (name == notification) {
-              return (...args) => {
-                if (!conditionFn || conditionFn.apply(this, args)) {
-                  lazy.PlacesUtils[type].removeObserver(proxifiedObserver);
-                  resolve();
-                }
-              };
-            }
-            if (name == "skipTags") {
-              return false;
-            }
-            return () => false;
-          },
+      function listener(events) {
+        if (!conditionFn || conditionFn(events)) {
+          PlacesObservers.removeListener([notification], listener);
+          resolve(events);
         }
-      );
-      lazy.PlacesUtils[type].addObserver(proxifiedObserver);
+      }
+      PlacesObservers.addListener([notification], listener);
     });
   },
 

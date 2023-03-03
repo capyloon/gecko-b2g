@@ -13,8 +13,11 @@ const { actionCreators: ac, actionTypes: at } = ChromeUtils.importESModule(
 const { TippyTopProvider } = ChromeUtils.import(
   "resource://activity-stream/lib/TippyTopProvider.jsm"
 );
-const { insertPinned, TOP_SITES_MAX_SITES_PER_ROW } = ChromeUtils.import(
-  "resource://activity-stream/common/Reducers.jsm"
+const {
+  insertPinned,
+  TOP_SITES_MAX_SITES_PER_ROW,
+} = ChromeUtils.importESModule(
+  "resource://activity-stream/common/Reducers.sys.mjs"
 );
 const { Dedupe } = ChromeUtils.importESModule(
   "resource://activity-stream/common/Dedupe.sys.mjs"
@@ -50,6 +53,7 @@ ChromeUtils.defineModuleGetter(
 ChromeUtils.defineESModuleGetters(lazy, {
   NewTabUtils: "resource://gre/modules/NewTabUtils.sys.mjs",
   Region: "resource://gre/modules/Region.sys.mjs",
+  RemoteSettings: "resource://services-settings/remote-settings.sys.mjs",
 });
 ChromeUtils.defineModuleGetter(
   lazy,
@@ -60,11 +64,6 @@ ChromeUtils.defineModuleGetter(
   lazy,
   "PageThumbs",
   "resource://gre/modules/PageThumbs.jsm"
-);
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "RemoteSettings",
-  "resource://services-settings/remote-settings.js"
 );
 
 XPCOMUtils.defineLazyGetter(lazy, "log", () => {

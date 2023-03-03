@@ -32,7 +32,6 @@
 #include "nsIFile.h"
 #include "nsIFileURL.h"
 #include "nsNetCID.h"
-#include "nsProxyRelease.h"
 #include "nsServiceManagerUtils.h"
 #include "nsString.h"
 #include "nsThreadUtils.h"
@@ -153,9 +152,11 @@ Result<EntryId, QMResult> GetEntryHandle(
 
 FileSystemDataManager::FileSystemDataManager(
     const quota::OriginMetadata& aOriginMetadata,
+    RefPtr<quota::QuotaManager> aQuotaManager,
     MovingNotNull<nsCOMPtr<nsIEventTarget>> aIOTarget,
     MovingNotNull<RefPtr<TaskQueue>> aIOTaskQueue)
     : mOriginMetadata(aOriginMetadata),
+      mQuotaManager(std::move(aQuotaManager)),
       mBackgroundTarget(WrapNotNull(GetCurrentSerialEventTarget())),
       mIOTarget(std::move(aIOTarget)),
       mIOTaskQueue(std::move(aIOTaskQueue)),
@@ -163,6 +164,7 @@ FileSystemDataManager::FileSystemDataManager(
       mState(State::Initial) {}
 
 FileSystemDataManager::~FileSystemDataManager() {
+  NS_ASSERT_OWNINGTHREAD(FileSystemDataManager);
   MOZ_ASSERT(mState == State::Closed);
   MOZ_ASSERT(!mDatabaseManager);
 }
@@ -183,7 +185,11 @@ FileSystemDataManager::GetOrCreateFileSystemDataManager(
       return dataManager->OnOpen()->Then(
           GetCurrentSerialEventTarget(), __func__,
           [dataManager = Registered<FileSystemDataManager>(dataManager)](
-              const BoolPromise::ResolveOrRejectValue&) {
+              const BoolPromise::ResolveOrRejectValue& aValue) {
+            if (aValue.IsReject()) {
+              return CreatePromise::CreateAndReject(aValue.RejectValue(),
+                                                    __func__);
+            }
             return CreatePromise::CreateAndResolve(dataManager, __func__);
           });
     }
@@ -207,6 +213,10 @@ FileSystemDataManager::GetOrCreateFileSystemDataManager(
         Registered<FileSystemDataManager>(std::move(dataManager)), __func__);
   }
 
+  QM_TRY_UNWRAP(RefPtr<quota::QuotaManager> quotaManager,
+                quota::QuotaManager::GetOrCreate(),
+                CreatePromise::CreateAndReject(NS_ERROR_FAILURE, __func__));
+
   QM_TRY_UNWRAP(auto streamTransportService,
                 MOZ_TO_RESULT_GET_TYPED(nsCOMPtr<nsIEventTarget>,
                                         MOZ_SELECT_OVERLOAD(do_GetService),
@@ -219,7 +229,8 @@ FileSystemDataManager::GetOrCreateFileSystemDataManager(
       TaskQueue::Create(do_AddRef(streamTransportService), taskQueueName.get());
 
   auto dataManager = MakeRefPtr<FileSystemDataManager>(
-      aOriginMetadata, WrapMovingNotNull(streamTransportService),
+      aOriginMetadata, std::move(quotaManager),
+      WrapMovingNotNull(streamTransportService),
       WrapMovingNotNull(ioTaskQueue));
 
   AddFileSystemDataManager(aOriginMetadata.mOrigin, dataManager);
@@ -227,7 +238,11 @@ FileSystemDataManager::GetOrCreateFileSystemDataManager(
   return dataManager->BeginOpen()->Then(
       GetCurrentSerialEventTarget(), __func__,
       [dataManager = Registered<FileSystemDataManager>(dataManager)](
-          const BoolPromise::ResolveOrRejectValue&) {
+          const BoolPromise::ResolveOrRejectValue& aValue) {
+        if (aValue.IsReject()) {
+          return CreatePromise::CreateAndReject(aValue.RejectValue(), __func__);
+        }
+
         return CreatePromise::CreateAndResolve(dataManager, __func__);
       });
 }
@@ -312,6 +327,26 @@ void FileSystemDataManager::UnregisterActor(
   }
 }
 
+void FileSystemDataManager::RegisterAccessHandle(
+    NotNull<FileSystemAccessHandle*> aAccessHandle) {
+  MOZ_ASSERT(!mBackgroundThreadAccessible.Access()->mAccessHandles.Contains(
+      aAccessHandle));
+
+  mBackgroundThreadAccessible.Access()->mAccessHandles.Insert(aAccessHandle);
+}
+
+void FileSystemDataManager::UnregisterAccessHandle(
+    NotNull<FileSystemAccessHandle*> aAccessHandle) {
+  MOZ_ASSERT(mBackgroundThreadAccessible.Access()->mAccessHandles.Contains(
+      aAccessHandle));
+
+  mBackgroundThreadAccessible.Access()->mAccessHandles.Remove(aAccessHandle);
+
+  if (IsInactive()) {
+    BeginClose();
+  }
+}
+
 RefPtr<BoolPromise> FileSystemDataManager::OnOpen() {
   MOZ_ASSERT(mState == State::Opening);
 
@@ -328,15 +363,21 @@ bool FileSystemDataManager::IsLocked(const EntryId& aEntryId) const {
   return mExclusiveLocks.Contains(aEntryId);
 }
 
-bool FileSystemDataManager::LockExclusive(const EntryId& aEntryId) {
+nsresult FileSystemDataManager::LockExclusive(const EntryId& aEntryId) {
   if (IsLocked(aEntryId)) {
-    return false;
+    return NS_ERROR_DOM_NO_MODIFICATION_ALLOWED_ERR;
   }
+
+  // If the file has been removed, we should get a file not found error.
+  // Otherwise, if usage tracking cannot be started because file size is not
+  // known and attempts to read it are failing, lock is denied to freeze the
+  // quota usage until the (external) blocker is gone or the file is removed.
+  QM_TRY(MOZ_TO_RESULT(mDatabaseManager->BeginUsageTracking(aEntryId)));
 
   LOG_VERBOSE(("ExclusiveLock"));
   mExclusiveLocks.Insert(aEntryId);
 
-  return true;
+  return NS_OK;
 }
 
 void FileSystemDataManager::UnlockExclusive(const EntryId& aEntryId) {
@@ -345,10 +386,13 @@ void FileSystemDataManager::UnlockExclusive(const EntryId& aEntryId) {
   LOG_VERBOSE(("ExclusiveUnlock"));
   mExclusiveLocks.Remove(aEntryId);
 
-  QM_WARNONLY_TRY(MOZ_TO_RESULT(mDatabaseManager->UpdateUsage(aEntryId)));
+  // On error, usage tracking remains on to prevent writes until usage is
+  // updated successfully.
+  QM_TRY(MOZ_TO_RESULT(mDatabaseManager->UpdateUsage(aEntryId)), QM_VOID);
+  QM_TRY(MOZ_TO_RESULT(mDatabaseManager->EndUsageTracking(aEntryId)), QM_VOID);
 }
 
-bool FileSystemDataManager::LockShared(const EntryId& aEntryId) {
+nsresult FileSystemDataManager::LockShared(const EntryId& aEntryId) {
   return LockExclusive(aEntryId);
 }
 
@@ -357,7 +401,8 @@ void FileSystemDataManager::UnlockShared(const EntryId& aEntryId) {
 }
 
 bool FileSystemDataManager::IsInactive() const {
-  return !mRegCount && !mBackgroundThreadAccessible.Access()->mActors.Count();
+  auto data = mBackgroundThreadAccessible.Access();
+  return !mRegCount && !data->mActors.Count() && !data->mAccessHandles.Count();
 }
 
 void FileSystemDataManager::RequestAllowToClose() {
@@ -367,18 +412,16 @@ void FileSystemDataManager::RequestAllowToClose() {
 }
 
 RefPtr<BoolPromise> FileSystemDataManager::BeginOpen() {
+  MOZ_ASSERT(mQuotaManager);
   MOZ_ASSERT(mState == State::Initial);
 
   mState = State::Opening;
 
-  QM_TRY_UNWRAP(const NotNull<RefPtr<quota::QuotaManager>> quotaManager,
-                quota::QuotaManager::GetOrCreate(), CreateAndRejectBoolPromise);
-
   RefPtr<quota::ClientDirectoryLock> directoryLock =
-      quotaManager->CreateDirectoryLock(quota::PERSISTENCE_TYPE_DEFAULT,
-                                        mOriginMetadata,
-                                        mozilla::dom::quota::Client::FILESYSTEM,
-                                        /* aExclusive */ false);
+      mQuotaManager->CreateDirectoryLock(
+          quota::PERSISTENCE_TYPE_DEFAULT, mOriginMetadata,
+          mozilla::dom::quota::Client::FILESYSTEM,
+          /* aExclusive */ false);
 
   directoryLock->Acquire()
       ->Then(GetCurrentSerialEventTarget(), __func__,
@@ -394,17 +437,9 @@ RefPtr<BoolPromise> FileSystemDataManager::BeginOpen() {
 
                return BoolPromise::CreateAndResolve(true, __func__);
              })
-      ->Then(quotaManager->IOThread(), __func__,
+      ->Then(mQuotaManager->IOThread(), __func__,
              [self = RefPtr<FileSystemDataManager>(this)](
-                 const BoolPromise::ResolveOrRejectValue& value) mutable {
-               auto autoProxyReleaseManager = MakeScopeExit([&self] {
-                 nsCOMPtr<nsISerialEventTarget> target =
-                     self->MutableBackgroundTargetPtr();
-
-                 NS_ProxyRelease("ReleaseFileSystemDataManager", target,
-                                 self.forget());
-               });
-
+                 const BoolPromise::ResolveOrRejectValue& value) {
                if (value.IsReject()) {
                  return BoolPromise::CreateAndReject(value.RejectValue(),
                                                      __func__);
@@ -416,17 +451,9 @@ RefPtr<BoolPromise> FileSystemDataManager::BeginOpen() {
 
                return BoolPromise::CreateAndResolve(true, __func__);
              })
-      ->Then(MutableIOTargetPtr(), __func__,
+      ->Then(MutableIOTaskQueuePtr(), __func__,
              [self = RefPtr<FileSystemDataManager>(this)](
-                 const BoolPromise::ResolveOrRejectValue& value) mutable {
-               auto autoProxyReleaseManager = MakeScopeExit([&self] {
-                 nsCOMPtr<nsISerialEventTarget> target =
-                     self->MutableBackgroundTargetPtr();
-
-                 NS_ProxyRelease("ReleaseFileSystemDataManager", target,
-                                 self.forget());
-               });
-
+                 const BoolPromise::ResolveOrRejectValue& value) {
                if (value.IsReject()) {
                  return BoolPromise::CreateAndReject(value.RejectValue(),
                                                      __func__);
@@ -489,16 +516,8 @@ RefPtr<BoolPromise> FileSystemDataManager::BeginClose() {
 
   mState = State::Closing;
 
-  InvokeAsync(MutableIOTargetPtr(), __func__,
-              [self = RefPtr<FileSystemDataManager>(this)]() mutable {
-                auto autoProxyReleaseManager = MakeScopeExit([&self] {
-                  nsCOMPtr<nsISerialEventTarget> target =
-                      self->MutableBackgroundTargetPtr();
-
-                  NS_ProxyRelease("ReleaseFileSystemDataManager", target,
-                                  self.forget());
-                });
-
+  InvokeAsync(MutableIOTaskQueuePtr(), __func__,
+              [self = RefPtr<FileSystemDataManager>(this)]() {
                 if (self->mDatabaseManager) {
                   self->mDatabaseManager->Close();
                   self->mDatabaseManager = nullptr;

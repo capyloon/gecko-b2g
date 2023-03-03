@@ -2010,6 +2010,9 @@ bool CacheIRCompiler::emitGuardClass(ObjOperandId objId, GuardClassKind kind) {
     case GuardClassKind::Map:
       clasp = &MapObject::class_;
       break;
+    case GuardClassKind::BoundFunction:
+      clasp = &BoundFunctionObject::class_;
+      break;
     case GuardClassKind::JSFunction:
       MOZ_CRASH("JSFunction handled before switch");
   }
@@ -3501,6 +3504,31 @@ bool CacheIRCompiler::emitLoadArrayBufferViewLengthDoubleResult(
   return true;
 }
 
+bool CacheIRCompiler::emitLoadBoundFunctionNumArgs(ObjOperandId objId,
+                                                   Int32OperandId resultId) {
+  JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
+
+  Register obj = allocator.useRegister(masm, objId);
+  Register output = allocator.defineRegister(masm, resultId);
+
+  masm.unboxInt32(Address(obj, BoundFunctionObject::offsetOfFlagsSlot()),
+                  output);
+  masm.rshift32(Imm32(BoundFunctionObject::NumBoundArgsShift), output);
+  return true;
+}
+
+bool CacheIRCompiler::emitLoadBoundFunctionTarget(ObjOperandId objId,
+                                                  ObjOperandId resultId) {
+  JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
+
+  Register obj = allocator.useRegister(masm, objId);
+  Register output = allocator.defineRegister(masm, resultId);
+
+  masm.unboxObject(Address(obj, BoundFunctionObject::offsetOfTargetSlot()),
+                   output);
+  return true;
+}
+
 bool CacheIRCompiler::emitLoadFunctionLengthResult(ObjOperandId objId) {
   JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
   AutoOutputRegister output(*this);
@@ -4556,30 +4584,6 @@ bool CacheIRCompiler::emitGetNextMapSetEntryForIteratorResult(
   return true;
 }
 
-bool CacheIRCompiler::emitFinishBoundFunctionInitResult(
-    ObjOperandId boundId, ObjOperandId targetId, Int32OperandId argCountId) {
-  JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
-
-  AutoCallVM callvm(masm, this, allocator);
-
-  Register bound = allocator.useRegister(masm, boundId);
-  Register target = allocator.useRegister(masm, targetId);
-  Register argCount = allocator.useRegister(masm, argCountId);
-
-  callvm.prepare();
-
-  masm.Push(argCount);
-  masm.Push(target);
-  masm.Push(bound);
-
-  using Fn = bool (*)(JSContext * cx, HandleFunction bound, HandleObject target,
-                      int32_t argCount);
-  callvm.callNoResult<Fn, JSFunction::finishBoundFunctionInit>();
-
-  masm.moveValue(UndefinedValue(), callvm.outputValueReg());
-  return true;
-}
-
 void CacheIRCompiler::emitActivateIterator(Register objBeingIterated,
                                            Register iterObject,
                                            Register nativeIter,
@@ -4611,40 +4615,6 @@ void CacheIRCompiler::emitActivateIterator(Register objBeingIterated,
                                   StubField::Type::RawPointer);
   emitLoadStubField(enumeratorsAddr, scratch);
   masm.registerIterator(scratch, nativeIter, scratch2);
-}
-
-bool CacheIRCompiler::emitGuardAndGetIterator(ObjOperandId objId,
-                                              uint32_t iterOffset,
-                                              uint32_t enumeratorsAddrOffset,
-                                              ObjOperandId resultId) {
-  JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
-  Register obj = allocator.useRegister(masm, objId);
-
-  AutoScratchRegister scratch1(allocator, masm);
-  AutoScratchRegister scratch2(allocator, masm);
-  AutoScratchRegister niScratch(allocator, masm);
-
-  StubFieldOffset iterField(iterOffset, StubField::Type::JSObject);
-
-  Register output = allocator.defineRegister(masm, resultId);
-
-  FailurePath* failure;
-  if (!addFailurePath(&failure)) {
-    return false;
-  }
-
-  // Load our PropertyIteratorObject* and its NativeIterator.
-  emitLoadStubField(iterField, output);
-
-  Address slotAddr(output, PropertyIteratorObject::offsetOfIteratorSlot());
-  masm.loadPrivate(slotAddr, niScratch);
-
-  // Ensure the iterator is reusable: see NativeIterator::isReusable.
-  masm.branchIfNativeIteratorNotReusable(niScratch, failure->label());
-
-  emitActivateIterator(obj, output, niScratch, scratch1, scratch2,
-                       enumeratorsAddrOffset);
-  return true;
 }
 
 bool CacheIRCompiler::emitObjectToIteratorResult(

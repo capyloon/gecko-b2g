@@ -12,8 +12,9 @@
 #define MODULES_AUDIO_PROCESSING_INCLUDE_AUDIO_PROCESSING_H_
 
 // MSVC++ requires this to be set before any other includes to get M_PI.
-// MOZILLA: this is already defined in mozilla-config.h
-// #define _USE_MATH_DEFINES
+#ifndef _USE_MATH_DEFINES
+#define _USE_MATH_DEFINES
+#endif
 
 #include <math.h>
 #include <stddef.h>  // size_t
@@ -588,9 +589,10 @@ class RTC_EXPORT AudioProcessing : public rtc::RefCountInterface {
   // HAL. Must be within the range [0, 255].
   virtual void set_stream_analog_level(int level) = 0;
 
-  // When an analog mode is set, this should be called after ProcessStream()
-  // to obtain the recommended new analog level for the audio HAL. It is the
-  // user's responsibility to apply this level.
+  // When an analog mode is set, this should be called after
+  // `set_stream_analog_level()` and `ProcessStream()` to obtain the recommended
+  // new analog level for the audio HAL. It is the user's responsibility to
+  // apply this level.
   virtual int recommended_stream_analog_level() const = 0;
 
   // This must be called if and only if echo processing is enabled.

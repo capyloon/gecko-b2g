@@ -11,7 +11,6 @@ var { TestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/TestUtils.sys.mjs"
 );
 var {
-  AccountState,
   MockFxaStorageManager,
   SyncTestingInfrastructure,
   configureFxAccountIdentity,
@@ -25,7 +24,9 @@ var {
   sumHistogram,
   syncTestLogging,
   waitForZeroTimer,
-} = ChromeUtils.import("resource://testing-common/services/sync/utils.js");
+} = ChromeUtils.importESModule(
+  "resource://testing-common/services/sync/utils.sys.mjs"
+);
 
 const SYNC_HTTP_LOGGER = "Sync.Test.Server";
 

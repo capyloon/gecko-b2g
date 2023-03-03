@@ -931,8 +931,6 @@ nsChangeHint SVGElement::GetAttributeChangeHint(const nsAtom* aAttribute,
   return retval;
 }
 
-bool SVGElement::IsNodeOfType(uint32_t aFlags) const { return false; }
-
 void SVGElement::NodeInfoChanged(Document* aOldDoc) {
   SVGElementBase::NodeInfoChanged(aOldDoc);
   aOldDoc->UnscheduleSVGForPresAttrEvaluation(this);
@@ -1062,8 +1060,8 @@ SVGSVGElement* SVGElement::GetOwnerSVGElement() {
     if (ancestor->IsSVGElement(nsGkAtoms::foreignObject)) {
       return nullptr;
     }
-    if (ancestor->IsSVGElement(nsGkAtoms::svg)) {
-      return static_cast<SVGSVGElement*>(ancestor);
+    if (auto* svg = SVGSVGElement::FromNode(ancestor)) {
+      return svg;
     }
     ancestor = ancestor->GetFlattenedTreeParent();
   }

@@ -556,7 +556,9 @@ JitCode* IonCacheIRCompiler::compile(IonICStub* stub) {
 
   CacheIRReader reader(writer_);
   do {
-    switch (reader.readOp()) {
+    CacheOp op = reader.readOp();
+    perfSpewer_.recordInstruction(masm, op);
+    switch (op) {
 #define DEFINE_OP(op, ...)                 \
   case CacheOp::op:                        \
     if (!emit##op(reader)) return nullptr; \
@@ -591,6 +593,9 @@ JitCode* IonCacheIRCompiler::compile(IonICStub* stub) {
     cx_->recoverFromOutOfMemory();
     return nullptr;
   }
+
+  CacheKind stubKind = stub->stubInfo()->kind();
+  perfSpewer_.saveProfile(newStubCode, CacheKindNames[uint8_t(stubKind)]);
 
   for (CodeOffset offset : nextCodeOffsets_) {
     Assembler::PatchDataWithValueCheck(CodeLocationLabel(newStubCode, offset),
@@ -1946,6 +1951,14 @@ bool IonCacheIRCompiler::emitCallScriptedFunction(ObjOperandId calleeId,
   MOZ_CRASH("Call ICs not used in ion");
 }
 
+bool IonCacheIRCompiler::emitCallBoundScriptedFunction(ObjOperandId calleeId,
+                                                       ObjOperandId targetId,
+                                                       Int32OperandId argcId,
+                                                       CallFlags flags,
+                                                       uint32_t numBoundArgs) {
+  MOZ_CRASH("Call ICs not used in ion");
+}
+
 bool IonCacheIRCompiler::emitCallWasmFunction(
     ObjOperandId calleeId, Int32OperandId argcId, CallFlags flags,
     uint32_t argcFixed, uint32_t funcExportOffset, uint32_t instanceOffset) {
@@ -1996,6 +2009,12 @@ bool IonCacheIRCompiler::emitCallInlinedFunction(ObjOperandId calleeId,
                                                  uint32_t icScriptOffset,
                                                  CallFlags flags,
                                                  uint32_t argcFixed) {
+  MOZ_CRASH("Call ICs not used in ion");
+}
+
+bool IonCacheIRCompiler::emitBindFunctionResult(ObjOperandId targetId,
+                                                uint32_t argc,
+                                                uint32_t templateObjectOffset) {
   MOZ_CRASH("Call ICs not used in ion");
 }
 

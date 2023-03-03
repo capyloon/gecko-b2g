@@ -24,7 +24,6 @@ menucaption {
   -moz-default-appearance: menuitem;
   -moz-box-align: center;
   list-style-image: none;
-  -moz-image-region: auto;
 }
 
 @media (-moz-windows-non-native-menus) {
@@ -267,10 +266,6 @@ menulist > menupopup > menuitem > label,
 menulist > menupopup > menucaption > label,
 menulist > menupopup > menu > label {
   padding-block: 0;
-}
-
-menulist:-moz-focusring > menupopup > menuitem[_moz-menuactive="true"] {
-  border: 1px dotted #F5DB95;
 }
 
 menulist > menupopup > menuitem[_moz-menuactive="true"][disabled="true"] {

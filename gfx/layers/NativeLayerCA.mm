@@ -807,6 +807,11 @@ NativeLayerCA::~NativeLayerCA() {
 void NativeLayerCA::AttachExternalImage(wr::RenderTextureHost* aExternalImage) {
   MutexAutoLock lock(mMutex);
 
+#ifdef NIGHTLY_BUILD
+  mHasEverAttachExternalImage = true;
+  MOZ_RELEASE_ASSERT(!mHasEverNotifySurfaceReady, "Shouldn't change layer type to external.");
+#endif
+
   wr::RenderMacIOSurfaceTextureHost* texture = aExternalImage->AsRenderMacIOSurfaceTextureHost();
   MOZ_ASSERT(texture || aExternalImage->IsWrappingAsyncRemoteTexture());
   mTextureHost = texture;
@@ -861,9 +866,12 @@ bool NativeLayerCA::ShouldSpecializeVideo(const MutexAutoLock& aProofOfLock) {
 
   MOZ_ASSERT(mTextureHost);
 
-  // DRM video must use a specialized video layer.
-  if (mTextureHost->IsFromDRMSource()) {
-    return true;
+  // DRM video is supported in macOS 10.15 and beyond, and such video must use
+  // a specialized video layer.
+  if (@available(macOS 10.15, iOS 13.0, *)) {
+    if (mTextureHost->IsFromDRMSource()) {
+      return true;
+    }
   }
 
   // Beyond this point, we need to know about the format of the video.
@@ -1187,10 +1195,46 @@ void NativeLayerCA::HandlePartialUpdate(const MutexAutoLock& aProofOfLock,
 
   MOZ_RELEASE_ASSERT(!mInProgressUpdateRegion);
   MOZ_RELEASE_ASSERT(!mInProgressDisplayRect);
+
+#ifdef NIGHTLY_BUILD
+  // Check if this update will leave the in progress surface with invalid pixels. This is
+  // only possible if the display rect is changing. That is true because definitionally the
+  // front surface has valid pixels for the entire current display rect. Given that, the in
+  // progress surface will copy the valid pixels from the front surface to cover any
+  // invalid regions in the in progress surface. It is only when the display rect changes
+  // that the in progress surface is relying on aUpdateRegion to cover the revealed area,
+  // which might also be partly or completely covered by valid pixels in the front surface.
+  //
+  // To check this, we check that the area exposed by the new display rect is covered by
+  // some combination of the update region and the front surface's valid region. Because
+  // this check is complex, we only do it in Nightly.
+  //
+  // Also, since this condition will hit a later release assert in NotifySurfaceReady, we
+  // choose to crash now.
+
+  if (!mDisplayRect.IsEqualInterior(aDisplayRect)) {
+    gfx::IntRegion exposedRegion(aDisplayRect);
+
+    if (mFrontSurface) {
+      // If there's a front surface, we'll fill in any valid pixels in the exposed region.
+      // We express this by intersecting the exposed region with the invalid region of the
+      // front surface.
+      exposedRegion.AndWith(mFrontSurface->mInvalidRegion);
+    }
+
+    if (!aUpdateRegion.Contains(exposedRegion)) {
+      // Let's crash now instead of later.
+      std::ostringstream reason;
+      reason << "The update region " << aUpdateRegion << " must cover the invalid region "
+             << exposedRegion << ".";
+      gfxCriticalError() << reason.str();
+      MOZ_CRASH();
+    }
+  }
+#endif
+
   mInProgressUpdateRegion = Some(aUpdateRegion);
   mInProgressDisplayRect = Some(aDisplayRect);
-
-  InvalidateRegionThroughoutSwapchain(aProofOfLock, aUpdateRegion);
 
   if (mFrontSurface) {
     // Copy not-overwritten valid content from mFrontSurface so that valid content never gets lost.
@@ -1204,6 +1248,8 @@ void NativeLayerCA::HandlePartialUpdate(const MutexAutoLock& aProofOfLock,
       mInProgressSurface->mInvalidRegion.SubOut(copyRegion);
     }
   }
+
+  InvalidateRegionThroughoutSwapchain(aProofOfLock, aUpdateRegion);
 }
 
 RefPtr<gfx::DrawTarget> NativeLayerCA::NextSurfaceAsDrawTarget(const IntRect& aDisplayRect,
@@ -1273,6 +1319,11 @@ Maybe<GLuint> NativeLayerCA::NextSurfaceAsFramebuffer(const IntRect& aDisplayRec
 void NativeLayerCA::NotifySurfaceReady() {
   MutexAutoLock lock(mMutex);
 
+#ifdef NIGHTLY_BUILD
+  mHasEverNotifySurfaceReady = true;
+  MOZ_RELEASE_ASSERT(!mHasEverAttachExternalImage, "Shouldn't change layer type to drawn.");
+#endif
+
   MOZ_RELEASE_ASSERT(mInProgressSurface,
                      "NotifySurfaceReady called without preceding call to NextSurface");
 
@@ -1290,6 +1341,22 @@ void NativeLayerCA::NotifySurfaceReady() {
   IOSurfaceDecrementUseCount(mInProgressSurface->mSurface.get());
   mFrontSurface = std::move(mInProgressSurface);
   mFrontSurface->mInvalidRegion.SubOut(mInProgressUpdateRegion.extract());
+
+  // Bug 1818540: We have a rounding error in our invalid region calculation
+  // somewhere. It's either in the update region that we receive from WebRender,
+  // or somewhere in this class's invalid region computation. Until we solve
+  // that, we might be left with a one-pixel tall or wide invalid region on the
+  // front surface, which will hit either the assert at the end of this function,
+  // or the assert in HandlePartialUpdate. There is no evidence that we are
+  // actually missing one pixel tall or wide strips from our updates and filling
+  // them with bad pixels. So to solve this problem for now, we check for a
+  // degenerate invalid region and clear it. Fixing Bug 1818540 will remove this
+  // cleanup and the asserts in this function and in HandlePartialUpdate.
+  IntRect frontSurfaceInvalidBounds = mFrontSurface->mInvalidRegion.GetBounds();
+  if (frontSurfaceInvalidBounds.width <= 1 || frontSurfaceInvalidBounds.height <= 1) {
+    mFrontSurface->mInvalidRegion.SetEmpty();
+  }
+
   ForAllRepresentations([&](Representation& r) { r.mMutatedFrontSurface = true; });
 
   MOZ_RELEASE_ASSERT(mInProgressDisplayRect);
@@ -1344,7 +1411,7 @@ bool NativeLayerCA::ApplyChanges(WhichRepresentation aRepresentation,
   return GetRepresentation(aRepresentation)
       .ApplyChanges(aUpdate, mSize, mIsOpaque, mPosition, mTransform, mDisplayRect, mClipRect,
                     mBackingScale, mSurfaceIsFlipped, mSamplingFilter, mSpecializeVideo, surface,
-                    mColor, mIsDRM);
+                    mColor, mIsDRM, IsVideo());
 }
 
 CALayer* NativeLayerCA::UnderlyingCALayer(WhichRepresentation aRepresentation) {
@@ -1370,18 +1437,22 @@ static NSString* NSStringForOSType(OSType type) {
   NSLog(@"Surface values are %@.\n", surfaceValues);
   CFRelease(surfaceValues);
 
-  CGColorSpaceRef colorSpace = CVImageBufferGetColorSpace(aBuffer);
-  NSLog(@"ColorSpace is %@.\n", colorSpace);
+  if (aBuffer) {
+    CGColorSpaceRef colorSpace = CVImageBufferGetColorSpace(aBuffer);
+    NSLog(@"ColorSpace is %@.\n", colorSpace);
 
-  CFDictionaryRef bufferAttachments =
-      CVBufferGetAttachments(aBuffer, kCVAttachmentMode_ShouldPropagate);
-  NSLog(@"Buffer attachments are %@.\n", bufferAttachments);
+    CFDictionaryRef bufferAttachments =
+        CVBufferGetAttachments(aBuffer, kCVAttachmentMode_ShouldPropagate);
+    NSLog(@"Buffer attachments are %@.\n", bufferAttachments);
+  }
 
-  OSType codec = CMFormatDescriptionGetMediaSubType(aFormat);
-  NSLog(@"Codec is %@.\n", NSStringForOSType(codec));
+  if (aFormat) {
+    OSType codec = CMFormatDescriptionGetMediaSubType(aFormat);
+    NSLog(@"Codec is %@.\n", NSStringForOSType(codec));
 
-  CFDictionaryRef extensions = CMFormatDescriptionGetExtensions(aFormat);
-  NSLog(@"Format extensions are %@.\n", extensions);
+    CFDictionaryRef extensions = CMFormatDescriptionGetExtensions(aFormat);
+    NSLog(@"Format extensions are %@.\n", extensions);
+  }
 }
 
 bool NativeLayerCA::Representation::EnqueueSurface(IOSurfaceRef aSurfaceRef) {
@@ -1464,8 +1535,9 @@ bool NativeLayerCA::Representation::EnqueueSurface(IOSurfaceRef aSurfaceRef) {
       CFTypeRefPtr<CMVideoFormatDescriptionRef>::WrapUnderCreateRule(formatDescription);
 
 #ifdef NIGHTLY_BUILD
-  if (StaticPrefs::gfx_core_animation_specialize_video_log()) {
+  if (mLogNextVideoSurface && StaticPrefs::gfx_core_animation_specialize_video_log()) {
     LogSurface(aSurfaceRef, pixelBuffer, formatDescription);
+    mLogNextVideoSurface = false;
   }
 #endif
 
@@ -1522,7 +1594,8 @@ bool NativeLayerCA::Representation::ApplyChanges(
     const IntPoint& aPosition, const Matrix4x4& aTransform, const IntRect& aDisplayRect,
     const Maybe<IntRect>& aClipRect, float aBackingScale, bool aSurfaceIsFlipped,
     gfx::SamplingFilter aSamplingFilter, bool aSpecializeVideo,
-    CFTypeRefPtr<IOSurfaceRef> aFrontSurface, CFTypeRefPtr<CGColorRef> aColor, bool aIsDRM) {
+    CFTypeRefPtr<IOSurfaceRef> aFrontSurface, CFTypeRefPtr<CGColorRef> aColor, bool aIsDRM,
+    bool aIsVideo) {
   // If we have an OnlyVideo update, handle it and early exit.
   if (aUpdate == UpdateType::OnlyVideo) {
     // If we don't have any updates to do, exit early with success. This is
@@ -1586,6 +1659,12 @@ bool NativeLayerCA::Representation::ApplyChanges(
       mWrappingCALayer.backgroundColor = aColor.get();
     } else {
       if (aSpecializeVideo) {
+#ifdef NIGHTLY_BUILD
+        if (aIsVideo && StaticPrefs::gfx_core_animation_specialize_video_log()) {
+          NSLog(@"VIDEO_LOG: Rebuilding video layer with AVSampleBufferDisplayLayer.");
+          mLogNextVideoSurface = true;
+        }
+#endif
         mContentCALayer = [[AVSampleBufferDisplayLayer layer] retain];
         CMTimebaseRef timebase;
 #ifdef CMTIMEBASE_USE_SOURCE_TERMINOLOGY
@@ -1597,6 +1676,12 @@ bool NativeLayerCA::Representation::ApplyChanges(
         [(AVSampleBufferDisplayLayer*)mContentCALayer setControlTimebase:timebase];
         CFRelease(timebase);
       } else {
+#ifdef NIGHTLY_BUILD
+        if (aIsVideo && StaticPrefs::gfx_core_animation_specialize_video_log()) {
+          NSLog(@"VIDEO_LOG: Rebuilding video layer with CALayer.");
+          mLogNextVideoSurface = true;
+        }
+#endif
         mContentCALayer = [[CALayer layer] retain];
       }
       mContentCALayer.position = NSZeroPoint;
@@ -1754,6 +1839,12 @@ bool NativeLayerCA::Representation::ApplyChanges(
         return false;
       }
     } else {
+#ifdef NIGHTLY_BUILD
+      if (mLogNextVideoSurface && StaticPrefs::gfx_core_animation_specialize_video_log()) {
+        LogSurface(surface, nullptr, nullptr);
+        mLogNextVideoSurface = false;
+      }
+#endif
       mContentCALayer.contents = (id)surface;
     }
   }

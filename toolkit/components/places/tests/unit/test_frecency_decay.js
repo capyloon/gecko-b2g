@@ -9,11 +9,7 @@ const PREF_FREC_DECAY_RATE_DEF = 0.975;
  * @returns {Promise} A promise which is resolved when the notification is seen.
  */
 function promiseRankingChanged() {
-  return PlacesTestUtils.waitForNotification(
-    "pages-rank-changed",
-    () => true,
-    "places"
-  );
+  return PlacesTestUtils.waitForNotification("pages-rank-changed");
 }
 
 add_task(async function setup() {
@@ -50,6 +46,7 @@ add_task(async function test_frecency_decay() {
     url,
     parentGuid: PlacesUtils.bookmarks.unfiledGuid,
   });
+  await PlacesFrecencyRecalculator.recalculateAnyOutdatedFrecencies();
   await promiseOne;
 
   let histogram = TelemetryTestUtils.getAndClearHistogram(
@@ -59,13 +56,10 @@ add_task(async function test_frecency_decay() {
   Assert.equal(PlacesUtils.history.isFrecencyDecaying, false);
   let promiseRanking = promiseRankingChanged();
 
-  let svc = Cc["@mozilla.org/places/frecency-recalculator;1"].getService(
-    Ci.nsIObserver
-  );
-  svc.observe(null, "idle-daily", "");
+  PlacesFrecencyRecalculator.observe(null, "idle-daily", "");
   Assert.equal(PlacesUtils.history.isFrecencyDecaying, true);
   info("Wait for completion.");
-  await svc.wrappedJSObject.pendingFrecencyDecayPromise;
+  await PlacesFrecencyRecalculator.pendingFrecencyDecayPromise;
 
   await promiseRanking;
   Assert.equal(PlacesUtils.history.isFrecencyDecaying, false);

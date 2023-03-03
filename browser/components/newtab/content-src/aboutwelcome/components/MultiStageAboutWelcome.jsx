@@ -170,10 +170,6 @@ export const MultiStageAboutWelcome = props => {
     })();
   }, [useImportable, region]);
 
-  const centeredScreens = props.screens.filter(
-    s => s.content.position !== "corner"
-  );
-
   const {
     negotiatedLanguage,
     langPackInstallPhase,
@@ -194,31 +190,19 @@ export const MultiStageAboutWelcome = props => {
         style={props.backdrop ? { background: props.backdrop } : {}}
       >
         {screens.map((screen, order) => {
-          const isFirstCenteredScreen =
-            (!screen.content.position ||
-              screen.content.position === "center") &&
-            screen === centeredScreens[0];
-          const isLastCenteredScreen =
-            (!screen.content.position ||
-              screen.content.position === "center") &&
-            screen === centeredScreens[centeredScreens.length - 1];
-          /* If first screen is corner positioned, don't include it in the count for the steps indicator. This assumes corner positioning will only be used on the first screen. */
-          const totalNumberOfScreens =
-            screens[0].content.position === "corner"
-              ? screens.length - 1
-              : screens.length;
-          /* Don't include a starting corner screen when determining step indicator order */
-          const stepOrder =
-            screens[0].content.position === "corner" ? order - 1 : order;
+          const isFirstScreen = screen === screens[0];
+          const isLastScreen = screen === screens[screens.length - 1];
+          const totalNumberOfScreens = screens.length;
+          const isSingleScreen = totalNumberOfScreens === 1;
 
           return index === order ? (
             <WelcomeScreen
               key={screen.id + order}
               id={screen.id}
               totalNumberOfScreens={totalNumberOfScreens}
-              isFirstCenteredScreen={isFirstCenteredScreen}
-              isLastCenteredScreen={isLastCenteredScreen}
-              stepOrder={stepOrder}
+              isFirstScreen={isFirstScreen}
+              isLastScreen={isLastScreen}
+              isSingleScreen={isSingleScreen}
               order={order}
               previousOrder={previousOrder}
               content={screen.content}
@@ -314,7 +298,7 @@ export class WelcomeScreen extends React.PureComponent {
     if (type === "SHOW_FIREFOX_ACCOUNTS") {
       let params = {
         ...BASE_PARAMS,
-        utm_term: `aboutwelcome-${UTMTerm}-screen`,
+        utm_term: `${UTMTerm}-screen`,
       };
       if (action.addFlowParams && flowParams) {
         params = {
@@ -325,7 +309,7 @@ export class WelcomeScreen extends React.PureComponent {
       data = { ...data, extraParams: params };
     } else if (type === "OPEN_URL") {
       let url = new URL(data.args);
-      addUtmParams(url, `aboutwelcome-${UTMTerm}-screen`);
+      addUtmParams(url, `${UTMTerm}-screen`);
       if (action.addFlowParams && flowParams) {
         url.searchParams.append("device_id", flowParams.deviceId);
         url.searchParams.append("flow_id", flowParams.flowId);
@@ -413,6 +397,10 @@ export class WelcomeScreen extends React.PureComponent {
     if (action.navigate) {
       props.navigate();
     }
+
+    if (action.dismiss) {
+      window.AWFinish();
+    }
   }
 
   render() {
@@ -421,7 +409,6 @@ export class WelcomeScreen extends React.PureComponent {
         content={this.props.content}
         id={this.props.id}
         order={this.props.order}
-        stepOrder={this.props.stepOrder}
         previousOrder={this.props.previousOrder}
         activeTheme={this.props.activeTheme}
         activeMultiSelect={this.props.activeMultiSelect}
@@ -432,8 +419,9 @@ export class WelcomeScreen extends React.PureComponent {
         langPackInstallPhase={this.props.langPackInstallPhase}
         handleAction={this.handleAction}
         messageId={this.props.messageId}
-        isFirstCenteredScreen={this.props.isFirstCenteredScreen}
-        isLastCenteredScreen={this.props.isLastCenteredScreen}
+        isFirstScreen={this.props.isFirstScreen}
+        isLastScreen={this.props.isLastScreen}
+        isSingleScreen={this.props.isSingleScreen}
         startsWithCorner={this.props.startsWithCorner}
         autoAdvance={this.props.autoAdvance}
       />

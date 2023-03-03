@@ -11,8 +11,10 @@
 #include "mozilla/Maybe.h"
 
 #include "gc/Allocator.h"
+#include "gc/Pretenuring.h"
 #include "vm/ArrayBufferObject.h"
 #include "vm/JSObject.h"
+#include "wasm/WasmInstanceData.h"
 #include "wasm/WasmTypeDef.h"
 #include "wasm/WasmValType.h"
 
@@ -94,10 +96,6 @@ class WasmGcObject : public JSObject {
     return lookupProperty(cx, object, id, &offset, &type);
   }
 
-  template <typename T>
-  static T* create(JSContext* cx, const wasm::TypeDef* typeDef,
-                   gc::AllocKind allocKind, gc::InitialHeap heap);
-
   bool loadValue(JSContext* cx, const WasmGcObject::PropOffset& offset,
                  wasm::FieldType type, MutableHandleValue vp);
 
@@ -113,6 +111,34 @@ class WasmGcObject : public JSObject {
   [[nodiscard]] static bool obj_newEnumerate(JSContext* cx, HandleObject obj,
                                              MutableHandleIdVector properties,
                                              bool enumerableOnly);
+
+  struct MOZ_STACK_CLASS AllocArgs {
+    explicit AllocArgs(JSContext* cx)
+        : shape(cx),
+          clasp(nullptr),
+          allocSite(nullptr),
+          allocKind(gc::AllocKind::LIMIT),
+          initialHeap(gc::DefaultHeap) {}
+    AllocArgs(JSContext* cx, wasm::TypeDefInstanceData* typeDefData)
+        : shape(cx, typeDefData->shape),
+          clasp(typeDefData->clasp),
+          allocSite(&typeDefData->allocSite),
+          allocKind(typeDefData->allocKind),
+          initialHeap(typeDefData->initialHeap) {}
+
+    static inline bool compute(JSContext* cx, const wasm::TypeDef* typeDef,
+                               AllocArgs* args);
+
+    Rooted<Shape*> shape;
+    const JSClass* clasp;
+    gc::AllocSite* allocSite;
+    gc::AllocKind allocKind;
+    gc::InitialHeap initialHeap;
+  };
+
+ protected:
+  static WasmGcObject* create(JSContext* cx, const wasm::TypeDef* typeDef,
+                              const AllocArgs& args);
 };
 
 //=========================================================================
@@ -128,9 +154,8 @@ class WasmArrayObject : public WasmGcObject {
   // The number of elements in the array.
   uint32_t numElements_;
 
-  // Owned data pointer, holding `numElements_` entries.  Unlike
-  // WasmStructObject::outlineData_, this can never validly be nullptr, since
-  // WasmArrayObject doesn't have any inline storage area.
+  // Owned data pointer, holding `numElements_` entries.  This is null if
+  // `numElements_` is zero; otherwise it must be non-null.  See bug 1812283.
   uint8_t* data_;
 
   // AllocKind for object creation
@@ -138,12 +163,16 @@ class WasmArrayObject : public WasmGcObject {
 
   // Creates a new array typed object initialized to zero for the specified
   // number of elements.  Reports an error if the number of elements is too
-  // large, or if there is an out of memory.  `rtt` is the overall array type,
-  // not the element type.
+  // large, or if there is an out of memory.  `typeDef` is the overall array
+  // type, not the element type.
+  static WasmArrayObject* createArray(JSContext* cx,
+                                      const wasm::TypeDef* typeDef,
+                                      uint32_t numElements);
+  template <bool ZeroFields = true>
   static WasmArrayObject* createArray(JSContext* cx,
                                       const wasm::TypeDef* typeDef,
                                       uint32_t numElements,
-                                      gc::InitialHeap heap = gc::DefaultHeap);
+                                      const WasmGcObject::AllocArgs& args);
 
   // JIT accessors
   static constexpr size_t offsetOfNumElements() {
@@ -176,7 +205,8 @@ class WasmArrayObject : public WasmGcObject {
 
 class WasmStructObject : public WasmGcObject {
  public:
-  static const JSClass class_;
+  static const JSClass classInline_;
+  static const JSClass classOutline_;
 
   // Owned pointer to a malloc'd block containing out-of-line fields, or
   // nullptr if none.  Note that MIR alias analysis assumes this is readonly
@@ -204,14 +234,17 @@ class WasmStructObject : public WasmGcObject {
     return n;
   }
 
-  // AllocKind for object creation
-  static gc::AllocKind allocKindForTypeDef(const wasm::TypeDef* typeDef);
+  static const JSClass* classForTypeDef(const wasm::TypeDef* typeDef);
+  static js::gc::AllocKind allocKindForTypeDef(const wasm::TypeDef* typeDef);
 
   // Creates a new struct typed object initialized to zero. Reports if there
   // is an out of memory error.  `typeDef` is the type of the struct.
   static WasmStructObject* createStruct(JSContext* cx,
+                                        const wasm::TypeDef* typeDef);
+  template <bool ZeroFields = true>
+  static WasmStructObject* createStruct(JSContext* cx,
                                         const wasm::TypeDef* typeDef,
-                                        gc::InitialHeap heap = gc::DefaultHeap);
+                                        const WasmGcObject::AllocArgs& args);
 
   // Given the total number of data bytes required (including alignment
   // holes), return the number of inline and outline bytes required.
@@ -314,7 +347,8 @@ namespace js {
 
 inline bool IsWasmGcObjectClass(const JSClass* class_) {
   return class_ == &WasmArrayObject::class_ ||
-         class_ == &WasmStructObject::class_;
+         class_ == &WasmStructObject::classInline_ ||
+         class_ == &WasmStructObject::classOutline_;
 }
 
 }  // namespace js
@@ -322,6 +356,13 @@ inline bool IsWasmGcObjectClass(const JSClass* class_) {
 template <>
 inline bool JSObject::is<js::WasmGcObject>() const {
   return js::IsWasmGcObjectClass(getClass());
+}
+
+template <>
+inline bool JSObject::is<js::WasmStructObject>() const {
+  const JSClass* class_ = getClass();
+  return class_ == &js::WasmStructObject::classInline_ ||
+         class_ == &js::WasmStructObject::classOutline_;
 }
 
 #endif /* wasm_WasmGcObject_h */

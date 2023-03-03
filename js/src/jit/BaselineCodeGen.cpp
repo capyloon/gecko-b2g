@@ -223,6 +223,7 @@ MethodStatus BaselineCompiler::compile() {
 
   MOZ_ASSERT(!script->hasBaselineScript());
 
+  perfSpewer_.recordOffset(masm, "Prologue");
   if (!emitPrologue()) {
     return Method_Error;
   }
@@ -232,10 +233,12 @@ MethodStatus BaselineCompiler::compile() {
     return status;
   }
 
+  perfSpewer_.recordOffset(masm, "Epilogue");
   if (!emitEpilogue()) {
     return Method_Error;
   }
 
+  perfSpewer_.recordOffset(masm, "OOLPostBarrierSlot");
   if (!emitOutOfLinePostBarrierSlot()) {
     return Method_Error;
   }
@@ -515,6 +518,8 @@ bool BaselineCodeGen<Handler>::emitOutOfLinePostBarrierSlot() {
 #elif defined(JS_CODEGEN_MIPS32) || defined(JS_CODEGEN_MIPS64)
   masm.push(ra);
 #elif defined(JS_CODEGEN_LOONG64)
+  masm.push(ra);
+#elif defined(JS_CODEGEN_RISCV64)
   masm.push(ra);
 #endif
   masm.pushValue(R0);
@@ -2639,8 +2644,6 @@ bool BaselineCodeGen<Handler>::emit_Ne() {
 
 template <typename Handler>
 bool BaselineCodeGen<Handler>::emitCompare() {
-  // CODEGEN
-
   // Keep top JSStack value in R0 and R1.
   frame.popRegsAndSync(2);
 
@@ -3046,7 +3049,7 @@ bool BaselineCodeGen<Handler>::emitDelElem(bool strict) {
 
   masm.boxNonDouble(JSVAL_TYPE_BOOLEAN, ReturnReg, R1);
   frame.popn(2);
-  frame.push(R1);
+  frame.push(R1, JSVAL_TYPE_BOOLEAN);
   return true;
 }
 
@@ -3068,7 +3071,7 @@ bool BaselineCodeGen<Handler>::emit_In() {
     return false;
   }
 
-  frame.push(R0);
+  frame.push(R0, JSVAL_TYPE_BOOLEAN);
   return true;
 }
 
@@ -3080,7 +3083,7 @@ bool BaselineCodeGen<Handler>::emit_HasOwn() {
     return false;
   }
 
-  frame.push(R0);
+  frame.push(R0, JSVAL_TYPE_BOOLEAN);
   return true;
 }
 
@@ -3095,7 +3098,7 @@ bool BaselineCodeGen<Handler>::emit_CheckPrivateField() {
     return false;
   }
 
-  frame.push(R0);
+  frame.push(R0, JSVAL_TYPE_BOOLEAN);
   return true;
 }
 
@@ -3359,7 +3362,7 @@ bool BaselineCodeGen<Handler>::emitDelProp(bool strict) {
 
   masm.boxNonDouble(JSVAL_TYPE_BOOLEAN, ReturnReg, R1);
   frame.pop();
-  frame.push(R1);
+  frame.push(R1, JSVAL_TYPE_BOOLEAN);
   return true;
 }
 
@@ -4366,7 +4369,7 @@ bool BaselineCodeGen<Handler>::emit_Instanceof() {
     return false;
   }
 
-  frame.push(R0);
+  frame.push(R0, JSVAL_TYPE_BOOLEAN);
   return true;
 }
 
@@ -4856,7 +4859,7 @@ bool BaselineCodeGen<Handler>::emit_CanSkipAwait() {
   }
 
   masm.tagValue(JSVAL_TYPE_BOOLEAN, ReturnReg, R0);
-  frame.push(R0);
+  frame.push(R0, JSVAL_TYPE_BOOLEAN);
   return true;
 }
 
@@ -6335,7 +6338,7 @@ MethodStatus BaselineCompiler::emitBody() {
       return Method_Error;
     }
 
-    perfSpewer_.recordInstruction(masm, op);
+    perfSpewer_.recordInstruction(cx, masm, handler.pc(), frame);
 
 #define EMIT_OP(OP, ...)                                       \
   case JSOp::OP: {                                             \

@@ -40,6 +40,7 @@
 #include "mozilla/dom/File.h"
 #include "mozilla/dom/PerformanceStorage.h"
 #include "mozilla/dom/PerformanceTiming.h"
+#include "mozilla/dom/ServiceWorkerInterceptController.h"
 #include "mozilla/dom/UserActivation.h"
 #include "mozilla/dom/WorkerCommon.h"
 #include "mozilla/PreloaderBase.h"
@@ -72,7 +73,7 @@ void GetBlobURISpecFromChannel(nsIRequest* aRequest, nsCString& aBlobURISpec) {
   }
 
   nsCOMPtr<nsIURI> uri;
-  nsresult rv = channel->GetURI(getter_AddRefs(uri));
+  nsresult rv = NS_GetFinalChannelURI(channel, getter_AddRefs(uri));
   if (NS_FAILED(rv)) {
     return;
   }
@@ -320,7 +321,8 @@ AlternativeDataStreamListener::CheckListenerChain() { return NS_OK; }
 //-----------------------------------------------------------------------------
 
 NS_IMPL_ISUPPORTS(FetchDriver, nsIStreamListener, nsIChannelEventSink,
-                  nsIInterfaceRequestor, nsIThreadRetargetableStreamListener)
+                  nsIInterfaceRequestor, nsIThreadRetargetableStreamListener,
+                  nsINetworkInterceptController)
 
 FetchDriver::FetchDriver(SafeRefPtr<InternalRequest> aRequest,
                          nsIPrincipal* aPrincipal, nsILoadGroup* aLoadGroup,
@@ -1385,6 +1387,12 @@ FetchDriver::OnStopRequest(nsIRequest* aRequest, nsresult aStatusCode) {
   RefPtr<AlternativeDataStreamListener> altDataListener =
       std::move(mAltDataListener);
 
+  // For PFetch and ServiceWorker navigationPreload, resource timing should be
+  // reported before the body stream closing.
+  if (mObserver) {
+    mObserver->OnReportPerformanceTiming();
+  }
+
   // We need to check mObserver, which is nulled by FailWithNetworkError(),
   // because in the case of "error" redirect mode, aStatusCode may be NS_OK but
   // mResponse will definitely be null so we must not take the else branch.
@@ -1482,6 +1490,55 @@ void FetchDriver::FinishOnStopRequest(
 
   mChannel = nullptr;
   Unfollow();
+}
+
+NS_IMETHODIMP
+FetchDriver::ShouldPrepareForIntercept(nsIURI* aURI, nsIChannel* aChannel,
+                                       bool* aShouldIntercept) {
+  MOZ_ASSERT(aChannel);
+
+  if (mInterceptController) {
+    MOZ_ASSERT(XRE_IsParentProcess());
+    return mInterceptController->ShouldPrepareForIntercept(aURI, aChannel,
+                                                           aShouldIntercept);
+  }
+
+  nsCOMPtr<nsINetworkInterceptController> controller;
+  NS_QueryNotificationCallbacks(nullptr, mLoadGroup,
+                                NS_GET_IID(nsINetworkInterceptController),
+                                getter_AddRefs(controller));
+  if (controller) {
+    return controller->ShouldPrepareForIntercept(aURI, aChannel,
+                                                 aShouldIntercept);
+  }
+
+  *aShouldIntercept = false;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+FetchDriver::ChannelIntercepted(nsIInterceptedChannel* aChannel) {
+  if (mInterceptController) {
+    MOZ_ASSERT(XRE_IsParentProcess());
+    return mInterceptController->ChannelIntercepted(aChannel);
+  }
+
+  nsCOMPtr<nsINetworkInterceptController> controller;
+  NS_QueryNotificationCallbacks(nullptr, mLoadGroup,
+                                NS_GET_IID(nsINetworkInterceptController),
+                                getter_AddRefs(controller));
+  if (controller) {
+    return controller->ChannelIntercepted(aChannel);
+  }
+
+  return NS_OK;
+}
+
+void FetchDriver::EnableNetworkInterceptControl() {
+  MOZ_ASSERT(XRE_IsParentProcess());
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(!mInterceptController);
+  mInterceptController = new ServiceWorkerInterceptController();
 }
 
 NS_IMETHODIMP
@@ -1597,7 +1654,9 @@ void FetchDriver::SetController(
 PerformanceTimingData* FetchDriver::GetPerformanceTimingData(
     nsAString& aInitiatorType, nsAString& aEntryName) {
   MOZ_ASSERT(XRE_IsParentProcess());
-  MOZ_ASSERT(mChannel);
+  if (!mChannel) {
+    return nullptr;
+  }
 
   nsCOMPtr<nsITimedChannel> timedChannel = do_QueryInterface(mChannel);
   if (!timedChannel) {

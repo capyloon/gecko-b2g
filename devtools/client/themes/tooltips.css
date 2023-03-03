@@ -503,7 +503,7 @@ strong {
 }
 
 .tooltip-container[type="doorhanger"] .tooltip-panel ul {
-  /* Override the display: -moz-box declaration in minimal-xul.css
+  /* Override the display: -moz-box declaration in xul.css
    * or else menu items won't stack. */
   display: block;
 }
@@ -653,6 +653,10 @@ strong {
 
 .event-header.content-expanded .theme-twisty {
   transform: none;
+}
+
+.event-tooltip-listener-toggle-checkbox {
+  flex-shrink: 0;
 }
 
 .event-tooltip-debugger-icon {

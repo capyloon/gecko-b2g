@@ -142,11 +142,13 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(AudioContext)
   NS_INTERFACE_MAP_ENTRY(nsIMemoryReporter)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
-static float GetSampleRateForAudioContext(bool aIsOffline, float aSampleRate) {
+static float GetSampleRateForAudioContext(bool aIsOffline, float aSampleRate,
+                                          bool aShouldResistFingerprinting) {
   if (aIsOffline || aSampleRate != 0.0) {
     return aSampleRate;
   } else {
-    return static_cast<float>(CubebUtils::PreferredSampleRate());
+    return static_cast<float>(
+        CubebUtils::PreferredSampleRate(aShouldResistFingerprinting));
   }
 }
 
@@ -155,11 +157,15 @@ AudioContext::AudioContext(nsPIDOMWindowInner* aWindow, bool aIsOffline,
                            uint32_t aLength, float aSampleRate)
     : DOMEventTargetHelper(aWindow),
       mId(gAudioContextId++),
-      mSampleRate(GetSampleRateForAudioContext(aIsOffline, aSampleRate)),
+      mSampleRate(GetSampleRateForAudioContext(
+           aIsOffline, aSampleRate,
+           aWindow->AsGlobal()->ShouldResistFingerprinting())),
       mAudioChannel(AudioChannelService::GetDefaultAudioChannel()),
       mAudioContextState(AudioContextState::Suspended),
       mNumberOfChannels(aNumberOfChannels),
       mRTPCallerType(aWindow->AsGlobal()->GetRTPCallerType()),
+      mShouldResistFingerprinting(
+          aWindow->AsGlobal()->ShouldResistFingerprinting()),
       mIsOffline(aIsOffline),
       mIsStarted(!aIsOffline),
       mIsShutDown(false),
@@ -589,7 +595,7 @@ double AudioContext::OutputLatency() {
   // When reduceFingerprinting is enabled, return a latency figure that is
   // fixed, but plausible for the platform.
   double latency_s = 0.0;
-  if (StaticPrefs::privacy_resistFingerprinting()) {
+  if (mShouldResistFingerprinting) {
 #ifdef XP_MACOSX
     latency_s = 512. / mSampleRate;
 #elif MOZ_WIDGET_ANDROID
@@ -741,7 +747,7 @@ void AudioContext::UnregisterActiveNode(AudioNode* aNode) {
 }
 
 uint32_t AudioContext::MaxChannelCount() const {
-  if (StaticPrefs::privacy_resistFingerprinting()) {
+  if (mShouldResistFingerprinting) {
     return 2;
   }
   return std::min<uint32_t>(

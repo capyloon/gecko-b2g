@@ -93,6 +93,42 @@ async function waitForPendingPaints(toolbox) {
 }
 exports.waitForPendingPaints = waitForPendingPaints;
 
+/*
+ * Waits until the element targeted by the provided selector
+ * becomes available
+ */
+exports.waitForDOMElement = async function(target, selector) {
+  await waitForDOMPredicate(
+    target,
+    () => target.querySelector(selector) !== null
+  );
+};
+
+/*
+ * Wait for the predicate condition to be a truthy
+ */
+function waitForDOMPredicate(
+  target,
+  predicate,
+  options = { attributes: true, childList: true, subtree: true }
+) {
+  return new Promise(resolve => {
+    const observer = new target.ownerGlobal.MutationObserver(mutations => {
+      for (const mutation of mutations) {
+        if (predicate(mutation.target)) {
+          resolve();
+          observer.disconnect();
+          break;
+        }
+      }
+    });
+
+    observer.observe(target, options);
+  });
+}
+
+exports.waitForDOMPredicate = waitForDOMPredicate;
+
 const openToolbox = async function(tool = "webconsole", onLoad) {
   dump(`Open toolbox on '${tool}'\n`);
   let tab = getActiveTab();

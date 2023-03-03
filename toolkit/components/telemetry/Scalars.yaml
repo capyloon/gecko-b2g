@@ -664,6 +664,7 @@ browser.startup:
       - 1730042
       - 1754641
       - 1781978
+      - 1811151
     description: >
       How the about:home startup cache functioned on startup.
 
@@ -678,7 +679,7 @@ browser.startup:
       8: User did not load about:home on its own by default.
       9: Cache is disabled because about:newtab preloading is disabled.
 
-    expires: "112"
+    expires: "118"
     kind: uint
     notification_emails:
       - mconley@mozilla.com
@@ -698,11 +699,12 @@ browser.startup:
       - 1730042
       - 1754641
       - 1781978
+      - 1811151
     description: >
       True if the about:home startup cache was written via the AsyncShutdown
       blocker.
 
-    expires: "112"
+    expires: "118"
     kind: boolean
     notification_emails:
       - mconley@mozilla.com
@@ -786,6 +788,41 @@ browser.ui:
       - 'main'
 
 browser.ui.interaction:
+  all_tabs_panel_dragstart_tab_event_count:
+    bug_numbers:
+      - 1804722
+    description: >
+      Records a count of how many times a drag event started for a tab within the All
+      Tabs panel.
+    expires: never
+    kind: uint
+    notification_emails:
+      - shong@mozilla.com
+      - mconley@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - 'main'
+
+  all_tabs_panel_entrypoint:
+    bug_numbers:
+      - 1804722
+    description: >
+      Records a count of how many times the All Tabs Panel was opened, keyed on a string
+      describing the entrypoint.
+    expires: never
+    kind: uint
+    keyed: true
+    notification_emails:
+      - shong@mozilla.com
+      - mconley@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - 'main'
+
   keyboard:
     bug_numbers:
       - 1620358
@@ -906,6 +943,25 @@ browser.ui.interaction:
     notification_emails:
       - shong@mozilla.com
       - dtownsend@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - 'main'
+
+  tabs_context_entrypoint:
+    bug_numbers:
+      - 1804722
+    description: >
+      Records a count for each entrypoint (the container of the trigger node) when an
+      item from the tabs context menu is selected.
+      See https://firefox-source-docs.mozilla.org/browser/BrowserUsageTelemetry.html
+    expires: never
+    kind: uint
+    keyed: true
+    notification_emails:
+      - shong@mozilla.com
+      - mconley@mozilla.com
     release_channel_collection: opt-out
     products:
       - 'firefox'
@@ -1259,6 +1315,21 @@ cookie.banners:
       - 'firefox'
     record_in_processes:
       - 'main'
+  service_detect_only:
+    bug_numbers:
+      - 1809700
+    description: >
+      Tracks the value of the cookiebanners.service.detectOnly pref.
+    expires: never
+    kind: boolean
+    notification_emails:
+      - tihuang@mozilla.com
+      - pbz@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - 'main'
   rule_lookup_by_load:
     bug_numbers:
       - 1797073
@@ -1436,16 +1507,18 @@ security:
       - 1630155
       - 1689269
       - 1754650
+      - 1811156
     description: >
       Counts of how often Web Authentication was used in this session, keyed
-      by authenticator protocol, method and result. Currently: U2FRegisterFinish,
+      by authenticator protocol, method and result. Currently: CTAPRegisterFinish,
+      CTAPRegisterAbort, CTAPSignFinish, CTAPSignAbort, U2FRegisterFinish,
       U2FRegisterAbort, U2FSignFinish, U2FSignAbort.
-    expires: "112"
+    expires: "118"
     kind: uint
     keyed: true
     notification_emails:
       - seceng-telemetry@mozilla.com
-      - rmf@mozilla.com
+      - jschanck@mozilla.com
     release_channel_collection: opt-out
     products:
       - 'firefox'
@@ -2002,6 +2075,68 @@ sidebar:
       - 'firefox'
     record_in_processes:
       - 'main'
+  link:
+    bug_numbers:
+      - 1815706
+    description: >
+      The number of history items opened from the History sidebar.
+    expires: never
+    kind: uint
+    keyed: true
+    notification_emails:
+      - rtestard@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - 'main'
+
+library:
+  link:
+    bug_numbers:
+      - 1815906
+    description: >
+      The number of history items opened from the Library window
+    expires: never
+    kind: uint
+    keyed: true
+    notification_emails:
+      - firefox-view-engineers@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - 'main'
+  opened:
+    bug_numbers:
+      - 1815906
+    description: >
+      The number of times the Library window was opened
+    expires: never
+    kind: uint
+    keyed: true
+    notification_emails:
+      - firefox-view-engineers@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - 'main'
+  search:
+    bug_numbers:
+      - 1815906
+    description: >
+      The number of history-specific searches made from the Library window
+    expires: never
+    kind: uint
+    keyed: true
+    notification_emails:
+      - firefox-view-engineers@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - 'main'
 
 os.environment:
   is_admin_without_uac:
@@ -2460,9 +2595,10 @@ media:
     bug_numbers:
       - 1733722
       - 1754657
+      - 1811157
     description: >
       Record whether hardware decoding is supported for the specific video codec. The key is the type of video codec, eg. video/vp9.
-    expires: "112"
+    expires: never
     kind: boolean
     keyed: true
     notification_emails:
@@ -2478,9 +2614,10 @@ media:
     bug_numbers:
       - 1741286
       - 1754657
+      - 1811157
     description: >
       Record whether hardware decoding is supported for the specific video codec, this only records video in HD (1280*720) or higher resultion. The key is the type of video codec, eg. video/vp9.
-    expires: "112"
+    expires: never
     kind: boolean
     keyed: true
     notification_emails:
@@ -4187,7 +4324,7 @@ notificationbar:
     record_in_processes:
       - 'main'
 
-# The following section contains scalars for Screenshots.
+# The following section contains scalars for the Screenshots extension.
 screenshots:
   download:
     bug_numbers:
@@ -5834,10 +5971,11 @@ browser.searchinit:
   secure_opensearch_engine_count:
     bug_numbers:
       - 1789438
+      - 1811158
     description: >
       Records the number of secure (i.e., using https) OpenSearch search
       engines a given user has installed
-    expires: "112"
+    expires: "119"
     keyed: false
     kind: uint
     notification_emails:
@@ -5851,10 +5989,11 @@ browser.searchinit:
   insecure_opensearch_engine_count:
     bug_numbers:
       - 1789438
+      - 1811158
     description: >
       Records the number of insecure (i.e., using http) OpenSearch search
       engines a given user has installed
-    expires: "112"
+    expires: "119"
     keyed: false
     kind: uint
     notification_emails:
@@ -5868,10 +6007,11 @@ browser.searchinit:
   secure_opensearch_update_count:
     bug_numbers:
       - 1789438
+      - 1811158
     description: >
       Records the number of OpenSearch search engines with secure updates
       enabled (i.e., using https) a given user has installed
-    expires: "112"
+    expires: "119"
     keyed: false
     kind: uint
     notification_emails:
@@ -5885,10 +6025,11 @@ browser.searchinit:
   insecure_opensearch_update_count:
     bug_numbers:
       - 1789438
+      - 1811158
     description: >
       Records the number of OpenSearch search engines with insecure updates
       enabled (i.e., using http) a given user has installed
-    expires: "112"
+    expires: "119"
     keyed: false
     kind: uint
     notification_emails:
@@ -6072,6 +6213,26 @@ startup:
       - 'firefox'
     record_in_processes:
       - main
+
+  is_restored_by_macos:
+    bug_numbers:
+      - 639707
+    description: >
+      Recorded on every launch of a Firefox install on macOS, with a boolean
+      value indicating whether Firefox was restored by macOS or if it was
+      manually launched by a user.
+    expires: "116"
+    keyed: false
+    kind: boolean
+    notification_emails:
+      - spohl@mozilla.com
+    operating_systems:
+      - mac
+    products:
+      - 'firefox'
+    record_in_processes:
+      - 'main'
+    release_channel_collection: opt-out
 
 script.preloader:
   mainthread_recompile:
@@ -6305,6 +6466,42 @@ networking:
       - 'main'
       - 'socket'
 
+  data_transferred_per_content_type:
+    bug_numbers:
+      - 1808695
+    description: >
+      Number of bytes we transferred keyed by "contentType"
+    expires: "130"
+    keyed: true
+    kind: uint
+    release_channel_collection: opt-out
+    notification_emails:
+      - necko@mozilla.com
+      - rtestard@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+    record_in_processes:
+      - 'main'
+
+  data_transferred_pb_per_content_type:
+    bug_numbers:
+      - 1808695
+    description: >
+      Number of bytes we transferred in private browsing keyed by "contentType"
+    expires: "130"
+    keyed: true
+    kind: uint
+    release_channel_collection: opt-out
+    notification_emails:
+      - necko@mozilla.com
+      - rtestard@mozilla.com
+    products:
+      - 'firefox'
+      - 'fennec'
+    record_in_processes:
+      - 'main'
+
 blocklist:
   lastModified_rs_addons:
     bug_numbers:
@@ -6314,17 +6511,16 @@ blocklist:
       - 1689274
       - 1730037
       - 1763529
+      - 1811159
     description: >
       Keep track of the last time the "addons" remotesetting blocklist has been successfully
       updated (as a datetime string in UTC format), set to "Missing Date" when the timestamp
       couldn't be retrieved.
-    expires: "112"
+    expires: "122"
     kind: string
     release_channel_collection: opt-out
     notification_emails:
       - addons-dev-internal@mozilla.com
-      - lgreco@mozilla.com
-      - awagner@mozilla.com
       - rwu@mozilla.com
     products:
       - 'firefox'
@@ -6340,17 +6536,16 @@ blocklist:
       - 1689274
       - 1730037
       - 1763529
+      - 1811159
     description: >
       Keep track of the last time the "addons-bloomfilters" remotesetting blocklist has been successfully
       updated (as a datetime string in UTC format), set to "Missing Date" when the timestamp
       couldn't be retrieved.
-    expires: "112"
+    expires: "122"
     kind: string
     release_channel_collection: opt-out
     notification_emails:
       - addons-dev-internal@mozilla.com
-      - lgreco@mozilla.com
-      - awagner@mozilla.com
       - rwu@mozilla.com
     products:
       - 'firefox'
@@ -6364,16 +6559,15 @@ blocklist:
       - 1689274
       - 1730037
       - 1763529
+      - 1811159
     description: >
       Keep track of whether the addons blocklist engine uses bloom filters (blocklist v3).
       If false, the blocklist v2 is used instead.
-    expires: "112"
+    expires: "122"
     kind: boolean
     release_channel_collection: opt-out
     notification_emails:
       - addons-dev-internal@mozilla.com
-      - lgreco@mozilla.com
-      - awagner@mozilla.com
       - rwu@mozilla.com
     products:
       - 'firefox'
@@ -6385,6 +6579,7 @@ blocklist:
       - 1662857
       - 1730037
       - 1763529
+      - 1811159
     description: >
       The source of the RemoteSettings attachment that holds the bloom filter.
       Possible values are "dump_match", "cache_match", "remote_match", "dump_fallback", "cache_fallback", "unknown".
@@ -6397,7 +6592,7 @@ blocklist:
       (e.g. because the latest version cannot be downloaded).
       "unknown" means that the bloomfilter cannot be loaded at all. This can happen if the blocklist is disabled
       via preferences or enterprise policies.
-    expires: "112"
+    expires: "122"
     kind: string
     release_channel_collection: opt-out
     notification_emails:
@@ -6415,18 +6610,17 @@ blocklist:
       - 1689274
       - 1730037
       - 1763529
+      - 1811159
     description: >
       Keep track of the generation time of the addon blocklist's bloom filter. This marks the
       point in time until which signed add-ons are recognized by the selected bloom filter from the
       addons-bloomfilters collection.
       The value is a datetime string in UTC format, or  "Missing Date" when unavailable.
-    expires: "112"
+    expires: "122"
     kind: string
     release_channel_collection: opt-out
     notification_emails:
       - addons-dev-internal@mozilla.com
-      - lgreco@mozilla.com
-      - awagner@mozilla.com
       - rwu@mozilla.com
     products:
       - 'firefox'
@@ -6440,17 +6634,16 @@ blocklist:
       - 1689274
       - 1730037
       - 1763529
+      - 1811159
     description: >
       Keep track of the timestamp of the oldest stash of the addons blocklist.
       Only meaningful when mlbf_enabled is true.
       The value is a datetime string in UTC format, or "Missing Date" when unavailable.
-    expires: "112"
+    expires: "122"
     kind: string
     release_channel_collection: opt-out
     notification_emails:
       - addons-dev-internal@mozilla.com
-      - lgreco@mozilla.com
-      - awagner@mozilla.com
       - rwu@mozilla.com
     products:
       - 'firefox'
@@ -6464,17 +6657,16 @@ blocklist:
       - 1689274
       - 1730037
       - 1763529
+      - 1811159
     description: >
       Keep track of the timestamp of the most recent stash of the addons blocklist.
       Only meaningful when mlbf_enabled is true.
       The value is a datetime string in UTC format, or "Missing Date" when unavailable.
-    expires: "112"
+    expires: "122"
     kind: string
     release_channel_collection: opt-out
     notification_emails:
       - addons-dev-internal@mozilla.com
-      - lgreco@mozilla.com
-      - awagner@mozilla.com
       - rwu@mozilla.com
     products:
       - 'firefox'
@@ -6587,6 +6779,22 @@ urlbar:
     notification_emails:
       - fx-search-telemetry@mozilla.com
       - adw@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - main
+  autofill_deletion:
+    bug_numbers:
+      - 1815342
+    description: >
+      A uint recording the deletion count for autofilled string in the urlbar.
+      This occurs when the user deletes whole autofilled string by BACKSPACE or
+      DELETE key while the autofilled string is selected.
+    expires: never
+    kind: uint
+    notification_emails:
+      - fx-search-telemetry@mozilla.com
     release_channel_collection: opt-out
     products:
       - 'firefox'
@@ -7614,6 +7822,23 @@ urlbar.zeroprefix:
       - main
 
 quickaction:
+  impression:
+    bug_numbers:
+      - 1806024
+    description: >
+      Counts how many times quickaction results were shown. The key
+      is the in the form "actionkey-N" where N is the number of characters
+      the user typed to be shown the action.
+    expires: never
+    kind: uint
+    keyed: true
+    notification_emails:
+      - fx-search-telemetry@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - main
   picked:
     bug_numbers:
       - 1783155
@@ -9022,6 +9247,21 @@ places:
       history. We expect this to be a small number just due to the navigation
       layer manipulating URLs. A large or growing value may be a concern.
 
+    expires: never
+    kind: uint
+    notification_emails:
+      - fx-search-telemetry@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - main
+
+  pages_need_frecency_recalculation:
+    bug_numbers:
+      - 1811209
+    description: >
+      Number of pages that need a frecency recalculation.
     expires: never
     kind: uint
     notification_emails:

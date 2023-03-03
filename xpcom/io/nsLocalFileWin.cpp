@@ -78,14 +78,6 @@ using mozilla::FilePreferences::kPathSeparator;
 #  define DRIVE_REMOTE 4
 #endif
 
-// MinGW does not know about this error, ensure we do.
-#ifndef ERROR_DEVICE_HARDWARE_ERROR
-#  define ERROR_DEVICE_HARDWARE_ERROR 483L
-#endif
-#ifndef ERROR_CONTENT_BLOCKED
-#  define ERROR_CONTENT_BLOCKED 1296L
-#endif
-
 namespace {
 
 nsresult NewLocalFile(const nsAString& aPath, bool aUseDOSDevicePathSyntax,
@@ -2287,7 +2279,7 @@ nsLocalFile::Load(PRLibrary** aResult) {
 }
 
 NS_IMETHODIMP
-nsLocalFile::Remove(bool aRecursive) {
+nsLocalFile::Remove(bool aRecursive, uint32_t* aRemoveCount) {
   // NOTE:
   //
   // if the working path points to a shortcut, then we will only
@@ -2340,9 +2332,11 @@ nsLocalFile::Remove(bool aRecursive) {
         return rv;
       }
 
+      // XXX: We are ignoring the result of the removal here while
+      // nsLocalFileUnix does not. We should align the behavior. (bug 1779696)
       nsCOMPtr<nsIFile> file;
       while (NS_SUCCEEDED(dirEnum->GetNextFile(getter_AddRefs(file))) && file) {
-        file->Remove(aRecursive);
+        file->Remove(aRecursive, aRemoveCount);
       }
     }
     if (RemoveDirectoryW(mWorkingPath.get()) == 0) {
@@ -2352,6 +2346,10 @@ nsLocalFile::Remove(bool aRecursive) {
     if (DeleteFileW(mWorkingPath.get()) == 0) {
       return ConvertWinError(GetLastError());
     }
+  }
+
+  if (aRemoveCount) {
+    *aRemoveCount += 1;
   }
 
   MakeDirty();

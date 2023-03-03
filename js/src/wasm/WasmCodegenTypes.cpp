@@ -133,8 +133,8 @@ CodeRange::CodeRange(uint32_t funcIndex, uint32_t funcLineOrBytecode,
       kind_(Function) {
   MOZ_ASSERT(begin_ < ret_);
   MOZ_ASSERT(ret_ < end_);
-  MOZ_ASSERT(offsets.uncheckedCallEntry - begin_ <= UINT8_MAX);
-  MOZ_ASSERT(offsets.tierEntry - begin_ <= UINT8_MAX);
+  MOZ_ASSERT(offsets.uncheckedCallEntry - begin_ <= UINT16_MAX);
+  MOZ_ASSERT(offsets.tierEntry - begin_ <= UINT16_MAX);
   u.funcIndex_ = funcIndex;
   u.func.lineOrBytecode_ = funcLineOrBytecode;
   u.func.beginToUncheckedCallEntry_ = offsets.uncheckedCallEntry - begin_;
@@ -186,7 +186,7 @@ CallIndirectId CallIndirectId::forFuncType(const ModuleEnvironment& moduleEnv,
                           funcType.immediateTypeId());
   }
   return CallIndirectId(CallIndirectIdKind::Global,
-                        moduleEnv.offsetOfTypeId(funcTypeIndex));
+                        moduleEnv.offsetOfTypeDef(funcTypeIndex));
 }
 
 CalleeDesc CalleeDesc::function(uint32_t funcIndex) {

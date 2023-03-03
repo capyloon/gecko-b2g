@@ -46,7 +46,6 @@ linux1804-64-qr/opt:
         - mochitest-webgpu
         - web-platform-tests
         - web-platform-tests-backlog
-        - linux-talos-flex
         - talos
         - browsertime
 
@@ -59,7 +58,6 @@ linux1804-64-shippable-qr/opt:
         - mochitest-webgpu
         - web-platform-tests
         - web-platform-tests-backlog
-        - linux-talos-flex
         - talos
         - talos-profiling
         - browsertime
@@ -106,7 +104,7 @@ linux1804-64-clang-trunk-qr/opt:
     build-platform: linux64-plain-clang-trunk/opt
     test-sets:
         - awsy
-        - browsertime
+        - browsertime-clang
 
 ##
 # Windows platforms (matching /windows.*/)
@@ -172,17 +170,48 @@ windows10-32-2004-mingwclang-qr/opt:
     test-sets:
         - mingwclang-tests-opt
 
+# win11-32
+windows11-32-2009-shippable-qr/opt:
+    build-platform: win32-shippable/opt
+    test-sets:
+        - awsy
+        - desktop-screenshot-capture
+        # - web-platform-tests
+        - windows32-2004-tests
+
+
+windows11-32-2009-qr/opt:
+    build-platform: win32/opt
+    test-sets:
+        - awsy
+        - desktop-screenshot-capture
+        # - web-platform-tests
+        - windows32-2004-tests
+
+windows11-32-2009-qr/debug:
+    build-platform: win32/debug
+    build-signing-label: build-signing-win32/debug
+    test-sets:
+        # - web-platform-tests
+        - windows-7-tests
+        - windows32-2004-tests
+
+windows11-32-2009-mingwclang-qr/debug:
+    build-platform: win32-mingwclang/debug
+    test-sets:
+        - mingwclang-win32-tests-debug
+
+windows11-32-2009-mingwclang-qr/opt:
+    build-platform: win32-mingwclang/opt
+    test-sets:
+        - mingwclang-tests-opt
+
 # win64
 windows10-64-qr/opt:
     build-platform: win64/opt
     test-sets:
         - windows-talos
         - browsertime
-
-windows10-aarch64-qr/opt:
-    build-platform: win64-aarch64-shippable/opt
-    test-sets:
-        - windows-aarch64-tests
 
 windows10-64-ref-hw-2017-qr/opt:
     build-platform: win64-shippable/opt
@@ -262,6 +291,75 @@ windows10-64-2004-mingwclang-qr/opt:
     build-platform: win64-mingwclang/opt
     test-sets:
         - mingwclang-tests-opt
+
+# win11-64 2009
+# windows11-64-2009-ccov-qr/opt:
+#    build-platform: win64-ccov/opt
+#    build-signing-label: build-signing-win64-ccov/opt
+#    test-sets:
+#        - desktop-screenshot-capture
+#        - ccov-code-coverage-tests
+#        - windows10-64-2004-ccov-tests
+#        - windows10-2004-tests
+
+windows11-64-2009-qr/debug:
+    build-platform: win64/debug
+    build-signing-label: build-signing-win64/debug
+    test-sets:
+        # - web-platform-tests
+        - windows11-2009-tests
+
+windows11-64-2009-qr/opt:
+    build-platform: win64/opt
+    build-signing-label:
+        by-variant:
+            msix: repackage-signing-msix-win64/opt
+            default: build-signing-win64/opt
+    test-sets:
+        - awsy
+        - desktop-screenshot-capture
+        # - web-platform-tests
+        # - web-platform-tests-backlog
+        - windows11-2009-tests
+        - talos-xperf
+
+windows11-64-2009-shippable-qr/opt:
+    build-platform: win64-shippable/opt
+    build-signing-label:
+        by-variant:
+            msix: repackage-signing-shippable-l10n-msix-win64-shippable/opt
+            default: build-signing-win64-shippable/opt
+    test-sets:
+        - awsy
+        - desktop-screenshot-capture
+        # - web-platform-tests
+        # - web-platform-tests-backlog
+        - windows11-2009-tests
+        - talos-xperf
+
+windows11-64-2009-devedition-qr/opt:
+    build-platform: win64-devedition/opt
+    build-signing-label: build-signing-win64-devedition/opt
+    test-sets:
+        - desktop-screenshot-capture
+        # - web-platform-tests
+        - windows11-2009-tests
+
+windows11-64-2009-asan-qr/opt:
+    build-platform: win64-asan/opt
+    test-sets:
+        - windows11-2009-tests
+
+# windows11-64-2009-mingwclang-qr/debug:
+#    build-platform: win64-mingwclang/debug
+#    test-sets:
+#        - mingwclang-tests-debug
+
+# windows11-64-2009-mingwclang-qr/opt:
+#    build-platform: win64-mingwclang/opt
+#    test-sets:
+#        - mingwclang-tests-opt
+
 
 ##
 # MacOS X platforms (matching /macosx.*/)
@@ -375,18 +473,6 @@ android-hw-a51-11-0-aarch64-shippable-qr/opt:
     test-sets:
         - android-hw-browsertime
 #        - android-hw-browsertime-power
-
-# android-hw-p2-8-0 Google Pixel 2 Android 8.0
-
-android-hw-p2-8-0-arm7-qr/opt:
-    build-platform: android-arm/opt
-    test-sets:
-        - android-hw-browsertime
-
-android-hw-p2-8-0-arm7-shippable-qr/opt:
-    build-platform: android-arm-shippable/opt
-    test-sets:
-        - android-hw-browsertime
 
 # android-hw-p5-13-0 Google Pixel 5 Android 13.0
 

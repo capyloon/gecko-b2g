@@ -40,7 +40,6 @@
 #include "mozilla/InputTaskManager.h"
 #include "mozilla/IntegerRange.h"
 #include "mozilla/PresShell.h"
-#include "mozilla/dom/FontTableURIProtocolHandler.h"
 #include "nsITimer.h"
 #include "nsLayoutUtils.h"
 #include "nsPresContext.h"
@@ -1522,7 +1521,7 @@ void nsRefreshDriver::DispatchVisualViewportScrollEvents() {
 
 void nsRefreshDriver::AddPostRefreshObserver(
     nsAPostRefreshObserver* aObserver) {
-  MOZ_DIAGNOSTIC_ASSERT(!mPostRefreshObservers.Contains(aObserver));
+  MOZ_ASSERT(!mPostRefreshObservers.Contains(aObserver));
   mPostRefreshObservers.AppendElement(aObserver);
 }
 
@@ -1546,14 +1545,12 @@ void nsRefreshDriver::AddImageRequest(imgIRequest* aRequest) {
 
   if (profiler_thread_is_being_profiled_for_markers()) {
     nsCOMPtr<nsIURI> uri = aRequest->GetURI();
-    nsAutoCString uristr;
-    uri->GetAsciiSpec(uristr);
 
     PROFILER_MARKER_TEXT("Image Animation", GRAPHICS,
                          MarkerOptions(MarkerTiming::IntervalStart(),
                                        MarkerInnerWindowIdFromDocShell(
                                            GetDocShell(mPresContext))),
-                         uristr);
+                         nsContentUtils::TruncatedURLForDisplay(uri));
   }
 }
 
@@ -1570,14 +1567,12 @@ void nsRefreshDriver::RemoveImageRequest(imgIRequest* aRequest) {
 
   if (removed && profiler_thread_is_being_profiled_for_markers()) {
     nsCOMPtr<nsIURI> uri = aRequest->GetURI();
-    nsAutoCString uristr;
-    uri->GetAsciiSpec(uristr);
 
     PROFILER_MARKER_TEXT("Image Animation", GRAPHICS,
                          MarkerOptions(MarkerTiming::IntervalEnd(),
                                        MarkerInnerWindowIdFromDocShell(
                                            GetDocShell(mPresContext))),
-                         uristr);
+                         nsContentUtils::TruncatedURLForDisplay(uri));
   }
 }
 
@@ -1739,8 +1734,7 @@ void nsRefreshDriver::EnsureTimerStarted(EnsureTimerStartedFlags aFlags) {
     // Image documents receive ticks from clients' refresh drivers.
     // XXXdholbert Exclude SVG-in-opentype fonts from this optimization, until
     // they receive refresh-driver ticks from their client docs (bug 1107252).
-    nsIURI* uri = mPresContext->Document()->GetDocumentURI();
-    if (!uri || !mozilla::dom::IsFontTableURI(uri)) {
+    if (!mPresContext->Document()->IsSVGGlyphsDocument()) {
       MOZ_ASSERT(!mActiveTimer,
                  "image doc refresh driver should never have its own timer");
       return;
@@ -1761,8 +1755,8 @@ void nsRefreshDriver::EnsureTimerStarted(EnsureTimerStartedFlags aFlags) {
       if (profiler_thread_is_being_profiled_for_markers()) {
         nsCString text = "initial timer start "_ns;
         if (mPresContext->Document()->GetDocumentURI()) {
-          text.Append(
-              mPresContext->Document()->GetDocumentURI()->GetSpecOrDefault());
+          text.Append(nsContentUtils::TruncatedURLForDisplay(
+              mPresContext->Document()->GetDocumentURI()));
         }
 
         PROFILER_MARKER_TEXT("nsRefreshDriver", LAYOUT,
@@ -1850,6 +1844,7 @@ uint32_t nsRefreshDriver::ObserverCount() const {
   sum += mViewManagerFlushIsPending;
   sum += mEarlyRunners.Length();
   sum += mTimerAdjustmentObservers.Length();
+  sum += mAutoFocusFlushDocuments.Length();
   return sum;
 }
 
@@ -1870,7 +1865,7 @@ bool nsRefreshDriver::HasObservers() const {
          !mPendingFullscreenEvents.IsEmpty() ||
          !mFrameRequestCallbackDocs.IsEmpty() ||
          !mThrottledFrameRequestCallbackDocs.IsEmpty() ||
-         !mEarlyRunners.IsEmpty();
+         !mAutoFocusFlushDocuments.IsEmpty() || !mEarlyRunners.IsEmpty();
 }
 
 void nsRefreshDriver::AppendObserverDescriptionsToString(
@@ -1911,6 +1906,10 @@ void nsRefreshDriver::AppendObserverDescriptionsToString(
   if (!mThrottledFrameRequestCallbackDocs.IsEmpty()) {
     aStr.AppendPrintf("%zux Throttled frame request callback doc, ",
                       mThrottledFrameRequestCallbackDocs.Length());
+  }
+  if (!mAutoFocusFlushDocuments.IsEmpty()) {
+    aStr.AppendPrintf("%zux AutoFocus flush doc, ",
+                      mAutoFocusFlushDocuments.Length());
   }
   if (!mEarlyRunners.IsEmpty()) {
     aStr.AppendPrintf("%zux Early runner, ", mEarlyRunners.Length());
@@ -2139,6 +2138,24 @@ static void TakeFrameRequestCallbacksFrom(
     Document* aDocument, nsTArray<DocumentFrameCallbacks>& aTarget) {
   aTarget.AppendElement(aDocument);
   aDocument->TakeFrameRequestCallbacks(aTarget.LastElement().mCallbacks);
+}
+
+void nsRefreshDriver::ScheduleAutoFocusFlush(Document* aDocument) {
+  MOZ_ASSERT(!mAutoFocusFlushDocuments.Contains(aDocument));
+  mAutoFocusFlushDocuments.AppendElement(aDocument);
+  EnsureTimerStarted();
+}
+
+void nsRefreshDriver::FlushAutoFocusDocuments() {
+  nsTArray<RefPtr<Document>> docs(std::move(mAutoFocusFlushDocuments));
+
+  for (const auto& doc : docs) {
+    MOZ_KnownLive(doc)->FlushAutoFocusCandidates();
+  }
+}
+
+void nsRefreshDriver::CancelFlushAutoFocus(Document* aDocument) {
+  mAutoFocusFlushDocuments.RemoveElement(aDocument);
 }
 
 // https://fullscreen.spec.whatwg.org/#run-the-fullscreen-steps
@@ -2581,6 +2598,7 @@ void nsRefreshDriver::Tick(VsyncId aId, TimeStamp aNowTime,
     if (i == 1) {
       // This is the FlushType::Style case.
 
+      FlushAutoFocusDocuments();
       DispatchScrollEvents();
       DispatchVisualViewportScrollEvents();
       DispatchAnimationEvents();

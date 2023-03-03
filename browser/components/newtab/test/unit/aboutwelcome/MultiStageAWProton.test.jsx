@@ -27,10 +27,10 @@ describe("MultiStageAboutWelcomeProton module", () => {
       assert.ok(wrapper.exists());
     });
 
-    it("should render secondary section for corner positioned screens", () => {
+    it("should render secondary section for split positioned screens", () => {
       const SCREEN_PROPS = {
         content: {
-          position: "corner",
+          position: "split",
           title: "test title",
           hero_text: "test subtitle",
         },
@@ -42,12 +42,12 @@ describe("MultiStageAboutWelcomeProton module", () => {
         wrapper.find(".section-secondary h1").text(),
         "test subtitle"
       );
-      assert.equal(wrapper.find("main").prop("pos"), "corner");
+      assert.equal(wrapper.find("main").prop("pos"), "split");
     });
 
     it("should render secondary section with content background for split positioned screens", () => {
       const BACKGROUND_URL =
-        "chrome://activity-stream/content/data/content/assets/proton-bkg.avif";
+        "chrome://activity-stream/content/data/content/assets/confetti.svg";
       const SCREEN_PROPS = {
         content: {
           position: "split",
@@ -189,6 +189,32 @@ describe("MultiStageAboutWelcomeProton module", () => {
       assert.ok(wrapper.exists());
       assert.equal(wrapper.find(".additional-cta.cta-link").exists(), true);
     });
+
+    it("should not render a progress bar if there is 1 step", () => {
+      const SCREEN_PROPS = {
+        content: {
+          title: "test title",
+          progress_bar: true,
+        },
+        isSingleScreen: true,
+      };
+      const wrapper = mount(<MultiStageProtonScreen {...SCREEN_PROPS} />);
+      assert.ok(wrapper.exists());
+      assert.equal(wrapper.find(".steps.progress-bar").exists(), false);
+    });
+
+    it("should render a progress bar if there are 2 steps", () => {
+      const SCREEN_PROPS = {
+        content: {
+          title: "test title",
+          progress_bar: true,
+        },
+        totalNumberOfScreens: 2,
+      };
+      const wrapper = mount(<MultiStageProtonScreen {...SCREEN_PROPS} />);
+      assert.ok(wrapper.exists());
+      assert.equal(wrapper.find(".steps.progress-bar").exists(), true);
+    });
   });
 
   describe("AboutWelcomeDefaults for proton", () => {
@@ -258,11 +284,6 @@ describe("MultiStageAboutWelcomeProton module", () => {
       assert.property(data, "skipFxA", true);
       assert.notProperty(data.screens[0].content, "secondary_button_top");
     });
-    it("should have an image caption", async () => {
-      const data = await prepConfig();
-
-      assert.property(data.screens[0].content, "help_text");
-    });
     it("should remove the caption if deleteIfNotEn is true", async () => {
       sandbox.stub(global.Services.locale, "appLocaleAsBCP47").value("de");
 
@@ -270,7 +291,8 @@ describe("MultiStageAboutWelcomeProton module", () => {
         id: "DEFAULT_ABOUTWELCOME_PROTON",
         template: "multistage",
         transitions: true,
-        background_url: `chrome://activity-stream/content/data/content/assets/proton-bkg.avif`,
+        background_url:
+          "chrome://activity-stream/content/data/content/assets/confetti.svg",
         screens: [
           {
             id: "AW_PIN_FIREFOX",
@@ -290,7 +312,6 @@ describe("MultiStageAboutWelcomeProton module", () => {
   });
 
   describe("AboutWelcomeDefaults for MR split template proton", () => {
-    // Pass true as argument for templateMR parameter
     const getData = () => AboutWelcomeDefaults.getDefaults(true);
     beforeEach(() => {
       sandbox.stub(global.Services.prefs, "getBoolPref").returns(true);
@@ -309,7 +330,6 @@ describe("MultiStageAboutWelcomeProton module", () => {
 
   describe("AboutWelcomeDefaults prepareMobileDownload", () => {
     const TEST_CONTENT = {
-      templateMR: true,
       screens: [
         {
           id: "AW_MOBILE_DOWNLOAD",
@@ -342,7 +362,6 @@ describe("MultiStageAboutWelcomeProton module", () => {
       const data = await AboutWelcomeDefaults.prepareContentForReact(
         TEST_CONTENT
       );
-      assert.propertyVal(data, "templateMR", true);
       assert.propertyVal(
         data.screens[0].content.hero_image,
         "url",

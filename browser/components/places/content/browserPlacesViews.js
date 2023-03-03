@@ -550,7 +550,7 @@ class PlacesViewBase {
 
   // Opt-out of history details updates, since all the views derived from this
   // are not showing them.
-  observeHistoryDetails = false;
+  skipHistoryDetailsNotifications = true;
   nodeHistoryDetailsChanged() {}
   nodeTagsChanged() {}
   nodeDateAddedChanged() {}
@@ -919,6 +919,7 @@ class PlacesToolbar extends PlacesViewBase {
   ];
 
   QueryInterface = ChromeUtils.generateQI([
+    "nsINamed",
     "nsITimerCallback",
     ...PlacesViewBase.interfaces,
   ]);
@@ -1486,7 +1487,7 @@ class PlacesToolbar extends PlacesViewBase {
 
     if (elt == this._rootElt) {
       // Container is the toolbar itself.
-      this._rebuild().catch(Cu.reportError);
+      this._rebuild().catch(console.error);
       return;
     }
 
@@ -1631,6 +1632,10 @@ class PlacesToolbar extends PlacesViewBase {
     let timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
     timer.initWithCallback(this, aTime, timer.TYPE_ONE_SHOT);
     return timer;
+  }
+
+  get name() {
+    return "PlacesToolbar";
   }
 
   notify(aTimer) {
@@ -1833,7 +1838,7 @@ class PlacesToolbar extends PlacesViewBase {
       PlacesControllerDragHelper.onDrop(
         dropPoint.ip,
         aEvent.dataTransfer
-      ).catch(Cu.reportError);
+      ).catch(console.error);
       aEvent.preventDefault();
     }
 

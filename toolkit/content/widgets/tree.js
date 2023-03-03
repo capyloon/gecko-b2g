@@ -311,7 +311,7 @@
 
     static get markup() {
       return `
-        <label class="treecol-text" flex="1" crop="right"></label>
+        <label class="treecol-text" flex="1" crop="end"></label>
         <image class="treecol-sortdirection"></image>
       `;
     }
@@ -659,7 +659,6 @@
 
       this.setAttribute("hidevscroll", "true");
       this.setAttribute("hidehscroll", "true");
-      this.setAttribute("clickthrough", "never");
 
       this.initializeAttributeInheritance();
 

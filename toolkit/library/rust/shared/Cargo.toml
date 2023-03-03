@@ -12,7 +12,7 @@ mozglue-static = { path = "../../../../mozglue/static/rust" }
 geckoservo = { path = "../../../../servo/ports/geckolib" }
 kvstore = { path = "../../../components/kvstore" }
 lmdb-rkv-sys = { version = "0.11", features = ["mdb_idl_logn_9"] }
-mp4parse_capi = { git = "https://github.com/mozilla/mp4parse-rust", rev = "3bfc47d9a571d0842676043ba60716318e946c06", features = ["mp4v", "3gpp", "missing-pixi-permitted"] }
+mp4parse_capi = { git = "https://github.com/mozilla/mp4parse-rust", rev = "2b572e83608a3d0867b935e076f45d9fe248069d", features = ["mp4v", "3gpp", "missing-pixi-permitted"] }
 nserror = { path = "../../../../xpcom/rust/nserror" }
 nsstring = { path = "../../../../xpcom/rust/nsstring" }
 netwerk_helper = { path = "../../../../netwerk/base/rust-helper" }
@@ -25,8 +25,8 @@ webrender_bindings = { path = "../../../../gfx/webrender_bindings" }
 cubeb-coreaudio = { git = "https://github.com/mozilla/cubeb-coreaudio-rs", rev = "93b5c01a131f65c83c11aeb317f4583405c5eb79", optional = true }
 cubeb-pulse = { git = "https://github.com/mozilla/cubeb-pulse-rs", rev="cf48897be5cbe147d051ebbbe1eaf5fd8fb6bbc9", optional = true, features=["pulse-dlopen"] }
 cubeb-sys = { version = "0.10.3", optional = true, features=["gecko-in-tree"] }
-audioipc2-client = { git = "https://github.com/kinetiknz/audioipc-2", rev = "73c8a02da8f2ff022723307bfafa3a58a61448da", optional = true } # macos (v2) branch
-audioipc2-server = { git = "https://github.com/kinetiknz/audioipc-2", rev = "73c8a02da8f2ff022723307bfafa3a58a61448da", optional = true } # macos (v2) branch
+audioipc2-client = { git = "https://github.com/kinetiknz/audioipc-2", rev = "89de5602c7a2d6624832417813e97030573456b2", optional = true } # macos (v2) branch
+audioipc2-server = { git = "https://github.com/kinetiknz/audioipc-2", rev = "89de5602c7a2d6624832417813e97030573456b2", optional = true } # macos (v2) branch
 audioipc-client = { git = "https://github.com/mozilla/audioipc", rev = "fb7a2b12ced3b43e6a268621989c6191d1ed7e39", optional = true }
 audioipc-server = { git = "https://github.com/mozilla/audioipc", rev = "fb7a2b12ced3b43e6a268621989c6191d1ed7e39", optional = true }
 # Force tokio-reactor on an old version to avoid new dependencies of newer versions.
@@ -39,7 +39,7 @@ tokio-reactor = { version = "=0.1.3", optional = true }
 # audioipc2-client and audioipc2-server.
 tokio-threadpool = { version = "=0.1.17", optional = true }
 encoding_glue = { path = "../../../../intl/encoding_glue" }
-authenticator = { version = "0.4.0-alpha.6", features = ["gecko"] }
+authenticator = { version = "0.4.0-alpha.9", features = ["gecko"] }
 gkrust_utils = { path = "../../../../xpcom/rust/gkrust_utils" }
 gecko_logger = { path = "../../../../xpcom/rust/gecko_logger" }
 rsdparsa_capi = { path = "../../../../dom/media/webrtc/sdp/rsdparsa_capi" }
@@ -74,11 +74,11 @@ origin-trials-ffi = { path = "../../../../dom/origin-trials/ffi" }
 jog = { path = "../../../components/glean/bindings/jog" }
 dap_ffi = { path = "../../../components/telemetry/dap/ffi" }
 data-encoding-ffi = { path = "../../../../dom/fs/parent/rust/data-encoding-ffi" }
-uniffi-example-arithmetic = { git = "https://github.com/mozilla/uniffi-rs.git", rev = "846612a1d4fb5d11e246bf0682da4a499409424c", optional = true }
-uniffi-example-geometry = { git = "https://github.com/mozilla/uniffi-rs.git", rev = "846612a1d4fb5d11e246bf0682da4a499409424c", optional = true }
-uniffi-example-rondpoint = { git = "https://github.com/mozilla/uniffi-rs.git", rev = "846612a1d4fb5d11e246bf0682da4a499409424c", optional = true }
-uniffi-example-sprites = { git = "https://github.com/mozilla/uniffi-rs.git", rev = "846612a1d4fb5d11e246bf0682da4a499409424c", optional = true }
-uniffi-example-todolist = { git = "https://github.com/mozilla/uniffi-rs.git", rev = "846612a1d4fb5d11e246bf0682da4a499409424c", optional = true }
+uniffi-example-arithmetic = { git = "https://github.com/mozilla/uniffi-rs.git", rev = "bc7ff8977bf38d0fdd1a458810b14f434d4dc4de", optional = true }
+uniffi-example-geometry = { git = "https://github.com/mozilla/uniffi-rs.git", rev = "bc7ff8977bf38d0fdd1a458810b14f434d4dc4de", optional = true }
+uniffi-example-rondpoint = { git = "https://github.com/mozilla/uniffi-rs.git", rev = "bc7ff8977bf38d0fdd1a458810b14f434d4dc4de", optional = true }
+uniffi-example-sprites = { git = "https://github.com/mozilla/uniffi-rs.git", rev = "bc7ff8977bf38d0fdd1a458810b14f434d4dc4de", optional = true }
+uniffi-example-todolist = { git = "https://github.com/mozilla/uniffi-rs.git", rev = "bc7ff8977bf38d0fdd1a458810b14f434d4dc4de", optional = true }
 uniffi-example-custom-types = { path = "../../../components/uniffi-example-custom-types/", optional = true }
 uniffi-fixture-callbacks = { path = "../../../components/uniffi-fixture-callbacks/", optional = true }
 uniffi-fixture-external-types = { path = "../../../components/uniffi-fixture-external-types/", optional = true }
@@ -101,7 +101,7 @@ localization-ffi = { path = "../../../../intl/l10n/rust/localization-ffi" }
 processtools = { path = "../../../components/processtools" }
 qcms = { path = "../../../../gfx/qcms", features = ["c_bindings", "neon"], default-features = false }
 
-wpf-gpu-raster = { git = "https://github.com/FirefoxGraphics/wpf-gpu-raster", rev = "e07e3741d1613b1b7ddb85a1120ed4071b3d6a56" }
+wpf-gpu-raster = { git = "https://github.com/FirefoxGraphics/wpf-gpu-raster", rev = "a6514854d4518b02f2805719ff6cd74dae7dfde6" }
 aa-stroke = { git = "https://github.com/FirefoxGraphics/aa-stroke", rev = "07d3c25322518f294300e96246e09b95e118555d" }
 
 # Force url to stay at 2.1.0. See bug 1734538.

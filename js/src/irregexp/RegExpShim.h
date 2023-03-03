@@ -133,6 +133,8 @@ inline uintptr_t GetCurrentStackPosition() {
   return reinterpret_cast<uintptr_t>(__builtin_frame_address(0));
 }
 
+using Isolate = internal::Isolate;
+
 namespace base {
 
 // Latin1/UTF-16 constants
@@ -1105,6 +1107,11 @@ class Isolate {
 
   Counters* counters() { return &counters_; }
 
+  enum UseCounterFeature {
+    kRegExpUnicodeSetIncompatibilitiesWithUnicodeMode,
+  };
+  void CountUsage(UseCounterFeature counter) {}
+
   //********** Factory code **********//
   inline Factory* factory() { return this; }
 
@@ -1233,6 +1240,10 @@ class Code : public HeapObject {
     return value().toGCThing()->as<js::jit::JitCode>();
   }
 };
+
+// Only used in function signature of functions we don't implement
+// (NativeRegExpMacroAssembler::CheckStackGuardState)
+class InstructionStream {};
 
 // Origin: https://github.com/v8/v8/blob/master/src/codegen/label.h
 class Label {

@@ -127,6 +127,27 @@ void AutoRangeArray::EnsureOnlyEditableRanges(const Element& aEditingHost) {
     const OwningNonNull<nsRange>& range = mRanges[i - 1];
     if (!AutoRangeArray::IsEditableRange(range, aEditingHost)) {
       mRanges.RemoveElementAt(i - 1);
+      continue;
+    }
+    // Special handling for `inert` attribute. If anchor node is inert, the
+    // range should be treated as not editable.
+    nsIContent* anchorContent =
+        mDirection == eDirNext
+            ? nsIContent::FromNode(range->GetStartContainer())
+            : nsIContent::FromNode(range->GetEndContainer());
+    if (anchorContent && HTMLEditUtils::ContentIsInert(*anchorContent)) {
+      mRanges.RemoveElementAt(i - 1);
+      continue;
+    }
+    // Additionally, if focus node is inert, the range should be collapsed to
+    // anchor node.
+    nsIContent* focusContent =
+        mDirection == eDirNext
+            ? nsIContent::FromNode(range->GetEndContainer())
+            : nsIContent::FromNode(range->GetStartContainer());
+    if (focusContent && focusContent != anchorContent &&
+        HTMLEditUtils::ContentIsInert(*focusContent)) {
+      range->Collapse(mDirection == eDirNext);
     }
   }
   mAnchorFocusRange = mRanges.IsEmpty() ? nullptr : mRanges.LastElement().get();
@@ -206,12 +227,17 @@ AutoRangeArray::ExtendAnchorFocusRangeFor(
     return Err(NS_ERROR_FAILURE);
   }
 
-  // At this point, the anchor-focus ranges must match for bidi information.
-  // See `EditorBase::AutoCaretBidiLevelManager`.
-  MOZ_ASSERT(aEditorBase.SelectionRef().GetAnchorFocusRange()->StartRef() ==
-             mAnchorFocusRange->StartRef());
-  MOZ_ASSERT(aEditorBase.SelectionRef().GetAnchorFocusRange()->EndRef() ==
-             mAnchorFocusRange->EndRef());
+  // By a preceding call of EnsureOnlyEditableRanges(), anchor/focus range may
+  // have been changed.  In that case, we cannot use nsFrameSelection anymore.
+  // FIXME: We should make `nsFrameSelection::CreateRangeExtendedToSomewhere`
+  //        work without `Selection` instance.
+  if (MOZ_UNLIKELY(
+          aEditorBase.SelectionRef().GetAnchorFocusRange()->StartRef() !=
+              mAnchorFocusRange->StartRef() ||
+          aEditorBase.SelectionRef().GetAnchorFocusRange()->EndRef() !=
+              mAnchorFocusRange->EndRef())) {
+    return aDirectionAndAmount;
+  }
 
   RefPtr<nsFrameSelection> frameSelection =
       aEditorBase.SelectionRef().GetFrameSelection();
@@ -403,7 +429,7 @@ AutoRangeArray::ShrinkRangesIfStartFromOrEndAfterAtomicContent(
 
   bool changed = false;
   for (auto& range : mRanges) {
-    MOZ_ASSERT(!range->IsInSelection(),
+    MOZ_ASSERT(!range->IsInAnySelection(),
                "Changing range in selection may cause running script");
     Result<bool, nsresult> result =
         WSRunScanner::ShrinkRangeIfStartsFromOrEndsAfterAtomicContent(
@@ -881,9 +907,10 @@ nsresult AutoRangeArray::ExtendRangeToWrapStartAndEndLinesContainingBoundaries(
   return NS_OK;
 }
 
-Result<EditorDOMPoint, nsresult> AutoRangeArray::
-    SplitTextNodesAtEndBoundariesAndParentInlineElementsAtBoundaries(
-        HTMLEditor& aHTMLEditor) {
+Result<EditorDOMPoint, nsresult>
+AutoRangeArray::SplitTextAtEndBoundariesAndInlineAncestorsAtBothBoundaries(
+    HTMLEditor& aHTMLEditor, const Element& aEditingHost,
+    const nsIContent* aAncestorLimiter /* = nullptr */) {
   // FYI: The following code is originated in
   // https://searchfox.org/mozilla-central/rev/c8e15e17bc6fd28f558c395c948a6251b38774ff/editor/libeditor/HTMLEditSubActionHandler.cpp#6971
 
@@ -893,7 +920,8 @@ Result<EditorDOMPoint, nsresult> AutoRangeArray::
   IgnoredErrorResult ignoredError;
   for (const OwningNonNull<nsRange>& range : mRanges) {
     EditorDOMPoint atEnd(range->EndRef());
-    if (NS_WARN_IF(!atEnd.IsSet()) || !atEnd.IsInTextNode()) {
+    if (NS_WARN_IF(!atEnd.IsSet()) || !atEnd.IsInTextNode() ||
+        atEnd.GetContainer() == aAncestorLimiter) {
       continue;
     }
 
@@ -911,7 +939,7 @@ Result<EditorDOMPoint, nsresult> AutoRangeArray::
 
       // Correct the range.
       // The new end parent becomes the parent node of the text.
-      MOZ_ASSERT(!range->IsInSelection());
+      MOZ_ASSERT(!range->IsInAnySelection());
       range->SetEnd(unwrappedSplitAtEndResult.AtNextContent<EditorRawDOMPoint>()
                         .ToRawRangeBoundary(),
                     ignoredError);
@@ -939,9 +967,11 @@ Result<EditorDOMPoint, nsresult> AutoRangeArray::
   for (OwningNonNull<RangeItem>& item : Reversed(rangeItemArray)) {
     // MOZ_KnownLive because 'rangeItemArray' is guaranteed to keep it alive.
     Result<EditorDOMPoint, nsresult> splitParentsResult =
-        aHTMLEditor.SplitParentInlineElementsAtRangeEdges(MOZ_KnownLive(*item));
+        aHTMLEditor.SplitParentInlineElementsAtRangeBoundaries(
+            MOZ_KnownLive(*item), aEditingHost, aAncestorLimiter);
     if (MOZ_UNLIKELY(splitParentsResult.isErr())) {
-      NS_WARNING("HTMLEditor::SplitParentInlineElementsAtRangeEdges() failed");
+      NS_WARNING(
+          "HTMLEditor::SplitParentInlineElementsAtRangeBoundaries() failed");
       rv = splitParentsResult.unwrapErr();
       break;
     }

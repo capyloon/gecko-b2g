@@ -50,9 +50,7 @@ Prompter.prototype = {
         ].getService(Ci.nsIPromptFactory);
         return pwmgr.getPrompt(domWin, iid);
       } catch (e) {
-        Cu.reportError(
-          "nsPrompter: Delegation to password manager failed: " + e
-        );
+        console.error("nsPrompter: Delegation to password manager failed: ", e);
       }
     }
 
@@ -997,7 +995,7 @@ class ModalPrompter {
     ) {
       // Only show this error if we're not about to fall back again and show a different one.
       if (this.browsingContext?.associatedWindow?.gDialogBox) {
-        Cu.reportError(
+        console.error(
           "Prompter: Browser not available. Falling back to internal window prompt."
         );
       }
@@ -1009,7 +1007,7 @@ class ModalPrompter {
       (this.browsingContext?.isContent ||
         !this.browsingContext?.associatedWindow?.gDialogBox)
     ) {
-      Cu.reportError(
+      console.error(
         "Prompter: internal dialogs not available in this context. Falling back to window prompt."
       );
       modalType = MODAL_TYPE_WINDOW;
@@ -1067,7 +1065,7 @@ class ModalPrompter {
     // and thus not supported as tab or content prompts yet. See Bug 1622817.
     // Once they are integrated this override should be removed.
     if (args.promptType == "select" && this.modalType !== MODAL_TYPE_WINDOW) {
-      Cu.reportError(
+      console.error(
         "Prompter: 'select' prompts do not support tab/content prompting. Falling back to window prompt."
       );
       args.modalType = MODAL_TYPE_WINDOW;
@@ -1120,6 +1118,24 @@ class ModalPrompter {
       args.isInsecureAuth =
         args.channel.URI.schemeIs("http") &&
         !args.channel.loadInfo.isTopLevelLoad;
+      // whether we are going to prompt the user for their credentials for a different base domain.
+      // When true, auth prompt spoofing protection mechanisms will be triggered (see bug 791594).
+      args.isTopLevelCrossDomainAuth = false;
+      // We don't support auth prompt spoofing protections for sub resources and window prompts
+      if (
+        args.modalType == MODAL_TYPE_TAB &&
+        args.channel.loadInfo.isTopLevelLoad
+      ) {
+        // check if this is a request from a third party
+        try {
+          args.isTopLevelCrossDomainAuth = this.browsingContext.currentWindowGlobal?.documentPrincipal?.isThirdPartyURI(
+            args.channel.URI
+          );
+        } catch (e) {
+          // isThirdPartyURI failes for about:/blob/data URIs
+          console.warn("nsPrompter: isThirdPartyURI failed: " + e);
+        }
+      }
     } else {
       args.promptPrincipal = this.browsingContext.window?.document.nodePrincipal;
     }

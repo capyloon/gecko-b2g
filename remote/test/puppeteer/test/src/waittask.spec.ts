@@ -15,7 +15,9 @@
  */
 
 import expect from 'expect';
-import {isErrorLike} from '../../lib/cjs/puppeteer/util/ErrorLike.js';
+import {TimeoutError, ElementHandle} from 'puppeteer';
+import {isErrorLike} from 'puppeteer-core/internal/util/ErrorLike.js';
+
 import {
   createTimeout,
   getTestState,
@@ -241,7 +243,7 @@ describe('waittask specs', function () {
       await waitForFunction;
     });
     it('should respect timeout', async () => {
-      const {page, puppeteer} = getTestState();
+      const {page} = getTestState();
 
       let error!: Error;
       await page
@@ -255,11 +257,11 @@ describe('waittask specs', function () {
           return (error = error_);
         });
 
-      expect(error).toBeInstanceOf(puppeteer.errors.TimeoutError);
+      expect(error).toBeInstanceOf(TimeoutError);
       expect(error?.message).toContain('Waiting failed: 10ms exceeded');
     });
     it('should respect default timeout', async () => {
-      const {page, puppeteer} = getTestState();
+      const {page} = getTestState();
 
       page.setDefaultTimeout(1);
       let error!: Error;
@@ -270,7 +272,7 @@ describe('waittask specs', function () {
         .catch(error_ => {
           return (error = error_);
         });
-      expect(error).toBeInstanceOf(puppeteer.errors.TimeoutError);
+      expect(error).toBeInstanceOf(TimeoutError);
       expect(error?.message).toContain('Waiting failed: 1ms exceeded');
     });
     it('should disable timeout when its set to 0', async () => {
@@ -537,37 +539,7 @@ describe('waittask specs', function () {
         Promise.race([promise, createTimeout(40)])
       ).resolves.toBeFalsy();
       await element.evaluate(e => {
-        e.style.setProperty('position', 'absolute');
-        e.style.setProperty('right', '100vw');
         e.style.removeProperty('height');
-      });
-      await expect(
-        Promise.race([promise, createTimeout(40)])
-      ).resolves.toBeFalsy();
-      await element.evaluate(e => {
-        e.style.setProperty('left', '100vw');
-        e.style.removeProperty('right');
-      });
-      await expect(
-        Promise.race([promise, createTimeout(40)])
-      ).resolves.toBeFalsy();
-      await element.evaluate(e => {
-        e.style.setProperty('top', '100vh');
-        e.style.removeProperty('left');
-      });
-      await expect(
-        Promise.race([promise, createTimeout(40)])
-      ).resolves.toBeFalsy();
-      await element.evaluate(e => {
-        e.style.setProperty('bottom', '100vh');
-        e.style.removeProperty('top');
-      });
-      await expect(
-        Promise.race([promise, createTimeout(40)])
-      ).resolves.toBeFalsy();
-      await element.evaluate(e => {
-        // Just peeking
-        e.style.setProperty('bottom', '99vh');
       });
       await expect(promise).resolves.toBeTruthy();
     });
@@ -670,13 +642,13 @@ describe('waittask specs', function () {
       expect(handle).toBe(null);
     });
     it('should respect timeout', async () => {
-      const {page, puppeteer} = getTestState();
+      const {page} = getTestState();
 
       let error!: Error;
       await page.waitForSelector('div', {timeout: 10}).catch(error_ => {
         return (error = error_);
       });
-      expect(error).toBeInstanceOf(puppeteer.errors.TimeoutError);
+      expect(error).toBeInstanceOf(TimeoutError);
       expect(error?.message).toContain(
         'Waiting for selector `div` failed: Waiting failed: 10ms exceeded'
       );
@@ -756,13 +728,13 @@ describe('waittask specs', function () {
       ).toBe('hello  world  ');
     });
     it('should respect timeout', async () => {
-      const {page, puppeteer} = getTestState();
+      const {page} = getTestState();
 
       let error!: Error;
       await page.waitForXPath('//div', {timeout: 10}).catch(error_ => {
         return (error = error_);
       });
-      expect(error).toBeInstanceOf(puppeteer.errors.TimeoutError);
+      expect(error).toBeInstanceOf(TimeoutError);
       expect(error?.message).toContain('Waiting failed: 10ms exceeded');
     });
     it('should run in specified frame', async () => {
@@ -815,6 +787,22 @@ describe('waittask specs', function () {
       });
       expect(await waitForXPath).toBe(true);
       expect(divHidden).toBe(true);
+    });
+    it('hidden should return null if the element is not found', async () => {
+      const {page} = getTestState();
+
+      const waitForXPath = await page.waitForXPath('//div', {hidden: true});
+
+      expect(waitForXPath).toBe(null);
+    });
+    it('hidden should return an empty element handle if the element is found', async () => {
+      const {page} = getTestState();
+
+      await page.setContent(`<div style='display: none;'>text</div>`);
+
+      const waitForXPath = await page.waitForXPath('//div', {hidden: true});
+
+      expect(waitForXPath).toBeInstanceOf(ElementHandle);
     });
     it('should return the element handle', async () => {
       const {page} = getTestState();

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 import expect from 'expect';
+
 import {
   expectCookieEquals,
   getTestState,
@@ -377,7 +378,7 @@ describe('Cookie specs', () => {
       const [cookie] = await page.cookies(SECURE_URL);
       expect(cookie!.secure).toBe(true);
     });
-    it('should be able to set unsecure cookie for HTTP website', async () => {
+    it('should be able to set insecure cookie for HTTP website', async () => {
       const {page, server} = getTestState();
 
       await page.goto(server.EMPTY_PAGE);

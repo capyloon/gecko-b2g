@@ -219,11 +219,7 @@ this.browserAction = class extends ExtensionAPIPersistent {
         // Ensure the extension context menuitems are available by setting this
         // on all button children and the item.
         button.setAttribute("data-extensionid", extension.id);
-        button.classList.add(
-          "toolbarbutton-1",
-          "unified-extensions-item-action-button",
-          "subviewbutton"
-        );
+        button.classList.add("unified-extensions-item-action-button");
 
         let contents = document.createXULElement("vbox");
         contents.classList.add("unified-extensions-item-contents");
@@ -286,7 +282,6 @@ this.browserAction = class extends ExtensionAPIPersistent {
         menuButton.setAttribute("closemenu", "none");
 
         let node = document.createXULElement("toolbaritem");
-        node.setAttribute("unified-extensions", String(true));
         node.classList.add(
           "toolbaritem-combined-buttons",
           "unified-extensions-item"
@@ -819,7 +814,7 @@ this.browserAction = class extends ExtensionAPIPersistent {
     let policy = WebExtensionPolicy.getByID(this.extension.id);
     let messages = OriginControls.getStateMessageIDs({
       policy,
-      uri: node.ownerGlobal.gBrowser.currentURI,
+      tab: node.ownerGlobal.gBrowser.selectedTab,
       isAction: true,
       hasPopup: !!tabData.popup,
     });
@@ -906,14 +901,15 @@ this.browserAction = class extends ExtensionAPIPersistent {
       `;
     };
 
+    let icon16 = IconDetails.getPreferredIcon(icons, this.extension, 16).icon;
     let icon32 = IconDetails.getPreferredIcon(icons, this.extension, 32).icon;
     let icon64 = IconDetails.getPreferredIcon(icons, this.extension, 64).icon;
 
     return `
         ${getStyle("menupanel-image", icon32)}
         ${getStyle("menupanel-image-2x", icon64)}
-        ${getStyle("toolbar-image", icon32)}
-        ${getStyle("toolbar-image-2x", icon64)}
+        ${getStyle("toolbar-image", icon16)}
+        ${getStyle("toolbar-image-2x", icon32)}
       `;
   }
 

@@ -18,6 +18,7 @@
 #include "mozilla/StaticPtr.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/UnderrunHandler.h"
+#include "nsContentUtils.h"
 #include "nsDebug.h"
 #include "nsIStringBundle.h"
 #include "nsString.h"
@@ -390,11 +391,11 @@ bool InitPreferredSampleRate() {
   return true;
 }
 
-uint32_t PreferredSampleRate() {
+uint32_t PreferredSampleRate(bool aShouldResistFingerprinting) {
   if (sCubebForcedSampleRate) {
     return sCubebForcedSampleRate;
   }
-  if (StaticPrefs::privacy_resistFingerprinting()) {
+  if (aShouldResistFingerprinting) {
     return 44100;
   }
   if (!InitPreferredSampleRate()) {

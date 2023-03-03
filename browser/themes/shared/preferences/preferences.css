@@ -5,13 +5,12 @@
 @namespace html "http://www.w3.org/1999/xhtml";
 
 /* Global rules */
-* {
+:root {
   user-select: text;
 }
 
 #preferences-root {
   text-rendering: optimizeLegibility;
-  -moz-box-layout: flex;
 }
 
 @media not print {
@@ -90,8 +89,9 @@ description.indent,
 
 button,
 treecol,
-html|option {
-  /* override the * rule */
+menulist,
+html|select {
+  /* override the root rule */
   user-select: none;
 }
 
@@ -578,8 +578,16 @@ richlistitem[selected] .actionsMenu:focus-visible {
   visibility: hidden;
 }
 
+html|dialog::backdrop,
 .dialogOverlay[topmost="true"] {
   background-color: rgba(0,0,0,0.5);
+}
+
+html|dialog,
+.dialogBox {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px 0 rgba(0,0,0,0.3);
 }
 
 .dialogBox {
@@ -588,9 +596,6 @@ richlistitem[selected] .actionsMenu:focus-visible {
   color: var(--in-content-page-color);
   /* `transparent` will use the dialogText color in high-contrast themes and
      when page colors are disabled */
-  border: 1px solid transparent;
-  border-radius: 8px;
-  box-shadow: 0 2px 6px 0 rgba(0,0,0,0.3);
   display: -moz-box;
   margin: 0;
   padding: 0;
@@ -599,6 +604,7 @@ richlistitem[selected] .actionsMenu:focus-visible {
 
 @media (prefers-color-scheme: dark) {
   @media not (prefers-contrast) {
+    html|dialog,
     .dialogBox {
       --in-content-page-background: #42414d;
     }
@@ -896,20 +902,11 @@ dialog > .sync-engines-list + hbox {
   min-height: 16px;
   margin-block: 7px;
   margin-inline-end: 8px;
-}
-
-html|img.update-throbber {
   vertical-align: middle;
 }
 
-image.update-throbber {
-  list-style-image: url("chrome://global/skin/icons/loading.png");
-}
-
-@media (min-resolution: 1.1dppx) {
-  .update-throbber {
-    list-style-image: url("chrome://global/skin/icons/loading@2x.png");
-  }
+.update-throbber {
+  content: image-set(url("chrome://global/skin/icons/loading.png"), url("chrome://global/skin/icons/loading@2x.png") 2x);
 }
 
 .navigation {
@@ -932,7 +929,7 @@ image.update-throbber {
 }
 
 .face-sad {
-  list-style-image: url("chrome://browser/skin/preferences/face-sad.svg");
+  content: url("chrome://browser/skin/preferences/face-sad.svg");
   width: 20px;
   height: 20px;
   margin-block: 5px;
@@ -940,7 +937,7 @@ image.update-throbber {
 }
 
 .face-smile {
-  list-style-image: url("chrome://browser/skin/preferences/face-smile.svg");
+  content: url("chrome://browser/skin/preferences/face-smile.svg");
   width: 20px;
   height: 20px;
   margin-block: 5px;
@@ -978,7 +975,7 @@ image.update-throbber {
 }
 
 .info-icon {
-  list-style-image: url("chrome://global/skin/icons/info.svg");
+  content: url("chrome://global/skin/icons/info.svg");
   width: 16px;
   height: 16px;
   margin-inline-end: 6px;
@@ -1411,7 +1408,7 @@ richlistitem .text-link:hover {
   content: url("chrome://browser/content/preferences/web-appearance-dark.svg")
 }
 
-.web-appearance-choice img:dir(rtl) {
+.web-appearance-choice img:-moz-locale-dir(rtl) {
   transform: scaleX(-1);
 }
 

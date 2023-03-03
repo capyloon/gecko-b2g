@@ -14,7 +14,6 @@
     <link rel="stylesheet" href="chrome://global/skin/tabprompts.css">
 
     <link rel="stylesheet" href="chrome://global/skin/in-content/common.css">
-    <link rel="stylesheet" href="chrome://global/skin/in-content/toggle-button.css">
     <link rel="stylesheet" href="chrome://mozapps/content/extensions/aboutaddons.css">
     <link rel="stylesheet" href="chrome://mozapps/content/extensions/shortcuts.css">
 
@@ -31,6 +30,8 @@
     <script defer src="chrome://mozapps/content/extensions/drag-drop-addon-installer.js"></script>
     <script defer src="chrome://mozapps/content/extensions/view-controller.js"></script>
     <script defer src="chrome://mozapps/content/extensions/aboutaddons.js"></script>
+    <script type="module" src="chrome://global/content/elements/moz-toggle.mjs"></script>
+    <script type="module" src="chrome://global/content/elements/moz-support-link.mjs"></script>
   </head>
   <body>
     <drag-drop-addon-installer></drag-drop-addon-installer>
@@ -67,7 +68,7 @@
       <div class="sticky-container">
         <div class="main-search">
           <label for="search-addons" class="search-label" data-l10n-id="default-heading-search-label"></label>
-          <search-addons data-l10n-id="search-header-shortcut" data-l10n-attrs="key"></search-addons>
+          <search-addons></search-addons>
         </div>
         <div class="main-heading">
           <button class="back-button" action="go-back" data-l10n-id="header-back-button" hidden></button>
@@ -131,7 +132,7 @@
       </div>
       <div class="addon-detail-row addon-permissions-empty" data-l10n-id="addon-permissions-empty" hidden></div>
       <div class="addon-detail-row">
-        <a is="support-link" support-page="extension-permissions" data-l10n-id="addon-permissions-learnmore"></a>
+        <a is="moz-support-link" support-page="extension-permissions" data-l10n-id="addon-permissions-learnmore"></a>
       </div>
     </template>
 
@@ -150,35 +151,35 @@
           <div class="card-contents">
             <div class="addon-name-container">
               <a class="addon-badge addon-badge-recommended"
-                 is="support-link"
+                 is="moz-support-link"
                  support-page="add-on-badges"
-                 utmcontent="promoted-addon-badge"
+                 utm-content="promoted-addon-badge"
                  data-l10n-id="addon-badge-recommended2"
                  hidden>
               </a>
               <a class="addon-badge addon-badge-line"
-                 is="support-link"
+                 is="moz-support-link"
                  support-page="add-on-badges"
-                 utmcontent="promoted-addon-badge"
+                 utm-content="promoted-addon-badge"
                  data-l10n-id="addon-badge-line3"
                  hidden>
               </a>
               <a class="addon-badge addon-badge-verified"
-                 is="support-link"
+                 is="moz-support-link"
                  support-page="add-on-badges"
-                 utmcontent="promoted-addon-badge"
+                 utm-content="promoted-addon-badge"
                  data-l10n-id="addon-badge-verified2"
                  hidden>
               </a>
               <a class="addon-badge addon-badge-private-browsing-allowed"
-                 is="support-link"
+                 is="moz-support-link"
                  support-page="extensions-pb"
                  data-l10n-id="addon-badge-private-browsing-allowed2"
                  hidden>
               </a>
               <div class="spacer"></div>
               <button class="theme-enable-button" action="toggle-disabled" hidden></button>
-              <input type="checkbox" class="toggle-button extension-enable-button" action="toggle-disabled" data-l10n-id="extension-enable-addon-button-label" hidden>
+              <moz-toggle class="extension-enable-button" action="toggle-disabled" data-l10n-id="extension-enable-addon-button-label" hidden></moz-toggle>
               <button
                 class="more-options-button"
                 action="more-options"
@@ -344,7 +345,7 @@
       <message-bar class="discopane-notice" dismissable>
         <div class="discopane-notice-content">
           <span data-l10n-id="discopane-notice-recommendations"></span>
-          <a is="support-link"
+          <a is="moz-support-link"
              support-page="personalized-addons"
              data-l10n-id="discopane-notice-learn-more"
              action="notice-learn-more"></a>
@@ -367,7 +368,7 @@
           <span data-l10n-id="discopane-intro">
             <a
               class="discopane-intro-learn-more-link"
-              is="support-link"
+              is="moz-support-link"
               support-page="recommended-extensions-program"
               data-l10n-name="learn-more-trigger">
             </a>

@@ -14,16 +14,18 @@
  * limitations under the License.
  */
 
+import assert from 'assert';
+
 import expect from 'expect';
+import {TimeoutError} from 'puppeteer';
+import type {ElementHandle} from 'puppeteer-core/internal/api/ElementHandle.js';
+
 import {
   getTestState,
   setupTestBrowserHooks,
   setupTestPageAndContextHooks,
 } from './mocha-utils.js';
-
-import {ElementHandle} from '../../lib/cjs/puppeteer/common/ElementHandle.js';
 import utils from './utils.js';
-import assert from 'assert';
 
 describe('AriaQueryHandler', () => {
   setupTestBrowserHooks();
@@ -228,7 +230,7 @@ describe('AriaQueryHandler', () => {
       await page.waitForSelector('aria/[role="button"]');
     });
 
-    it('should work for ElementHandler.waitForSelector', async () => {
+    it('should work for ElementHandle.waitForSelector', async () => {
       const {page, server} = getTestState();
       await page.goto(server.EMPTY_PAGE);
       await page.evaluate(() => {
@@ -516,7 +518,7 @@ describe('AriaQueryHandler', () => {
     });
 
     it('should respect timeout', async () => {
-      const {page, puppeteer} = getTestState();
+      const {page} = getTestState();
 
       const error = await page
         .waitForSelector('aria/[role="button"]', {
@@ -528,7 +530,7 @@ describe('AriaQueryHandler', () => {
       expect(error.message).toContain(
         'Waiting for selector `[role="button"]` failed: Waiting failed: 10ms exceeded'
       );
-      expect(error).toBeInstanceOf(puppeteer.errors.TimeoutError);
+      expect(error).toBeInstanceOf(TimeoutError);
     });
 
     it('should have an error message specifically for awaiting an element to be hidden', async () => {

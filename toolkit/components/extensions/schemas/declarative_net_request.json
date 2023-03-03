@@ -13,12 +13,20 @@
           "enum": ["declarativeNetRequest"],
           "min_manifest_version": 3
         }]
+      },
+      {
+        "$extend": "OptionalPermission",
+        "choices": [{
+          "type": "string",
+          "enum": ["declarativeNetRequestFeedback"],
+          "min_manifest_version": 3
+        }]
       }, 
       {
         "$extend": "PermissionNoPrompt",
         "choices": [{
           "type": "string",
-          "enum": ["declarativeNetRequestFeedback", "declarativeNetRequestWithHostAccess"],
+          "enum": ["declarativeNetRequestWithHostAccess"],
           "min_manifest_version": 3
         }]
       },
@@ -229,7 +237,7 @@
               "isUrlFilterCaseSensitive": {
                 "type": "boolean",
                 "optional": true,
-                "description": "Whether 'urlFilter' or 'regexFilter' is case-sensitive. Defaults to true."
+                "description": "Whether 'urlFilter' or 'regexFilter' is case-sensitive."
               },
               "initiatorDomains": {
                 "type": "array",
@@ -677,6 +685,11 @@
       }
     ],
     "properties": {
+      "DYNAMIC_RULESET_ID": {
+        "type": "string",
+        "value": "_dynamic",
+        "description": "Ruleset ID for the dynamic rules added by the extension."
+      },
       "GUARANTEED_MINIMUM_STATIC_RULES": {
         "type": "number",
         "description": "The minimum number of static rules guaranteed to an extension across its enabled static rulesets. Any rules above this limit will count towards the global static rule limit."
@@ -692,6 +705,11 @@
       "MAX_NUMBER_OF_DYNAMIC_AND_SESSION_RULES": {
         "type": "number",
         "description": "The maximum number of dynamic and session rules an extension can add. NOTE: in the Firefox we are enforcing this limit to the session and dynamic rules count separately, instead of enforcing it to the rules count for both combined as the Chrome implementation does."
+      },
+      "SESSION_RULESET_ID": {
+        "type": "string",
+        "value": "_session",
+        "description": "Ruleset ID for the session-scoped rules added by the extension."
       }
     }
   }

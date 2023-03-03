@@ -60,7 +60,6 @@ talos-profiling:
     - talos-chrome-profiling
     # - talos-damp-profiling - Disabled b/c of Bug 1597734
     - talos-dromaeojs-profiling
-    # - talos-flex-profiling - Disabled b/c of Bug 1597736
     - talos-g1-profiling
     - talos-g3-profiling
     - talos-g4-profiling
@@ -90,6 +89,19 @@ browsertime:
     - browsertime-youtube-playback
     - browsertime-custom
     - browsertime-first-install
+    - browsertime-grandprix
+    - browsertime-responsiveness
+    - browsertime-regression-tests
+
+browsertime-clang:
+    - browsertime-tp6
+    - browsertime-tp6-essential
+    - browsertime-tp6-bytecode
+    - browsertime-tp6-live
+    - browsertime-tp6-live-sheriffed
+    - browsertime-benchmark
+    - browsertime-benchmark-wasm
+    - browsertime-youtube-playback
     - browsertime-grandprix
     - browsertime-responsiveness
 
@@ -170,17 +182,13 @@ linux1804-ccov-tests:
     # on ccov builds.
     - jittest
 
-linux-talos-flex:
-    - talos-flex
-
 # Windows
 
 windows-7-tests:
+    - cppunit
     - mochitest-browser-a11y
     - mochitest-browser-chrome
     - mochitest-browser-media
-    - mochitest-webgpu
-    - reftest
     - xpcshell
 
 windows32-2004-tests:
@@ -197,6 +205,8 @@ windows32-2004-tests:
     - mochitest-plain
     - mochitest-plain-gpu
     - mochitest-remote
+    - mochitest-webgpu
+    - reftest
     - telemetry-tests-client
     - test-verify
     - test-verify-gpu
@@ -241,6 +251,36 @@ windows10-64-2004-ccov-tests:
     - web-platform-tests-reftest
     - web-platform-tests-wdspec
 
+windows11-2009-tests:
+    - cppunit
+    - crashtest
+    - firefox-ui-functional
+    - gtest
+    - jsreftest
+    - marionette
+    - mochitest-a11y
+    - mochitest-browser-a11y
+    - mochitest-browser-chrome
+    - mochitest-browser-media
+    - mochitest-chrome
+    - mochitest-chrome-gpu
+    - mochitest-devtools-chrome
+    - mochitest-media
+    - mochitest-plain
+    - mochitest-plain-gpu
+    - mochitest-remote
+    - mochitest-webgpu
+    - mochitest-webgl1-core
+    - mochitest-webgl1-ext
+    - mochitest-webgl2-core
+    - mochitest-webgl2-ext
+    - reftest
+    - telemetry-tests-client
+    - test-verify
+    - test-verify-gpu
+    - test-verify-wpt
+    - xpcshell
+
 mingwclang-tests-debug:
     - cppunit
     - firefox-ui-functional
@@ -276,9 +316,6 @@ mingwclang-tests-opt:
     - cppunit
     - mochitest-chrome-gpu
     - mochitest-plain-gpu
-
-windows-aarch64-tests:
-    - mochitest-media
 
 windows-talos:
     - talos-bcv

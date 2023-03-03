@@ -442,6 +442,9 @@ class PerftestOutput(object):
             # pylint: disable=W1633
             return round(filters.mean(_filter(vals)), 2)
 
+        if "twitch-animation" in testname:
+            return round(filters.geometric_mean(_filter(vals, "run")), 2)
+
         if testname.startswith("supporting_data"):
             if not unit:
                 return sum(_filter(vals))
@@ -1750,6 +1753,15 @@ class BrowsertimeOutput(PerftestOutput):
                     "subtests": {},
                 },
             )
+            # Add the alert window settings if needed
+            for alert_option, schema_name in (
+                ("min_back_window", "minBackWindow"),
+                ("max_back_window", "maxBackWindow"),
+                ("fore_window", "foreWindow"),
+            ):
+                if test.get(alert_option, None) is not None:
+                    suite[schema_name] = int(test[alert_option])
+
             # Setting shouldAlert to False whenever self.app is either chrome, chrome-m, chromium
             if self.app in ("chrome", "chrome-m", "chromium"):
                 suite["shouldAlert"] = False
@@ -1765,6 +1777,16 @@ class BrowsertimeOutput(PerftestOutput):
                         subtest["lowerIsBetter"] = test["subtest_lower_is_better"]
                         subtest["alertThreshold"] = float(test["alert_threshold"])
                         subtest["unit"] = test["subtest_unit"]
+
+                        # Add the alert window settings if needed here too in case
+                        # there is no summary value in the test
+                        for schema_name in (
+                            "minBackWindow",
+                            "maxBackWindow",
+                            "foreWindow",
+                        ):
+                            if suite.get(schema_name, None) is not None:
+                                subtest[schema_name] = suite[schema_name]
 
                         # if 'alert_on' is set for this particular measurement, then we want to set
                         # the flag in the perfherder output to turn on alerting for this subtest

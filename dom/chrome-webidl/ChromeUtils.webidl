@@ -653,6 +653,25 @@ partial namespace ChromeUtils {
    * Returns whether the background of the element is dark.
    */
   boolean isDarkBackground(Element element);
+
+  /**
+   * Starts the JSOracle process for ORB JavaScript validation, if it hasn't started already.
+   */
+  undefined ensureJSOracleStarted();
+
+  /**
+   * The number of currently alive utility processes.
+   */
+  [ChromeOnly]
+  readonly attribute unsigned long aliveUtilityProcesses;
+
+  /**
+   * Get a list of all possible Utility process Actor Names ; mostly useful to
+   * perform testing and ensure about:processes display is sound and misses no
+   * actor name.
+   */
+  [ChromeOnly]
+  sequence<UTF8String> getAllPossibleUtilityActorNames();
 };
 
 /*
@@ -728,6 +747,7 @@ enum WebIDLUtilityActorName {
   "audioDecoder_WMF",
   "mfMediaEngineCDM",
   "jSOracle",
+  "windowsUtils",
 };
 
 dictionary UtilityActorsDictionary {

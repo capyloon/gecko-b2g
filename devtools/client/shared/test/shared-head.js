@@ -135,8 +135,6 @@ const URL_ROOT_MOCHI_8888 = CHROME_URL_ROOT.replace(
   "http://mochi.test:8888/"
 );
 
-const TARGET_SWITCHING_PREF = "devtools.target-switching.server.enabled";
-
 try {
   if (isMochitest) {
     Services.scriptloader.loadSubScript(
@@ -566,7 +564,7 @@ async function navigateTo(
   if (uri === browser.currentURI.spec) {
     gBrowser.reloadTab(gBrowser.getTabForBrowser(browser));
   } else {
-    BrowserTestUtils.loadURI(browser, uri);
+    BrowserTestUtils.loadURIString(browser, uri);
   }
 
   if (waitForLoad) {
@@ -917,17 +915,6 @@ async function createAndAttachTargetForTab(tab) {
 
 function isFissionEnabled() {
   return SpecialPowers.useRemoteSubframes;
-}
-
-function isServerTargetSwitchingEnabled() {
-  return Services.prefs.getBoolPref(TARGET_SWITCHING_PREF);
-}
-
-/**
- * Enables server target switching
- */
-async function enableTargetSwitching() {
-  await pushPref(TARGET_SWITCHING_PREF, true);
 }
 
 function isEveryFrameTargetEnabled() {
@@ -1448,8 +1435,12 @@ async function moveWindowTo(win, left, top) {
 
   // Bug 1600809: window move/resize can be async on Linux sometimes.
   // Wait so that the anchor's position is correctly measured.
-  info("Wait for window screenLeft and screenTop to be updated");
-  return waitUntil(() => win.screenLeft === left && win.screenTop === top);
+  return waitUntil(() => {
+    info(
+      `Wait for window screenLeft and screenTop to be updated: (${win.screenLeft}, ${win.screenTop})`
+    );
+    return win.screenLeft === left && win.screenTop === top;
+  });
 }
 
 function getCurrentTestFilePath() {

@@ -231,7 +231,7 @@ class ProviderSearchTips extends UrlbarProvider {
         };
         break;
       case TIPS.PERSIST:
-        result.heuristic = true;
+        result.heuristic = false;
         result.payload.titleL10n = {
           id: "urlbar-search-tips-persist",
         };
@@ -405,7 +405,7 @@ class ProviderSearchTips extends UrlbarProvider {
     // a specific tip can be shown to the user, and the
     // the url is a default SERP.
     let shouldShowPersistTip =
-      lazy.UrlbarPrefs.get("showSearchTerms.featureGate") &&
+      lazy.UrlbarPrefs.isPersistedSearchTermsEnabled() &&
       (lazy.UrlbarPrefs.get(`tipShownCount.${TIPS.PERSIST}`) <
         MAX_SHOWN_COUNT ||
         ignoreShowLimits) &&
@@ -494,7 +494,8 @@ class ProviderSearchTips extends UrlbarProvider {
       let { documentRequest } = window.gBrowser.selectedBrowser.webProgress;
       if (
         documentRequest instanceof Ci.nsIChannel &&
-        documentRequest.originalURI?.spec != originalUri?.spec
+        documentRequest.originalURI?.spec != originalUri?.spec &&
+        (!isNewtab || originalUri)
       ) {
         return;
       }

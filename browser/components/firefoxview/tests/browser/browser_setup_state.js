@@ -1,10 +1,6 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-const { TabsSetupFlowManager } = ChromeUtils.importESModule(
-  "resource:///modules/firefox-view-tabs-setup-manager.sys.mjs"
-);
-
 const FXA_CONTINUE_EVENT = [
   ["firefoxview", "entered", "firefoxview", undefined],
   ["firefoxview", "fxa_continue", "sync", undefined],
@@ -502,7 +498,9 @@ add_task(async function test_mobile_promo_pref() {
     });
 
     // reset the dismissed pref, which should case the promo to get shown
-    await SpecialPowers.popPrefEnv();
+    await SpecialPowers.pushPrefEnv({
+      set: [[MOBILE_PROMO_DISMISSED_PREF, false]],
+    });
     await waitForElementVisible(
       browser,
       "#tab-pickup-container > .promo-box",
@@ -626,7 +624,7 @@ async function mockFxaDeviceConnected(win) {
   const url = "https://example.org/pair/auth/complete";
   is(win.gBrowser.tabs.length, 3, "Tabs strip should contain three tabs");
 
-  BrowserTestUtils.loadURI(win.gBrowser.selectedTab.linkedBrowser, url);
+  BrowserTestUtils.loadURIString(win.gBrowser.selectedTab.linkedBrowser, url);
 
   await BrowserTestUtils.browserLoaded(
     win.gBrowser.selectedTab.linkedBrowser,
@@ -764,6 +762,5 @@ add_task(async function test_close_device_connected_tab() {
 
   // cleanup time
   await tearDown(sandbox);
-  await SpecialPowers.popPrefEnv();
   await BrowserTestUtils.closeWindow(win);
 });

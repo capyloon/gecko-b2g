@@ -7,7 +7,6 @@ const kLoginsKey =
 
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
-const { OS } = ChromeUtils.import("resource://gre/modules/osfile.jsm");
 import { MigrationUtils } from "resource:///modules/MigrationUtils.sys.mjs";
 import { MigratorBase } from "resource:///modules/MigratorBase.sys.mjs";
 import { MSMigrationUtils } from "resource:///modules/MSMigrationUtils.sys.mjs";
@@ -220,9 +219,7 @@ IE7FormPasswords.prototype = {
           });
         }
       } catch (e) {
-        Cu.reportError(
-          "Error while importing logins for " + uri.spec + ": " + e
-        );
+        console.error("Error while importing logins for ", uri.spec, ": ", e);
       }
     }
 
@@ -233,7 +230,7 @@ IE7FormPasswords.prototype = {
     // if the number of the imported values is less than the number of values in the key, it means
     // that not all the values were imported and an error should be reported
     if (successfullyDecryptedValues < key.valueCount) {
-      Cu.reportError(
+      console.error(
         "We failed to decrypt and import some logins. " +
           "This is likely because we didn't find the URLs where these " +
           "passwords were submitted in the IE history and which are needed to be used " +
@@ -357,12 +354,16 @@ export class IEProfileMigrator extends MigratorBase {
     return "ie";
   }
 
+  static get displayNameL10nID() {
+    return "migration-wizard-migrator-display-name-ie";
+  }
+
+  static get brandImage() {
+    return "chrome://browser/content/migration/brands/ie.png";
+  }
+
   getResources() {
-    let resources = [
-      MSMigrationUtils.getBookmarksMigrator(),
-      new History(),
-      MSMigrationUtils.getCookiesMigrator(),
-    ];
+    let resources = [MSMigrationUtils.getBookmarksMigrator(), new History()];
     // Only support the form password migrator for Windows XP to 7.
     if (AppConstants.isPlatformAndVersionAtMost("win", "6.1")) {
       resources.push(new IE7FormPasswords());
@@ -373,30 +374,25 @@ export class IEProfileMigrator extends MigratorBase {
     return resources.filter(r => r.exists);
   }
 
-  getLastUsedDate() {
-    let datePromises = ["Favs", "CookD"].map(dirId => {
-      let { path } = Services.dirsvc.get(dirId, Ci.nsIFile);
-      return OS.File.stat(path)
-        .catch(() => null)
-        .then(info => {
-          return info ? info.lastModificationDate : 0;
-        });
+  async getLastUsedDate() {
+    const datePromises = ["Favs", "CookD"].map(dirId => {
+      const { path } = Services.dirsvc.get(dirId, Ci.nsIFile);
+      return IOUtils.stat(path)
+        .then(info => info.lastModified)
+        .catch(() => 0);
     });
-    datePromises.push(
-      new Promise(resolve => {
-        let typedURLs = new Map();
-        try {
-          typedURLs = MSMigrationUtils.getTypedURLs(
-            "Software\\Microsoft\\Internet Explorer"
-          );
-        } catch (ex) {}
-        let dates = [0, ...typedURLs.values()];
-        // dates is an array of PRTimes, which are in microseconds - convert to milliseconds
-        resolve(Math.max.apply(Math, dates) / 1000);
-      })
-    );
-    return Promise.all(datePromises).then(dates => {
-      return new Date(Math.max.apply(Math, dates));
-    });
+
+    const dates = await Promise.all(datePromises);
+
+    try {
+      const typedURLs = MSMigrationUtils.getTypedURLs(
+        "Software\\Microsoft\\Internet Explorer"
+      );
+      // typedURLs.values() returns an array of PRTimes, which are in
+      // microseconds - convert to milliseconds
+      dates.push(Math.max(0, ...typedURLs.values()) / 1000);
+    } catch (ex) {}
+
+    return new Date(Math.max(...dates));
   }
 }

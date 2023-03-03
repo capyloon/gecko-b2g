@@ -23,6 +23,7 @@
 #include "nsIThread.h"
 #include "nsTextFormatter.h"
 #include "mozilla/Telemetry.h"
+#include "WebAuthnEnumStrings.h"
 
 #ifdef MOZ_WIDGET_ANDROID
 #  include "mozilla/dom/AndroidWebAuthnTokenManager.h"
@@ -467,11 +468,20 @@ void U2FTokenManager::Register(
   if (aTransactionInfo.Extra().isSome()) {
     const auto& extra = aTransactionInfo.Extra().ref();
 
-    AttestationConveyancePreference attestation =
-        extra.attestationConveyancePreference();
-
-    noneAttestationRequested =
-        attestation == AttestationConveyancePreference::None;
+    // The default attestation type is "none", so set
+    // noneAttestationRequested=false only if the RP's preference matches one of
+    // the other known types. This needs to be reviewed if values are added to
+    // the AttestationConveyancePreference enum.
+    const nsString& attestation = extra.attestationConveyancePreference();
+    static_assert(MOZ_WEBAUTHN_ENUM_STRINGS_VERSION == 2);
+    if (attestation.EqualsLiteral(
+            MOZ_WEBAUTHN_ATTESTATION_CONVEYANCE_PREFERENCE_DIRECT) ||
+        attestation.EqualsLiteral(
+            MOZ_WEBAUTHN_ATTESTATION_CONVEYANCE_PREFERENCE_INDIRECT) ||
+        attestation.EqualsLiteral(
+            MOZ_WEBAUTHN_ATTESTATION_CONVEYANCE_PREFERENCE_ENTERPRISE)) {
+      noneAttestationRequested = false;
+    }
   }
 #endif  // not MOZ_WIDGET_ANDROID
 
@@ -502,26 +512,25 @@ void U2FTokenManager::DoRegister(const WebAuthnMakeCredentialInfo& aInfo,
 
   // Show a prompt that lets the user cancel the ongoing transaction.
   NS_ConvertUTF16toUTF8 origin(aInfo.Origin());
-  const char* is_ctap2 = U2FPrefManager::Get()->GetIsCtap2() ? "true" : "false";
+  bool is_ctap2 = U2FPrefManager::Get()->GetIsCtap2();
   SendPromptNotification(kRegisterPromptNotifcation, mLastTransactionId,
-                         origin.get(), aInfo.BrowsingContextId(), is_ctap2,
-                         "false");
+                         origin.get(), aInfo.BrowsingContextId(),
+                         is_ctap2 ? "true" : "false", "false");
 
   uint64_t tid = mLastTransactionId;
-  mozilla::TimeStamp startTime = mozilla::TimeStamp::Now();
 
   mTokenManagerImpl->Register(aInfo, aForceNoneAttestation, status_callback)
       ->Then(
           GetCurrentSerialEventTarget(), __func__,
-          [tid, startTime](WebAuthnMakeCredentialResult&& aResult) {
+          [tid, is_ctap2](WebAuthnMakeCredentialResult&& aResult) {
             U2FTokenManager* mgr = U2FTokenManager::Get();
             mgr->MaybeConfirmRegister(tid, aResult);
-            Telemetry::ScalarAdd(Telemetry::ScalarID::SECURITY_WEBAUTHN_USED,
-                                 u"U2FRegisterFinish"_ns, 1);
-            Telemetry::AccumulateTimeDelta(
-                Telemetry::WEBAUTHN_CREATE_CREDENTIAL_MS, startTime);
+            Telemetry::ScalarAdd(
+                Telemetry::ScalarID::SECURITY_WEBAUTHN_USED,
+                is_ctap2 ? u"CTAPRegisterFinish"_ns : u"U2FRegisterFinish"_ns,
+                1);
           },
-          [tid](nsresult rv) {
+          [tid, is_ctap2](nsresult rv) {
             MOZ_ASSERT(NS_FAILED(rv));
             U2FTokenManager* mgr = U2FTokenManager::Get();
             bool shouldCancelActiveDialog = true;
@@ -530,8 +539,9 @@ void U2FTokenManager::DoRegister(const WebAuthnMakeCredentialInfo& aInfo,
               shouldCancelActiveDialog = false;
             }
             mgr->MaybeAbortRegister(tid, rv, shouldCancelActiveDialog);
-            Telemetry::ScalarAdd(Telemetry::ScalarID::SECURITY_WEBAUTHN_USED,
-                                 u"U2FRegisterAbort"_ns, 1);
+            Telemetry::ScalarAdd(
+                Telemetry::ScalarID::SECURITY_WEBAUTHN_USED,
+                is_ctap2 ? u"CTAPRegisterAbort"_ns : u"U2FRegisterAbort"_ns, 1);
           })
       ->Track(mRegisterPromise);
 }
@@ -582,17 +592,15 @@ void U2FTokenManager::DoSign(const WebAuthnGetAssertionInfo& aTransactionInfo) {
   uint64_t browserCtxId = aTransactionInfo.BrowsingContextId();
 
   // Show a prompt that lets the user cancel the ongoing transaction.
-  const char* is_ctap2 = U2FPrefManager::Get()->GetIsCtap2() ? "true" : "false";
+  bool is_ctap2 = U2FPrefManager::Get()->GetIsCtap2();
   SendPromptNotification(kSignPromptNotifcation, tid, origin.get(),
-                         browserCtxId, is_ctap2, "false");
-
-  mozilla::TimeStamp startTime = mozilla::TimeStamp::Now();
+                         browserCtxId, is_ctap2 ? "true" : "false", "false");
 
   mTokenManagerImpl->Sign(aTransactionInfo, status_callback)
       ->Then(
           GetCurrentSerialEventTarget(), __func__,
-          [tid, origin, startTime, browserCtxId](
-              nsTArray<WebAuthnGetAssertionResultWrapper>&& aResult) {
+          [tid, origin, browserCtxId,
+           is_ctap2](nsTArray<WebAuthnGetAssertionResultWrapper>&& aResult) {
             U2FTokenManager* mgr = U2FTokenManager::Get();
             if (aResult.Length() == 1) {
               WebAuthnGetAssertionResult result = aResult[0].assertion;
@@ -614,12 +622,11 @@ void U2FTokenManager::DoSign(const WebAuthnGetAssertionInfo& aTransactionInfo) {
                                           origin.get(), browserCtxId,
                                           res.get());
             }
-            Telemetry::ScalarAdd(Telemetry::ScalarID::SECURITY_WEBAUTHN_USED,
-                                 u"U2FSignFinish"_ns, 1);
-            Telemetry::AccumulateTimeDelta(Telemetry::WEBAUTHN_GET_ASSERTION_MS,
-                                           startTime);
+            Telemetry::ScalarAdd(
+                Telemetry::ScalarID::SECURITY_WEBAUTHN_USED,
+                is_ctap2 ? u"CTAPSignFinish"_ns : u"U2FSignFinish"_ns, 1);
           },
-          [tid](nsresult rv) {
+          [tid, is_ctap2](nsresult rv) {
             MOZ_ASSERT(NS_FAILED(rv));
             U2FTokenManager* mgr = U2FTokenManager::Get();
             bool shouldCancelActiveDialog = true;
@@ -628,8 +635,9 @@ void U2FTokenManager::DoSign(const WebAuthnGetAssertionInfo& aTransactionInfo) {
               shouldCancelActiveDialog = false;
             }
             mgr->MaybeAbortSign(tid, rv, shouldCancelActiveDialog);
-            Telemetry::ScalarAdd(Telemetry::ScalarID::SECURITY_WEBAUTHN_USED,
-                                 u"U2FSignAbort"_ns, 1);
+            Telemetry::ScalarAdd(
+                Telemetry::ScalarID::SECURITY_WEBAUTHN_USED,
+                is_ctap2 ? u"CTAPSignAbort"_ns : u"U2FSignAbort"_ns, 1);
           })
       ->Track(mSignPromise);
 }

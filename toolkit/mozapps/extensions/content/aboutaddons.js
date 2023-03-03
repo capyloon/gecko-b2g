@@ -633,31 +633,6 @@ var DiscoveryAPI = {
   },
 };
 
-class SupportLink extends HTMLAnchorElement {
-  static get observedAttributes() {
-    return ["support-page"];
-  }
-
-  connectedCallback() {
-    this.setHref();
-    this.setAttribute("target", "_blank");
-  }
-
-  attributeChangedCallback(name, oldVal, newVal) {
-    if (name === "support-page") {
-      this.setHref();
-    }
-  }
-
-  setHref() {
-    let base = SUPPORT_URL + this.getAttribute("support-page");
-    this.href = this.hasAttribute("utmcontent")
-      ? formatUTMParams(this.getAttribute("utmcontent"), base)
-      : base;
-  }
-}
-customElements.define("support-link", SupportLink, { extends: "a" });
-
 class SearchAddons extends HTMLElement {
   connectedCallback() {
     if (this.childElementCount === 0) {
@@ -669,41 +644,15 @@ class SearchAddons extends HTMLElement {
       this.append(this.input);
     }
     this.input.addEventListener("command", this);
-    document.addEventListener("keypress", this);
   }
 
   disconnectedCallback() {
     this.input.removeEventListener("command", this);
-    document.removeEventListener("keypress", this);
-  }
-
-  focus() {
-    this.input.focus();
-  }
-
-  get focusKey() {
-    return this.getAttribute("key");
   }
 
   handleEvent(e) {
     if (e.type === "command") {
       this.searchAddons(this.value);
-    } else if (e.type === "keypress") {
-      if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        this.focus();
-      } else if (e.key == this.focusKey) {
-        if (e.altKey || e.shiftKey) {
-          return;
-        }
-
-        if (Services.appinfo.OS === "Darwin") {
-          if (e.metaKey && !e.ctrlKey) {
-            this.focus();
-          }
-        } else if (e.ctrlKey && !e.metaKey) {
-          this.focus();
-        }
-      }
     }
   }
 
@@ -723,12 +672,7 @@ class SearchAddons extends HTMLElement {
 
     let browser = getBrowserElement();
     let chromewin = browser.ownerGlobal;
-    chromewin.openLinkIn(url, "tab", {
-      fromChrome: true,
-      triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal(
-        {}
-      ),
-    });
+    chromewin.openWebLinkIn(url, "tab");
 
     AMTelemetry.recordLinkEvent({
       object: "aboutAddons",
@@ -1550,7 +1494,7 @@ class SidebarFooter extends HTMLElement {
     let supportItem = this.createItem({
       icon: "chrome://global/skin/icons/help.svg",
       createLinkElement: () => {
-        let link = document.createElement("a", { is: "support-link" });
+        let link = document.createElement("a", { is: "moz-support-link" });
         link.setAttribute("support-page", "addons-help");
         link.id = "help-button";
         return link;
@@ -1653,7 +1597,7 @@ class AddonOptions extends HTMLElement {
           el.hidden = false;
           el.disabled = true;
           if (!el.querySelector('[slot="support-link"]')) {
-            let link = document.createElement("a", { is: "support-link" });
+            let link = document.createElement("a", { is: "moz-support-link" });
             link.setAttribute("data-l10n-name", "link");
             link.setAttribute("support-page", "cant-remove-addon");
             link.setAttribute("slot", "support-link");
@@ -1886,13 +1830,6 @@ class InlineOptionsBrowser extends HTMLElement {
     browser.setAttribute("forcemessagemanager", "true");
     browser.setAttribute("autocompletepopup", "PopupAutoComplete");
 
-    // The outer about:addons document listens for key presses to focus
-    // the search box when / is pressed.  But if we're focused inside an
-    // options page, don't let those keypresses steal focus.
-    browser.addEventListener("keypress", event => {
-      event.stopPropagation();
-    });
-
     let { optionsURL, optionsBrowserStyle } = addon;
     if (addon.isWebExtension) {
       let policy = ExtensionParent.WebExtensionPolicy.getByID(addon.id);
@@ -1987,7 +1924,7 @@ class InlineOptionsBrowser extends HTMLElement {
       mm.sendAsyncMessage("Extension:InitBrowser", browserOptions);
 
       if (browser.isConnectedAndReady) {
-        this.loadURI(optionsURL);
+        this.fixupAndLoadURIString(optionsURL);
       } else {
         // browser custom element does opt-in the delayConnectedCallback
         // behavior (see connectedCallback in the custom element definition
@@ -1997,18 +1934,18 @@ class InlineOptionsBrowser extends HTMLElement {
           promiseEvent("DOMContentLoaded", document),
           this._promiseDisconnected,
         ]).then(() => {
-          this.loadURI(optionsURL);
+          this.fixupAndLoadURIString(optionsURL);
         });
       }
     });
   }
 
-  loadURI(uri) {
+  fixupAndLoadURIString(uriString) {
     if (!this.browser || !this.browser.isConnectedAndReady) {
       throw new Error("Fail to loadURI");
     }
 
-    this.browser.loadURI(uri, {
+    this.browser.fixupAndLoadURIString(uriString, {
       triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
     });
   }
@@ -2153,17 +2090,10 @@ class AddonPermissionsList extends HTMLElement {
         let item = document.createElement("li");
         item.classList.add("permission-info");
 
-        let label = document.createElement("label");
-        label.textContent = msg;
-
-        let toggle = document.createElement("input");
+        let toggle = document.createElement("moz-toggle");
+        toggle.setAttribute("label", msg);
         toggle.id = `permission-${id}`;
-
-        label.setAttribute("for", toggle.id);
-        item.appendChild(label);
-
         toggle.setAttribute("permission-type", type);
-        toggle.setAttribute("type", "checkbox");
 
         let checked =
           grantedPerms.permissions.includes(perm) ||
@@ -2176,13 +2106,12 @@ class AddonPermissionsList extends HTMLElement {
           toggle.toggleAttribute("permission-all-sites", true);
         }
 
-        toggle.checked = checked;
+        toggle.pressed = checked;
         item.classList.toggle("permission-checked", checked);
 
         toggle.setAttribute("permission-key", perm);
         toggle.setAttribute("action", "toggle-permission");
-        toggle.classList.add("toggle-button");
-        label.appendChild(toggle);
+        item.appendChild(toggle);
         list.appendChild(item);
       }
     }
@@ -2682,12 +2611,6 @@ class AddonCard extends HTMLElement {
 
     if (e.type == "click") {
       switch (action) {
-        case "toggle-permission":
-          let permission = e.target.getAttribute("permission-key");
-          let type = e.target.getAttribute("permission-type");
-          let fname = e.target.checked ? "add" : "remove";
-          this.setAddonPermission(permission, type, fname);
-          break;
         case "toggle-disabled":
           this.recordActionEvent(addon.userDisabled ? "enable" : "disable");
           // Keep the checked state the same until the add-on's state changes.
@@ -2753,13 +2676,7 @@ class AddonCard extends HTMLElement {
           break;
         case "contribute":
           this.recordActionEvent("contribute");
-          // prettier-ignore
-          windowRoot.ownerGlobal.openUILinkIn(addon.contributionURL, "tab", {
-            triggeringPrincipal:
-              Services.scriptSecurityManager.createNullPrincipal(
-                {}
-              ),
-          });
+          windowRoot.ownerGlobal.openWebLinkIn(addon.contributionURL, "tab");
           break;
         case "preferences":
           if (getOptionsType(addon) == "tab") {
@@ -2842,6 +2759,11 @@ class AddonCard extends HTMLElement {
           }
           break;
       }
+    } else if (e.type == "toggle" && action == "toggle-permission") {
+      let permission = e.target.getAttribute("permission-key");
+      let type = e.target.getAttribute("permission-type");
+      let fname = e.target.pressed ? "add" : "remove";
+      this.setAddonPermission(permission, type, fname);
     } else if (e.type == "change") {
       let { name } = e.target;
       let telemetryValue = e.target.getAttribute("data-telemetry-value");
@@ -2903,6 +2825,7 @@ class AddonCard extends HTMLElement {
     this.addEventListener("change", this);
     this.addEventListener("click", this);
     this.addEventListener("mousedown", this);
+    this.addEventListener("toggle", this);
     this.panel.addEventListener("shown", this);
     this.panel.addEventListener("hidden", this);
   }
@@ -2911,6 +2834,7 @@ class AddonCard extends HTMLElement {
     this.removeEventListener("change", this);
     this.removeEventListener("click", this);
     this.removeEventListener("mousedown", this);
+    this.removeEventListener("toggle", this);
     this.panel.removeEventListener("shown", this);
     this.panel.removeEventListener("hidden", this);
   }
@@ -2972,7 +2896,7 @@ class AddonCard extends HTMLElement {
         addon.type === "extension" ||
         addon.type === "sitepermission"
       ) {
-        toggleDisabledButton.checked = !addon.userDisabled;
+        toggleDisabledButton.pressed = !addon.userDisabled;
       }
     }
 
@@ -3233,7 +3157,7 @@ class AddonCard extends HTMLElement {
       let checked = !data.removed;
       if (target) {
         target.closest("li").classList.toggle("permission-checked", checked);
-        target.checked = checked;
+        target.pressed = checked;
       }
     }
     if (hasAllSites) {
@@ -3241,7 +3165,7 @@ class AddonCard extends HTMLElement {
       let target = document.querySelector("[permission-all-sites]");
       let checked = await AddonCard.optionalAllSitesGranted(this.addon.id);
       target.closest("li").classList.toggle("permission-checked", checked);
-      target.checked = checked;
+      target.pressed = checked;
     }
   }
 

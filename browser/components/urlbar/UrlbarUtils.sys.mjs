@@ -35,12 +35,6 @@ XPCOMUtils.defineLazyModuleGetters(lazy, {
 });
 
 export var UrlbarUtils = {
-  // Extensions are allowed to add suggestions if they have registered a keyword
-  // with the omnibox API. This is the maximum number of suggestions an extension
-  // is allowed to add for a given search string using the omnibox API.
-  // This value includes the heuristic result.
-  MAX_OMNIBOX_RESULT_COUNT: 6,
-
   // Results are categorized into groups to help the muxer compose them.  See
   // UrlbarUtils.getResultGroup.  Since result groups are stored in result
   // groups and result groups are stored in prefs, additions and changes to
@@ -57,6 +51,7 @@ export var UrlbarUtils = {
     HEURISTIC_EXTENSION: "heuristicExtension",
     HEURISTIC_FALLBACK: "heuristicFallback",
     HEURISTIC_BOOKMARK_KEYWORD: "heuristicBookmarkKeyword",
+    HEURISTIC_HISTORY_URL: "heuristicHistoryUrl",
     HEURISTIC_OMNIBOX: "heuristicOmnibox",
     HEURISTIC_PRELOADED: "heuristicPreloaded",
     HEURISTIC_SEARCH_TIP: "heuristicSearchTip",
@@ -310,7 +305,7 @@ export var UrlbarUtils = {
     try {
       entry = await lazy.PlacesUtils.keywords.fetch(keyword);
     } catch (ex) {
-      Cu.reportError(`Unable to fetch Places keyword "${keyword}": ${ex}`);
+      console.error(`Unable to fetch Places keyword "${keyword}": ${ex}`);
     }
     if (!entry || !entry.url) {
       // This is not a Places keyword.
@@ -526,6 +521,8 @@ export var UrlbarUtils = {
           return UrlbarUtils.RESULT_GROUP.HEURISTIC_TOKEN_ALIAS_ENGINE;
         case "UrlbarProviderSearchTips":
           return UrlbarUtils.RESULT_GROUP.HEURISTIC_SEARCH_TIP;
+        case "HistoryUrlHeuristic":
+          return UrlbarUtils.RESULT_GROUP.HEURISTIC_HISTORY_URL;
         default:
           if (result.providerName.startsWith("TestProvider")) {
             return UrlbarUtils.RESULT_GROUP.HEURISTIC_TEST;
@@ -535,9 +532,9 @@ export var UrlbarUtils = {
       if (result.providerType == UrlbarUtils.PROVIDER_TYPE.EXTENSION) {
         return UrlbarUtils.RESULT_GROUP.HEURISTIC_EXTENSION;
       }
-      Cu.reportError(
-        "Returning HEURISTIC_FALLBACK for unrecognized heuristic result: " +
-          result
+      console.error(
+        "Returning HEURISTIC_FALLBACK for unrecognized heuristic result: ",
+        result
       );
       return UrlbarUtils.RESULT_GROUP.HEURISTIC_FALLBACK;
     }
@@ -1192,7 +1189,7 @@ export var UrlbarUtils = {
           let { type } = result.autofill;
           if (!type) {
             type = "other";
-            Cu.reportError(
+            console.error(
               new Error(
                 "`result.autofill.type` not set, falling back to 'other'"
               )
@@ -1226,7 +1223,8 @@ export var UrlbarUtils = {
           return "tabtosearch";
         } else if (result.providerName == "quickactions") {
           return "quickaction";
-        } else if (result.providerName == "UrlbarProviderQuickSuggest") {
+        } else if (result.providerName == "Weather") {
+          // TODO (SNT-441): Return "weather". This value is used in telemetry.
           return "quicksuggest";
         }
         return "dynamic";
@@ -1388,6 +1386,10 @@ export var UrlbarUtils = {
             ? "suggest_sponsor"
             : "suggest_non_sponsor";
         }
+        if (result.providerName === "Weather") {
+          // TODO (SNT-441): Return "weather". This value is used in telemetry.
+          return "suggest_non_sponsor";
+        }
         if (result.providerName === "UrlbarProviderTopSites") {
           return "top_site";
         }
@@ -1537,6 +1539,9 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
       displayUrl: {
         type: "string",
       },
+      fallbackTitle: {
+        type: "string",
+      },
       // l10n { id, args }
       helpL10n: {
         type: "object",
@@ -1649,6 +1654,18 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
     type: "object",
     required: ["keyword"],
     properties: {
+      blockL10n: {
+        type: "object",
+        required: ["id"],
+        properties: {
+          id: {
+            type: "string",
+          },
+          args: {
+            type: "array",
+          },
+        },
+      },
       content: {
         type: "string",
       },
@@ -1924,9 +1941,11 @@ export class UrlbarQueryContext {
           this.trimmedSearchString,
           flags
         );
+
         this._fixupInfo = {
           href: info.fixedURI.spec,
           isSearch: !!info.keywordAsSent,
+          scheme: info.fixedURI.scheme,
         };
       } catch (ex) {
         this._fixupError = ex.result;
@@ -1959,16 +1978,21 @@ export class UrlbarQueryContext {
    * @param {string} [searchString]
    *   Usually this is just the context's search string, but if you need to
    *   fetch remote results based on a modified version, you can pass it here.
+   * @param {boolean} [allowEmptySearchString]
+   *   Whether to check for the minimum length of the search string.
    * @returns {boolean}
    *   Whether remote results are allowed.
    */
-  allowRemoteResults(searchString = this.searchString) {
+  allowRemoteResults(
+    searchString = this.searchString,
+    allowEmptySearchString = false
+  ) {
     if (this.prohibitRemoteResults) {
       return false;
     }
 
     // We're unlikely to get useful remote results for a single character.
-    if (searchString.length < 2) {
+    if (searchString.length < 2 && !allowEmptySearchString) {
       return false;
     }
 
@@ -2064,7 +2088,7 @@ export class UrlbarProvider {
     try {
       return this[methodName](...args);
     } catch (ex) {
-      Cu.reportError(ex);
+      console.error(ex);
     }
     return undefined;
   }
@@ -2388,7 +2412,7 @@ export class SkippableTimer {
       this.logger.debug(line);
     }
     if (isError) {
-      Cu.reportError(line);
+      console.error(line);
     }
   }
 }
@@ -2424,10 +2448,14 @@ export class L10nCache {
   /**
    * Gets a cached l10n message.
    *
-   * @param {string} id
+   * @param {object} options
+   *   Options
+   * @param {string} options.id
    *   The string's Fluent ID.
-   * @param {object} [args]
+   * @param {object} options.args
    *   The Fluent arguments as passed to `l10n.setAttributes`.
+   * @param {boolean} options.excludeArgsFromCacheKey
+   *   Pass true if the string was cached using a key that excluded arguments.
    * @returns {object}
    *   The message object or undefined if it's not cached. The message object is
    *   similar to `L10nMessage` (defined in Localization.webidl) but its
@@ -2457,27 +2485,38 @@ export class L10nCache {
    *     cache.get("bar")
    *     // => { value: null, attributes: { label: "Bar's label value" }}
    */
-  get(id, args = undefined) {
-    return this._messagesByKey.get(this._key(id, args));
+  get({ id, args = undefined, excludeArgsFromCacheKey = false }) {
+    return this._messagesByKey.get(
+      this._key({ id, args, excludeArgsFromCacheKey })
+    );
   }
 
   /**
    * Fetches a string from Fluent and caches it.
    *
-   * @param {string} id
+   * @param {object} options
+   *   Options
+   * @param {string} options.id
    *   The string's Fluent ID.
-   * @param {object} [args]
+   * @param {object} options.args
    *   The Fluent arguments as passed to `l10n.setAttributes`.
+   * @param {boolean} options.excludeArgsFromCacheKey
+   *   Pass true to cache the string using a key that excludes the arguments.
+   *   The string will be cached only by its ID. This is useful if the string is
+   *   used only once in the UI, its arguments vary, and it's acceptable to
+   *   fetch and show a cached value with old arguments until the string is
+   *   relocalized with new arguments.
    */
-  async add(id, args = undefined) {
+  async add({ id, args = undefined, excludeArgsFromCacheKey = false }) {
     let l10n = this.l10n.get();
     if (!l10n) {
       return;
     }
     let messages = await l10n.formatMessages([{ id, args }]);
     if (!messages?.length) {
-      Cu.reportError(
-        "l10n.formatMessages returned an unexpected value for ID: " + id
+      console.error(
+        "l10n.formatMessages returned an unexpected value for ID: ",
+        id
       );
       return;
     }
@@ -2493,7 +2532,10 @@ export class L10nCache {
         {}
       );
     }
-    this._messagesByKey.set(this._key(id, args), message);
+    this._messagesByKey.set(
+      this._key({ id, args, excludeArgsFromCacheKey }),
+      message
+    );
   }
 
   /**
@@ -2501,27 +2543,34 @@ export class L10nCache {
    * slight optimization over `add` that avoids calling into Fluent
    * unnecessarily.
    *
-   * @param {string} id
+   * @param {object} options
+   *   Options
+   * @param {string} options.id
    *   The string's Fluent ID.
-   * @param {object} [args]
+   * @param {object} options.args
    *   The Fluent arguments as passed to `l10n.setAttributes`.
+   * @param {boolean} options.excludeArgsFromCacheKey
+   *   Pass true to cache the string using a key that excludes the arguments.
+   *   The string will be cached only by its ID. See `add()` for more.
    */
-  async ensure(id, args = undefined) {
-    if (!this.get(id, args)) {
-      await this.add(id, args);
+  async ensure({ id, args = undefined, excludeArgsFromCacheKey = false }) {
+    // Always re-cache if `excludeArgsFromCacheKey` is true. The values in
+    // `args` may be different from the values in the cached string.
+    if (excludeArgsFromCacheKey || !this.get({ id, args })) {
+      await this.add({ id, args, excludeArgsFromCacheKey });
     }
   }
 
   /**
    * Fetches and caches strings that aren't already cached.
    *
-   * @param {Array} idArgs
-   *   An array of `{ id, args }` objects.
+   * @param {Array} objects
+   *   An array of objects as passed to `ensure()`.
    */
-  async ensureAll(idArgs) {
+  async ensureAll(objects) {
     let promises = [];
-    for (let { id, args } of idArgs) {
-      promises.push(this.ensure(id, args));
+    for (let obj of objects) {
+      promises.push(this.ensure(obj));
     }
     await Promise.all(promises);
   }
@@ -2529,13 +2578,20 @@ export class L10nCache {
   /**
    * Removes a cached string.
    *
-   * @param {string} id
+   * @param {object} options
+   *   Options
+   * @param {string} options.id
    *   The string's Fluent ID.
-   * @param {object} [args]
+   * @param {object} options.args
    *   The Fluent arguments as passed to `l10n.setAttributes`.
+   * @param {boolean} options.excludeArgsFromCacheKey
+   *   Pass true if the string was cached using a key that excludes the
+   *   arguments. If true, `args` is ignored.
    */
-  delete(id, args = undefined) {
-    this._messagesByKey.delete(this._key(id, args));
+  delete({ id, args = undefined, excludeArgsFromCacheKey = false }) {
+    this._messagesByKey.delete(
+      this._key({ id, args, excludeArgsFromCacheKey })
+    );
   }
 
   /**
@@ -2582,20 +2638,25 @@ export class L10nCache {
   /**
    * Returns a cache key for a string in `_messagesByKey`.
    *
-   * @param {string} id
+   * @param {object} options
+   *   Options
+   * @param {string} options.id
    *   The string's Fluent ID.
-   * @param {object} [args]
+   * @param {object} options.args
    *   The Fluent arguments as passed to `l10n.setAttributes`.
+   * @param {boolean} options.excludeArgsFromCacheKey
+   *   Pass true to exclude the arguments from the key and include only the ID.
    * @returns {string}
    *   The cache key.
    */
-  _key(id, args) {
+  _key({ id, args, excludeArgsFromCacheKey }) {
     // Keys are `id` plus JSON'ed `args` values. `JSON.stringify` doesn't
     // guarantee a particular ordering of object properties, so instead of
     // stringifying `args` as is, sort its entries by key and then pull out the
     // values. The final key is a JSON'ed array of `id` concatenated with the
     // sorted-by-key `args` values.
-    let argValues = Object.entries(args || [])
+    args = (!excludeArgsFromCacheKey && args) || [];
+    let argValues = Object.entries(args)
       .sort(([key1], [key2]) => key1.localeCompare(key2))
       .map(([_, value]) => value);
     let parts = [id].concat(argValues);
@@ -2661,7 +2722,7 @@ export class TaskQueue {
       let value = await callback();
       resolve(value);
     } catch (error) {
-      Cu.reportError(error);
+      console.error(error);
       reject(error);
     }
     this._queue.shift();

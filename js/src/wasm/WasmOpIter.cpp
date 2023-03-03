@@ -334,8 +334,13 @@ OpKind wasm::Classify(OpBytes op) {
         case GcOp::RefCast:
           WASM_GC_OP(OpKind::RefCast);
         case GcOp::BrOnCast:
-        case GcOp::BrOnCastFail:
           WASM_GC_OP(OpKind::BrOnCast);
+        case GcOp::BrOnCastFail:
+          WASM_GC_OP(OpKind::BrOnCastFail);
+        case GcOp::RefAsStruct:
+          WASM_GC_OP(OpKind::Conversion);
+        case GcOp::BrOnNonStruct:
+          WASM_GC_OP(OpKind::BrOnNonStruct);
         case GcOp::ExternInternalize:
           WASM_GC_OP(OpKind::RefConversion);
         case GcOp::ExternExternalize:
@@ -650,6 +655,8 @@ OpKind wasm::Classify(OpBytes op) {
           return OpKind::MemOrTableInit;
         case MiscOp::TableFill:
           return OpKind::TableFill;
+        case MiscOp::MemoryDiscard:
+          return OpKind::MemDiscard;
         case MiscOp::TableGrow:
           return OpKind::TableGrow;
         case MiscOp::TableSize:

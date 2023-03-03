@@ -21,10 +21,11 @@
 "use strict";
 
 const actorModuleURI =
-  getRootDirectory(gTestPath) + "StartupContentSubframe.jsm";
+  getRootDirectory(gTestPath) + "StartupContentSubframe.sys.mjs";
 const subframeURI =
   getRootDirectory(gTestPath).replace(
     "chrome://mochitests/content",
+    // eslint-disable-next-line @microsoft/sdl/no-insecure-url
     "http://example.com"
   ) + "file_empty.html";
 
@@ -38,14 +39,10 @@ const known_scripts = {
 
     // General utilities
     "resource://gre/modules/AppConstants.sys.mjs",
-    "resource://gre/modules/DeferredTask.sys.mjs",
     "resource://gre/modules/XPCOMUtils.sys.mjs",
 
     // Logging related
     "resource://gre/modules/Log.sys.mjs",
-
-    // Browser front-end
-    "resource:///actors/PageStyleChild.jsm",
 
     // Telemetry
     "resource://gre/modules/TelemetryControllerBase.sys.mjs", // bug 1470339
@@ -108,10 +105,10 @@ add_task(async function() {
   // script loading information is available.
   ChromeUtils.registerWindowActor("StartupContentSubframe", {
     parent: {
-      moduleURI: actorModuleURI,
+      esModuleURI: actorModuleURI,
     },
     child: {
-      moduleURI: actorModuleURI,
+      esModuleURI: actorModuleURI,
       events: {
         load: { mozSystemGroup: true, capture: true },
       },

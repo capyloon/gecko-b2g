@@ -150,9 +150,6 @@ add_task(async function enter_search_mode_oneoff_by_key() {
 });
 
 add_task(async function enter_search_mode_key() {
-  await SpecialPowers.pushPrefEnv({
-    set: [["browser.urlbar.quickactions.showInZeroPrefix", false]],
-  });
   await UrlbarTestUtils.promiseAutocompleteResultPopup({
     window,
     value: "> ",
@@ -166,7 +163,6 @@ add_task(async function enter_search_mode_key() {
     true,
     "Actions are shown in search mode"
   );
-  await SpecialPowers.popPrefEnv();
   await UrlbarTestUtils.exitSearchMode(window);
   await UrlbarTestUtils.promisePopupClose(window);
   EventUtils.synthesizeKey("KEY_Escape");
@@ -224,7 +220,7 @@ add_task(async function test_screenshot_enabled_or_disabled() {
     false,
     "about:blank"
   );
-  BrowserTestUtils.loadURI(gBrowser.selectedBrowser, "about:blank");
+  BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, "about:blank");
   await onLoaded;
 
   await UrlbarTestUtils.promiseAutocompleteResultPopup({
@@ -308,7 +304,7 @@ add_task(async function test_screenshot() {
     set: [["screenshots.browser.component.enabled", true]],
   });
 
-  BrowserTestUtils.loadURI(gBrowser.selectedBrowser, DUMMY_PAGE);
+  BrowserTestUtils.loadURIString(gBrowser.selectedBrowser, DUMMY_PAGE);
   await BrowserTestUtils.browserLoaded(
     gBrowser.selectedBrowser,
     false,
@@ -478,7 +474,10 @@ let COMMANDS_TESTS = [
         false,
         "http://example.com/"
       );
-      BrowserTestUtils.loadURI(gBrowser.selectedBrowser, "http://example.com/");
+      BrowserTestUtils.loadURIString(
+        gBrowser.selectedBrowser,
+        "http://example.com/"
+      );
       await onLoad;
     },
     uri: "about:addons",
@@ -493,7 +492,10 @@ let COMMANDS_TESTS = [
         false,
         "http://example.com/"
       );
-      BrowserTestUtils.loadURI(gBrowser.selectedBrowser, "http://example.com/");
+      BrowserTestUtils.loadURIString(
+        gBrowser.selectedBrowser,
+        "http://example.com/"
+      );
       await onLoad;
     },
     uri: "about:addons",
@@ -508,7 +510,10 @@ let COMMANDS_TESTS = [
         false,
         "http://example.com/"
       );
-      BrowserTestUtils.loadURI(gBrowser.selectedBrowser, "http://example.com/");
+      BrowserTestUtils.loadURIString(
+        gBrowser.selectedBrowser,
+        "http://example.com/"
+      );
       await onLoad;
     },
     uri: "about:addons",
@@ -523,7 +528,10 @@ let COMMANDS_TESTS = [
         false,
         "http://example.com/"
       );
-      BrowserTestUtils.loadURI(gBrowser.selectedBrowser, "http://example.com/");
+      BrowserTestUtils.loadURIString(
+        gBrowser.selectedBrowser,
+        "http://example.com/"
+      );
       await onLoad;
     },
     uri: "about:addons",
@@ -600,7 +608,10 @@ add_task(async function test_viewsource() {
   );
 
   info("Check the button status of when the page is web content");
-  BrowserTestUtils.loadURI(gBrowser.selectedBrowser, "http://example.com");
+  BrowserTestUtils.loadURIString(
+    gBrowser.selectedBrowser,
+    "http://example.com"
+  );
   await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
   await UrlbarTestUtils.promiseAutocompleteResultPopup({
     window,
@@ -721,10 +732,17 @@ async function hasQuickActions(win) {
 }
 
 add_task(async function test_show_in_zero_prefix() {
-  for (const showInZeroPrefix of [false, true]) {
-    info(`Test when quickactions.showInZeroPrefix pref is ${showInZeroPrefix}`);
+  for (const minimumSearchString of [0, 3]) {
+    info(
+      `Test when quickactions.minimumSearchString pref is ${minimumSearchString}`
+    );
     await SpecialPowers.pushPrefEnv({
-      set: [["browser.urlbar.quickactions.showInZeroPrefix", showInZeroPrefix]],
+      set: [
+        [
+          "browser.urlbar.quickactions.minimumSearchString",
+          minimumSearchString,
+        ],
+      ],
     });
     await UrlbarTestUtils.promiseAutocompleteResultPopup({
       window,
@@ -733,7 +751,7 @@ add_task(async function test_show_in_zero_prefix() {
 
     Assert.equal(
       await hasQuickActions(window),
-      showInZeroPrefix,
+      !minimumSearchString,
       "Result for quick actions is as expected"
     );
     await SpecialPowers.popPrefEnv();

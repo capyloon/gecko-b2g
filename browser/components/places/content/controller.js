@@ -168,7 +168,7 @@ PlacesController.prototype = {
       case "cmd_paste":
       case "placesCmd_paste":
         // If the clipboard contains a Places flavor it is definitely pasteable,
-        // otherwise we also allow pasting "text/unicode" and "text/x-moz-url" data.
+        // otherwise we also allow pasting "text/plain" and "text/x-moz-url" data.
         // We don't check if the data is valid here, because the clipboard may
         // contain very large blobs that would largely slowdown commands updating.
         // Of course later paste() should ignore any invalid data.
@@ -178,7 +178,7 @@ PlacesController.prototype = {
             [
               ...PlacesUIUtils.PLACES_FLAVORS,
               PlacesUtils.TYPE_X_MOZ_URL,
-              PlacesUtils.TYPE_UNICODE,
+              PlacesUtils.TYPE_PLAINTEXT,
             ],
             Ci.nsIClipboard.kGlobalClipboard
           )
@@ -246,10 +246,10 @@ PlacesController.prototype = {
   doCommand: function PC_doCommand(aCommand) {
     switch (aCommand) {
       case "cmd_undo":
-        PlacesTransactions.undo().catch(Cu.reportError);
+        PlacesTransactions.undo().catch(console.error);
         break;
       case "cmd_redo":
-        PlacesTransactions.redo().catch(Cu.reportError);
+        PlacesTransactions.redo().catch(console.error);
         break;
       case "cmd_cut":
       case "placesCmd_cut":
@@ -261,14 +261,14 @@ PlacesController.prototype = {
         break;
       case "cmd_paste":
       case "placesCmd_paste":
-        this.paste().catch(Cu.reportError);
+        this.paste().catch(console.error);
         break;
       case "cmd_delete":
       case "placesCmd_delete":
-        this.remove("Remove Selection").catch(Cu.reportError);
+        this.remove("Remove Selection").catch(console.error);
         break;
       case "placesCmd_deleteDataHost":
-        this.forgetAboutThisSite().catch(Cu.reportError);
+        this.forgetAboutThisSite().catch(console.error);
         break;
       case "cmd_selectAll":
         this.selectAll();
@@ -295,19 +295,19 @@ PlacesController.prototype = {
         PlacesUIUtils.openNodeIn(this._view.selectedNode, "tab", this._view);
         break;
       case "placesCmd_new:folder":
-        this.newItem("folder").catch(Cu.reportError);
+        this.newItem("folder").catch(console.error);
         break;
       case "placesCmd_new:bookmark":
-        this.newItem("bookmark").catch(Cu.reportError);
+        this.newItem("bookmark").catch(console.error);
         break;
       case "placesCmd_new:separator":
-        this.newSeparator().catch(Cu.reportError);
+        this.newSeparator().catch(console.error);
         break;
       case "placesCmd_show:info":
         this.showBookmarkPropertiesForSelection();
         break;
       case "placesCmd_sortBy:name":
-        this.sortFolderByName().catch(Cu.reportError);
+        this.sortFolderByName().catch(console.error);
         break;
       case "placesCmd_createBookmark": {
         const nodes = this._view.selectedNodes.map(node => {
@@ -716,7 +716,10 @@ PlacesController.prototype = {
     PlacesUIUtils.openMultipleLinksInTabs(
       node ? node : nodes,
       aEvent,
-      this._view
+      this._view,
+      this._view.id == "placesList"
+        ? PlacesSearchBox.updateHistorySearchTelemetry
+        : null
     );
   },
 
@@ -874,7 +877,7 @@ PlacesController.prototype = {
           Ci.nsINavHistoryQueryOptions.QUERY_TYPE_HISTORY
       ) {
         // This is a uri node inside an history query.
-        await PlacesUtils.history.remove(node.uri).catch(Cu.reportError);
+        await PlacesUtils.history.remove(node.uri).catch(console.error);
         // History deletes are not undoable, so we don't have a transaction.
       } else if (
         node.itemId == -1 &&
@@ -885,7 +888,7 @@ PlacesController.prototype = {
         // This is a dynamically generated history query, like queries
         // grouped by site, time or both.  Dynamically generated queries don't
         // have an itemId even if they are descendants of a bookmark.
-        await this._removeHistoryContainer(node).catch(Cu.reportError);
+        await this._removeHistoryContainer(node).catch(console.error);
         // History deletes are not undoable, so we don't have a transaction.
       } else {
         // This is a common bookmark item.
@@ -944,7 +947,7 @@ PlacesController.prototype = {
         PlacesUtils.asQuery(node).queryOptions.queryType ==
           Ci.nsINavHistoryQueryOptions.QUERY_TYPE_HISTORY
       ) {
-        await this._removeHistoryContainer(node).catch(Cu.reportError);
+        await this._removeHistoryContainer(node).catch(console.error);
       }
     }
 
@@ -1049,7 +1052,7 @@ PlacesController.prototype = {
 
     function addURIData(index) {
       addData(PlacesUtils.TYPE_X_MOZ_URL, index);
-      addData(PlacesUtils.TYPE_UNICODE, index);
+      addData(PlacesUtils.TYPE_PLAINTEXT, index);
       addData(PlacesUtils.TYPE_HTML, index);
     }
 
@@ -1131,7 +1134,7 @@ PlacesController.prototype = {
       { type: PlacesUtils.TYPE_X_MOZ_PLACE, entries: [] },
       { type: PlacesUtils.TYPE_X_MOZ_URL, entries: [] },
       { type: PlacesUtils.TYPE_HTML, entries: [] },
-      { type: PlacesUtils.TYPE_UNICODE, entries: [] },
+      { type: PlacesUtils.TYPE_PLAINTEXT, entries: [] },
     ];
 
     // Avoid handling descendants of a copied node, the transactions take care
@@ -1264,7 +1267,7 @@ PlacesController.prototype = {
     [
       PlacesUtils.TYPE_X_MOZ_PLACE,
       PlacesUtils.TYPE_X_MOZ_URL,
-      PlacesUtils.TYPE_UNICODE,
+      PlacesUtils.TYPE_PLAINTEXT,
     ].forEach(type => xferable.addDataFlavor(type));
 
     Services.clipboard.getData(xferable, Ci.nsIClipboard.kGlobalClipboard);
@@ -1494,13 +1497,6 @@ var PlacesControllerDragHelper = {
       }
     }
 
-    // If no supported flavor is found, check if data includes text/plain
-    // contents.  If so, request them as text/unicode, a conversion will happen
-    // automatically.
-    if (aFlavors.contains("text/plain")) {
-      return PlacesUtils.TYPE_UNICODE;
-    }
-
     return null;
   },
 
@@ -1623,7 +1619,7 @@ var PlacesControllerDragHelper = {
 
     // Following flavors may contain duplicated data.
     let duplicable = new Map();
-    duplicable.set(PlacesUtils.TYPE_UNICODE, new Set());
+    duplicable.set(PlacesUtils.TYPE_PLAINTEXT, new Set());
     duplicable.set(PlacesUtils.TYPE_X_MOZ_URL, new Set());
 
     // Collect all data from the DataTransfer before processing it, as the

@@ -78,11 +78,6 @@ class ShutdownObserver : public nsIObserver {
       deviceFamily = nullptr;
     }
 
-    for (auto& desktop : GfxDriverInfo::sDesktopEnvironment) {
-      delete desktop;
-      desktop = nullptr;
-    }
-
     for (auto& windowProtocol : GfxDriverInfo::sWindowProtocol) {
       delete windowProtocol;
       windowProtocol = nullptr;
@@ -668,8 +663,6 @@ static bool BlocklistEntryToDriverInfo(const nsACString& aBlocklistEntry,
       aDriverInfo.mOperatingSystem = BlocklistOSToOperatingSystem(dataValue);
     } else if (key.EqualsLiteral("osversion")) {
       aDriverInfo.mOperatingSystemVersion = strtoul(value.get(), nullptr, 10);
-    } else if (key.EqualsLiteral("desktopEnvironment")) {
-      aDriverInfo.mDesktopEnvironment = dataValue;
     } else if (key.EqualsLiteral("windowProtocol")) {
       aDriverInfo.mWindowProtocol = dataValue;
     } else if (key.EqualsLiteral("vendor")) {
@@ -985,14 +978,8 @@ int32_t GfxInfoBase::FindBlocklistedDeviceInList(
   int32_t status = nsIGfxInfo::FEATURE_STATUS_UNKNOWN;
 
   // Some properties are not available on all platforms.
-  nsAutoString desktopEnvironment;
-  nsresult rv = GetDesktopEnvironment(desktopEnvironment);
-  if (NS_FAILED(rv) && rv != NS_ERROR_NOT_IMPLEMENTED) {
-    return 0;
-  }
-
   nsAutoString windowProtocol;
-  rv = GetWindowProtocol(windowProtocol);
+  nsresult rv = GetWindowProtocol(windowProtocol);
   if (NS_FAILED(rv) && rv != NS_ERROR_NOT_IMPLEMENTED) {
     return 0;
   }
@@ -1071,11 +1058,6 @@ int32_t GfxInfoBase::FindBlocklistedDeviceInList(
     }
 
     if (!MatchingScreenSize(info[i].mScreen, mScreenPixels)) {
-      continue;
-    }
-
-    if (!DoesDesktopEnvironmentMatch(info[i].mDesktopEnvironment,
-                                     desktopEnvironment)) {
       continue;
     }
 
@@ -1237,15 +1219,6 @@ void GfxInfoBase::SetFeatureStatus(nsTArray<gfx::GfxInfoFeatureStatus>&& aFS) {
   InitFeatureStatus(new nsTArray<gfx::GfxInfoFeatureStatus>(std::move(aFS)));
 }
 
-bool GfxInfoBase::DoesDesktopEnvironmentMatch(
-    const nsAString& aBlocklistDesktop, const nsAString& aDesktopEnv) {
-  return aBlocklistDesktop.Equals(aDesktopEnv,
-                                  nsCaseInsensitiveStringComparator) ||
-         aBlocklistDesktop.Equals(
-             GfxDriverInfo::GetDesktopEnvironment(DesktopEnvironment::All),
-             nsCaseInsensitiveStringComparator);
-}
-
 bool GfxInfoBase::DoesWindowProtocolMatch(
     const nsAString& aBlocklistWindowProtocol,
     const nsAString& aWindowProtocol) {
@@ -1275,7 +1248,8 @@ bool GfxInfoBase::DoesDriverVendorMatch(const nsAString& aBlocklistVendor,
 }
 
 bool GfxInfoBase::IsFeatureAllowlisted(int32_t aFeature) const {
-  return aFeature == nsIGfxInfo::FEATURE_HW_DECODED_VIDEO_ZERO_COPY;
+  return aFeature == nsIGfxInfo::FEATURE_VIDEO_OVERLAY ||
+         aFeature == nsIGfxInfo::FEATURE_HW_DECODED_VIDEO_ZERO_COPY;
 }
 
 nsresult GfxInfoBase::GetFeatureStatusImpl(

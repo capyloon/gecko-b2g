@@ -16,9 +16,13 @@ function allProperties(obj) {
   return matchingProperties(obj, /./);
 }
 
+function getter(obj, name) {
+  return Object.getOwnPropertyDescriptor(obj, name).get;
+}
+
 const TypedArray = Reflect.getPrototypeOf(Int8Array);
 
-module.exports = [
+const allowList = [
   Array,
   Array.from,
   Array.isArray,
@@ -158,4 +162,52 @@ module.exports = [
   isFinite,
   isNaN,
   unescape,
+  getter(ArrayBuffer.prototype, "byteLength"),
+  getter(ArrayBuffer, Symbol.species),
+  getter(Array, Symbol.species),
+  getter(DataView.prototype, "buffer"),
+  getter(DataView.prototype, "byteLength"),
+  getter(DataView.prototype, "byteOffset"),
+  getter(Map.prototype, "size"),
+  getter(Map, Symbol.species),
+  // NOTE: Object.prototype.__proto__ is not safe, because it can internally
+  //       invoke Proxy getPrototypeOf handler.
+  getter(Promise, Symbol.species),
+  getter(RegExp.prototype, "dotAll"),
+  getter(RegExp.prototype, "flags"),
+  getter(RegExp.prototype, "global"),
+  getter(RegExp.prototype, "hasIndices"),
+  getter(RegExp.prototype, "ignoreCase"),
+  getter(RegExp.prototype, "multiline"),
+  getter(RegExp.prototype, "source"),
+  getter(RegExp.prototype, "sticky"),
+  getter(RegExp.prototype, "unicode"),
+  getter(RegExp, Symbol.species),
+  getter(Set.prototype, "size"),
+  getter(Set, Symbol.species),
+  getter(Symbol.prototype, "description"),
+  getter(TypedArray.prototype, "buffer"),
+  getter(TypedArray.prototype, "byteLength"),
+  getter(TypedArray.prototype, "byteOffset"),
+  getter(TypedArray.prototype, "length"),
+  getter(TypedArray.prototype, Symbol.toStringTag),
+  getter(TypedArray, Symbol.species),
 ];
+
+// TODO: Integrate in main list when changes array by copy ships by default
+const changesArrayByCopy = [
+  Array.prototype.toReversed,
+  Array.prototype.toSorted,
+  Array.prototype.toSpliced,
+  Array.prototype.with,
+  TypedArray.prototype.toReversed,
+  TypedArray.prototype.toSorted,
+  TypedArray.prototype.with,
+];
+for (const fn of changesArrayByCopy) {
+  if (typeof fn == "function") {
+    allowList.push(fn);
+  }
+}
+
+module.exports = allowList;

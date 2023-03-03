@@ -9,7 +9,7 @@ import {
 import { Themes } from "content-src/aboutwelcome/components/Themes";
 import React from "react";
 import { shallow, mount } from "enzyme";
-import { DEFAULT_WELCOME_CONTENT } from "aboutwelcome/lib/AboutWelcomeDefaults.jsm";
+import { AboutWelcomeDefaults } from "aboutwelcome/lib/AboutWelcomeDefaults.jsm";
 import { AboutWelcomeUtils } from "content-src/lib/aboutwelcome-utils";
 
 describe("MultiStageAboutWelcome module", () => {
@@ -17,7 +17,7 @@ describe("MultiStageAboutWelcome module", () => {
   let sandbox;
 
   const DEFAULT_PROPS = {
-    screens: DEFAULT_WELCOME_CONTENT.screens,
+    screens: AboutWelcomeDefaults.getDefaults().screens,
     metricsFlowUri: "http://localhost/",
     message_id: "DEFAULT_ABOUTWELCOME",
     utm_term: "default",
@@ -212,7 +212,7 @@ describe("MultiStageAboutWelcome module", () => {
 
   describe("WelcomeScreen component", () => {
     describe("get started screen", () => {
-      const screen = DEFAULT_WELCOME_CONTENT.screens.find(
+      const screen = AboutWelcomeDefaults.getDefaults().screens.find(
         s => s.id === "AW_PIN_FIREFOX"
       );
 
@@ -433,6 +433,17 @@ describe("MultiStageAboutWelcome module", () => {
 
         assert.calledWith(SCREEN_PROPS.setActiveTheme, "test");
       });
+      it("should handle dismiss", () => {
+        SCREEN_PROPS.content.dismiss_button = {
+          action: { dismiss: true },
+        };
+        const finishStub = sandbox.stub(global, "AWFinish");
+        const wrapper = mount(<WelcomeScreen {...SCREEN_PROPS} />);
+
+        wrapper.find(".dismiss-button").simulate("click");
+
+        assert.calledOnce(finishStub);
+      });
       it("should handle SHOW_FIREFOX_ACCOUNTS", () => {
         TEST_ACTION.type = "SHOW_FIREFOX_ACCOUNTS";
         const wrapper = mount(<WelcomeScreen {...SCREEN_PROPS} />);
@@ -445,7 +456,7 @@ describe("MultiStageAboutWelcome module", () => {
               utm_campaign: "firstrun",
               utm_medium: "referral",
               utm_source: "activity-stream",
-              utm_term: "aboutwelcome-you_tee_emm-screen",
+              utm_term: "you_tee_emm-screen",
             },
           },
           type: "SHOW_FIREFOX_ACCOUNTS",

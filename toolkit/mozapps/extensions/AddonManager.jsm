@@ -55,14 +55,16 @@ var PREF_EM_CHECK_COMPATIBILITY = MOZ_COMPATIBILITY_NIGHTLY
   ? PREF_EM_CHECK_COMPATIBILITY_BASE + ".nightly"
   : undefined;
 
-const WEBAPI_INSTALL_HOSTS = AppConstants.MOZ_B2G
-  ? ["addons.mozilla.org", "ftu.localhost"]
-  : ["addons.mozilla.org"];
-const WEBAPI_TEST_INSTALL_HOSTS = [
-  "addons.allizom.org",
-  "addons-dev.allizom.org",
-  "example.com",
-];
+const WEBAPI_INSTALL_HOSTS =
+  AppConstants.MOZ_APP_NAME !== "thunderbird"
+    ? AppConstants.MOZ_APP_NAME == AppConstants.MOZ_B2G
+      ? ["addons.mozilla.org", "ftu.localhost"]
+      : ["addons.mozilla.org"]
+    : ["addons.thunderbird.net"];
+const WEBAPI_TEST_INSTALL_HOSTS =
+  AppConstants.MOZ_APP_NAME !== "thunderbird"
+    ? ["addons.allizom.org", "addons-dev.allizom.org", "example.com"]
+    : ["addons-stage.thunderbird.net", "example.com"];
 
 const AMO_ATTRIBUTION_ALLOWED_SOURCES = ["amo", "disco"];
 const AMO_ATTRIBUTION_DATA_KEYS = [
@@ -88,20 +90,20 @@ const { PromiseUtils } = ChromeUtils.importESModule(
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  RemoteSettings: "resource://services-settings/remote-settings.sys.mjs",
+  TelemetryTimestamps: "resource://gre/modules/TelemetryTimestamps.sys.mjs",
   isGatedPermissionType:
     "resource://gre/modules/addons/siteperms-addon-utils.sys.mjs",
   isKnownPublicSuffix:
     "resource://gre/modules/addons/siteperms-addon-utils.sys.mjs",
   isPrincipalInSitePermissionsBlocklist:
     "resource://gre/modules/addons/siteperms-addon-utils.sys.mjs",
-  TelemetryTimestamps: "resource://gre/modules/TelemetryTimestamps.sys.mjs",
 });
 
 XPCOMUtils.defineLazyModuleGetters(lazy, {
   AddonRepository: "resource://gre/modules/addons/AddonRepository.jsm",
   AbuseReporter: "resource://gre/modules/AbuseReporter.jsm",
   Extension: "resource://gre/modules/Extension.jsm",
-  RemoteSettings: "resource://services-settings/remote-settings.js",
 });
 
 XPCOMUtils.defineLazyPreferenceGetter(

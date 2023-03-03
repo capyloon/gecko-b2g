@@ -23,6 +23,8 @@
 
 namespace mozilla::dom {
 
+using namespace streams_abstract;
+
 struct PipeToReadRequest;
 class WriteFinishedPromiseHandler;
 class ShutdownActionFinishedPromiseHandler;
@@ -538,9 +540,7 @@ void PipeToPump::Finalize(JSContext* aCx,
                           JS::Handle<mozilla::Maybe<JS::Value>> aError) {
   IgnoredErrorResult rv;
   // Step 1. Perform ! WritableStreamDefaultWriterRelease(writer).
-  WritableStreamDefaultWriterRelease(aCx, mWriter, rv);
-  NS_WARNING_ASSERTION(!rv.Failed(),
-                       "WritableStreamDefaultWriterRelease should not fail.");
+  WritableStreamDefaultWriterRelease(aCx, mWriter);
 
   // Step 2. If reader implements ReadableStreamBYOBReader,
   // perform ! ReadableStreamBYOBReaderRelease(reader).
@@ -630,9 +630,9 @@ struct PipeToReadRequest : public ReadRequest {
   explicit PipeToReadRequest(PipeToPump* aPipeToPump)
       : mPipeToPump(aPipeToPump) {}
 
-  MOZ_CAN_RUN_SCRIPT_BOUNDARY void ChunkSteps(JSContext* aCx,
-                                              JS::Handle<JS::Value> aChunk,
-                                              ErrorResult& aRv) override {
+  MOZ_CAN_RUN_SCRIPT void ChunkSteps(JSContext* aCx,
+                                     JS::Handle<JS::Value> aChunk,
+                                     ErrorResult& aRv) override {
     RefPtr<PipeToPump> pipeToPump = mPipeToPump;  // XXX known live?
     pipeToPump->OnReadFulfilled(aCx, aChunk, aRv);
   }
@@ -886,6 +886,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(PipeToPump)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mLastWritePromise)
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
+namespace streams_abstract {
 // https://streams.spec.whatwg.org/#readable-stream-pipe-to
 already_AddRefed<Promise> ReadableStreamPipeTo(
     ReadableStream* aSource, WritableStream* aDest, bool aPreventClose,
@@ -941,10 +942,8 @@ already_AddRefed<Promise> ReadableStreamPipeTo(
   // Note: PipeToPump ensures this by construction.
 
   // Step 13. Let promise be a new promise.
-  RefPtr<Promise> promise = Promise::Create(aSource->GetParentObject(), aRv);
-  if (aRv.Failed()) {
-    return nullptr;
-  }
+  RefPtr<Promise> promise =
+      Promise::CreateInfallible(aSource->GetParentObject());
 
   // Steps 14-15.
   RefPtr<PipeToPump> pump = new PipeToPump(
@@ -954,5 +953,6 @@ already_AddRefed<Promise> ReadableStreamPipeTo(
   // Step 16. Return promise.
   return promise.forget();
 }
+}  // namespace streams_abstract
 
 }  // namespace mozilla::dom

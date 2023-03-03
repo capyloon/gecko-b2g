@@ -730,7 +730,7 @@ protected:
                 PR_SET_DUMPABLE,  // Crash reporting
 #ifdef MOZ_WIDGET_GONK
                 PR_SET_TIMERSLACK, // task_profiles
-                PR_GET_DUMPABLE,  // Linker logger
+                PR_GET_DUMPABLE,   // Linker logger
 #endif
                 PR_SET_PTRACER),  // Debug-mode crash handling
                Allow())
@@ -1628,8 +1628,17 @@ class ContentSandboxPolicy : public SandboxPolicyCommon {
 #endif
 
 #ifdef DESKTOP
-      case __NR_pipe2:
-        return Allow();
+      case __NR_pipe2: {
+        // Restrict the flags; O_NOTIFICATION_PIPE in particular
+        // exposes enough attack surface to be a cause for concern
+        // (bug 1808320).  O_DIRECT isn't known to be used currently
+        // (Try passes with it blocked), but should be low-risk, and
+        // Chromium allows it.
+        static constexpr int allowed_flags = O_CLOEXEC | O_NONBLOCK | O_DIRECT;
+        Arg<int> flags(1);
+        return If((flags & ~allowed_flags) == 0, Allow())
+            .Else(InvalidSyscall());
+      }
 
       CASES_FOR_getrlimit:
       CASES_FOR_getresuid:
@@ -2197,6 +2206,10 @@ class UtilitySandboxPolicy : public SandboxPolicyCommon {
     return Switch(op)
         .CASES((PR_SET_NAME,        // Thread creation
                 PR_SET_DUMPABLE,    // Crash reporting
+#if defined(MOZ_WIDGET_GONK)
+                PR_GET_DUMPABLE,
+                PR_SET_VMA,
+#endif
                 PR_SET_PTRACER,     // Debug-mode crash handling
                 PR_GET_PDEATHSIG),  // PGO profiling, cf
                                     // https://reviews.llvm.org/D29954

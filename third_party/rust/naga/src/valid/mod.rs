@@ -6,6 +6,7 @@ mod analyzer;
 mod compose;
 mod expression;
 mod function;
+mod handles;
 mod interface;
 mod r#type;
 
@@ -13,7 +14,7 @@ mod r#type;
 use crate::arena::{Arena, UniqueArena};
 
 use crate::{
-    arena::{BadHandle, Handle},
+    arena::Handle,
     proc::{LayoutError, Layouter},
     FastHashSet,
 };
@@ -30,6 +31,8 @@ pub use expression::ExpressionError;
 pub use function::{CallError, FunctionError, LocalVariableError};
 pub use interface::{EntryPointError, GlobalVariableError, VaryingError};
 pub use r#type::{Disalignment, TypeError, TypeFlags};
+
+use self::handles::InvalidHandleError;
 
 bitflags::bitflags! {
     /// Validation flags.
@@ -66,6 +69,9 @@ bitflags::bitflags! {
         /// Constants.
         #[cfg(feature = "validate")]
         const CONSTANTS = 0x10;
+        /// Group, binding, and location attributes.
+        #[cfg(feature = "validate")]
+        const BINDINGS = 0x20;
     }
 }
 
@@ -78,10 +84,9 @@ impl Default for ValidationFlags {
 bitflags::bitflags! {
     /// Allowed IR capabilities.
     #[must_use]
-    #[derive(Default)]
     #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
     #[cfg_attr(feature = "deserialize", derive(serde::Deserialize))]
-    pub struct Capabilities: u8 {
+    pub struct Capabilities: u16 {
         /// Support for [`AddressSpace:PushConstant`].
         const PUSH_CONSTANT = 0x1;
         /// Float values with width = 8.
@@ -98,6 +103,20 @@ bitflags::bitflags! {
         const CLIP_DISTANCE = 0x40;
         /// Support for [`Builtin::CullDistance`].
         const CULL_DISTANCE = 0x80;
+        /// Support for 16-bit normalized storage texture formats.
+        const STORAGE_TEXTURE_16BIT_NORM_FORMATS = 0x100;
+        /// Support for [`BuiltIn::ViewIndex`].
+        const MULTIVIEW = 0x200;
+        /// Support for `early_depth_test`.
+        const EARLY_DEPTH_TEST = 0x400;
+        /// Support for [`Builtin::SampleIndex`] and [`Sampling::Sample`].
+        const MULTISAMPLED_SHADING = 0x800;
+    }
+}
+
+impl Default for Capabilities {
+    fn default() -> Self {
+        Self::MULTISAMPLED_SHADING
     }
 }
 
@@ -116,8 +135,16 @@ bitflags::bitflags! {
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 #[cfg_attr(feature = "deserialize", derive(serde::Deserialize))]
 pub struct ModuleInfo {
+    type_flags: Vec<TypeFlags>,
     functions: Vec<FunctionInfo>,
     entry_points: Vec<FunctionInfo>,
+}
+
+impl ops::Index<Handle<crate::Type>> for ModuleInfo {
+    type Output = TypeFlags;
+    fn index(&self, handle: Handle<crate::Type>) -> &Self::Output {
+        &self.type_flags[handle.index()]
+    }
 }
 
 impl ops::Index<Handle<crate::Function>> for ModuleInfo {
@@ -143,8 +170,6 @@ pub struct Validator {
 
 #[derive(Clone, Debug, thiserror::Error)]
 pub enum ConstantError {
-    #[error(transparent)]
-    BadHandle(#[from] BadHandle),
     #[error("The type doesn't match the constant")]
     InvalidType,
     #[error("The component handle {0:?} can not be resolved")]
@@ -157,6 +182,8 @@ pub enum ConstantError {
 
 #[derive(Clone, Debug, thiserror::Error)]
 pub enum ValidationError {
+    #[error(transparent)]
+    InvalidHandle(#[from] InvalidHandleError),
     #[error(transparent)]
     Layouter(#[from] LayoutError),
     #[error("Type {handle:?} '{name}' is invalid")]
@@ -220,17 +247,17 @@ impl crate::TypeInner {
     const fn image_storage_coordinates(&self) -> Option<crate::ImageDimension> {
         match *self {
             Self::Scalar {
-                kind: crate::ScalarKind::Sint,
+                kind: crate::ScalarKind::Sint | crate::ScalarKind::Uint,
                 ..
             } => Some(crate::ImageDimension::D1),
             Self::Vector {
                 size: crate::VectorSize::Bi,
-                kind: crate::ScalarKind::Sint,
+                kind: crate::ScalarKind::Sint | crate::ScalarKind::Uint,
                 ..
             } => Some(crate::ImageDimension::D2),
             Self::Vector {
                 size: crate::VectorSize::Tri,
-                kind: crate::ScalarKind::Sint,
+                kind: crate::ScalarKind::Sint | crate::ScalarKind::Uint,
                 ..
             } => Some(crate::ImageDimension::D3),
             _ => None,
@@ -280,7 +307,7 @@ impl Validator {
                 }
             }
             crate::ConstantInner::Composite { ty, ref components } => {
-                match types.get_handle(ty)?.inner {
+                match types[ty].inner {
                     crate::TypeInner::Array {
                         size: crate::ArraySize::Constant(size_handle),
                         ..
@@ -313,6 +340,9 @@ impl Validator {
         self.reset();
         self.reset_types(module.types.len());
 
+        #[cfg(feature = "validate")]
+        Self::validate_module_handles(module).map_err(|e| e.with_span())?;
+
         self.layouter
             .update(&module.types, &module.constants)
             .map_err(|e| {
@@ -335,6 +365,12 @@ impl Validator {
             }
         }
 
+        let mut mod_info = ModuleInfo {
+            type_flags: Vec::with_capacity(module.types.len()),
+            functions: Vec::with_capacity(module.functions.len()),
+            entry_points: Vec::with_capacity(module.entry_points.len()),
+        };
+
         for (handle, ty) in module.types.iter() {
             let ty_info = self
                 .validate_type(handle, &module.types, &module.constants)
@@ -346,6 +382,7 @@ impl Validator {
                     }
                     .with_span_handle(handle, &module.types)
                 })?;
+            mod_info.type_flags.push(ty_info.flags);
             self.types[handle.index()] = ty_info;
         }
 
@@ -361,11 +398,6 @@ impl Validator {
                     .with_span_handle(var_handle, &module.global_variables)
                 })?;
         }
-
-        let mut mod_info = ModuleInfo {
-            functions: Vec::with_capacity(module.functions.len()),
-            entry_points: Vec::with_capacity(module.entry_points.len()),
-        };
 
         for (handle, fun) in module.functions.iter() {
             match self.validate_function(fun, module, &mod_info, false) {
@@ -411,4 +443,21 @@ impl Validator {
 
         Ok(mod_info)
     }
+}
+
+#[cfg(feature = "validate")]
+fn validate_atomic_compare_exchange_struct(
+    types: &UniqueArena<crate::Type>,
+    members: &[crate::StructMember],
+    scalar_predicate: impl FnOnce(&crate::TypeInner) -> bool,
+) -> bool {
+    members.len() == 2
+        && members[0].name.as_deref() == Some("old_value")
+        && scalar_predicate(&types[members[0].ty].inner)
+        && members[1].name.as_deref() == Some("exchanged")
+        && types[members[1].ty].inner
+            == crate::TypeInner::Scalar {
+                kind: crate::ScalarKind::Bool,
+                width: crate::BOOL_WIDTH,
+            }
 }

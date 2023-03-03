@@ -375,7 +375,7 @@ bool nsIFrame::IsVisibleConsideringAncestors(uint32_t aFlags) const {
   const nsIFrame* frame = this;
   while (frame) {
     nsView* view = frame->GetView();
-    if (view && view->GetVisibility() == nsViewVisibility_kHide) {
+    if (view && view->GetVisibility() == ViewVisibility::Hide) {
       return false;
     }
 
@@ -693,7 +693,7 @@ void nsIFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
     // It's fine to fetch the EffectSet for the style frame here because in the
     // following code we take care of the case where animations may target
     // a different frame.
-    EffectSet* effectSet = EffectSet::GetEffectSetForStyleFrame(this);
+    EffectSet* effectSet = EffectSet::GetForStyleFrame(this);
     if (effectSet) {
       mMayHaveOpacityAnimation = effectSet->MayHaveOpacityAnimation();
 
@@ -841,7 +841,7 @@ void nsIFrame::DestroyFrom(nsIFrame* aDestructRoot,
 
   nsPresContext* presContext = PresContext();
   mozilla::PresShell* presShell = presContext->GetPresShell();
-  if (mState & NS_FRAME_OUT_OF_FLOW) {
+  if (HasAnyStateBits(NS_FRAME_OUT_OF_FLOW)) {
     nsPlaceholderFrame* placeholder = GetPlaceholderFrame();
     NS_ASSERTION(
         !placeholder || (aDestructRoot != this),
@@ -869,7 +869,7 @@ void nsIFrame::DestroyFrom(nsIFrame* aDestructRoot,
       // It's fine to look up the style frame here since if we're destroying the
       // frames for display:table content we should be destroying both wrapper
       // and inner frame.
-      EffectSet::GetEffectSetForStyleFrame(this)) {
+      EffectSet::GetForStyleFrame(this)) {
     // If no new frame for this element is created by the end of the
     // restyling process, stop animations and transitions for this frame
     RestyleManager::AnimationsWithDestroyedFrame* adf =
@@ -899,7 +899,7 @@ void nsIFrame::DestroyFrom(nsIFrame* aDestructRoot,
 
   presShell->NotifyDestroyingFrame(this);
 
-  if (mState & NS_FRAME_EXTERNAL_REFERENCE) {
+  if (HasAnyStateBits(NS_FRAME_EXTERNAL_REFERENCE)) {
     presShell->ClearFrameRefs(this);
   }
 
@@ -1556,8 +1556,8 @@ void nsIFrame::SyncFrameViewProperties(nsView* aView) {
     // See if the view should be hidden or visible
     ComputedStyle* sc = Style();
     vm->SetViewVisibility(aView, sc->StyleVisibility()->IsVisible()
-                                     ? nsViewVisibility_kShow
-                                     : nsViewVisibility_kHide);
+                                     ? ViewVisibility::Show
+                                     : ViewVisibility::Hide);
   }
 
   const auto zIndex = ZIndex();
@@ -1829,7 +1829,7 @@ bool nsIFrame::IsSVGTransformed(gfx::Matrix* aOwnTransforms,
 bool nsIFrame::Extend3DContext(const nsStyleDisplay* aStyleDisplay,
                                const nsStyleEffects* aStyleEffects,
                                mozilla::EffectSet* aEffectSetForOpacity) const {
-  if (!(mState & NS_FRAME_MAY_BE_TRANSFORMED)) {
+  if (!HasAnyStateBits(NS_FRAME_MAY_BE_TRANSFORMED)) {
     return false;
   }
   const nsStyleDisplay* disp = StyleDisplayWithOptionalParam(aStyleDisplay);
@@ -2105,17 +2105,40 @@ void nsIFrame::SetAdditionalComputedStyle(int32_t aIndex,
   MOZ_ASSERT(aIndex >= 0, "invalid index number");
 }
 
-nscoord nsIFrame::GetLogicalBaseline(WritingMode aWritingMode) const {
+nscoord nsIFrame::SynthesizeFallbackBaseline(
+    WritingMode aWM, BaselineSharingGroup aBaselineGroup) const {
+  const auto margin = GetLogicalUsedMargin(aWM);
   NS_ASSERTION(!IsSubtreeDirty(), "frame must not be dirty");
   // Baseline for inverted line content is the top (block-start) margin edge,
   // as the frame is in effect "flipped" for alignment purposes.
-  if (aWritingMode.IsLineInverted()) {
-    return -GetLogicalUsedMargin(aWritingMode).BStart(aWritingMode);
+  if (aWM.IsLineInverted()) {
+    const auto marginStart = margin.BStart(aWM);
+    return aBaselineGroup == BaselineSharingGroup::First
+               ? -marginStart
+               : BSize(aWM) + marginStart;
   }
   // Otherwise, the bottom margin edge, per CSS2.1's definition of the
   // 'baseline' value of 'vertical-align'.
-  return BSize(aWritingMode) +
-         GetLogicalUsedMargin(aWritingMode).BEnd(aWritingMode);
+  const auto marginEnd = margin.BEnd(aWM);
+  return aBaselineGroup == BaselineSharingGroup::First ? BSize(aWM) + marginEnd
+                                                       : -marginEnd;
+}
+
+nscoord nsIFrame::GetLogicalBaseline(WritingMode aWM) const {
+  return GetLogicalBaseline(aWM, GetDefaultBaselineSharingGroup());
+}
+
+nscoord nsIFrame::GetLogicalBaseline(
+    WritingMode aWM, BaselineSharingGroup aBaselineGroup) const {
+  const auto result =
+      GetNaturalBaselineBOffset(aWM, aBaselineGroup)
+          .valueOrFrom([this, aWM, aBaselineGroup]() {
+            return SynthesizeFallbackBaseline(aWM, aBaselineGroup);
+          });
+  if (aBaselineGroup == BaselineSharingGroup::Last) {
+    return BSize(aWM) - result;
+  }
+  return result;
 }
 
 const nsFrameList& nsIFrame::GetChildList(ChildListID aListID) const {
@@ -2149,6 +2172,22 @@ AutoTArray<nsIFrame::ChildList, 4> nsIFrame::CrossDocChildLists() {
 
   GetChildLists(&childLists);
   return childLists;
+}
+
+nsIFrame::CaretBlockAxisMetrics nsIFrame::GetCaretBlockAxisMetrics(
+    mozilla::WritingMode aWM, const nsFontMetrics& aFM) const {
+  // Note(dshin): Ultimately, this does something highly similar (But still
+  // different) to `nsLayoutUtils::GetFirstLinePosition`.
+  const auto baseline = GetCaretBaseline();
+  nscoord ascent = 0, descent = 0;
+  ascent = aFM.MaxAscent();
+  descent = aFM.MaxDescent();
+  const nscoord height = ascent + descent;
+  if (aWM.IsVertical() && aWM.IsLineInverted()) {
+    return CaretBlockAxisMetrics{.mOffset = baseline - descent,
+                                 .mExtent = height};
+  }
+  return CaretBlockAxisMetrics{.mOffset = baseline - ascent, .mExtent = height};
 }
 
 const nsAtom* nsIFrame::ComputePageValue() const {
@@ -2395,18 +2434,37 @@ already_AddRefed<ComputedStyle> nsIFrame::ComputeSelectionStyle(
       aSelectionStatus != nsISelectionController::SELECTION_DISABLED) {
     return nullptr;
   }
-  // When in high-contrast mode, the style system ends up ignoring the color
-  // declarations, which means that the ::selection style becomes the inherited
-  // color, and default background. That's no good.
-  if (PresContext()->ForcingColors()) {
-    return nullptr;
-  }
   Element* element = FindElementAncestorForMozSelection(GetContent());
   if (!element) {
     return nullptr;
   }
-  return PresContext()->StyleSet()->ProbePseudoElementStyle(
-      *element, PseudoStyleType::selection, Style());
+  RefPtr<ComputedStyle> pseudoStyle =
+      PresContext()->StyleSet()->ProbePseudoElementStyle(
+          *element, PseudoStyleType::selection, Style());
+  if (!pseudoStyle) {
+    return nullptr;
+  }
+  // When in high-contrast mode, the style system ends up ignoring the color
+  // declarations, which means that the ::selection style becomes the inherited
+  // color, and default background. That's no good.
+  // When force-color-adjust is set to none allow using the color styles,
+  // as they will not be replaced.
+  if (PresContext()->ForcingColors() &&
+      pseudoStyle->StyleText()->mForcedColorAdjust !=
+          StyleForcedColorAdjust::None) {
+    return nullptr;
+  }
+  return do_AddRef(pseudoStyle);
+}
+
+already_AddRefed<ComputedStyle> nsIFrame::ComputeHighlightSelectionStyle(
+    const nsAtom* aHighlightName) {
+  Element* element = FindElementAncestorForMozSelection(GetContent());
+  if (!element) {
+    return nullptr;
+  }
+  return PresContext()->StyleSet()->ProbeHighlightPseudoElementStyle(
+      *element, aHighlightName, Style());
 }
 
 template <typename SizeOrMaxSize>
@@ -2611,8 +2669,7 @@ auto nsIFrame::ComputeShouldPaintBackground() const -> ShouldPaintBackground {
     return settings;
   }
 
-  if (!HonorPrintBackgroundSettings() ||
-      StyleVisibility()->mPrintColorAdjust == StylePrintColorAdjust::Exact) {
+  if (StyleVisibility()->mPrintColorAdjust == StylePrintColorAdjust::Exact) {
     return {true, true};
   }
 
@@ -2621,8 +2678,7 @@ auto nsIFrame::ComputeShouldPaintBackground() const -> ShouldPaintBackground {
 
 bool nsIFrame::DisplayBackgroundUnconditional(nsDisplayListBuilder* aBuilder,
                                               const nsDisplayListSet& aLists) {
-  const bool hitTesting = aBuilder->IsForEventDelivery();
-  if (hitTesting && !aBuilder->HitTestIsForVisibility()) {
+  if (aBuilder->IsForEventDelivery() && !aBuilder->HitTestIsForVisibility()) {
     // For hit-testing, we generally just need a light-weight data structure
     // like nsDisplayEventReceiver. But if the hit-testing is for visibility,
     // then we need to know the opaque region in order to determine whether to
@@ -2632,21 +2688,11 @@ bool nsIFrame::DisplayBackgroundUnconditional(nsDisplayListBuilder* aBuilder,
     return false;
   }
 
-  AppendedBackgroundType result = AppendedBackgroundType::None;
-  // Here we don't try to detect background propagation, canvas frame does its
-  // own thing.
-  if (hitTesting || !StyleBackground()->IsTransparent(this) ||
-      StyleDisplay()->HasAppearance() ||
-      // We do forcibly create a display item for background color animations
-      // even if the current background-color is transparent so that we can
-      // run the animations on the compositor.
-      EffectCompositor::HasAnimationsForCompositor(
-          this, DisplayItemType::TYPE_BACKGROUND_COLOR)) {
-    result = nsDisplayBackgroundImage::AppendBackgroundItemsToTop(
-        aBuilder, this,
-        GetRectRelativeToSelf() + aBuilder->ToReferenceFrame(this),
-        aLists.BorderBackground());
-  }
+  const AppendedBackgroundType result =
+      nsDisplayBackgroundImage::AppendBackgroundItemsToTop(
+          aBuilder, this,
+          GetRectRelativeToSelf() + aBuilder->ToReferenceFrame(this),
+          aLists.BorderBackground());
 
   if (result == AppendedBackgroundType::None) {
     aBuilder->BuildCompositorHitTestInfoIfNeeded(this,
@@ -3138,8 +3184,8 @@ void nsIFrame::BuildDisplayListForStackingContext(
   const auto& style = *Style();
   const nsStyleDisplay* disp = style.StyleDisplay();
   const nsStyleEffects* effects = style.StyleEffects();
-  EffectSet* effectSetForOpacity = EffectSet::GetEffectSetForFrame(
-      this, nsCSSPropertyIDSet::OpacityProperties());
+  EffectSet* effectSetForOpacity =
+      EffectSet::GetForFrame(this, nsCSSPropertyIDSet::OpacityProperties());
   // We can stop right away if this is a zero-opacity stacking context and
   // we're painting, and we're not animating opacity.
   bool needHitTestInfo = aBuilder->BuildCompositorHitTestInfo() &&
@@ -4825,6 +4871,7 @@ nsresult nsIFrame::MoveCaretToEventPoint(nsPresContext* aPresContext,
             curDetail->mSelectionType != SelectionType::eFind &&
             curDetail->mSelectionType != SelectionType::eURLSecondary &&
             curDetail->mSelectionType != SelectionType::eURLStrikeout &&
+            curDetail->mSelectionType != SelectionType::eHighlight &&
             curDetail->mStart <= offsets.StartOffset() &&
             offsets.EndOffset() <= curDetail->mEnd) {
           inSelection = true;
@@ -6973,7 +7020,8 @@ bool nsIFrame::HasSelectionInSubtree() {
 
     const auto* commonAncestorNode =
         range->GetRegisteredClosestCommonInclusiveAncestor();
-    if (commonAncestorNode->IsInclusiveDescendantOf(GetContent())) {
+    if (commonAncestorNode &&
+        commonAncestorNode->IsInclusiveDescendantOf(GetContent())) {
       return true;
     }
   }
@@ -7037,13 +7085,6 @@ void nsIFrame::UpdateIsRelevantContent(
       aRelevancyToUpdate.contains(ContentRelevancyReason::Selected)) {
     setRelevancyValue(ContentRelevancyReason::Selected,
                       HasSelectionInSubtree());
-  }
-
-  if (!oldRelevancy ||
-      aRelevancyToUpdate.contains(
-          ContentRelevancyReason::DescendantOfTopLayerElement)) {
-    setRelevancyValue(ContentRelevancyReason::DescendantOfTopLayerElement,
-                      IsDescendantOfTopLayerElement());
   }
 
   bool overallRelevancyChanged =
@@ -7742,6 +7783,19 @@ static nsRect ComputeEffectsRect(nsIFrame* aFrame, const nsRect& aOverflowRect,
   return r;
 }
 
+void nsIFrame::SetPosition(const nsPoint& aPt) {
+  if (mRect.TopLeft() == aPt) {
+    return;
+  }
+  mRect.MoveTo(aPt);
+  MarkNeedsDisplayItemRebuild();
+#ifdef ACCESSIBILITY
+  if (nsAccessibilityService* accService = GetAccService()) {
+    accService->NotifyOfPossibleBoundsChange(PresShell(), mContent);
+  }
+#endif
+}
+
 void nsIFrame::MovePositionBy(const nsPoint& aTranslation) {
   nsPoint position = GetNormalPosition() + aTranslation;
 
@@ -8350,9 +8404,11 @@ void nsIFrame::DumpFrameTreeLimitedInCSSPixels() const {
 
 #endif
 
-bool nsIFrame::IsVisibleForPainting() { return StyleVisibility()->IsVisible(); }
+bool nsIFrame::IsVisibleForPainting() const {
+  return StyleVisibility()->IsVisible();
+}
 
-bool nsIFrame::IsVisibleOrCollapsedForPainting() {
+bool nsIFrame::IsVisibleOrCollapsedForPainting() const {
   return StyleVisibility()->IsVisibleOrCollapsed();
 }
 
@@ -9967,7 +10023,7 @@ bool nsIFrame::FinishAndStoreOverflow(OverflowAreas& aOverflowAreas,
     DebugOnly<nsRect*> r = &aOverflowAreas.Overflow(otype);
     NS_ASSERTION(aNewSize.width == 0 || aNewSize.height == 0 ||
                      r->width == nscoord_MAX || r->height == nscoord_MAX ||
-                     (mState & NS_FRAME_SVG_LAYOUT) ||
+                     HasAnyStateBits(NS_FRAME_SVG_LAYOUT) ||
                      r->Contains(nsRect(nsPoint(0, 0), aNewSize)),
                  "Computed overflow area must contain frame bounds");
   }
@@ -10425,13 +10481,13 @@ ComputedStyle* nsIFrame::DoGetParentComputedStyle(
     }
   }
 
-  if (!(mState & NS_FRAME_OUT_OF_FLOW)) {
+  if (!HasAnyStateBits(NS_FRAME_OUT_OF_FLOW)) {
     /*
      * If this frame is an anonymous block created when an inline with a block
      * inside it got split, then the parent style is on its preceding inline. We
      * can get to it using GetIBSplitSiblingForAnonymousBlock.
      */
-    if (mState & NS_FRAME_PART_OF_IBSPLIT) {
+    if (HasAnyStateBits(NS_FRAME_PART_OF_IBSPLIT)) {
       nsIFrame* ibSplitSibling = GetIBSplitSiblingForAnonymousBlock(this);
       if (ibSplitSibling) {
         return (*aProviderFrame = ibSplitSibling)->Style();
@@ -10531,7 +10587,8 @@ bool nsIFrame::IsFocusableDueToScrollFrame() {
   return true;
 }
 
-nsIFrame::Focusable nsIFrame::IsFocusable(bool aWithMouse) {
+nsIFrame::Focusable nsIFrame::IsFocusable(bool aWithMouse,
+                                          bool aCheckVisibility) {
   // cannot focus content in print preview mode. Only the root can be focused,
   // but that's handled elsewhere.
   if (PresContext()->Type() == nsPresContext::eContext_PrintPreview) {
@@ -10542,7 +10599,7 @@ nsIFrame::Focusable nsIFrame::IsFocusable(bool aWithMouse) {
     return {};
   }
 
-  if (!IsVisibleConsideringAncestors()) {
+  if (aCheckVisibility && !IsVisibleConsideringAncestors()) {
     return {};
   }
 
@@ -11528,15 +11585,13 @@ nsIFrame::CaretPosition::CaretPosition() : mContentOffset(0) {}
 nsIFrame::CaretPosition::~CaretPosition() = default;
 
 bool nsIFrame::HasCSSAnimations() {
-  auto collection =
-      AnimationCollection<CSSAnimation>::GetAnimationCollection(this);
-  return collection && collection->mAnimations.Length() > 0;
+  auto* collection = AnimationCollection<CSSAnimation>::Get(this);
+  return collection && !collection->mAnimations.IsEmpty();
 }
 
 bool nsIFrame::HasCSSTransitions() {
-  auto collection =
-      AnimationCollection<CSSTransition>::GetAnimationCollection(this);
-  return collection && collection->mAnimations.Length() > 0;
+  auto* collection = AnimationCollection<CSSTransition>::Get(this);
+  return collection && !collection->mAnimations.IsEmpty();
 }
 
 void nsIFrame::AddSizeOfExcludingThisForTree(nsWindowSizes& aSizes) const {
@@ -11687,7 +11742,7 @@ CompositorHitTestInfo nsIFrame::GetCompositorHitTestInfo(
     if (touchAction == StyleTouchAction::AUTO) {
       // nothing to do
     } else if (touchAction & StyleTouchAction::MANIPULATION) {
-      result += CompositorHitTestFlags::eTouchActionDoubleTapZoomDisabled;
+      result += CompositorHitTestFlags::eTouchActionAnimatingZoomDisabled;
     } else {
       // This path handles the cases none | [pan-x || pan-y || pinch-zoom] so
       // double-tap is disabled in here.
@@ -11695,7 +11750,7 @@ CompositorHitTestInfo nsIFrame::GetCompositorHitTestInfo(
         result += CompositorHitTestFlags::eTouchActionPinchZoomDisabled;
       }
 
-      result += CompositorHitTestFlags::eTouchActionDoubleTapZoomDisabled;
+      result += CompositorHitTestFlags::eTouchActionAnimatingZoomDisabled;
 
       if (!(touchAction & StyleTouchAction::PAN_X)) {
         result += CompositorHitTestFlags::eTouchActionPanXDisabled;
@@ -11763,10 +11818,8 @@ void nsIFrame::UpdateVisibleDescendantsState() {
 }
 
 void nsIFrame::UpdateAnimationVisibility() {
-  auto* animationCollection =
-      AnimationCollection<CSSAnimation>::GetAnimationCollection(this);
-  auto* transitionCollection =
-      AnimationCollection<CSSTransition>::GetAnimationCollection(this);
+  auto* animationCollection = AnimationCollection<CSSAnimation>::Get(this);
+  auto* transitionCollection = AnimationCollection<CSSTransition>::Get(this);
 
   if ((!animationCollection || animationCollection->mAnimations.IsEmpty()) &&
       (!transitionCollection || transitionCollection->mAnimations.IsEmpty())) {

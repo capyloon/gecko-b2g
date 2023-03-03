@@ -26,6 +26,7 @@
 #include "Pivot.h"
 #include "Relation.h"
 #include "RelationType.h"
+#include "TextLeafRange.h"
 #include "xpcAccessibleDocument.h"
 
 #ifdef A11Y_LOG
@@ -463,19 +464,19 @@ Maybe<nsRect> RemoteAccessibleBase<Derived>::RetrieveCachedBounds() const {
 
 template <class Derived>
 void RemoteAccessibleBase<Derived>::ApplyCrossDocOffset(nsRect& aBounds) const {
-  Accessible* parentAcc = Parent();
-  if (!parentAcc || !parentAcc->IsRemote() || !parentAcc->IsOuterDoc()) {
-    return;
-  }
-
   if (!IsDoc()) {
     // We should only apply cross-doc offsets to documents. If we're anything
     // else, return early here.
     return;
   }
 
+  RemoteAccessible* parentAcc = RemoteParent();
+  if (!parentAcc || !parentAcc->IsOuterDoc()) {
+    return;
+  }
+
   Maybe<const nsTArray<int32_t>&> maybeOffset =
-      parentAcc->AsRemote()->mCachedFields->GetAttribute<nsTArray<int32_t>>(
+      parentAcc->mCachedFields->GetAttribute<nsTArray<int32_t>>(
           nsGkAtoms::crossorigin);
   if (!maybeOffset) {
     return;
@@ -490,7 +491,7 @@ void RemoteAccessibleBase<Derived>::ApplyCrossDocOffset(nsRect& aBounds) const {
 
 template <class Derived>
 bool RemoteAccessibleBase<Derived>::ApplyTransform(
-    nsRect& aCumulativeBounds, const nsRect& aParentRelativeBounds) const {
+    nsRect& aCumulativeBounds) const {
   // First, attempt to retrieve the transform from the cache.
   Maybe<const UniquePtr<gfx::Matrix4x4>&> maybeTransform =
       mCachedFields->GetAttribute<UniquePtr<gfx::Matrix4x4>>(
@@ -498,13 +499,6 @@ bool RemoteAccessibleBase<Derived>::ApplyTransform(
   if (!maybeTransform) {
     return false;
   }
-
-  // The transform matrix we cache is meant to operate on rects
-  // within the coordinate space of the frame to which the
-  // transform is applied (self-relative rects). We cache bounds
-  // relative to some ancestor. Remove the relative offset before
-  // transforming. The transform matrix will add it back in.
-  aCumulativeBounds.MoveBy(-aParentRelativeBounds.TopLeft());
 
   auto mtxInPixels = gfx::Matrix4x4Typed<CSSPixel, CSSPixel>::FromUnknownMatrix(
       *(*maybeTransform));
@@ -555,11 +549,26 @@ nsRect RemoteAccessibleBase<Derived>::BoundsInAppUnits() const {
 }
 
 template <class Derived>
+bool RemoteAccessibleBase<Derived>::IsFixedPos() const {
+  MOZ_ASSERT(mCachedFields);
+  if (auto maybePosition =
+          mCachedFields->GetAttribute<RefPtr<nsAtom>>(nsGkAtoms::position)) {
+    return *maybePosition == nsGkAtoms::fixed;
+  }
+
+  return false;
+}
+
+template <class Derived>
 LayoutDeviceIntRect RemoteAccessibleBase<Derived>::BoundsWithOffset(
     Maybe<nsRect> aOffset) const {
   Maybe<nsRect> maybeBounds = RetrieveCachedBounds();
   if (maybeBounds) {
     nsRect bounds = *maybeBounds;
+    // maybeBounds is parent-relative. However, the transform matrix we cache
+    // (if any) is meant to operate on self-relative rects. Therefore, make
+    // bounds self-relative until after we transform.
+    bounds.MoveTo(0, 0);
     const DocAccessibleParent* topDoc = IsDoc() ? AsDoc() : nullptr;
 
     if (aOffset.isSome()) {
@@ -569,12 +578,15 @@ LayoutDeviceIntRect RemoteAccessibleBase<Derived>::BoundsWithOffset(
       bounds.SetRectY(bounds.y + internalRect.y, internalRect.height);
     }
 
-    ApplyCrossDocOffset(bounds);
+    Unused << ApplyTransform(bounds);
+    // Now apply the parent-relative offset.
+    bounds.MoveBy(maybeBounds->TopLeft());
 
-    Unused << ApplyTransform(bounds, *maybeBounds);
+    ApplyCrossDocOffset(bounds);
 
     LayoutDeviceIntRect devPxBounds;
     const Accessible* acc = Parent();
+    bool encounteredFixedContainer = IsFixedPos();
     while (acc && acc->IsRemote()) {
       RemoteAccessible* remoteAcc = const_cast<Accessible*>(acc)->AsRemote();
 
@@ -599,24 +611,44 @@ LayoutDeviceIntRect RemoteAccessibleBase<Derived>::BoundsWithOffset(
           topDoc = remoteAcc->AsDoc();
         }
 
-        // We don't account for the document offset of iframes when computing
-        // parent-relative bounds. Instead, we store this value separately on
-        // all iframes and apply it here. See the comments in
+        // We don't account for the document offset of iframes when
+        // computing parent-relative bounds. Instead, we store this value
+        // separately on all iframes and apply it here. See the comments in
         // LocalAccessible::BundleFieldsForCache where we set the
         // nsGkAtoms::crossorigin attribute.
         remoteAcc->ApplyCrossDocOffset(remoteBounds);
+        if (!encounteredFixedContainer) {
+          // Apply scroll offset, if applicable. Only the contents of an
+          // element are affected by its scroll offset, which is why this call
+          // happens in this loop instead of both inside and outside of
+          // the loop (like ApplyTransform).
+          // Never apply scroll offsets past a fixed container.
+          remoteAcc->ApplyScrollOffset(remoteBounds);
+        }
+        if (remoteAcc->IsDoc()) {
+          // Fixed elements are document relative, so if we've hit a
+          // document we're now subject to that document's styling
+          // (including scroll offsets that operate on it).
+          // This ordering is important, we don't want to apply scroll
+          // offsets on this doc's content.
+          encounteredFixedContainer = false;
+        }
+        if (!encounteredFixedContainer) {
+          // The transform matrix we cache (if any) is meant to operate on
+          // self-relative rects. Therefore, we must apply the transform before
+          // we make bounds parent-relative.
+          Unused << remoteAcc->ApplyTransform(bounds);
+          // Regardless of whether this is a doc, we should offset `bounds`
+          // by the bounds retrieved here. This is how we build screen
+          // coordinates from relative coordinates.
+          bounds.MoveBy(remoteBounds.X(), remoteBounds.Y());
+        }
 
-        // Apply scroll offset, if applicable. Only the contents of an
-        // element are affected by its scroll offset, which is why this call
-        // happens in this loop instead of both inside and outside of
-        // the loop (like ApplyTransform).
-        remoteAcc->ApplyScrollOffset(remoteBounds);
-
-        // Regardless of whether this is a doc, we should offset `bounds`
-        // by the bounds retrieved here. This is how we build screen
-        // coordinates from relative coordinates.
-        bounds.MoveBy(remoteBounds.X(), remoteBounds.Y());
-        Unused << remoteAcc->ApplyTransform(bounds, remoteBounds);
+        if (remoteAcc->IsFixedPos()) {
+          encounteredFixedContainer = true;
+        }
+        // we can't just break here if we're scroll suppressed because we still
+        // need to find the top doc.
       }
       acc = acc->Parent();
     }
@@ -1448,6 +1480,18 @@ template <class Derived>
 void RemoteAccessibleBase<Derived>::SelectionRanges(
     nsTArray<TextRange>* aRanges) const {
   Document()->SelectionRanges(aRanges);
+}
+
+template <class Derived>
+bool RemoteAccessibleBase<Derived>::RemoveFromSelection(int32_t aSelectionNum) {
+  MOZ_ASSERT(IsHyperText());
+  if (SelectionCount() <= aSelectionNum) {
+    return false;
+  }
+
+  Unused << mDoc->SendRemoveTextSelection(mID, aSelectionNum);
+
+  return true;
 }
 
 template <class Derived>

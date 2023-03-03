@@ -327,17 +327,6 @@ class ContentParent final : public PContentParent,
   // been updated and so full reflows are in order.
   static void NotifyUpdatedFonts(bool aFullRebuild);
 
-#if defined(XP_WIN)
-  /**
-   * Windows helper for firing off an update window request to a plugin
-   * instance.
-   *
-   * aWidget - the eWindowType_plugin_ipc_chrome widget associated with
-   *           this plugin window.
-   */
-  static void SendAsyncUpdate(nsIWidget* aWidget);
-#endif
-
   mozilla::ipc::IPCResult RecvCreateGMPService();
 
   mozilla::ipc::IPCResult RecvRemovePermission(
@@ -362,6 +351,9 @@ class ContentParent final : public PContentParent,
 
   virtual nsresult DoSendAsyncMessage(const nsAString& aMessage,
                                       StructuredCloneData& aData) override;
+
+  /** Notify that a tab is about to send Destroy to its child. */
+  void NotifyTabWillDestroy();
 
   /** Notify that a tab is beginning its destruction sequence. */
   void NotifyTabDestroying();
@@ -400,6 +392,9 @@ class ContentParent final : public PContentParent,
   bool IsInitialized() const;
   bool IsSignaledImpendingShutdown() const {
     return mIsSignaledImpendingShutdown;
+  }
+  bool IsShuttingDown() const {
+    return IsDead() || IsSignaledImpendingShutdown();
   }
   bool IsDead() const { return mLifecycleState == LifecycleState::DEAD; }
 
@@ -578,6 +573,9 @@ class ContentParent final : public PContentParent,
   // Use the PHangMonitor channel to ask the child to repaint a tab.
   void PaintTabWhileInterruptingJS(BrowserParent* aBrowserParent,
                                    const layers::LayersObserverEpoch& aEpoch);
+
+  void UnloadLayersWhileInterruptingJS(
+      BrowserParent* aBrowserParent, const layers::LayersObserverEpoch& aEpoch);
 
   void CancelContentJSExecutionIfRunning(
       BrowserParent* aBrowserParent,
@@ -797,16 +795,20 @@ class ContentParent final : public PContentParent,
   /**
    * We might want to reuse barely used content processes if certain criteria
    * are met.
+   *
+   * With Fission this is a no-op.
    */
-  bool TryToRecycle();
+  bool TryToRecycleE10SOnly();
 
   /**
    * If this process is currently being recycled, unmark it as the recycled
    * content process.
    * If `aForeground` is true, will also restore the process' foreground
    * priority if it was previously the recycled content process.
+   *
+   * With Fission this is a no-op.
    */
-  void StopRecycling(bool aForeground = true);
+  void StopRecyclingE10SOnly(bool aForeground);
 
   /**
    * Removing it from the static array so it won't be returned for new tabs in
@@ -837,6 +839,8 @@ class ContentParent final : public PContentParent,
    * This potentially cancels mainthread content JS execution.
    */
   void SignalImpendingShutdownToContentJS();
+
+  bool CheckTabDestroyWillKeepAlive(uint32_t aExpectedBrowserCount);
 
   /**
    * Check if this process is ready to be shut down, and if it is, begin the
@@ -1717,6 +1721,7 @@ class ContentParent final : public PContentParent,
   uint8_t mGMPCreated : 1;
 
 #ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+  bool mNotifiedImpendingShutdownOnTabWillDestroy = false;
   bool mBlockShutdownCalled;
 #endif
 

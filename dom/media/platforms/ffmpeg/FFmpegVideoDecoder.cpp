@@ -77,6 +77,8 @@ typedef int VAStatus;
 #  define CUSTOMIZED_BUFFER_ALLOCATION 1
 #endif
 
+#define AV_LOG_DEBUG 48
+
 typedef mozilla::layers::Image Image;
 typedef mozilla::layers::PlanarYCbCrImage PlanarYCbCrImage;
 
@@ -319,6 +321,10 @@ MediaResult FFmpegVideoDecoder<LIBAV_VER>::InitVAAPIDecoder() {
                  mLib->avcodec_get_name(mCodecID));
       return NS_ERROR_NOT_AVAILABLE;
     }
+  }
+
+  if (MOZ_LOG_TEST(sPDMLog, LogLevel::Debug)) {
+    mLib->av_log_set_level(AV_LOG_DEBUG);
   }
 
   FFMPEG_LOG("  VA-API FFmpeg init successful");
@@ -909,11 +915,6 @@ MediaResult FFmpegVideoDecoder<LIBAV_VER>::DoDecode(
     }
 
 #  ifdef MOZ_WAYLAND_USE_VAAPI
-    // Create VideoFramePool in case we need it.
-    if (!mVideoFramePool && mEnableHardwareDecoding) {
-      mVideoFramePool = MakeUnique<VideoFramePool<LIBAV_VER>>();
-    }
-
     // Release unused VA-API surfaces before avcodec_receive_frame() as
     // ffmpeg recycles VASurface for HW decoding.
     if (mVideoFramePool) {
@@ -1316,8 +1317,16 @@ MediaResult FFmpegVideoDecoder<LIBAV_VER>::CreateImageVAAPI(
         NS_ERROR_DOM_MEDIA_DECODE_ERR,
         RESULT_DETAIL("Unable to get frame by vaExportSurfaceHandle()"));
   }
+  auto releaseSurfaceDescriptor = MakeScopeExit(
+      [&] { DMABufSurfaceYUV::ReleaseVADRMPRIMESurfaceDescriptor(vaDesc); });
 
   MOZ_ASSERT(mTaskQueue->IsOnCurrentThread());
+  if (!mVideoFramePool) {
+    AVHWFramesContext* context =
+        (AVHWFramesContext*)mCodecContext->hw_frames_ctx->data;
+    mVideoFramePool =
+        MakeUnique<VideoFramePool<LIBAV_VER>>(context->initial_pool_size);
+  }
   auto surface = mVideoFramePool->GetVideoFrameSurface(
       vaDesc, mFrame->width, mFrame->height, mCodecContext, mFrame, mLib);
   if (!surface) {

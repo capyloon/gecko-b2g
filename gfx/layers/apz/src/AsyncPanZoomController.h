@@ -35,6 +35,8 @@
 #include "RecentEventsBuffer.h"  // for RecentEventsBuffer
 #include "SampledAPZCState.h"
 
+#include <iosfwd>
+
 namespace mozilla {
 
 namespace ipc {
@@ -146,6 +148,10 @@ struct PointerEventsConsumableFlags {
   bool mAllowedByTouchAction = false;
 
   bool IsConsumable() const { return mHasRoom && mAllowedByTouchAction; }
+  friend bool operator==(const PointerEventsConsumableFlags& aLhs,
+                         const PointerEventsConsumableFlags& aRhs);
+  friend std::ostream& operator<<(std::ostream& aOut,
+                                  const PointerEventsConsumableFlags& aFlags);
 };
 
 /**
@@ -1187,12 +1193,11 @@ class AsyncPanZoomController {
       AsyncTransformConsumer aMode) const;
 
   /**
-   * Get the current scroll offset of the scrollable frame corresponding
-   * to this APZC, including the effects of any asynchronous panning, in
-   * CSS pixels.
+   * Get the current visual viewport of the scrollable frame corresponding
+   * to this APZC, including the effects of any asynchronous panning and
+   * zooming, in CSS pixels.
    */
-  CSSPoint GetCurrentAsyncScrollOffsetInCssPixels(
-      AsyncTransformConsumer aMode) const;
+  CSSRect GetCurrentAsyncVisualViewport(AsyncTransformConsumer aMode) const;
 
   /**
    * Return a visual effect that reflects this apzc's

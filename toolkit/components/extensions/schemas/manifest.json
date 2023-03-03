@@ -148,6 +148,11 @@
                     "type": "array",
                     "items": { "$ref": "ExtensionURL" }
                   },
+                  "type": {
+                    "optional": true,
+                    "type": "string",
+                    "enum": ["module", "classic"]
+                  },
                   "persistent": {
                     "optional": true,
                     "type": "boolean",
@@ -338,13 +343,6 @@
 
         "$import": "ManifestBase",
         "properties": {
-          "homepage_url": {
-            "type": "string",
-            "format": "url",
-            "optional": true,
-            "preprocess": "localize"
-          },
-
           "langpack_id": {
             "type": "string",
             "pattern": "^[a-zA-Z][a-zA-Z-]+$"
@@ -414,13 +412,6 @@
 
         "$import": "ManifestBase",
         "properties": {
-          "homepage_url": {
-            "type": "string",
-            "format": "url",
-            "optional": true,
-            "preprocess": "localize"
-          },
-
           "dictionaries": {
             "type": "object",
             "patternProperties": {

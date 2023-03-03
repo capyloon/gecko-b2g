@@ -643,7 +643,7 @@ class ScriptSource {
       js_delete(this);
     }
   }
-  [[nodiscard]] bool initFromOptions(JSContext* cx, FrontendContext* fc,
+  [[nodiscard]] bool initFromOptions(FrontendContext* fc,
                                      const JS::ReadOnlyCompileOptions& options);
 
   /**
@@ -993,14 +993,13 @@ class ScriptSource {
   const char* filename() const {
     return filename_ ? filename_.chars() : nullptr;
   }
-  [[nodiscard]] bool setFilename(JSContext* cx, FrontendContext* fc,
-                                 const char* filename);
+  [[nodiscard]] bool setFilename(FrontendContext* fc, const char* filename);
   [[nodiscard]] bool setFilename(FrontendContext* fc, UniqueChars&& filename);
 
   const char* introducerFilename() const {
     return introducerFilename_ ? introducerFilename_.chars() : filename();
   }
-  [[nodiscard]] bool setIntroducerFilename(JSContext* cx, FrontendContext* fc,
+  [[nodiscard]] bool setIntroducerFilename(FrontendContext* fc,
                                            const char* filename);
   [[nodiscard]] bool setIntroducerFilename(FrontendContext* fc,
                                            UniqueChars&& filename);
@@ -1014,16 +1013,14 @@ class ScriptSource {
   uint32_t id() const { return id_; }
 
   // Display URLs
-  [[nodiscard]] bool setDisplayURL(JSContext* cx, FrontendContext* fc,
-                                   const char16_t* url);
-  [[nodiscard]] bool setDisplayURL(JSContext* cx, FrontendContext* fc,
+  [[nodiscard]] bool setDisplayURL(FrontendContext* fc, const char16_t* url);
+  [[nodiscard]] bool setDisplayURL(FrontendContext* fc,
                                    UniqueTwoByteChars&& url);
   bool hasDisplayURL() const { return bool(displayURL_); }
   const char16_t* displayURL() { return displayURL_.chars(); }
 
   // Source maps
-  [[nodiscard]] bool setSourceMapURL(JSContext* cx, FrontendContext* fc,
-                                     const char16_t* url);
+  [[nodiscard]] bool setSourceMapURL(FrontendContext* fc, const char16_t* url);
   [[nodiscard]] bool setSourceMapURL(FrontendContext* fc,
                                      UniqueTwoByteChars&& url);
   bool hasSourceMapURL() const { return bool(sourceMapURL_); }
@@ -1235,9 +1232,9 @@ class ScriptWarmUpData {
     MOZ_ASSERT(isWarmUpCount());
     setWarmUpCount(count);
   }
-  void incWarmUpCount(uint32_t amount) {
+  void incWarmUpCount() {
     MOZ_ASSERT(isWarmUpCount());
-    data_ += uintptr_t(amount) << NumTagBits;
+    data_ += uintptr_t(1) << NumTagBits;
   }
 
   jit::JitScript* toJitScript() const {
@@ -1894,7 +1891,7 @@ class JSScript : public js::BaseScript {
 
  public:
   inline uint32_t getWarmUpCount() const;
-  inline void incWarmUpCounter(uint32_t amount = 1);
+  inline void incWarmUpCounter();
   inline void resetWarmUpCounterForGC();
 
   void resetWarmUpCounterToDelayIonCompilation();
@@ -2173,8 +2170,7 @@ struct ScriptAndCounts {
   }
 };
 
-extern JS::UniqueChars FormatIntroducedFilename(JSContext* cx,
-                                                const char* filename,
+extern JS::UniqueChars FormatIntroducedFilename(const char* filename,
                                                 unsigned lineno,
                                                 const char* introducer);
 

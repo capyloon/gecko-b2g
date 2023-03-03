@@ -509,14 +509,13 @@ static nsresult GetTableSelectionMode(const nsRange& aRange,
     return NS_OK;
   }
 
-  nsIContent* startContent = static_cast<nsIContent*>(startNode);
-  if (!(startNode->IsElement() && startContent->IsHTMLElement())) {
+  if (!startNode->IsHTMLElement()) {
     // Implies a check for being an element; if we ever make this work
     // for non-HTML, need to keep checking for elements.
     return NS_OK;
   }
 
-  if (startContent->IsHTMLElement(nsGkAtoms::tr)) {
+  if (startNode->IsHTMLElement(nsGkAtoms::tr)) {
     *aTableSelectionType = TableSelectionMode::Cell;
   } else  // check to see if we are selecting a table or row (column and all
           // cells not done yet)
@@ -967,11 +966,10 @@ nsresult Selection::AddRangesForUserSelectableNodes(
       GetDirection() == eDirPrevious ? 0 : rangesToAdd.Length() - 1;
   for (size_t i = 0; i < rangesToAdd.Length(); ++i) {
     Maybe<size_t> index;
-    const RefPtr<Selection> selection{this};
     // `MOZ_KnownLive` needed because of broken static analysis
     // (https://bugzilla.mozilla.org/show_bug.cgi?id=1622253#c1).
     nsresult rv = mStyledRanges.MaybeAddRangeAndTruncateOverlaps(
-        MOZ_KnownLive(rangesToAdd[i]), &index, *selection);
+        MOZ_KnownLive(rangesToAdd[i]), &index);
     NS_ENSURE_SUCCESS(rv, rv);
     if (i == newAnchorFocusIndex) {
       *aOutIndex = index;
@@ -1008,13 +1006,11 @@ nsresult Selection::AddRangesForSelectableNodes(
                                            aDispatchSelectstartEvent);
   }
 
-  const RefPtr<Selection> selection{this};
-  return mStyledRanges.MaybeAddRangeAndTruncateOverlaps(aRange, aOutIndex,
-                                                        *selection);
+  return mStyledRanges.MaybeAddRangeAndTruncateOverlaps(aRange, aOutIndex);
 }
 
 nsresult Selection::StyledRanges::MaybeAddRangeAndTruncateOverlaps(
-    nsRange* aRange, Maybe<size_t>* aOutIndex, Selection& aSelection) {
+    nsRange* aRange, Maybe<size_t>* aOutIndex) {
   MOZ_ASSERT(aRange);
   MOZ_ASSERT(aRange->IsPositioned());
   MOZ_ASSERT(aOutIndex);
@@ -1025,7 +1021,7 @@ nsresult Selection::StyledRanges::MaybeAddRangeAndTruncateOverlaps(
     // XXX(Bug 1631371) Check if this should use a fallible operation as it
     // pretended earlier.
     mRanges.AppendElement(StyledRange(aRange));
-    aRange->RegisterSelection(aSelection);
+    aRange->RegisterSelection(MOZ_KnownLive(mSelection));
 
     aOutIndex->emplace(0u);
     return NS_OK;
@@ -1065,7 +1061,7 @@ nsresult Selection::StyledRanges::MaybeAddRangeAndTruncateOverlaps(
     // XXX(Bug 1631371) Check if this should use a fallible operation as it
     // pretended earlier.
     mRanges.InsertElementAt(startIndex, StyledRange(aRange));
-    aRange->RegisterSelection(aSelection);
+    aRange->RegisterSelection(MOZ_KnownLive(mSelection));
     aOutIndex->emplace(startIndex);
     return NS_OK;
   }
@@ -1084,7 +1080,7 @@ nsresult Selection::StyledRanges::MaybeAddRangeAndTruncateOverlaps(
 
   // Remove all the overlapping ranges
   for (size_t i = startIndex; i < endIndex; ++i) {
-    mRanges[i].mRange->UnregisterSelection();
+    mRanges[i].mRange->UnregisterSelection(mSelection);
   }
   mRanges.RemoveElementsAt(startIndex, endIndex - startIndex);
 
@@ -1106,7 +1102,7 @@ nsresult Selection::StyledRanges::MaybeAddRangeAndTruncateOverlaps(
   mRanges.InsertElementsAt(startIndex, temp);
 
   for (uint32_t i = 0; i < temp.Length(); ++i) {
-    MOZ_KnownLive(temp[i].mRange)->RegisterSelection(aSelection);
+    MOZ_KnownLive(temp[i].mRange)->RegisterSelection(MOZ_KnownLive(mSelection));
     // `MOZ_KnownLive` is required because of
     // https://bugzilla.mozilla.org/show_bug.cgi?id=1622253.
   }
@@ -1132,7 +1128,7 @@ nsresult Selection::StyledRanges::RemoveRangeAndUnregisterSelection(
   if (idx < 0) return NS_ERROR_DOM_NOT_FOUND_ERR;
 
   mRanges.RemoveElementAt(idx);
-  aRange.UnregisterSelection();
+  aRange.UnregisterSelection(mSelection);
   return NS_OK;
 }
 nsresult Selection::RemoveCollapsedRanges() {
@@ -1471,8 +1467,8 @@ nsresult Selection::SelectFramesOfInclusiveDescendantsOfContent(
 void Selection::SelectFramesInAllRanges(nsPresContext* aPresContext) {
   for (size_t i = 0; i < mStyledRanges.Length(); ++i) {
     nsRange* range = mStyledRanges.mRanges[i].mRange;
-    MOZ_ASSERT(range->IsInSelection());
-    SelectFrames(aPresContext, range, range->IsInSelection());
+    MOZ_ASSERT(range->IsInAnySelection());
+    SelectFrames(aPresContext, range, range->IsInAnySelection());
   }
 }
 
@@ -1698,6 +1694,7 @@ UniquePtr<SelectionDetails> Selection::LookUpSelection(
     newHead->mStart = AssertedCast<int32_t>(*start);
     newHead->mEnd = AssertedCast<int32_t>(*end);
     newHead->mSelectionType = aSelectionType;
+    newHead->mHighlightName = mHighlightName;
     StyledRange* rd = mStyledRanges.FindRangeData(range);
     if (rd) {
       newHead->mTextRangeStyle = rd->mTextRangeStyle;
@@ -1789,7 +1786,7 @@ void Selection::SetAncestorLimiter(nsIContent* aLimiter) {
 void Selection::StyledRanges::UnregisterSelection() {
   uint32_t count = mRanges.Length();
   for (uint32_t i = 0; i < count; ++i) {
-    mRanges[i].mRange->UnregisterSelection();
+    mRanges[i].mRange->UnregisterSelection(mSelection);
   }
 }
 
@@ -1946,15 +1943,16 @@ void Selection::AddRangeAndSelectFramesAndNotifyListeners(nsRange& aRange,
 void Selection::AddRangeAndSelectFramesAndNotifyListeners(nsRange& aRange,
                                                           Document* aDocument,
                                                           ErrorResult& aRv) {
-  // If the given range is part of another Selection, we need to clone the
-  // range first.
-  RefPtr<nsRange> range;
-  if (aRange.IsInSelection() && aRange.GetSelection() != this) {
-    // Because of performance reason, when there is a cached range, let's use
-    // it.  Otherwise, clone the range.
-    range = aRange.CloneRange();
-  } else {
-    range = &aRange;
+  RefPtr<nsRange> range = &aRange;
+  if (aRange.IsInAnySelection()) {
+    if (aRange.IsInSelection(*this)) {
+      // If we already have the range, we don't need to handle this.
+      return;
+    }
+    if (mSelectionType != SelectionType::eNormal &&
+        mSelectionType != SelectionType::eHighlight) {
+      range = aRange.CloneRange();
+    }
   }
 
   nsINode* rangeRoot = range->GetRoot();
@@ -3193,14 +3191,14 @@ void Selection::NotifySelectionListeners() {
     frameSelection->SetChangesDuringBatchingFlag();
     return;
   }
-  if (mSelectionListeners.IsEmpty()) {
+  if (mSelectionListeners.IsEmpty() && !mNotifyAutoCopy &&
+      !mAccessibleCaretEventHub && !mSelectionChangeEventDispatcher) {
     // If there are no selection listeners, we're done!
     return;
   }
 
   nsCOMPtr<Document> doc;
-  PresShell* presShell = GetPresShell();
-  if (presShell) {
+  if (PresShell* presShell = GetPresShell()) {
     doc = presShell->GetDocument();
     presShell->ScheduleContentRelevancyUpdate(ContentRelevancyReason::Selected);
   }
@@ -3232,6 +3230,7 @@ void Selection::NotifySelectionListeners() {
         mSelectionChangeEventDispatcher);
     dispatcher->OnSelectionChange(doc, this, reason);
   }
+
   for (const auto& listener : selectionListeners) {
     // MOZ_KnownLive because 'selectionListeners' is guaranteed to
     // keep it alive.
@@ -3701,6 +3700,11 @@ void Selection::SetColors(const nsAString& aForegroundColor,
 }
 
 void Selection::ResetColors(ErrorResult& aRv) { mCustomColors = nullptr; }
+
+void Selection::SetHighlightName(const nsAtom* aHighlightName) {
+  MOZ_ASSERT(mSelectionType == SelectionType::eHighlight);
+  mHighlightName = aHighlightName;
+}
 
 JSObject* Selection::WrapObject(JSContext* aCx,
                                 JS::Handle<JSObject*> aGivenProto) {

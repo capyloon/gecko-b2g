@@ -13,6 +13,18 @@
  * limitations under the License.
  */
 
+:root {
+  --highlight-bg-color: rgba(180, 0, 170, 1);
+  --highlight-selected-bg-color: rgba(0, 100, 0, 1);
+}
+
+@media screen and (forced-colors: active) {
+  :root {
+    --highlight-bg-color: Highlight;
+    --highlight-selected-bg-color: ButtonText;
+  }
+}
+
 .textLayer {
   position: absolute;
   text-align: initial;
@@ -48,7 +60,7 @@
 .textLayer .highlight {
   margin: -1px;
   padding: 1px;
-  background-color: rgba(180, 0, 170, 1);
+  background-color: var(--highlight-bg-color);
   border-radius: 4px;
 }
 
@@ -69,7 +81,7 @@
 }
 
 .textLayer .highlight.selected {
-  background-color: rgba(0, 100, 0, 1);
+  background-color: var(--highlight-selected-bg-color);
 }
 
 .textLayer ::selection {
@@ -105,14 +117,16 @@
   --input-unfocused-border-color: transparent;
   --input-disabled-border-color: transparent;
   --input-hover-border-color: black;
+  --link-outline: none;
 }
 
-@media (forced-colors: active) {
+@media screen and (forced-colors: active) {
   :root {
     --input-focus-border-color: CanvasText;
     --input-unfocused-border-color: ActiveText;
     --input-disabled-border-color: GrayText;
     --input-hover-border-color: Highlight;
+    --link-outline: 1.5px solid LinkText;
   }
   .annotationLayer .textWidgetAnnotation input:required,
   .annotationLayer .textWidgetAnnotation textarea:required,
@@ -120,6 +134,10 @@
   .annotationLayer .buttonWidgetAnnotation.checkBox input:required,
   .annotationLayer .buttonWidgetAnnotation.radioButton input:required {
     outline: 1.5px solid selectedItem;
+  }
+
+  .annotationLayer .linkAnnotation:hover {
+    backdrop-filter: invert(100%);
   }
 }
 
@@ -138,6 +156,10 @@
   pointer-events: auto;
   box-sizing: border-box;
   transform-origin: 0 0;
+}
+
+.annotationLayer .linkAnnotation {
+  outline: var(--link-outline);
 }
 
 .annotationLayer .linkAnnotation > a,
@@ -404,7 +426,7 @@
   --xfa-focus-outline: auto;
 }
 
-@media (forced-colors: active) {
+@media screen and (forced-colors: active) {
   :root {
     --xfa-focus-outline: 2px solid CanvasText;
   }
@@ -752,7 +774,7 @@
   }
 }
 
-@media (forced-colors: active) {
+@media screen and (forced-colors: active) {
   :root {
     --focus-outline: solid 3px ButtonText;
     --hover-outline: dashed 3px ButtonText;
@@ -887,7 +909,6 @@
   --page-margin: 1px auto -8px;
   --page-border: 9px solid transparent;
   --spreadHorizontalWrapped-margin-LR: -3.5px;
-  --scale-factor: 1;
   --loading-icon-delay: 400ms;
 }
 
@@ -911,6 +932,10 @@
 }
 
 .pdfViewer {
+  /* Define this variable here and not in :root to avoid to reflow all the UI
+     when scaling (see #15929). */
+  --scale-factor: 1;
+
   padding-bottom: var(--pdfViewer-padding-bottom);
 }
 
@@ -939,20 +964,6 @@
   height: var(--viewer-container-height);
 }
 
-.pdfViewer.removePageBorders .page {
-  margin: 0 auto 10px;
-  border: none;
-}
-
-.pdfViewer.singlePageView {
-  display: inline-block;
-}
-
-.pdfViewer.singlePageView .page {
-  margin: 0;
-  border: none;
-}
-
 .pdfViewer.scrollHorizontal,
 .pdfViewer.scrollWrapped,
 .spread {
@@ -966,7 +977,6 @@
   white-space: nowrap;
 }
 
-.pdfViewer.removePageBorders,
 .pdfViewer.scrollHorizontal .spread,
 .pdfViewer.scrollWrapped .spread {
   margin-left: 0;
@@ -990,16 +1000,13 @@
   margin-right: var(--spreadHorizontalWrapped-margin-LR);
 }
 
-.pdfViewer.removePageBorders .spread .page,
-.pdfViewer.removePageBorders.scrollHorizontal .page,
-.pdfViewer.removePageBorders.scrollWrapped .page {
-  margin-left: 5px;
-  margin-right: 5px;
-}
-
 .pdfViewer .page canvas {
   margin: 0;
   display: block;
+}
+
+.pdfViewer .page canvas .structTree {
+  contain: strict;
 }
 
 .pdfViewer .page canvas[hidden] {
@@ -1011,24 +1018,30 @@
   height: 100%;
 }
 
-.pdfViewer .page .loadingIcon {
+.pdfViewer .page.loadingIcon:after {
   position: absolute;
-  display: block;
-  left: 0;
   top: 0;
-  right: 0;
-  bottom: 0;
+  left: 0;
+  content: "";
+  width: 100%;
+  height: 100%;
   background: url("images/loading-icon.gif") center no-repeat;
-  visibility: visible;
+  display: none;
   /* Using a delay with background-image doesn't work,
-     consequently we use the visibility. */
-  transition-property: visibility;
+     consequently we use the display. */
+  transition-property: display;
   transition-delay: var(--loading-icon-delay);
   z-index: 5;
+  contain: strict;
 }
-.pdfViewer .page .loadingIcon.notVisible {
+
+.pdfViewer .page.loading:after {
+  display: block;
+}
+
+.pdfViewer .page:not(.loading):after {
   transition-property: none;
-  visibility: hidden;
+  display: none;
 }
 
 .pdfViewer.enablePermissions .textLayer span {
@@ -1255,88 +1268,6 @@ dialog :link {
   width: 200px;
 }
 
-.grab-to-pan-grab {
-  cursor: grab !important;
-}
-.grab-to-pan-grab
-  *:not(input):not(textarea):not(button):not(select):not(:link) {
-  cursor: inherit !important;
-}
-.grab-to-pan-grab:active,
-.grab-to-pan-grabbing {
-  cursor: grabbing !important;
-  position: fixed;
-  background: rgba(0, 0, 0, 0);
-  display: block;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  overflow: hidden;
-  z-index: 50000; /* should be higher than anything else in PDF.js! */
-}
-
 @page {
   margin: 0;
-}
-
-.visibleLargeView,
-.visibleMediumView {
-  display: none;
-}
-
-@media all and (max-width: 900px) {
-  #toolbarViewerMiddle {
-    display: table;
-    margin: auto;
-    left: auto;
-    position: inherit;
-    transform: none;
-  }
-}
-
-@media all and (max-width: 840px) {
-  #sidebarContainer {
-    background-color: var(--sidebar-narrow-bg-color);
-  }
-  #outerContainer.sidebarOpen #viewerContainer {
-    inset-inline-start: 0 !important;
-  }
-}
-
-@media all and (max-width: 820px) {
-  #outerContainer .hiddenLargeView {
-    display: none;
-  }
-  #outerContainer .visibleLargeView {
-    display: inherit;
-  }
-}
-
-@media all and (max-width: 750px) {
-  #outerContainer .hiddenMediumView {
-    display: none;
-  }
-  #outerContainer .visibleMediumView {
-    display: inherit;
-  }
-}
-
-@media all and (max-width: 690px) {
-  .hiddenSmallView,
-  .hiddenSmallView * {
-    display: none;
-  }
-  .toolbarButtonSpacer {
-    width: 0;
-  }
-  .findbar {
-    inset-inline-start: 34px;
-  }
-}
-
-@media all and (max-width: 560px) {
-  #scaleSelectContainer {
-    display: none;
-  }
 }

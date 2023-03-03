@@ -101,11 +101,13 @@ class AutofillTelemetryBase {
       // If the `guid` is not null, it means we're editing an existing record.
       // In that case, all fields in the record are autofilled, and fields in
       // `untouchedFields` are unmodified.
-      for (let fieldName of Object.keys(record.record)) {
+      for (const [fieldName, value] of Object.entries(record.record)) {
         if (record.untouchedFields?.includes(fieldName)) {
           this.#setFormEventExtra(extra, fieldName, "autofilled");
-        } else {
+        } else if (value) {
           this.#setFormEventExtra(extra, fieldName, "user_filled");
+        } else {
+          this.#setFormEventExtra(extra, fieldName, "not_filled");
         }
       }
     } else {
@@ -160,12 +162,12 @@ class AutofillTelemetryBase {
     return undefined;
   }
 
-  recordDoorhangerEvent(method, record) {
+  recordDoorhangerEvent(method, flowId, isCapture) {
     Services.telemetry.recordEvent(
       this.EVENT_CATEGORY,
       method,
-      record.guid ? "update_doorhanger" : "capture_doorhanger",
-      record.flowId
+      isCapture ? "capture_doorhanger" : "update_doorhanger",
+      flowId
     );
   }
 
@@ -483,12 +485,12 @@ class AutofillTelemetry {
    * Event name: doorhanger
    */
 
-  static recordDoorhangerShown(type, record) {
+  static recordDoorhangerShown(type, flowId, isCapture) {
     const telemetry = this.#getTelemetryByType(type);
-    telemetry.recordDoorhangerEvent("show", record);
+    telemetry.recordDoorhangerEvent("show", flowId, isCapture);
   }
 
-  static recordDoorhangerClicked(type, method, record) {
+  static recordDoorhangerClicked(type, method, flowId, isCapture) {
     const telemetry = this.#getTelemetryByType(type);
 
     // We don't have `create` method in telemetry, we treat `create` as `save`
@@ -501,7 +503,7 @@ class AutofillTelemetry {
         break;
     }
 
-    telemetry.recordDoorhangerEvent(method, record);
+    telemetry.recordDoorhangerEvent(method, flowId, isCapture);
   }
 
   /**

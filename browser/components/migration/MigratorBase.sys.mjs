@@ -51,10 +51,31 @@ export class MigratorBase {
    * migrator, for example "firefox", "chrome", "opera-gx". This key is what
    * is used as an identifier when calling MigrationUtils.getMigrator.
    *
-   * @type {boolean}
+   * @type {string}
    */
   static get key() {
-    throw new Error("MigratorBase must be overridden.");
+    throw new Error("MigratorBase.key must be overridden.");
+  }
+
+  /**
+   * This must be overridden to return a Fluent string ID mapping to the display
+   * name for this migrator. These strings should be defined in migrationWizard.ftl.
+   *
+   * @type {string}
+   */
+  static get displayNameL10nID() {
+    throw new Error("MigratorBase.displayNameL10nID must be overridden.");
+  }
+
+  /**
+   * This method should get overridden to return an icon url of the browser
+   * to be imported from. By default, this will just use the default Favicon
+   * image.
+   *
+   * @type {string}
+   */
+  static get brandImage() {
+    return "chrome://global/skin/icons/defaultFavicon.svg";
   }
 
   /**
@@ -207,8 +228,12 @@ export class MigratorBase {
    *   True if this migration is occurring during startup.
    * @param {object|string} aProfile
    *   The other browser profile that is being migrated from.
+   * @param {Function|null} aProgressCallback
+   *   An optional callback that will be fired once a resourceType has finished
+   *   migrating. The callback will be passed the numeric representation of the
+   *   resource type.
    */
-  async migrate(aItems, aStartup, aProfile) {
+  async migrate(aItems, aStartup, aProfile, aProgressCallback = () => {}) {
     let resources = await this.#getMaybeCachedResources(aProfile);
     if (!resources.length) {
       throw new Error("migrate called for a non-existent source");
@@ -275,7 +300,7 @@ export class MigratorBase {
               .getKeyedHistogramById(histogramId)
               .add(browserKey, accumulatedDelay);
           } catch (ex) {
-            Cu.reportError(histogramId + ": " + ex);
+            console.error(histogramId, ": ", ex);
           }
         }
       }
@@ -295,7 +320,7 @@ export class MigratorBase {
               lazy.MigrationUtils._importQuantities[resourceType]
             );
         } catch (ex) {
-          Cu.reportError(histogramId + ": " + ex);
+          console.error(histogramId, ": ", ex);
         }
       }
     };
@@ -347,6 +372,9 @@ export class MigratorBase {
                   : "Migration:ItemError",
                 migrationType
               );
+
+              aProgressCallback(migrationType);
+
               resourcesGroupedByItems.delete(migrationType);
 
               if (stopwatchHistogramId) {
@@ -374,7 +402,7 @@ export class MigratorBase {
           try {
             res.migrate(resourceDone);
           } catch (ex) {
-            Cu.reportError(ex);
+            console.error(ex);
             resourceDone(false);
           }
 
@@ -394,7 +422,7 @@ export class MigratorBase {
       // Note: We do not need to do so for the Firefox migrator
       // (=startupOnlyMigrator), as it just copies over the places database
       // from another profile.
-      (async function() {
+      await (async function() {
         // Tell nsBrowserGlue we're importing default bookmarks.
         let browserGlue = Cc["@mozilla.org/browser/browserglue;1"].getService(
           Ci.nsIObserver
@@ -408,7 +436,7 @@ export class MigratorBase {
             replace: true,
             source: lazy.PlacesUtils.bookmarks.SOURCES.RESTORE_ON_STARTUP,
           }
-        ).catch(Cu.reportError);
+        ).catch(console.error);
 
         // We'll tell nsBrowserGlue we've imported bookmarks, but before that
         // we need to make sure we're going to know when it's finished
@@ -428,11 +456,11 @@ export class MigratorBase {
         });
         browserGlue.observe(null, TOPIC_DID_IMPORT_BOOKMARKS, "");
         await placesInitedPromise;
-        doMigrate();
+        await doMigrate();
       })();
       return;
     }
-    doMigrate();
+    await doMigrate();
   }
 
   /**
@@ -463,7 +491,7 @@ export class MigratorBase {
         exists = !!profiles.length;
       }
     } catch (ex) {
-      Cu.reportError(ex);
+      console.error(ex);
     }
     return exists;
   }

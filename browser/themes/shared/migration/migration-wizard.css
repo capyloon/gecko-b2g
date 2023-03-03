@@ -19,13 +19,46 @@ fieldset {
   border: 0;
 }
 
-label {
+label:not([hidden]) {
   display: flex;
   align-items: center;
+  width: fit-content;
 }
 
 button {
   margin-block-end: 0;
+}
+
+div[name="page-selection"]:not([show-import-all]) #select-all,
+div[name="page-selection"]:not([show-import-all]) summary {
+  display: none;
+}
+
+div[name="page-selection"][show-import-all] label:not(#select-all)  {
+  margin-inline-start: 24px;
+}
+
+div[name="page-selection"][show-import-all] #select-all  {
+  display: flex;
+}
+
+details[open] .dropdown-icon {
+  background-image: url("chrome://browser/skin/zoom-out.svg");
+}
+
+.dropdown-icon {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  background-image: url("chrome://global/skin/icons/plus.svg");
+  grid-area: b;
+  -moz-context-properties: fill;
+  fill: currentColor;
+  justify-self: end;
+}
+
+details:not([open]) summary {
+  margin-block-end: 16px;
 }
 
 :host(:not([dialog-mode])) .cancel-close {
@@ -51,6 +84,8 @@ button {
 
 .success-text {
   grid-area: status;
+  font-size: 0.81em;
+  color: var(--in-content-deemphasized-text);
 }
 
 .progress-icon {
@@ -72,6 +107,13 @@ button {
   overflow: hidden;
   display: flex;
   align-items: center;
+}
+
+.resource-selection-details > summary {
+  list-style: none;
+  display: grid;
+  grid-template-areas: "a b"
+                       "c b";
 }
 
 @media (prefers-reduced-motion: reduce) {

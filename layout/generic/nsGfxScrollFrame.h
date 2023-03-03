@@ -150,7 +150,7 @@ class ScrollFrameHelper : public nsIReflowCallback {
   void PostScrolledAreaEvent();
   MOZ_CAN_RUN_SCRIPT void FireScrolledAreaEvent();
 
-  bool IsSmoothScrollingEnabled();
+  static bool IsSmoothScrollingEnabled();
 
   /**
    * @note This method might destroy the frame, pres shell and other objects.
@@ -978,16 +978,9 @@ class nsHTMLScrollFrame : public nsContainerFrame,
     return mHelper.ComputeCustomOverflow(aOverflowAreas);
   }
 
-  nscoord GetLogicalBaseline(mozilla::WritingMode aWritingMode) const final;
-
-  bool GetVerticalAlignBaseline(mozilla::WritingMode aWM,
-                                nscoord* aBaseline) const final {
-    NS_ASSERTION(!aWM.IsOrthogonalTo(GetWritingMode()),
-                 "You should only call this on frames with a WM that's "
-                 "parallel to aWM");
-    *aBaseline = GetLogicalBaseline(aWM);
-    return true;
-  }
+  Maybe<nscoord> GetNaturalBaselineBOffset(
+      mozilla::WritingMode aWM,
+      BaselineSharingGroup aBaselineGroup) const override;
 
   // Recomputes the scrollable overflow area we store in the helper to take
   // children that are affected by perpsective set on the outer frame and scroll
@@ -1444,12 +1437,6 @@ class nsXULScrollFrame final : public nsBoxFrame,
 
   bool ComputeCustomOverflow(mozilla::OverflowAreas& aOverflowAreas) final {
     return mHelper.ComputeCustomOverflow(aOverflowAreas);
-  }
-
-  bool GetVerticalAlignBaseline(mozilla::WritingMode aWM,
-                                nscoord* aBaseline) const final {
-    *aBaseline = GetLogicalBaseline(aWM);
-    return true;
   }
 
   // Called to set the child frames. We typically have three: the scroll area,

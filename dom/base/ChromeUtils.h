@@ -284,6 +284,13 @@ class ChromeUtils {
   static bool IsDarkBackground(GlobalObject&, Element&);
 
   static double DateNow(GlobalObject&);
+
+  static void EnsureJSOracleStarted(GlobalObject&);
+
+  static unsigned AliveUtilityProcesses(const GlobalObject&);
+
+  static void GetAllPossibleUtilityActorNames(GlobalObject& aGlobal,
+                                              nsTArray<nsCString>& aNames);
 };
 
 }  // namespace dom

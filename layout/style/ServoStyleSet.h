@@ -7,6 +7,7 @@
 #ifndef mozilla_ServoStyleSet_h
 #define mozilla_ServoStyleSet_h
 
+#include "mozilla/AlreadyAddRefed.h"
 #include "mozilla/AnonymousContentKey.h"
 #include "mozilla/AtomArray.h"
 #include "mozilla/EnumeratedArray.h"
@@ -25,6 +26,7 @@
 #include "nsIMemoryReporter.h"
 #include "nsTArray.h"
 #include "nsIMemoryReporter.h"
+#include "nsSize.h"
 
 namespace mozilla {
 enum class MediaFeatureChangeReason : uint16_t;
@@ -220,6 +222,18 @@ class ServoStyleSet {
                                      IsProbe::Yes);
   }
 
+  /**
+   * @brief Get a style for a highlight pseudo element.
+   *
+   * The highlight is identified by its name `aHighlightName`.
+   *
+   * Returns null if there are no rules matching for the highlight pseudo
+   * element.
+   */
+  already_AddRefed<ComputedStyle> ProbeHighlightPseudoElementStyle(
+      const dom::Element& aOriginatingElement, const nsAtom* aHighlightName,
+      ComputedStyle* aParentStyle);
+
   // Resolves style for a (possibly-pseudo) Element without assuming that the
   // style has been resolved. If the element was unstyled and a new style
   // was resolved, it is not stored in the DOM. (That is, the element remains
@@ -260,6 +274,11 @@ class ServoStyleSet {
   // If the value is auto or square, then returns nothing.
   Maybe<StylePageSizeOrientation> GetDefaultPageSizeOrientation(
       const nsAtom* aFirstPageName);
+
+  // Gets the page size specified in CSS pages of a given page name.
+  // Return the page size width and height as app units.
+  // If the value is auto, then returns nothing.
+  Maybe<nsSize> GetPageSizeForPageName(const nsAtom* aPageName);
 
   void AppendAllNonDocumentAuthorSheets(nsTArray<StyleSheet*>& aArray) const;
 

@@ -39,9 +39,6 @@
   font-size: 15px;
   /* override --in-content-page-background from common-shared.css */
   background-color: transparent;
-}
-
-body {
   --fxview-background-color: var(--newtab-background-color, var(--in-content-page-background));
   --fxview-element-background-hover: color-mix(in srgb, var(--fxview-background-color) 90%, currentColor);
   --fxview-element-background-active: color-mix(in srgb, var(--fxview-background-color) 80%, currentColor);
@@ -58,7 +55,9 @@ body {
   --in-content-button-background-hover: var(--fxview-element-background-hover);
   --in-content-button-background-active: var(--fxview-element-background-active);
   --in-content-button-text-color-hover: var(--fxview-text-color-hover);
+}
 
+body {
   display: flex;
   justify-content: center;
   padding-block: var(--header-spacing) var(--footer-spacing);
@@ -69,12 +68,12 @@ body {
   color: var(--newtab-text-primary-color);
 }
 
-body:not([lwt-newtab]) {
+:root:not([lwt-newtab]) {
   --in-content-zap-gradient: linear-gradient(90deg, #9059FF 0%, #FF4AA2 52.08%, #FFBD4F 100%);
 }
 
 @media (prefers-color-scheme: dark) {
-  body {
+  :root {
     --fxview-element-background-hover: color-mix(in srgb, var(--fxview-background-color) 80%, white);
     --fxview-element-background-active: color-mix(in srgb, var(--fxview-background-color) 60%, white);
     --newtab-background-color-secondary: #42414d;
@@ -82,7 +81,7 @@ body:not([lwt-newtab]) {
 }
 
 @media (prefers-contrast) {
-  body {
+  :root {
     --fxview-element-background-hover: ButtonText;
     --fxview-element-background-active: ButtonText;
     --fxview-text-color-hover: ButtonFace;
@@ -629,18 +628,20 @@ details[open] > .page-section-header > .twisty {
 }
 
 @media (prefers-contrast) {
-  span.closed-tab-li-main,
-  button.closed-tab-li-dismiss {
+  .closed-tab-li-main,
+  .closed-tab-li-dismiss {
     color: ButtonText;
     border-radius: 4px;
     border: 1px solid ButtonText;
   }
 }
 
-.closed-tab-li-main:hover {
-  background-color: var(--fxview-element-background-hover);
-  color: var(--fxview-text-color-hover);
-}
+@media not (prefers-contrast) {
+   .closed-tab-li-main:hover {
+      background-color: var(--fxview-element-background-hover);
+      color: var(--fxview-text-color-hover);
+    }
+   }
 
 .closed-tab-li-main:hover .closed-tab-li-title {
   text-decoration-line: underline;
@@ -695,31 +696,25 @@ details[open] > .page-section-header > .twisty {
   fill: var(--in-content-button-text-color-hover);
 }
 
-.synced-tab-a,
-.synced-tab-a:hover,
-.synced-tab-a:active,
-.synced-tab-a:hover:active,
-.synced-tab-a:visited {
+.tab-link,
+.tab-link:hover,
+.tab-link:active,
+.tab-link:hover:active,
+.tab-link:visited {
   color: inherit;
   text-decoration: none;
-  height: 100%;
 }
 
 @media (prefers-contrast) {
-  .synced-tab-a {
+  .tab-link {
     border-color: FieldText;
   }
-  .synced-tab-a,
-  .synced-tab-a:hover,
-  .synced-tab-a:active,
-  .synced-tab-a:hover:active,
-  .synced-tab-a:visited {
+  .tab-link,
+  .tab-link:hover,
+  .tab-link:active,
+  .tab-link:hover:active,
+  .tab-link:visited {
     color: LinkText;
-  }
-  .synced-tab-a:focus-visible {
-    box-shadow: none;
-    outline: var(--in-content-focus-outline);
-    outline-offset: var(--in-content-focus-outline-offset);
   }
 }
 
@@ -797,7 +792,8 @@ details[open] > .page-section-header > .twisty {
   grid-template-areas:
     "favicon title title title"
     "favicon domain domain domain"
-    "favicon device device time"
+    "favicon device device time";
+  height: 100%;
 }
 
 .synced-tab-a:hover {
@@ -1021,6 +1017,10 @@ details[open] > .page-section-header > .twisty {
   text-align: center;
   padding: 0.3em 1em;
   font-size: 0.75em;
+}
+
+.synced-tab-li:not(:first-child) .last-active-badge {
+  display: none;
 }
 
 .dot {

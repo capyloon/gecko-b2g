@@ -10,11 +10,11 @@
 #include "nsWrapperCache.h"
 #include "nsCOMPtr.h"
 #include "nsPIDOMWindow.h"
+#include "nsPluginArray.h"
 #include "nsTArray.h"
 #include "mozilla/dom/BindingDeclarations.h"
 
 class nsMimeType;
-class nsPluginElement;
 
 /**
  * Array class backing HTML's navigator.mimeTypes.  This always holds

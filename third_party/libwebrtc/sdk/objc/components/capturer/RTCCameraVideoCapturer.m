@@ -186,6 +186,7 @@ const int64_t kNanosecondsPerSecond = 1000000000;
                       [self updateOrientation];
                       [self updateDeviceCaptureFormat:format fps:fps];
                       [self updateVideoDataOutputPixelFormat:format];
+                      [_videoDataOutput setSampleBufferDelegate:self queue:self.frameQueue];
                       [self.captureSession startRunning];
                       [self.currentDevice unlockForConfiguration];
                       self.isRunning = YES;
@@ -205,6 +206,7 @@ const int64_t kNanosecondsPerSecond = 1000000000;
                       for (AVCaptureDeviceInput *oldInput in [self.captureSession.inputs copy]) {
                         [self.captureSession removeInput:oldInput];
                       }
+                      [_videoDataOutput setSampleBufferDelegate:nil queue:nil];
                       [self.captureSession stopRunning];
 
 #if TARGET_OS_IPHONE
@@ -215,6 +217,11 @@ const int64_t kNanosecondsPerSecond = 1000000000;
                         }
                       });
 #endif
+
+                      // Wait for any pending captureOutput tasks.
+                      dispatch_sync(self.frameQueue, ^{
+                                    });
+
                       self.isRunning = NO;
                       if (completionHandler) {
                         completionHandler();
@@ -464,7 +471,6 @@ const int64_t kNanosecondsPerSecond = 1000000000;
   _outputPixelFormat = _preferredOutputPixelFormat;
   videoDataOutput.videoSettings = @{(NSString *)kCVPixelBufferPixelFormatTypeKey : pixelFormat};
   videoDataOutput.alwaysDiscardsLateVideoFrames = NO;
-  [videoDataOutput setSampleBufferDelegate:self queue:self.frameQueue];
   _videoDataOutput = videoDataOutput;
 }
 

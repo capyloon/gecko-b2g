@@ -39,6 +39,7 @@
 #include "mozilla/dom/workerinternals/JSSettings.h"
 #include "mozilla/dom/workerinternals/Queue.h"
 #include "mozilla/dom/JSExecutionManager.h"
+#include "mozilla/net/NeckoChannelParams.h"
 #include "mozilla/StaticPrefs_extensions.h"
 #include "nsContentUtils.h"
 #include "nsIChannel.h"
@@ -158,12 +159,12 @@ class WorkerPrivate final
 
   enum LoadGroupBehavior { InheritLoadGroup, OverrideLoadGroup };
 
-  static nsresult GetLoadInfo(JSContext* aCx, nsPIDOMWindowInner* aWindow,
-                              WorkerPrivate* aParent,
-                              const nsAString& aScriptURL, bool aIsChromeWorker,
-                              LoadGroupBehavior aLoadGroupBehavior,
-                              WorkerKind aWorkerKind,
-                              WorkerLoadInfo* aLoadInfo);
+  static nsresult GetLoadInfo(
+      JSContext* aCx, nsPIDOMWindowInner* aWindow, WorkerPrivate* aParent,
+      const nsAString& aScriptURL, const enum WorkerType& aWorkerType,
+      const RequestCredentials& aCredentials, bool aIsChromeWorker,
+      LoadGroupBehavior aLoadGroupBehavior, WorkerKind aWorkerKind,
+      WorkerLoadInfo* aLoadInfo);
 
   void Traverse(nsCycleCollectionTraversalCallback& aCb);
 
@@ -882,6 +883,11 @@ class WorkerPrivate final
     return mLoadInfo.mCookieJarSettings;
   }
 
+  const net::CookieJarSettingsArgs& CookieJarSettingsArgs() const {
+    MOZ_ASSERT(mLoadInfo.mCookieJarSettings);
+    return mLoadInfo.mCookieJarSettingsArgs;
+  }
+
   const OriginAttributes& GetOriginAttributes() const {
     return mLoadInfo.mOriginAttributes;
   }
@@ -1131,6 +1137,10 @@ class WorkerPrivate final
 
   void SetGCTimerMode(GCTimerMode aMode);
 
+ public:
+  void CancelGCTimers() { SetGCTimerMode(NoTimer); }
+
+ private:
   void ShutdownGCTimers();
 
   friend class WorkerRef;
@@ -1149,9 +1159,9 @@ class WorkerPrivate final
 
   friend class WorkerEventTarget;
 
-  bool RegisterShutdownTask(nsITargetShutdownTask* aTask);
+  nsresult RegisterShutdownTask(nsITargetShutdownTask* aTask);
 
-  bool UnregisterShutdownTask(nsITargetShutdownTask* aTask);
+  nsresult UnregisterShutdownTask(nsITargetShutdownTask* aTask);
 
   // Internal logic to dispatch a runnable. This is separate from Dispatch()
   // to allow runnables to be atomically dispatched in bulk.
@@ -1335,7 +1345,8 @@ class WorkerPrivate final
     nsCOMPtr<nsITimer> mTimer;
     nsCOMPtr<nsITimerCallback> mTimerRunnable;
 
-    nsCOMPtr<nsITimer> mGCTimer;
+    nsCOMPtr<nsITimer> mPeriodicGCTimer;
+    nsCOMPtr<nsITimer> mIdleGCTimer;
 
     RefPtr<MemoryReporter> mMemoryReporter;
 
@@ -1484,8 +1495,7 @@ class WorkerPrivate final
 
   nsTArray<nsCOMPtr<nsITargetShutdownTask>> mShutdownTasks
       MOZ_GUARDED_BY(mMutex);
-  bool mRunShutdownTasksStarted MOZ_GUARDED_BY(mMutex) = false;
-  bool mRunShutdownTasksFinished MOZ_GUARDED_BY(mMutex) = false;
+  bool mShutdownTasksRun MOZ_GUARDED_BY(mMutex) = false;
 };
 
 class AutoSyncLoopHolder {

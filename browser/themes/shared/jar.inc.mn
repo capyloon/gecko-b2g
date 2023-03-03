@@ -68,7 +68,7 @@
   skin/classic/browser/drm-icon.svg                            (../shared/drm-icon.svg)
   skin/classic/browser/identity-block/identity-block.css       (../shared/identity-block/identity-block.css)
   skin/classic/browser/permissions.svg                         (../shared/identity-block/permissions.svg)
-  skin/classic/browser/migration/migration-dialog.css          (../shared/migration/migration-dialog.css)
+  skin/classic/browser/migration/migration-dialog-window.css   (../shared/migration/migration-dialog-window.css)
   skin/classic/browser/migration/migration-wizard.css          (../shared/migration/migration-wizard.css)
   skin/classic/browser/migration/success.svg                   (../shared/migration/success.svg)
   skin/classic/browser/migration/progress-mask.svg                   (../shared/migration/progress-mask.svg)
@@ -98,7 +98,6 @@
   skin/classic/browser/tracking-protection-disabled.svg               (../shared/identity-block/tracking-protection-disabled.svg)
   skin/classic/browser/tracking-protection-active.svg                 (../shared/identity-block/tracking-protection-active.svg)
   skin/classic/browser/tracking-protection-active-brighttext.svg      (../shared/identity-block/tracking-protection-active-brighttext.svg)
-  skin/classic/browser/translation/infobar.css                        (../shared/translation/infobar.css)
 
   skin/classic/browser/toolbar-drag-indicator.svg                     (../shared/toolbar-drag-indicator.svg)
 
@@ -129,7 +128,6 @@
   skin/classic/browser/preferences/vpn-logo.svg                (../shared/preferences/vpn-logo.svg)
   skin/classic/browser/preferences/search.css                  (../shared/preferences/search.css)
   skin/classic/browser/preferences/siteDataSettings.css        (../shared/preferences/siteDataSettings.css)
-  skin/classic/browser/spotlight.css                           (../shared/spotlight.css)
   skin/classic/browser/fxa/fxa-spinner.svg                     (../shared/fxa/fxa-spinner.svg)
   skin/classic/browser/fxa/sync-illustration.svg               (../shared/fxa/sync-illustration.svg)
   skin/classic/browser/fxa/sync-illustration-issue.svg         (../shared/fxa/sync-illustration-issue.svg)
@@ -141,7 +139,6 @@
   skin/classic/browser/fxa/sync-devices.svg                    (../shared/fxa/sync-devices.svg)
   skin/classic/browser/fxa/send.svg                            (../shared/fxa/send.svg)
   skin/classic/browser/fxa/monitor.svg                         (../shared/fxa/monitor.svg)
-  skin/classic/browser/fxa/add-device.svg                      (../shared/fxa/add-device.svg)
 
   skin/classic/browser/fullscreen/warning.css                  (../shared/fullscreen/warning.css)
 
@@ -231,10 +228,6 @@
   skin/classic/browser/tabbrowser/tab-loading-inverted.png     (../shared/tabbrowser/tab-loading-inverted.png)
   skin/classic/browser/tabbrowser/tab-loading-inverted@2x.png  (../shared/tabbrowser/tab-loading-inverted@2x.png)
 
-  skin/classic/browser/translating-16.png                      (../shared/translation/translating-16.png)
-  skin/classic/browser/translating-16@2x.png                   (../shared/translation/translating-16@2x.png)
-  skin/classic/browser/translation-16.png                      (../shared/translation/translation-16.png)
-  skin/classic/browser/translation-16@2x.png                   (../shared/translation/translation-16@2x.png)
   skin/classic/browser/update-badge.svg                        (../shared/update-badge.svg)
   skin/classic/browser/profiler-popup-backdrop.png             (../shared/profiler-popup-backdrop.png)
   skin/classic/browser/tab-crashed.svg                         (../shared/incontent-icons/tab-crashed.svg)
@@ -242,6 +235,7 @@
   skin/classic/browser/panic-panel/header@2x.png               (../shared/panic-panel/header@2x.png)
   skin/classic/browser/panic-panel/icons.png                   (../shared/panic-panel/icons.png)
   skin/classic/browser/panic-panel/icons@2x.png                (../shared/panic-panel/icons@2x.png)
+  skin/classic/browser/places/organizer-shared.css             (../shared/places/organizer-shared.css)
   skin/classic/browser/places/sidebar.css                      (../shared/places/sidebar.css)
   skin/classic/browser/places/bookmarksMenu.svg                (../shared/places/bookmarksMenu.svg)
   skin/classic/browser/places/bookmarksToolbar.svg             (../shared/places/bookmarksToolbar.svg)

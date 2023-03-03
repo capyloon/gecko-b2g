@@ -111,15 +111,11 @@ NS_IMETHODIMP nsBaseClipboard::EmptyClipboard(int32_t aWhichClipboard) {
   }
 
   if (mIgnoreEmptyNotification) {
+    MOZ_DIAGNOSTIC_ASSERT(false, "How did we get here?");
     return NS_OK;
   }
 
-  if (mClipboardOwner) {
-    mClipboardOwner->LosingOwnership(mTransferable);
-    mClipboardOwner = nullptr;
-  }
-
-  mTransferable = nullptr;
+  ClearClipboardCache();
   return NS_OK;
 }
 
@@ -153,4 +149,12 @@ nsBaseClipboard::IsClipboardTypeSupported(int32_t aWhichClipboard,
   // We support global clipboard by default.
   *_retval = kGlobalClipboard == aWhichClipboard;
   return NS_OK;
+}
+
+void nsBaseClipboard::ClearClipboardCache() {
+  if (mClipboardOwner) {
+    mClipboardOwner->LosingOwnership(mTransferable);
+    mClipboardOwner = nullptr;
+  }
+  mTransferable = nullptr;
 }

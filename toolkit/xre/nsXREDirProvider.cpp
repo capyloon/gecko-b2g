@@ -77,13 +77,10 @@
 #  include "UIKitDirProvider.h"
 #endif
 
-#if defined(MOZ_SANDBOX)
+#if defined(MOZ_CONTENT_TEMP_DIR)
 #  include "mozilla/SandboxSettings.h"
 #  include "nsID.h"
 #  include "mozilla/Unused.h"
-#  if defined(XP_WIN)
-#    include "sandboxBroker.h"
-#  endif
 #endif
 
 #if defined(XP_MACOSX)
@@ -96,7 +93,7 @@
 
 #define PREF_OVERRIDE_DIRNAME "preferences"
 
-#if defined(MOZ_SANDBOX)
+#if defined(MOZ_CONTENT_TEMP_DIR)
 static already_AddRefed<nsIFile> GetProcessSandboxTempDir(
     GeckoProcessType type);
 static nsresult DeleteDirIfExists(nsIFile* dir);
@@ -161,6 +158,8 @@ nsresult nsXREDirProvider::Initialize(nsIFile* aXULAppDir, nsIFile* aGREDir) {
 
 nsresult nsXREDirProvider::SetProfile(nsIFile* aDir, nsIFile* aLocalDir) {
   MOZ_ASSERT(aDir && aLocalDir, "We don't support no-profile apps!");
+  MOZ_ASSERT(!mProfileDir && !mProfileLocalDir,
+             "You may only set the profile directories once");
 
   nsresult rv = EnsureDirectoryExists(aDir);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -329,15 +328,10 @@ nsXREDirProvider::GetFile(const char* aProperty, bool* aPersistent,
   nsCOMPtr<nsIFile> file;
 
   if (!strcmp(aProperty, NS_APP_USER_PROFILE_LOCAL_50_DIR)) {
-    NS_ENSURE_TRUE(mProfileNotified, NS_ERROR_FAILURE);
-
     if (mProfileLocalDir) {
       rv = mProfileLocalDir->Clone(getter_AddRefs(file));
-    } else if (mProfileDir) {
-      rv = mProfileDir->Clone(getter_AddRefs(file));
     }
   } else if (!strcmp(aProperty, NS_APP_USER_PROFILE_50_DIR)) {
-    NS_ENSURE_TRUE(mProfileNotified, NS_ERROR_FAILURE);
     if (mProfileDir) {
       rv = mProfileDir->Clone(getter_AddRefs(file));
     }
@@ -401,8 +395,6 @@ nsXREDirProvider::GetFile(const char* aProperty, bool* aPersistent,
   } else if (!strcmp(aProperty, NS_APP_PROFILE_LOCAL_DIR_STARTUP)) {
     if (mProfileLocalDir) {
       rv = mProfileLocalDir->Clone(getter_AddRefs(file));
-    } else if (mProfileDir) {
-      rv = mProfileDir->Clone(getter_AddRefs(file));
     }
   }
 #if defined(XP_UNIX) || defined(XP_MACOSX)
@@ -451,7 +443,7 @@ nsXREDirProvider::GetFile(const char* aProperty, bool* aPersistent,
     bool unused;
     rv = dirsvc->GetFile("XCurProcD", &unused, getter_AddRefs(file));
   }
-#if defined(MOZ_SANDBOX)
+#if defined(MOZ_CONTENT_TEMP_DIR)
   else if (!strcmp(aProperty, NS_APP_CONTENT_PROCESS_TEMP_DIR)) {
     if (!mContentTempDir) {
       rv = LoadContentProcessTempDir();
@@ -459,7 +451,7 @@ nsXREDirProvider::GetFile(const char* aProperty, bool* aPersistent,
     }
     rv = mContentTempDir->Clone(getter_AddRefs(file));
   }
-#endif  // defined(MOZ_SANDBOX)
+#endif  // defined(MOZ_CONTENT_TEMP_DIR)
   else if (!strcmp(aProperty, NS_APP_USER_CHROME_DIR)) {
     // We need to allow component, xpt, and chrome registration to
     // occur prior to the profile-after-change notification.
@@ -505,15 +497,9 @@ static void LoadDirIntoArray(nsIFile* dir, const char* const* aAppendList,
   }
 }
 
-#if defined(MOZ_SANDBOX)
+#if defined(MOZ_CONTENT_TEMP_DIR)
 
-static const char* GetProcessTempBaseDirKey() {
-#  if defined(XP_WIN)
-  return NS_WIN_LOW_INTEGRITY_TEMP_BASE;
-#  else
-  return NS_OS_TEMP_DIR;
-#  endif
-}
+static const char* GetProcessTempBaseDirKey() { return NS_OS_TEMP_DIR; }
 
 //
 // Sets mContentTempDir so that it refers to the appropriate temp dir.
@@ -669,7 +655,7 @@ static nsresult DeleteDirIfExists(nsIFile* dir) {
   return NS_OK;
 }
 
-#endif  // defined(MOZ_SANDBOX)
+#endif  // defined(MOZ_CONTENT_TEMP_DIR)
 
 static const char* const kAppendPrefDir[] = {"defaults", "preferences",
                                              nullptr};
@@ -714,31 +700,18 @@ nsXREDirProvider::GetFiles(const char* aProperty,
 NS_IMETHODIMP
 nsXREDirProvider::GetDirectory(nsIFile** aResult) {
   NS_ENSURE_TRUE(mProfileDir, NS_ERROR_NOT_INITIALIZED);
-
   return mProfileDir->Clone(aResult);
 }
 
 void nsXREDirProvider::InitializeUserPrefs() {
   if (!mPrefsInitialized) {
-    // Temporarily set mProfileNotified to true so that the preference service
-    // can access the profile directory during initialization. Afterwards, clear
-    // it so that no other code can inadvertently access it until we get to
-    // profile-do-change.
-    mozilla::AutoRestore<bool> ar(mProfileNotified);
-    mProfileNotified = true;
-
     mozilla::Preferences::InitializeUserPrefs();
   }
 }
 
 void nsXREDirProvider::FinishInitializingUserPrefs() {
   if (!mPrefsInitialized) {
-    // See InitializeUserPrefs above.
-    mozilla::AutoRestore<bool> ar(mProfileNotified);
-    mProfileNotified = true;
-
     mozilla::Preferences::FinishInitializingUserPrefs();
-
     mPrefsInitialized = true;
   }
 }
@@ -747,12 +720,12 @@ NS_IMETHODIMP
 nsXREDirProvider::DoStartup() {
   nsresult rv;
 
-  if (!mProfileNotified) {
+  if (!mAppStarted) {
     nsCOMPtr<nsIObserverService> obsSvc =
         mozilla::services::GetObserverService();
     if (!obsSvc) return NS_ERROR_FAILURE;
 
-    mProfileNotified = true;
+    mAppStarted = true;
 
     /*
        Make sure we've setup prefs before profile-do-change to be able to use
@@ -788,17 +761,6 @@ nsXREDirProvider::DoStartup() {
         policies->Observe(nullptr, "policies-startup", nullptr);
       }
     }
-
-#if defined(MOZ_SANDBOX) && defined(XP_WIN)
-    // Call SandboxBroker to initialize things that depend on Gecko machinery
-    // like the directory provider. We insert this initialization code here
-    // (rather than in XRE_mainRun) because we need NS_APP_USER_PROFILE_50_DIR
-    // to be known and so that any child content processes spawned by extensions
-    // from the notifications below will have all the requisite directories
-    // white-listed for read/write access. An example of this is the
-    // tor-launcher launching the network configuration window. See bug 1485836.
-    mozilla::SandboxBroker::GeckoDependentInitialize();
-#endif
 
 #ifdef MOZ_THUNDERBIRD
     bool bgtaskMode = false;
@@ -867,7 +829,7 @@ nsXREDirProvider::DoStartup() {
 
     obsSvc->NotifyObservers(nullptr, "profile-initial-state", nullptr);
 
-#if defined(MOZ_SANDBOX)
+#if defined(MOZ_CONTENT_TEMP_DIR)
     // Makes sure the content temp dir has been loaded if it hasn't been
     // already. In the parent this ensures it has been created before we attempt
     // to start any content processes.
@@ -882,7 +844,7 @@ nsXREDirProvider::DoStartup() {
 void nsXREDirProvider::DoShutdown() {
   AUTO_PROFILER_LABEL("nsXREDirProvider::DoShutdown", OTHER);
 
-  if (mProfileNotified) {
+  if (mAppStarted) {
     mozilla::AppShutdown::AdvanceShutdownPhase(
         mozilla::ShutdownPhase::AppShutdownNetTeardown, nullptr);
     mozilla::AppShutdown::AdvanceShutdownPhase(
@@ -901,17 +863,17 @@ void nsXREDirProvider::DoShutdown() {
         mozilla::ShutdownPhase::AppShutdownQM, nullptr);
     mozilla::AppShutdown::AdvanceShutdownPhase(
         mozilla::ShutdownPhase::AppShutdownTelemetry, nullptr);
-    mProfileNotified = false;
+    mAppStarted = false;
   }
 
   gDataDirProfileLocal = nullptr;
   gDataDirProfile = nullptr;
 
+#if defined(MOZ_CONTENT_TEMP_DIR)
   if (XRE_IsParentProcess()) {
-#if defined(MOZ_SANDBOX)
     mozilla::Unused << DeleteDirIfExists(mContentProcessSandboxTempDir);
-#endif
   }
+#endif
 }
 
 #ifdef XP_WIN
@@ -1194,12 +1156,13 @@ nsresult nsXREDirProvider::GetProfileStartupDir(nsIFile** aResult) {
 }
 
 nsresult nsXREDirProvider::GetProfileDir(nsIFile** aResult) {
-  if (mProfileDir) {
-    NS_ENSURE_TRUE(mProfileNotified, NS_ERROR_FAILURE);
-    return mProfileDir->Clone(aResult);
+  if (!mProfileDir) {
+    nsresult rv = NS_GetSpecialDirectory(NS_APP_USER_PROFILE_50_DIR,
+                                         getter_AddRefs(mProfileDir));
+    NS_ENSURE_SUCCESS(rv, rv);
+    NS_ENSURE_TRUE(mProfileDir, NS_ERROR_FAILURE);
   }
-
-  return NS_GetSpecialDirectory(NS_APP_USER_PROFILE_50_DIR, aResult);
+  return mProfileDir->Clone(aResult);
 }
 
 NS_IMETHODIMP

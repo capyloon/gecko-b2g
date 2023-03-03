@@ -342,6 +342,7 @@ Result<IPCInternalRequest, nsresult> GetIPCInternalRequest(
 
   nsAutoString referrer;
   ReferrerPolicy referrerPolicy = ReferrerPolicy::_empty;
+  ReferrerPolicy environmentReferrerPolicy = ReferrerPolicy::_empty;
 
   nsCOMPtr<nsIReferrerInfo> referrerInfo = httpChannel->GetReferrerInfo();
   if (referrerInfo) {
@@ -412,14 +413,18 @@ Result<IPCInternalRequest, nsresult> GetIPCInternalRequest(
                                                 &isThirdPartyChannel));
   }
 
+  nsILoadInfo::CrossOriginEmbedderPolicy embedderPolicy =
+      loadInfo->GetLoadingEmbedderPolicy();
+
   // Note: all the arguments are copied rather than moved, which would be more
   // efficient, because there's no move-friendly constructor generated.
   return IPCInternalRequest(
       method, {spec}, ipcHeadersGuard, ipcHeaders, Nothing(), -1,
       alternativeDataType, contentPolicyType, referrer, referrerPolicy,
-      requestMode, requestCredentials, cacheMode, requestRedirect, integrity,
-      fragment, principalInfo, ipcHasXHRPerm, interceptionPrincipalInfo, contentPolicyType,
-      redirectChain, isThirdPartyChannel);
+      environmentReferrerPolicy, requestMode, requestCredentials, cacheMode,
+      requestRedirect, integrity, fragment, principalInfo, ipcHasXHRPerm,
+      interceptionPrincipalInfo, contentPolicyType, redirectChain,
+      isThirdPartyChannel, embedderPolicy);
 }
 
 nsresult MaybeStoreStreamForBackgroundThread(nsIInterceptedChannel* aChannel,
@@ -596,6 +601,8 @@ nsresult ServiceWorkerPrivate::Initialize() {
   mRemoteWorkerData = RemoteWorkerData(
       NS_ConvertUTF8toUTF16(mInfo->ScriptSpec()), baseScriptURL, baseScriptURL,
       /* name */ VoidString(),
+      /* workerType */ WorkerType::Classic,
+      /* credentials */ RequestCredentials::Omit,
       /* loading principal */ principalInfo, principalInfo,
       partitionedPrincipalInfo,
       /* useRegularPrincipal */ true,
@@ -1018,7 +1025,7 @@ nsresult ServiceWorkerPrivate::SendFetchEvent(
           mInfo->ScriptSpec(), request, nsString(aClientId),
           nsString(aResultingClientId), isNonSubresourceRequest,
           preloadNavigation, mInfo->TestingInjectCancellation()),
-      Nothing(), Nothing());
+      Nothing(), Nothing(), Nothing());
 
   if (mInfo->State() == ServiceWorkerState::Activating) {
     UniquePtr<PendingFunctionalEvent> pendingEvent =
@@ -1649,7 +1656,8 @@ RefPtr<FetchServicePromises> ServiceWorkerPrivate::SetupNavigationPreload(
     MOZ_ALWAYS_SUCCEEDS(
         aChannel->GetChannel(getter_AddRefs(underlyingChannel)));
     RefPtr<FetchService> fetchService = FetchService::GetInstance();
-    return fetchService->Fetch(std::move(preloadRequest), underlyingChannel);
+    return fetchService->Fetch(AsVariant(FetchService::NavigationPreloadArgs{
+        std::move(preloadRequest), underlyingChannel}));
   }
   return FetchService::NetworkErrorResponse(NS_ERROR_UNEXPECTED);
 }

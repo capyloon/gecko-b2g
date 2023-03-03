@@ -38,10 +38,12 @@ var { PrivateBrowsingUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/PrivateBrowsingUtils.sys.mjs"
 );
 
-var { Weave } = ChromeUtils.import("resource://services-sync/main.js");
+var { Weave } = ChromeUtils.importESModule(
+  "resource://services-sync/main.sys.mjs"
+);
 
-var { FxAccounts, getFxAccountsSingleton } = ChromeUtils.import(
-  "resource://gre/modules/FxAccounts.jsm"
+var { FxAccounts, getFxAccountsSingleton } = ChromeUtils.importESModule(
+  "resource://gre/modules/FxAccounts.sys.mjs"
 );
 var fxAccounts = getFxAccountsSingleton();
 
@@ -71,6 +73,7 @@ ChromeUtils.defineESModuleGetters(this, {
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
   QuickSuggest: "resource:///modules/QuickSuggest.sys.mjs",
   ShortcutUtils: "resource://gre/modules/ShortcutUtils.sys.mjs",
+  UIState: "resource://services-sync/UIState.sys.mjs",
   UpdateUtils: "resource://gre/modules/UpdateUtils.sys.mjs",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
   UrlbarProviderQuickActions:
@@ -93,7 +96,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   SelectionChangedMenulist: "resource:///modules/SelectionChangedMenulist.jsm",
   SiteDataManager: "resource:///modules/SiteDataManager.jsm",
   TransientPrefs: "resource:///modules/TransientPrefs.jsm",
-  UIState: "resource://services-sync/UIState.jsm",
 });
 
 XPCOMUtils.defineLazyGetter(this, "gSubDialog", function() {
@@ -138,6 +140,7 @@ XPCOMUtils.defineLazyGetter(this, "gSubDialog", function() {
 var gLastCategory = { category: undefined, subcategory: undefined };
 const gXULDOMParser = new DOMParser();
 
+var gCategoryModules = new Map();
 var gCategoryInits = new Map();
 function init_category_if_required(category) {
   let categoryInfo = gCategoryInits.get(category);
@@ -153,6 +156,7 @@ function init_category_if_required(category) {
 }
 
 function register_module(categoryName, categoryObject) {
+  gCategoryModules.set(categoryName, categoryObject);
   gCategoryInits.set(categoryName, {
     inited: false,
     async init() {
@@ -401,7 +405,14 @@ async function gotoPref(
     document.querySelector(".main-content").scrollTop = 0;
   }
 
-  spotlight(subcategory, category);
+  // Check to see if the category module wants to do any special
+  // handling of the subcategory - for example, opening a SubDialog.
+  //
+  // If not, just do a normal spotlight on the subcategory.
+  let categoryModule = gCategoryModules.get(category);
+  if (!categoryModule.handleSubcategory?.(subcategory)) {
+    spotlight(subcategory, category);
+  }
 
   // Record which category is shown
   Services.telemetry.recordEvent(

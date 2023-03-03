@@ -73,9 +73,11 @@
 #include "proxy/DOMProxy.h"
 #include "util/StringBuffer.h"
 #include "util/Text.h"
+#include "vm/BoundFunctionObject.h"
 #include "vm/EnvironmentObject.h"
 #include "vm/ErrorObject.h"
 #include "vm/ErrorReporting.h"
+#include "vm/FunctionPrefixKind.h"
 #include "vm/Interpreter.h"
 #include "vm/JSAtom.h"
 #include "vm/JSAtomState.h"
@@ -100,6 +102,7 @@
 #include "vm/Interpreter-inl.h"
 #include "vm/IsGivenTypeObject-inl.h"  // js::IsGivenTypeObject
 #include "vm/JSAtom-inl.h"
+#include "vm/JSFunction-inl.h"
 #include "vm/JSScript-inl.h"
 #include "vm/NativeObject-inl.h"
 #include "vm/SavedStacks-inl.h"
@@ -360,12 +363,14 @@ JS_PUBLIC_API bool JS_IsBuiltinFunctionConstructor(JSFunction* fun) {
   return fun->isBuiltinFunctionConstructor();
 }
 
-JS_PUBLIC_API bool JS_IsFunctionBound(JSFunction* fun) {
-  return fun->isBoundFunction();
+JS_PUBLIC_API bool JS_ObjectIsBoundFunction(JSObject* obj) {
+  return obj->is<BoundFunctionObject>();
 }
 
-JS_PUBLIC_API JSObject* JS_GetBoundFunctionTarget(JSFunction* fun) {
-  return fun->isBoundFunction() ? fun->getBoundFunctionTarget() : nullptr;
+JS_PUBLIC_API JSObject* JS_GetBoundFunctionTarget(JSObject* obj) {
+  return obj->is<BoundFunctionObject>()
+             ? obj->as<BoundFunctionObject>().getTarget()
+             : nullptr;
 }
 
 /************************************************************************/
@@ -1093,6 +1098,14 @@ JS_PUBLIC_API bool JS_GetClassPrototype(JSContext* cx, JSProtoKey key,
                                         MutableHandleObject objp) {
   AssertHeapIsIdle();
   CHECK_THREAD(cx);
+
+  // Bound functions don't have their own prototype object: they reuse the
+  // prototype of the target object. This is typically Function.prototype so we
+  // use that here.
+  if (key == JSProto_BoundFunction) {
+    key = JSProto_Function;
+  }
+
   JSObject* proto = GlobalObject::getOrCreatePrototype(cx, key);
   if (!proto) {
     return false;
@@ -3387,6 +3400,28 @@ JS_PUBLIC_API JS::Symbol* JS::GetWellKnownSymbol(JSContext* cx,
 JS_PUBLIC_API JS::PropertyKey JS::GetWellKnownSymbolKey(JSContext* cx,
                                                         JS::SymbolCode which) {
   return PropertyKey::Symbol(cx->wellKnownSymbols().get(which));
+}
+
+static bool AddPrefix(JSContext* cx, JS::Handle<JS::PropertyKey> id,
+                      FunctionPrefixKind prefixKind,
+                      JS::MutableHandle<JS::PropertyKey> out) {
+  JS::Rooted<JSAtom*> atom(cx, js::IdToFunctionName(cx, id, prefixKind));
+  if (!atom) {
+    return false;
+  }
+
+  out.set(JS::PropertyKey::NonIntAtom(atom));
+  return true;
+}
+
+JS_PUBLIC_API bool JS::ToGetterId(JSContext* cx, JS::Handle<JS::PropertyKey> id,
+                                  JS::MutableHandle<JS::PropertyKey> getterId) {
+  return AddPrefix(cx, id, FunctionPrefixKind::Get, getterId);
+}
+
+JS_PUBLIC_API bool JS::ToSetterId(JSContext* cx, JS::Handle<JS::PropertyKey> id,
+                                  JS::MutableHandle<JS::PropertyKey> setterId) {
+  return AddPrefix(cx, id, FunctionPrefixKind::Set, setterId);
 }
 
 #ifdef DEBUG

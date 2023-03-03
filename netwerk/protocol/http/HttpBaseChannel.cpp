@@ -2227,13 +2227,21 @@ HttpBaseChannel::SetIsMainDocumentChannel(bool aValue) {
 
 NS_IMETHODIMP
 HttpBaseChannel::GetProtocolVersion(nsACString& aProtocolVersion) {
-  nsAutoCString protocol;
-  if (mSecurityInfo &&
-      NS_SUCCEEDED(mSecurityInfo->GetNegotiatedNPN(protocol)) &&
-      !protocol.IsEmpty()) {
-    // The negotiated protocol was not empty so we can use it.
-    aProtocolVersion = protocol;
-    return NS_OK;
+  // Try to use ALPN if available and if it is not for a proxy, i.e if an
+  // https proxy was not used or if https proxy was used but the connection to
+  // the origin server is also https. In the case, an https proxy was used and
+  // the connection to the origin server was http, mSecurityInfo will be from
+  // the proxy.
+  if (!mConnectionInfo || !mConnectionInfo->UsingHttpsProxy() ||
+      mConnectionInfo->EndToEndSSL()) {
+    nsAutoCString protocol;
+    if (mSecurityInfo &&
+        NS_SUCCEEDED(mSecurityInfo->GetNegotiatedNPN(protocol)) &&
+        !protocol.IsEmpty()) {
+      // The negotiated protocol was not empty so we can use it.
+      aProtocolVersion = protocol;
+      return NS_OK;
+    }
   }
 
   if (mResponseHead) {
@@ -3270,6 +3278,23 @@ void HttpBaseChannel::BlockOpaqueResponseAfterSniff() {
 void HttpBaseChannel::AllowOpaqueResponseAfterSniff() {
   MOZ_DIAGNOSTIC_ASSERT(mORB);
   mORB->AllowResponse();
+}
+
+void HttpBaseChannel::SetChannelBlockedByOpaqueResponse() {
+  mChannelBlockedByOpaqueResponse = true;
+
+  RefPtr<dom::CanonicalBrowsingContext> browsingContext =
+      dom::CanonicalBrowsingContext::Get(mTopBrowsingContextId);
+  if (!browsingContext) {
+    return;
+  }
+
+  dom::WindowGlobalParent* windowContext =
+      browsingContext->GetTopWindowContext();
+
+  if (windowContext) {
+    windowContext->SetHasBlockedOpaqueResponse();
+  }
 }
 
 NS_IMETHODIMP

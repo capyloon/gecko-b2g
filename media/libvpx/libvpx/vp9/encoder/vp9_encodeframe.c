@@ -1299,7 +1299,7 @@ static int choose_partitioning(VP9_COMP *cpi, const TileInfo *const tile,
   // the reference (base layer frame) is key frame (i.e., is_key_frame == 1).
   int is_key_frame =
       (frame_is_intra_only(cm) ||
-       (is_one_pass_cbr_svc(cpi) &&
+       (is_one_pass_svc(cpi) &&
         cpi->svc.layer_context[cpi->svc.temporal_layer_id].is_key_frame));
   // Always use 4x4 partition for key frame.
   const int use_4x4_partition = frame_is_intra_only(cm);
@@ -1406,7 +1406,7 @@ static int choose_partitioning(VP9_COMP *cpi, const TileInfo *const tile,
 
     assert(yv12 != NULL);
 
-    if (!(is_one_pass_cbr_svc(cpi) && cpi->svc.spatial_layer_id) ||
+    if (!(is_one_pass_svc(cpi) && cpi->svc.spatial_layer_id) ||
         cpi->svc.use_gf_temporal_ref_current_layer) {
       // For now, GOLDEN will not be used for non-zero spatial layers, since
       // it may not be a temporal reference.
@@ -1980,6 +1980,9 @@ static void rd_pick_sb_modes(VP9_COMP *cpi, TileDataEnc *tile_data,
   int64_t best_rd = INT64_MAX;
 
   vpx_clear_system_state();
+#if CONFIG_COLLECT_COMPONENT_TIMING
+  start_timing(cpi, rd_pick_sb_modes_time);
+#endif
 
   // Use the lower precision, but faster, 32x32 fdct for mode selection.
   x->use_lp32x32fdct = 1;
@@ -2047,15 +2050,27 @@ static void rd_pick_sb_modes(VP9_COMP *cpi, TileDataEnc *tile_data,
     vp9_rd_pick_intra_mode_sb(cpi, x, rd_cost, bsize, ctx, best_rd);
   } else {
     if (bsize >= BLOCK_8X8) {
+#if CONFIG_COLLECT_COMPONENT_TIMING
+      start_timing(cpi, vp9_rd_pick_inter_mode_sb_time);
+#endif
       if (segfeature_active(&cm->seg, mi->segment_id, SEG_LVL_SKIP))
         vp9_rd_pick_inter_mode_sb_seg_skip(cpi, tile_data, x, rd_cost, bsize,
                                            ctx, best_rd);
       else
         vp9_rd_pick_inter_mode_sb(cpi, tile_data, x, mi_row, mi_col, rd_cost,
                                   bsize, ctx, best_rd);
+#if CONFIG_COLLECT_COMPONENT_TIMING
+      end_timing(cpi, vp9_rd_pick_inter_mode_sb_time);
+#endif
     } else {
+#if CONFIG_COLLECT_COMPONENT_TIMING
+      start_timing(cpi, vp9_rd_pick_inter_mode_sub8x8_time);
+#endif
       vp9_rd_pick_inter_mode_sub8x8(cpi, tile_data, x, mi_row, mi_col, rd_cost,
                                     bsize, ctx, best_rd);
+#if CONFIG_COLLECT_COMPONENT_TIMING
+      end_timing(cpi, vp9_rd_pick_inter_mode_sub8x8_time);
+#endif
     }
   }
 
@@ -2078,6 +2093,9 @@ static void rd_pick_sb_modes(VP9_COMP *cpi, TileDataEnc *tile_data,
 
   ctx->rate = rd_cost->rate;
   ctx->dist = rd_cost->dist;
+#if CONFIG_COLLECT_COMPONENT_TIMING
+  end_timing(cpi, rd_pick_sb_modes_time);
+#endif
 }
 #endif  // !CONFIG_REALTIME_ONLY
 
@@ -3413,7 +3431,8 @@ static void simple_motion_search(const VP9_COMP *const cpi, MACROBLOCK *const x,
   const VP9_COMMON *const cm = &cpi->common;
   MACROBLOCKD *const xd = &x->e_mbd;
   MODE_INFO *const mi = xd->mi[0];
-  const YV12_BUFFER_CONFIG *const yv12 = get_ref_frame_buffer(cpi, ref);
+  YV12_BUFFER_CONFIG *yv12;
+  YV12_BUFFER_CONFIG *scaled_ref_frame = vp9_get_scaled_ref_frame(cpi, ref);
   const int step_param = 1;
   const MvLimits tmp_mv_limits = x->mv_limits;
   const SEARCH_METHODS search_method = NSTEP;
@@ -3421,6 +3440,11 @@ static void simple_motion_search(const VP9_COMP *const cpi, MACROBLOCK *const x,
   MV ref_mv_full = { ref_mv.row >> 3, ref_mv.col >> 3 };
   MV best_mv = { 0, 0 };
   int cost_list[5];
+
+  if (scaled_ref_frame)
+    yv12 = scaled_ref_frame;
+  else
+    yv12 = get_ref_frame_buffer(cpi, ref);
 
   assert(yv12 != NULL);
   if (!yv12) return;
@@ -4405,8 +4429,14 @@ static int rd_pick_partition(VP9_COMP *cpi, ThreadData *td,
 
   if (should_encode_sb && pc_tree->index != 3) {
     int output_enabled = (bsize == BLOCK_64X64);
+#if CONFIG_COLLECT_COMPONENT_TIMING
+    start_timing(cpi, encode_sb_time);
+#endif
     encode_sb(cpi, td, tile_info, tp, mi_row, mi_col, output_enabled, bsize,
               pc_tree);
+#if CONFIG_COLLECT_COMPONENT_TIMING
+    end_timing(cpi, encode_sb_time);
+#endif
 #if CONFIG_RATE_CTRL
     if (oxcf->use_simple_encode_api) {
       // Store partition, motion vector of the superblock.
@@ -4533,8 +4563,15 @@ static void encode_rd_sb_row(VP9_COMP *cpi, ThreadData *td,
                                 &x->min_partition_size, &x->max_partition_size);
       }
       td->pc_root->none.rdcost = 0;
+
+#if CONFIG_COLLECT_COMPONENT_TIMING
+      start_timing(cpi, rd_pick_partition_time);
+#endif
       rd_pick_partition(cpi, td, tile_data, tp, mi_row, mi_col, BLOCK_64X64,
                         &dummy_rdc, dummy_rdc, td->pc_root);
+#if CONFIG_COLLECT_COMPONENT_TIMING
+      end_timing(cpi, rd_pick_partition_time);
+#endif
     }
     (*(cpi->row_mt_sync_write_ptr))(&tile_data->row_mt_sync, sb_row,
                                     sb_col_in_tile, num_sb_cols);
@@ -5381,7 +5418,7 @@ static void get_estimated_pred(VP9_COMP *cpi, const TileInfo *const tile,
 
     assert(yv12 != NULL);
 
-    if (!(is_one_pass_cbr_svc(cpi) && cpi->svc.spatial_layer_id) ||
+    if (!(is_one_pass_svc(cpi) && cpi->svc.spatial_layer_id) ||
         cpi->svc.use_gf_temporal_ref_current_layer) {
       // For now, GOLDEN will not be used for non-zero spatial layers, since
       // it may not be a temporal reference.
@@ -5804,14 +5841,7 @@ void vp9_init_tile_data(VP9_COMP *cpi) {
         for (i = 0; i < BLOCK_SIZES; ++i) {
           for (j = 0; j < MAX_MODES; ++j) {
             tile_data->thresh_freq_fact[i][j] = RD_THRESH_INIT_FACT;
-#if CONFIG_RATE_CTRL
-            if (cpi->oxcf.use_simple_encode_api) {
-              tile_data->thresh_freq_fact_prev[i][j] = RD_THRESH_INIT_FACT;
-            }
-#endif  // CONFIG_RATE_CTRL
-#if CONFIG_CONSISTENT_RECODE
             tile_data->thresh_freq_fact_prev[i][j] = RD_THRESH_INIT_FACT;
-#endif  // CONFIG_CONSISTENT_RECODE
             tile_data->mode_map[i][j] = j;
           }
         }
@@ -6031,9 +6061,7 @@ static void encode_frame_internal(VP9_COMP *cpi) {
   x->fwd_txfm4x4 = xd->lossless ? vp9_fwht4x4 : vpx_fdct4x4;
 #endif  // CONFIG_VP9_HIGHBITDEPTH
   x->inv_txfm_add = xd->lossless ? vp9_iwht4x4_add : vp9_idct4x4_add;
-#if CONFIG_CONSISTENT_RECODE
   x->optimize = sf->optimize_coefficients == 1 && cpi->oxcf.pass != 1;
-#endif
   if (xd->lossless) x->optimize = 0;
   x->sharpness = cpi->oxcf.sharpness;
   x->adjust_rdmult_by_segment = (cpi->oxcf.aq_mode == VARIANCE_AQ);
@@ -6178,13 +6206,11 @@ static int compute_frame_aq_offset(struct VP9_COMP *cpi) {
   return sum_delta / (cm->mi_rows * cm->mi_cols);
 }
 
-#if CONFIG_CONSISTENT_RECODE || CONFIG_RATE_CTRL
 static void restore_encode_params(VP9_COMP *cpi) {
   VP9_COMMON *const cm = &cpi->common;
-  const int tile_cols = 1 << cm->log2_tile_cols;
-  const int tile_rows = 1 << cm->log2_tile_rows;
-  int tile_col, tile_row;
+  int tile_idx;
   int i, j;
+  TileDataEnc *tile_data;
   RD_OPT *rd_opt = &cpi->rd;
   for (i = 0; i < MAX_REF_FRAMES; i++) {
     for (j = 0; j < REFERENCE_MODES; j++)
@@ -6195,35 +6221,19 @@ static void restore_encode_params(VP9_COMP *cpi) {
       rd_opt->filter_threshes[i][j] = rd_opt->filter_threshes_prev[i][j];
   }
 
-  if (cpi->tile_data != NULL) {
-    for (tile_row = 0; tile_row < tile_rows; ++tile_row)
-      for (tile_col = 0; tile_col < tile_cols; ++tile_col) {
-        TileDataEnc *tile_data =
-            &cpi->tile_data[tile_row * tile_cols + tile_col];
-        for (i = 0; i < BLOCK_SIZES; ++i) {
-          for (j = 0; j < MAX_MODES; ++j) {
-            tile_data->thresh_freq_fact[i][j] =
-                tile_data->thresh_freq_fact_prev[i][j];
-          }
-        }
-      }
+  for (tile_idx = 0; tile_idx < cpi->allocated_tiles; tile_idx++) {
+    assert(cpi->tile_data);
+    tile_data = &cpi->tile_data[tile_idx];
+    vp9_copy(tile_data->thresh_freq_fact, tile_data->thresh_freq_fact_prev);
   }
 
   cm->interp_filter = cpi->sf.default_interp_filter;
 }
-#endif  // CONFIG_CONSISTENT_RECODE || CONFIG_RATE_CTRL
 
 void vp9_encode_frame(VP9_COMP *cpi) {
   VP9_COMMON *const cm = &cpi->common;
 
-#if CONFIG_RATE_CTRL
-  if (cpi->oxcf.use_simple_encode_api) {
-    restore_encode_params(cpi);
-  }
-#endif  // CONFIG_RATE_CTRL
-#if CONFIG_CONSISTENT_RECODE
   restore_encode_params(cpi);
-#endif
 
 #if CONFIG_MISMATCH_DEBUG
   mismatch_reset_frame(MAX_MB_PLANE);
@@ -6277,7 +6287,13 @@ void vp9_encode_frame(VP9_COMP *cpi) {
     if (cm->interp_filter == SWITCHABLE)
       cm->interp_filter = get_interp_filter(filter_thrs, is_alt_ref);
 
+#if CONFIG_COLLECT_COMPONENT_TIMING
+    start_timing(cpi, encode_frame_internal_time);
+#endif
     encode_frame_internal(cpi);
+#if CONFIG_COLLECT_COMPONENT_TIMING
+    end_timing(cpi, encode_frame_internal_time);
+#endif
 
     for (i = 0; i < REFERENCE_MODES; ++i)
       mode_thrs[i] = (mode_thrs[i] + rdc->comp_pred_diff[i] / cm->MBs) / 2;

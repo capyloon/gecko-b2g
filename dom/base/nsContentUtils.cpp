@@ -168,7 +168,6 @@
 #include "mozilla/dom/FileBlobImpl.h"
 #include "mozilla/dom/FileSystemSecurity.h"
 #include "mozilla/dom/FilteredNodeIterator.h"
-#include "mozilla/dom/FontTableURIProtocolHandler.h"
 #include "mozilla/dom/FragmentOrElement.h"
 #include "mozilla/dom/FromParser.h"
 #include "mozilla/dom/HTMLFormElement.h"
@@ -2176,7 +2175,7 @@ bool nsContentUtils::IsCallerChromeOrElementTransformGettersEnabled(
 
 /* static */
 bool nsContentUtils::ShouldResistFingerprinting() {
-  return StaticPrefs::privacy_resistFingerprinting();
+  return StaticPrefs::privacy_resistFingerprinting_DoNotUseDirectly();
 }
 
 /* static */
@@ -2224,14 +2223,21 @@ const unsigned int sSpecificDomainsExemptMask = 0x04;
 const char* kExemptedDomainsPrefName =
     "privacy.resistFingerprinting.exemptedDomains";
 
-// --------------------------------------------------------------------------
 /* static */
 bool nsContentUtils::ShouldResistFingerprinting(const char* aJustification) {
   // See comment in header file for information about usage
   return ShouldResistFingerprinting();
 }
 
-// ----------------------------------------------------------------------
+/* static */
+bool nsContentUtils::ShouldResistFingerprinting(
+    CallerType aCallerType, nsIGlobalObject* aGlobalObject) {
+  if (aCallerType == CallerType::System) {
+    return false;
+  }
+  return ShouldResistFingerprinting(aGlobalObject);
+}
+
 bool nsContentUtils::ShouldResistFingerprinting(nsIDocShell* aDocShell) {
   if (!aDocShell) {
     MOZ_LOG(nsContentUtils::ResistFingerprintingLog(), LogLevel::Info,
@@ -2249,7 +2255,6 @@ bool nsContentUtils::ShouldResistFingerprinting(nsIDocShell* aDocShell) {
   return doc->ShouldResistFingerprinting();
 }
 
-// ----------------------------------------------------------------------
 /* static */
 bool nsContentUtils::ShouldResistFingerprinting(nsIChannel* aChannel) {
   if (!ShouldResistFingerprinting("Legacy quick-check")) {
@@ -2328,7 +2333,6 @@ bool nsContentUtils::ShouldResistFingerprinting(nsIChannel* aChannel) {
   return ShouldResistFingerprinting(loadInfo);
 }
 
-// ----------------------------------------------------------------------
 /* static */
 bool nsContentUtils::ShouldResistFingerprinting_dangerous(
     nsIURI* aURI, const mozilla::OriginAttributes& aOriginAttributes,
@@ -2354,7 +2358,7 @@ bool nsContentUtils::ShouldResistFingerprinting_dangerous(
 
   if (StaticPrefs::privacy_resistFingerprinting_testGranularityMask() &
       sWebExtensionExemptMask) {
-    if (aURI->SchemeIs("web-extension")) {
+    if (aURI->SchemeIs("moz-extension")) {
       return false;
     }
   }
@@ -2377,7 +2381,6 @@ bool nsContentUtils::ShouldResistFingerprinting_dangerous(
   return !isExemptDomain;
 }
 
-// ----------------------------------------------------------------------
 /* static */
 bool nsContentUtils::ShouldResistFingerprinting(nsILoadInfo* aLoadInfo) {
   MOZ_ASSERT(aLoadInfo->GetExternalContentPolicyType() !=
@@ -2406,7 +2409,6 @@ bool nsContentUtils::ShouldResistFingerprinting(nsILoadInfo* aLoadInfo) {
   return ShouldResistFingerprinting_dangerous(principal, "Internal Call");
 }
 
-// ----------------------------------------------------------------------
 /* static */
 bool nsContentUtils::ShouldResistFingerprinting_dangerous(
     nsIPrincipal* aPrincipal, const char* aJustification) {
@@ -2491,7 +2493,6 @@ bool nsContentUtils::ShouldResistFingerprinting_dangerous(
   return !isExemptDomain;
 }
 
-// ------------------------------------------------------------------
 /* static */
 void nsContentUtils::CalcRoundedWindowSizeForResistingFingerprinting(
     int32_t aChromeWidth, int32_t aChromeHeight, int32_t aScreenWidth,
@@ -3007,6 +3008,59 @@ BrowserParent* nsContentUtils::GetCommonBrowserParentAncestor(
                    ? aBrowserParent->GetBrowserBridgeParent()->Manager()
                    : nullptr;
       });
+}
+
+/* static */
+Element* nsContentUtils::GetTargetElement(Document* aDocument,
+                                          const nsAString& aAnchorName) {
+  MOZ_ASSERT(aDocument);
+
+  if (aAnchorName.IsEmpty()) {
+    return nullptr;
+  }
+  // 1. If there is an element in the document tree that has an ID equal to
+  //    fragment, then return the first such element in tree order.
+  if (Element* el = aDocument->GetElementById(aAnchorName)) {
+    return el;
+  }
+
+  // 2. If there is an a element in the document tree that has a name
+  // attribute whose value is equal to fragment, then return the first such
+  // element in tree order.
+  //
+  // FIXME(emilio): Why the different code-paths for HTML and non-HTML docs?
+  if (aDocument->IsHTMLDocument()) {
+    nsCOMPtr<nsINodeList> list = aDocument->GetElementsByName(aAnchorName);
+    // Loop through the named nodes looking for the first anchor
+    uint32_t length = list->Length();
+    for (uint32_t i = 0; i < length; i++) {
+      nsIContent* node = list->Item(i);
+      if (node->IsHTMLElement(nsGkAtoms::a)) {
+        return node->AsElement();
+      }
+    }
+  } else {
+    constexpr auto nameSpace = u"http://www.w3.org/1999/xhtml"_ns;
+    // Get the list of anchor elements
+    nsCOMPtr<nsINodeList> list =
+        aDocument->GetElementsByTagNameNS(nameSpace, u"a"_ns);
+    // Loop through the anchors looking for the first one with the given name.
+    for (uint32_t i = 0; true; i++) {
+      nsIContent* node = list->Item(i);
+      if (!node) {  // End of list
+        break;
+      }
+
+      // Compare the name attribute
+      if (node->AsElement()->AttrValueIs(kNameSpaceID_None, nsGkAtoms::name,
+                                         aAnchorName, eCaseMatters)) {
+        return node->AsElement();
+      }
+    }
+  }
+
+  // 3. Return null.
+  return nullptr;
 }
 
 /* static */
@@ -3852,7 +3906,7 @@ nsresult nsContentUtils::LoadImage(
 
   nsIURI* documentURI = aLoadingDocument->GetDocumentURI();
 
-  NS_ASSERTION(loadGroup || IsFontTableURI(documentURI),
+  NS_ASSERTION(loadGroup || aLoadingDocument->IsSVGGlyphsDocument(),
                "Could not get loadgroup; onload may fire too early");
 
   // XXXbz using "documentURI" for the initialDocumentURI is not quite
@@ -7837,9 +7891,7 @@ void nsContentUtils::CallOnAllRemoteChildren(
 bool nsContentUtils::IPCDataTransferItemHasKnownFlavor(
     const IPCDataTransferItem& aItem) {
   // Unknown types are converted to kCustomTypesMime.
-  // FIXME(bug 1776879) text/plain is converted to text/unicode still.
-  if (aItem.flavor().EqualsASCII(kCustomTypesMime) ||
-      aItem.flavor().EqualsASCII(kUnicodeMime)) {
+  if (aItem.flavor().EqualsASCII(kCustomTypesMime)) {
     return true;
   }
 
@@ -7998,8 +8050,7 @@ nsresult nsContentUtils::IPCTransferableItemToVariant(
 
 void nsContentUtils::TransferablesToIPCTransferables(
     nsIArray* aTransferables, nsTArray<IPCDataTransfer>& aIPC,
-    bool aInSyncMessage, mozilla::dom::ContentChild* aChild,
-    mozilla::dom::ContentParent* aParent) {
+    bool aInSyncMessage, mozilla::dom::ContentParent* aParent) {
   aIPC.Clear();
   if (aTransferables) {
     uint32_t transferableCount = 0;
@@ -8008,8 +8059,7 @@ void nsContentUtils::TransferablesToIPCTransferables(
       IPCDataTransfer* dt = aIPC.AppendElement();
       nsCOMPtr<nsITransferable> transferable =
           do_QueryElementAt(aTransferables, i);
-      TransferableToIPCTransferable(transferable, dt, aInSyncMessage, aChild,
-                                    aParent);
+      TransferableToIPCTransferable(transferable, dt, aInSyncMessage, aParent);
     }
   }
 }
@@ -8104,9 +8154,8 @@ static IPCDataTransferCString AsIPCDataTransferCString(
 
 void nsContentUtils::TransferableToIPCTransferable(
     nsITransferable* aTransferable, IPCDataTransfer* aIPCDataTransfer,
-    bool aInSyncMessage, mozilla::dom::ContentChild* aChild,
-    mozilla::dom::ContentParent* aParent) {
-  MOZ_ASSERT((aChild && !aParent) || (!aChild && aParent));
+    bool aInSyncMessage, mozilla::dom::ContentParent* aParent) {
+  MOZ_ASSERT_IF(XRE_IsParentProcess(), aParent);
 
   if (aTransferable) {
     nsTArray<nsCString> flavorList;
@@ -10006,15 +10055,11 @@ bool nsContentUtils::QueryTriggeringPrincipal(
   }
 
   nsCString binary;
-  nsresult rv = Base64Decode(NS_ConvertUTF16toUTF8(loadingStr), binary);
-  if (NS_SUCCEEDED(rv)) {
-    nsCOMPtr<nsIPrincipal> serializedPrin = BasePrincipal::FromJSON(binary);
-    if (serializedPrin) {
-      result = true;
-      serializedPrin.forget(aTriggeringPrincipal);
-    }
-  } else {
-    MOZ_ASSERT(false, "Unable to deserialize base64 principal");
+  nsCOMPtr<nsIPrincipal> serializedPrin =
+      BasePrincipal::FromJSON(NS_ConvertUTF16toUTF8(loadingStr));
+  if (serializedPrin) {
+    result = true;
+    serializedPrin.forget(aTriggeringPrincipal);
   }
 
   if (!result) {

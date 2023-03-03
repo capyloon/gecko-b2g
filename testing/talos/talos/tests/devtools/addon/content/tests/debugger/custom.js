@@ -11,6 +11,7 @@ const {
   testSetup,
   testTeardown,
   PAGES_BASE_URL,
+  waitForDOMElement,
 } = require("../head");
 const {
   createContext,
@@ -128,9 +129,19 @@ async function testProjectSearch(tab, toolbox) {
 
   dump("Executing project search\n");
   const test = runTest(`custom.jsdebugger.project-search.DAMP`);
+  const firstSearchResultTest = runTest(
+    `custom.jsdebugger.project-search.first-search-result.DAMP`
+  );
   await dbg.actions.setActiveSearch("project");
-  await dbg.actions.searchSources(cx, "return");
-  await dbg.actions.closeActiveSearch();
+  const complete = dbg.actions.searchSources(cx, "return");
+  // Wait till the first search result match is rendered
+  await waitForDOMElement(
+    dbg.win.document.querySelector(".project-text-search"),
+    ".tree-node .result"
+  );
+  firstSearchResultTest.done();
+  await complete;
+  await dbg.actions.closeProjectSearch(cx);
   test.done();
   await garbageCollect();
 }
@@ -186,7 +197,7 @@ async function testOpeningLargeMinifiedFile(tab, toolbox) {
   dump("Open minified.js (large minified file)\n");
   const test = runTest("custom.jsdebugger.open-large-minified-file.DAMP");
   await selectSource(dbg, file);
-  await waitForText(dbg, file, fileFirstChars);
+  await waitForText(dbg, fileFirstChars);
   test.done();
 
   dbg.actions.closeTabs(dbg.selectors.getContext(dbg.getState()), [file]);
@@ -218,7 +229,7 @@ async function testPrettyPrint(toolbox) {
   dump("Click pretty-print button\n");
   prettyPrintButton.click();
   await waitForSource(dbg, formattedFileUrl);
-  await waitForText(dbg, formattedFileUrl, "!function (n) {\n");
+  await waitForText(dbg, "!function (n) {\n");
   test.done();
 
   await dbg.actions.toggleSourceMapsEnabled(true);

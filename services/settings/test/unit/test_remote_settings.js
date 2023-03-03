@@ -10,8 +10,8 @@ const { setTimeout } = ChromeUtils.importESModule(
   "resource://gre/modules/Timer.sys.mjs"
 );
 
-const { RemoteSettings } = ChromeUtils.import(
-  "resource://services-settings/remote-settings.js"
+const { RemoteSettings } = ChromeUtils.importESModule(
+  "resource://services-settings/remote-settings.sys.mjs"
 );
 const { Utils } = ChromeUtils.import("resource://services-settings/Utils.jsm");
 const { UptakeTelemetry, Policy } = ChromeUtils.import(
@@ -730,6 +730,24 @@ add_task(async function test_inspect_method() {
   }
 });
 add_task(clear_state);
+
+add_task(async function test_inspect_method_uses_a_random_cache_bust() {
+  const backup = Utils.fetchLatestChanges;
+  const cacheBusts = [];
+  Utils.fetchLatestChanges = (url, options) => {
+    cacheBusts.push(options.expected);
+    return { changes: [] };
+  };
+
+  await RemoteSettings.inspect();
+  await RemoteSettings.inspect();
+  await RemoteSettings.inspect();
+
+  notEqual(cacheBusts[0], cacheBusts[1]);
+  notEqual(cacheBusts[1], cacheBusts[2]);
+  notEqual(cacheBusts[0], cacheBusts[2]);
+  Utils.fetchLatestChanges = backup;
+});
 
 add_task(async function test_clearAll_method() {
   // Make sure we have some local data.

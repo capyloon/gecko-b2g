@@ -594,10 +594,7 @@ void ModuleNamespaceObject::ProxyHandler::trace(JSTracer* trc,
   auto& self = proxy->as<ModuleNamespaceObject>();
 
   if (self.hasExports()) {
-    for (JSAtom*& name : self.mutableExports()) {
-      TraceManuallyBarrieredEdge(trc, &name,
-                                 "ModuleNamespaceObject export name");
-    }
+    self.mutableExports().trace(trc);
   }
 
   if (self.hasBindings()) {
@@ -2061,13 +2058,13 @@ frontend::MaybeModuleRequestIndex ModuleBuilder::appendModuleRequest(
   markUsedByStencil(specifier);
   auto request = frontend::StencilModuleRequest(specifier);
 
-  uint32_t index = moduleRequests_.length();
-  if (!moduleRequests_.append(request)) {
-    js::ReportOutOfMemory(fc_);
+  if (!processAssertions(request, assertionList)) {
     return MaybeModuleRequestIndex();
   }
 
-  if (!processAssertions(request, assertionList)) {
+  uint32_t index = moduleRequests_.length();
+  if (!moduleRequests_.append(request)) {
+    js::ReportOutOfMemory(fc_);
     return MaybeModuleRequestIndex();
   }
 

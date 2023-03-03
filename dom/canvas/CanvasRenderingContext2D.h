@@ -16,6 +16,7 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/EnumeratedArray.h"
 #include "mozilla/Maybe.h"
+#include "mozilla/MruCache.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/SurfaceFromElementResult.h"
 #include "mozilla/ThreadLocal.h"
@@ -363,6 +364,11 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
   void ArcTo(double aX1, double aY1, double aX2, double aY2, double aRadius,
              mozilla::ErrorResult& aError) override;
   void Rect(double aX, double aY, double aW, double aH) override;
+  void RoundRect(
+      double aX, double aY, double aW, double aH,
+      const UnrestrictedDoubleOrDOMPointInitOrUnrestrictedDoubleOrDOMPointInitSequence&
+          aRadii,
+      ErrorResult& aError);
   void Arc(double aX, double aY, double aRadius, double aStartAngle,
            double aEndAngle, bool aAnticlockwise,
            mozilla::ErrorResult& aError) override;
@@ -1003,6 +1009,35 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
   inline const ContextState& CurrentState() const {
     return mStyleStack[mStyleStack.Length() - 1];
   }
+
+  struct CacheKey {
+    CacheKey() : mFont(), mGeneration(0) {}
+    CacheKey(const nsACString& aFont, uint64_t aGeneration)
+        : mFont(aFont), mGeneration(aGeneration) {}
+    nsCString mFont;
+    uint64_t mGeneration;
+  };
+
+  struct FontStyleData {
+    CacheKey mKey;
+    nsCString mUsedFont;
+    RefPtr<const ComputedStyle> mStyle;
+  };
+
+  class FontStyleCache
+      : public MruCache<CacheKey, FontStyleData, FontStyleCache> {
+   public:
+    static HashNumber Hash(const CacheKey& aKey) {
+      HashNumber hash = HashString(aKey.mFont);
+      return AddToHash(hash, aKey.mGeneration);
+    }
+    static bool Match(const CacheKey& aKey, const FontStyleData& aVal) {
+      return aVal.mKey.mGeneration == aKey.mGeneration &&
+             aVal.mKey.mFont == aKey.mFont;
+    }
+  };
+
+  FontStyleCache mFontStyleCache;
 
   friend class CanvasGeneralPattern;
   friend class AdjustedTarget;

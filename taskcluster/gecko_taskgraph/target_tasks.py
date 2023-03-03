@@ -184,10 +184,10 @@ def filter_release_tasks(task, parameters):
         if "linux" not in build_platform:
             # filter out windows/mac/android
             return False
-        elif task.kind not in ["spidermonkey"] and "-qr" in test_platform:
+        if task.kind not in ["spidermonkey"] and "-qr" in test_platform:
             # filter out linux-qr tests, leave spidermonkey
             return False
-        elif "64" not in build_platform:
+        if "64" not in build_platform:
             # filter out linux32 builds
             return False
 
@@ -338,12 +338,11 @@ def target_tasks_try(full_task_graph, parameters, graph_config):
     try_mode = parameters["try_mode"]
     if try_mode == "try_task_config":
         return _try_task_config(full_task_graph, parameters, graph_config)
-    elif try_mode == "try_option_syntax":
+    if try_mode == "try_option_syntax":
         return _try_option_syntax(full_task_graph, parameters, graph_config)
-    else:
-        # With no try mode, we schedule nothing, allowing the user to add tasks
-        # later via treeherder.
-        return []
+    # With no try mode, we schedule nothing, allowing the user to add tasks
+    # later via treeherder.
+    return []
 
 
 @_target_task("try_select_tasks")
@@ -564,7 +563,7 @@ def target_tasks_promote_desktop(full_task_graph, parameters, graph_config):
 
     def filter(task):
         # Bug 1758507 - geckoview ships in the promote phase
-        if "mozilla-esr" not in parameters["project"] and is_geckoview(
+        if not parameters["release_type"].startswith("esr") and is_geckoview(
             task, parameters
         ):
             return True
@@ -656,8 +655,7 @@ def target_tasks_ship_desktop(full_task_graph, parameters, graph_config):
 
         if "secondary" in task.kind:
             return is_rc
-        else:
-            return not is_rc
+        return not is_rc
 
     return [l for l, t in full_task_graph.tasks.items() if filter(t)]
 
@@ -763,12 +761,8 @@ def target_tasks_general_perf_testing(full_task_graph, parameters, graph_config)
             # Select some browsertime tasks as desktop smoke-tests
             if "browsertime" in try_name:
                 if "chrome" in try_name:
-                    if "tp6" in try_name and "macosx1014" in platform:
-                        return False
                     return True
                 if "chromium" in try_name:
-                    if "tp6" in try_name and "macosx1014" in platform:
-                        return False
                     return True
                 if "-live" in try_name:
                     return True
@@ -1416,3 +1410,13 @@ def target_tasks_eslint_build(full_task_graph, parameters, graph_config):
             continue
         if "eslint-build" in name:
             yield name
+
+
+@_target_task("holly_tasks")
+def target_tasks_holly(full_task_graph, parameters, graph_config):
+    """Bug 1814661: only run updatebot tasks on holly"""
+
+    def filter(task):
+        return task.kind == "updatebot"
+
+    return [l for l, t in full_task_graph.tasks.items() if filter(t)]

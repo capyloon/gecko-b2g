@@ -298,7 +298,7 @@ static void RecordCommonRtpTelemetry(const T& list, const T& lastList,
                                      const bool isRemote) {
   using namespace Telemetry;
   for (const auto& s : list) {
-    const bool isAudio = s.mKind.Value().Find(u"audio") != -1;
+    const bool isAudio = s.mKind.Find(u"audio") != -1;
     if (s.mPacketsLost.WasPassed() && s.mPacketsReceived.WasPassed()) {
       if (const uint64_t total =
               s.mPacketsLost.Value() + s.mPacketsReceived.Value()) {
@@ -348,7 +348,7 @@ void PeerConnectionCtx::DeliverStats(
   // Record bandwidth telemetry
   for (const auto& s : aReport->mInboundRtpStreamStats) {
     if (s.mBytesReceived.WasPassed()) {
-      const bool isAudio = s.mKind.Value().Find(u"audio") != -1;
+      const bool isAudio = s.mKind.Find(u"audio") != -1;
       for (const auto& lastS : lastReport->mInboundRtpStreamStats) {
         if (lastS.mId == s.mId) {
           int32_t deltaMs = s.mTimestamp.Value() - lastS.mTimestamp.Value();
@@ -376,7 +376,7 @@ void PeerConnectionCtx::DeliverStats(
                            lastReport->mRemoteInboundRtpStreamStats, true);
   for (const auto& s : aReport->mRemoteInboundRtpStreamStats) {
     if (s.mRoundTripTime.WasPassed()) {
-      const bool isAudio = s.mKind.Value().Find(u"audio") != -1;
+      const bool isAudio = s.mKind.Find(u"audio") != -1;
       HistogramID id = isAudio ? WEBRTC_AUDIO_QUALITY_OUTBOUND_RTT
                                : WEBRTC_VIDEO_QUALITY_OUTBOUND_RTT;
       Accumulate(id, s.mRoundTripTime.Value() * 1000);
@@ -488,14 +488,6 @@ PeerConnectionImpl* PeerConnectionCtx::GetPeerConnection(
     return nullptr;
   }
   return iterator->second;
-}
-
-template <typename Function>
-void PeerConnectionCtx::ForEachPeerConnection(Function&& aFunction) const {
-  MOZ_ASSERT(NS_IsMainThread());
-  for (const auto& pair : mPeerConnections) {
-    aFunction(pair.second);
-  }
 }
 
 void PeerConnectionCtx::ClearClosedStats() {

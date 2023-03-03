@@ -19,6 +19,8 @@
 
 namespace mozilla {
 
+class MFCDMProxy;
+class MFContentProtectionManager;
 class MFMediaEngineExtension;
 class MFMediaEngineStreamWrapper;
 class MFMediaSource;
@@ -59,6 +61,10 @@ class MFMediaEngineParent final : public PMFMediaEngineParent {
   mozilla::ipc::IPCResult RecvSetLooping(bool aLooping);
   mozilla::ipc::IPCResult RecvNotifyEndOfStream(TrackInfo::TrackType aType);
   mozilla::ipc::IPCResult RecvShutdown();
+
+#ifdef MOZ_WMF_CDM
+  void SetCDMProxy(MFCDMProxy* aCDMProxy);
+#endif
 
   void Destroy();
 
@@ -102,6 +108,9 @@ class MFMediaEngineParent final : public PMFMediaEngineParent {
   Microsoft::WRL::ComPtr<MFMediaEngineNotify> mMediaEngineNotify;
   Microsoft::WRL::ComPtr<MFMediaEngineExtension> mMediaEngineExtension;
   Microsoft::WRL::ComPtr<MFMediaSource> mMediaSource;
+#ifdef MOZ_WMF_CDM
+  Microsoft::WRL::ComPtr<MFContentProtectionManager> mContentProtectionManager;
+#endif
 
   MediaEventListener mMediaEngineEventListener;
   MediaEventListener mRequestSampleListener;

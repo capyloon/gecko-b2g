@@ -3,9 +3,9 @@
 
 "use strict";
 
-const { AppConstants } = ChromeUtils.importESModule(
-  "resource://gre/modules/AppConstants.sys.mjs"
-);
+// window.RemoteAgent is a simple object set in browser.js, and importing
+// RemoteAgent conflicts with that.
+// eslint-disable-next-line mozilla/no-redeclare-with-import-autofix
 const { RemoteAgent } = ChromeUtils.importESModule(
   "chrome://remote/content/components/RemoteAgent.sys.mjs"
 );
@@ -330,7 +330,7 @@ async function loadURL(url, expectedURL = undefined) {
   const browser = gBrowser.selectedTab.linkedBrowser;
   const loaded = BrowserTestUtils.browserLoaded(browser, true, expectedURL);
 
-  BrowserTestUtils.loadURI(browser, url);
+  BrowserTestUtils.loadURIString(browser, url);
   await loaded;
 }
 

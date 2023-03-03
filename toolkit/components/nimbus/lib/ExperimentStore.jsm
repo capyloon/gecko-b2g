@@ -49,7 +49,7 @@ XPCOMUtils.defineLazyGetter(lazy, "syncDataStore", () => {
       try {
         branch.setStringPref(pref, JSON.stringify(value));
       } catch (e) {
-        Cu.reportError(e);
+        console.error(e);
       }
     },
     _trySetTypedPrefValue(pref, value) {
@@ -244,12 +244,12 @@ class ExperimentStore extends SharedDataMap {
   async init() {
     await super.init();
 
-    this.getAllActive().forEach(({ branch, featureIds }) => {
+    this.getAllActiveExperiments().forEach(({ branch, featureIds }) => {
       (featureIds || getAllBranchFeatureIds(branch)).forEach(featureId =>
         this._emitFeatureUpdate(featureId, "feature-experiment-loaded")
       );
     });
-    this.getAllRollouts().forEach(({ featureIds }) => {
+    this.getAllActiveRollouts().forEach(({ featureIds }) => {
       featureIds.forEach(featureId =>
         this._emitFeatureUpdate(featureId, "feature-rollout-loaded")
       );
@@ -269,7 +269,7 @@ class ExperimentStore extends SharedDataMap {
    */
   getExperimentForFeature(featureId) {
     return (
-      this.getAllActive().find(
+      this.getAllActiveExperiments().find(
         experiment =>
           experiment.featureIds?.includes(featureId) ||
           // Supports <v1.3.0, which was when .featureIds was added
@@ -302,16 +302,17 @@ class ExperimentStore extends SharedDataMap {
     try {
       data = Object.values(this._data || {});
     } catch (e) {
-      Cu.reportError(e);
+      console.error(e);
     }
 
     return data;
   }
 
   /**
+   * Returns all active experiments
    * @returns {Enrollment[]}
    */
-  getAllActive() {
+  getAllActiveExperiments() {
     return this.getAll().filter(
       enrollment => enrollment.active && !enrollment.isRollout
     );
@@ -319,9 +320,9 @@ class ExperimentStore extends SharedDataMap {
 
   /**
    * Returns all active rollouts
-   * @returns {array}
+   * @returns {Enrollment[]}
    */
-  getAllRollouts() {
+  getAllActiveRollouts() {
     return this.getAll().filter(
       enrollment => enrollment.active && enrollment.isRollout
     );
@@ -334,7 +335,7 @@ class ExperimentStore extends SharedDataMap {
    */
   getRolloutForFeature(featureId) {
     return (
-      this.getAllRollouts().find(r => r.featureIds.includes(featureId)) ||
+      this.getAllActiveRollouts().find(r => r.featureIds.includes(featureId)) ||
       lazy.syncDataStore.getDefault(featureId)
     );
   }

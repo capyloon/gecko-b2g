@@ -31,7 +31,6 @@ const ENABLED_PREF = "contextualSearch.enabled";
 
 const VIEW_TEMPLATE = {
   attributes: {
-    role: "group",
     selectable: true,
   },
   children: [
@@ -277,7 +276,7 @@ class ProviderContextualSearch extends UrlbarProvider {
         result.payload.input
       );
       let window = lazy.BrowserWindowTracker.getTopWindow();
-      window.gBrowser.loadURI(url, {
+      window.gBrowser.fixupAndLoadURIString(url, {
         triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
       });
     }

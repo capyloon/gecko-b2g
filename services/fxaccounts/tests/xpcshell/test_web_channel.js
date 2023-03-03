@@ -14,7 +14,9 @@ const { CryptoUtils } = ChromeUtils.import(
 const {
   FxAccountsWebChannel,
   FxAccountsWebChannelHelpers,
-} = ChromeUtils.import("resource://gre/modules/FxAccountsWebChannel.jsm");
+} = ChromeUtils.importESModule(
+  "resource://gre/modules/FxAccountsWebChannel.sys.mjs"
+);
 
 const URL_STRING = "https://example.com";
 
@@ -831,7 +833,7 @@ add_test(function test_helpers_open_sync_preferences() {
   let mockBrowser = {
     loadURI(uri) {
       Assert.equal(
-        uri,
+        uri.spec,
         "about:preferences?entrypoint=fxa%3Averification_complete#sync"
       );
       run_next_test();

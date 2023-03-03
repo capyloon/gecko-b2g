@@ -425,6 +425,12 @@ fn tweak_when_ignoring_colors(
         return;
     }
 
+    // Always honor colors if forced-color-adjust is set to none.
+    let forced = context.builder.get_inherited_text().clone_forced_color_adjust();
+    if forced == computed::ForcedColorAdjust::None {
+        return;
+    }
+
     // Don't override background-color on ::-moz-color-swatch. It is set as an
     // author style (via the style attribute), but it's pretty important for it
     // to show up for obvious reasons :)
@@ -434,9 +440,11 @@ fn tweak_when_ignoring_colors(
         return;
     }
 
-    fn alpha_channel(color: &Color, context: &computed::Context) -> u8 {
+    fn alpha_channel(color: &Color, context: &computed::Context) -> f32 {
         // We assume here currentColor is opaque.
-        let color = color.to_computed_value(context).into_rgba(RGBA::new(0, 0, 0, 255));
+        let color = color
+            .to_computed_value(context)
+            .into_rgba(RGBA::new(0, 0, 0, 1.0));
         color.alpha
     }
 
@@ -459,7 +467,7 @@ fn tweak_when_ignoring_colors(
             // otherwise, this is needed to preserve semi-transparent
             // backgrounds.
             let alpha = alpha_channel(color, context);
-            if alpha == 0 {
+            if alpha == 0.0 {
                 return;
             }
             let mut color = context.builder.device.default_background_color();
@@ -475,7 +483,7 @@ fn tweak_when_ignoring_colors(
             // If the inherited color would be transparent, but we would
             // override this with a non-transparent color, then override it with
             // the default color. Otherwise just let it inherit through.
-            if context.builder.get_parent_inherited_text().clone_color().alpha == 0 {
+            if context.builder.get_parent_inherited_text().clone_color().alpha == 0.0 {
                 let color = context.builder.device.default_color();
                 declarations_to_apply_unless_overriden.push(PropertyDeclaration::Color(
                     specified::ColorPropertyValue(color.into()),
@@ -808,32 +816,24 @@ impl<'a, 'b: 'a> Cascade<'a, 'b> {
             builder.add_flags(ComputedValueFlags::HAS_AUTHOR_SPECIFIED_BORDER_BACKGROUND);
         }
 
-        if self
-            .author_specified
-            .contains(LonghandId::FontFamily)
-        {
+        if self.author_specified.contains(LonghandId::FontFamily) {
             builder.add_flags(ComputedValueFlags::HAS_AUTHOR_SPECIFIED_FONT_FAMILY);
         }
 
-        if self
-            .author_specified
-            .contains(LonghandId::LetterSpacing)
-        {
+        if self.author_specified.contains(LonghandId::LetterSpacing) {
             builder.add_flags(ComputedValueFlags::HAS_AUTHOR_SPECIFIED_LETTER_SPACING);
         }
 
-        if self
-            .author_specified
-            .contains(LonghandId::WordSpacing)
-        {
+        if self.author_specified.contains(LonghandId::WordSpacing) {
             builder.add_flags(ComputedValueFlags::HAS_AUTHOR_SPECIFIED_WORD_SPACING);
         }
 
-        if self
-            .author_specified
-            .contains(LonghandId::FontSynthesis)
-        {
-            builder.add_flags(ComputedValueFlags::HAS_AUTHOR_SPECIFIED_FONT_SYNTHESIS);
+        if self.author_specified.contains(LonghandId::FontSynthesisWeight) {
+            builder.add_flags(ComputedValueFlags::HAS_AUTHOR_SPECIFIED_FONT_SYNTHESIS_WEIGHT);
+        }
+
+        if self.author_specified.contains(LonghandId::FontSynthesisStyle) {
+            builder.add_flags(ComputedValueFlags::HAS_AUTHOR_SPECIFIED_FONT_SYNTHESIS_STYLE);
         }
 
         #[cfg(feature = "servo")]

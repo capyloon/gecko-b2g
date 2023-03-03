@@ -15,6 +15,7 @@
 #include "nsProxyRelease.h"
 #include "nsSocketTransportService2.h"
 #include "mozilla/Logging.h"
+#include "mozilla/ScopeExit.h"
 #include "mozilla/StaticPrefs_network.h"
 
 namespace mozilla::net {
@@ -26,7 +27,8 @@ NS_IMPL_ISUPPORTS(WebTransportSessionProxy, WebTransportSessionEventListener,
                   nsIChannelEventSink, nsIInterfaceRequestor);
 
 WebTransportSessionProxy::WebTransportSessionProxy()
-    : mMutex("WebTransportSessionProxy::mMutex") {
+    : mMutex("WebTransportSessionProxy::mMutex"),
+      mTarget(GetMainThreadSerialEventTarget()) {
   LOG(("WebTransportSessionProxy constructor"));
 }
 
@@ -66,6 +68,14 @@ nsresult WebTransportSessionProxy::AsyncConnect(
     MutexAutoLock lock(mMutex);
     mListener = aListener;
   }
+  auto cleanup = MakeScopeExit([self = RefPtr<WebTransportSessionProxy>(this)] {
+    MutexAutoLock lock(self->mMutex);
+    self->mListener->OnSessionClosed(0, ""_ns);  // TODO: find a better error.
+    self->mChannel = nullptr;
+    self->mListener = nullptr;
+    self->ChangeState(WebTransportSessionProxyState::DONE);
+  });
+
   nsSecurityFlags flags = nsILoadInfo::SEC_COOKIES_OMIT | aSecurityFlags;
   nsLoadFlags loadFlags = nsIRequest::LOAD_NORMAL |
                           nsIRequest::LOAD_BYPASS_CACHE |
@@ -91,14 +101,34 @@ nsresult WebTransportSessionProxy::AsyncConnect(
     ChangeState(WebTransportSessionProxyState::NEGOTIATING);
   }
 
-  rv = mChannel->AsyncOpen(this);
+  // https://www.ietf.org/archive/id/draft-ietf-webtrans-http3-04.html#section-6
+  rv = httpChannel->SetRequestHeader("Sec-Webtransport-Http3-Draft02"_ns,
+                                     "1"_ns, false);
   if (NS_FAILED(rv)) {
-    MutexAutoLock lock(mMutex);
-    mChannel = nullptr;
-    mListener = nullptr;
-    ChangeState(WebTransportSessionProxyState::DONE);
+    return rv;
+  }
+
+  rv = mChannel->AsyncOpen(this);
+  if (NS_SUCCEEDED(rv)) {
+    cleanup.release();
   }
   return rv;
+}
+
+NS_IMETHODIMP
+WebTransportSessionProxy::RetargetTo(nsIEventTarget* aTarget) {
+  {
+    MutexAutoLock lock(mMutex);
+    LOG(("WebTransportSessionProxy::RetargetTo mState=%d", mState));
+    // RetargetTo should be only called after the session is ready.
+    if (mState != WebTransportSessionProxyState::ACTIVE) {
+      return NS_ERROR_UNEXPECTED;
+    }
+
+    mTarget = aTarget;
+  }
+
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -107,8 +137,8 @@ WebTransportSessionProxy::GetStats() { return NS_ERROR_NOT_IMPLEMENTED; }
 NS_IMETHODIMP
 WebTransportSessionProxy::CloseSession(uint32_t status,
                                        const nsACString& reason) {
-  MOZ_ASSERT(NS_IsMainThread());
   MutexAutoLock lock(mMutex);
+  MOZ_ASSERT(mTarget->IsOnCurrentThread());
   mCloseStatus = status;
   mReason = reason;
   mListener = nullptr;
@@ -141,33 +171,40 @@ WebTransportSessionProxy::CloseSession(uint32_t status,
   return NS_OK;
 }
 
+void WebTransportSessionProxy::CloseSessionInternalLocked() {
+  MutexAutoLock lock(mMutex);
+  CloseSessionInternal();
+}
+
 void WebTransportSessionProxy::CloseSessionInternal() {
   if (!OnSocketThread()) {
     mMutex.AssertCurrentThreadOwns();
     RefPtr<WebTransportSessionProxy> self(this);
     Unused << gSocketTransportService->Dispatch(NS_NewRunnableFunction(
         "WebTransportSessionProxy::CallCloseWebTransportSession",
-        [self{std::move(self)}]() { self->CloseSessionInternal(); }));
+        [self{std::move(self)}]() { self->CloseSessionInternalLocked(); }));
     return;
   }
+
+  mMutex.AssertCurrentThreadOwns();
 
   RefPtr<Http3WebTransportSession> wt;
   uint32_t closeStatus = 0;
   nsCString reason;
-  {
-    MutexAutoLock lock(mMutex);
-    if (mState == WebTransportSessionProxyState::SESSION_CLOSE_PENDING) {
-      MOZ_ASSERT(mWebTransportSession);
-      wt = mWebTransportSession;
-      mWebTransportSession = nullptr;
-      closeStatus = mCloseStatus;
-      reason = mReason;
-      ChangeState(WebTransportSessionProxyState::DONE);
-    } else {
-      MOZ_ASSERT(mState == WebTransportSessionProxyState::DONE);
-    }
+
+  if (mState == WebTransportSessionProxyState::SESSION_CLOSE_PENDING) {
+    MOZ_ASSERT(mWebTransportSession);
+    wt = mWebTransportSession;
+    mWebTransportSession = nullptr;
+    closeStatus = mCloseStatus;
+    reason = mReason;
+    ChangeState(WebTransportSessionProxyState::DONE);
+  } else {
+    MOZ_ASSERT(mState == WebTransportSessionProxyState::DONE);
   }
+
   if (wt) {
+    MutexAutoUnlock unlock(mMutex);
     wt->CloseSession(closeStatus, reason);
   }
 }
@@ -433,7 +470,7 @@ WebTransportSessionProxy::OnStartRequest(nsIRequest* aRequest) {
         nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(mChannel);
         if (!httpChannel ||
             NS_FAILED(httpChannel->GetResponseStatus(&status)) ||
-            status != 200) {
+            !(status >= 200 && status < 300)) {
           listener = mListener;
           mListener = nullptr;
           mChannel = nullptr;
@@ -475,14 +512,13 @@ WebTransportSessionProxy::OnStopRequest(nsIRequest* aRequest,
   uint32_t closeStatus = 0;
   uint64_t sessionId;
   bool succeeded = false;
-  nsTArray<std::function<void()>> pendingEvents;
   {
     MutexAutoLock lock(mMutex);
     switch (mState) {
       case WebTransportSessionProxyState::INIT:
       case WebTransportSessionProxyState::ACTIVE:
       case WebTransportSessionProxyState::NEGOTIATING:
-        MOZ_ASSERT(false, "OnStotRequest cannot be called in this state.");
+        MOZ_ASSERT(false, "OnStopRequest cannot be called in this state.");
         break;
       case WebTransportSessionProxyState::CLOSE_CALLBACK_PENDING:
         reason = mReason;
@@ -506,7 +542,6 @@ WebTransportSessionProxy::OnStopRequest(nsIRequest* aRequest,
           sessionId = mSessionId;
           listener = mListener;
           ChangeState(WebTransportSessionProxyState::ACTIVE);
-          pendingEvents = std::move(mPendingEvents);
         }
         break;
       case WebTransportSessionProxyState::SESSION_CLOSE_PENDING:
@@ -517,10 +552,20 @@ WebTransportSessionProxy::OnStopRequest(nsIRequest* aRequest,
   if (listener) {
     if (succeeded) {
       listener->OnSessionReady(sessionId);
+      nsTArray<std::function<void()>> pendingEvents;
+      {
+        MutexAutoLock lock(mMutex);
+        pendingEvents = std::move(mPendingEvents);
+        mStopRequestCalled = true;
+      }
       if (!pendingEvents.IsEmpty()) {
-        for (const auto& event : pendingEvents) {
-          event();
-        }
+        Unused << gSocketTransportService->Dispatch(NS_NewRunnableFunction(
+            "WebTransportSessionProxy::DispatchPendingEvents",
+            [pendingEvents = std::move(pendingEvents)]() {
+              for (const auto& event : pendingEvents) {
+                event();
+              }
+            }));
       }
     } else {
       listener->OnSessionClosed(closeStatus,
@@ -650,37 +695,46 @@ WebTransportSessionProxy::OnSessionReadyInternal(
 NS_IMETHODIMP
 WebTransportSessionProxy::OnIncomingStreamAvailableInternal(
     Http3WebTransportStream* aStream) {
-  if (!NS_IsMainThread()) {
-    RefPtr<WebTransportSessionProxy> self(this);
-    RefPtr<Http3WebTransportStream> stream = aStream;
-    Unused << NS_DispatchToMainThread(NS_NewRunnableFunction(
-        "WebTransportSessionProxy::OnIncomingStreamAvailableInternal",
-        [self{std::move(self)}, stream{std::move(stream)}]() {
-          self->OnIncomingStreamAvailableInternal(stream);
-        }));
-    return NS_OK;
-  }
-
   nsCOMPtr<WebTransportSessionEventListener> listener;
   {
     MutexAutoLock lock(mMutex);
+
+    LOG(
+        ("WebTransportSessionProxy::OnIncomingStreamAvailableInternal %p "
+         "mState=%d "
+         "mStopRequestCalled=%d",
+         this, mState, mStopRequestCalled));
+    // Since OnSessionReady on the listener is called on the main thread,
+    // OnIncomingStreamAvailableInternal and OnSessionReady can be racy. If
+    // OnStopRequest is not called yet, OnIncomingStreamAvailableInternal needs
+    // to wait.
+    if (!mStopRequestCalled) {
+      mPendingEvents.AppendElement(
+          [self = RefPtr{this}, stream = RefPtr{aStream}]() {
+            self->OnIncomingStreamAvailableInternal(stream);
+          });
+      return NS_OK;
+    }
+
+    if (!mTarget->IsOnCurrentThread()) {
+      RefPtr<WebTransportSessionProxy> self(this);
+      RefPtr<Http3WebTransportStream> stream = aStream;
+      Unused << mTarget->Dispatch(NS_NewRunnableFunction(
+          "WebTransportSessionProxy::OnIncomingStreamAvailableInternal",
+          [self{std::move(self)}, stream{std::move(stream)}]() {
+            self->OnIncomingStreamAvailableInternal(stream);
+          }));
+      return NS_OK;
+    }
+
     LOG(
         ("WebTransportSessionProxy::OnIncomingStreamAvailableInternal %p "
          "mState=%d mListener=%p",
          this, mState, mListener.get()));
-    switch (mState) {
-      case WebTransportSessionProxyState::NEGOTIATING_SUCCEEDED:
-        // OnSessionReady is not called yet, so we need to wait.
-        mPendingEvents.AppendElement(
-            [self = RefPtr{this}, stream = RefPtr{aStream}]() {
-              self->OnIncomingStreamAvailableInternal(stream);
-            });
-        break;
-      case WebTransportSessionProxyState::ACTIVE:
-        listener = mListener;
-        break;
-      default:
-        return NS_ERROR_ABORT;
+    if (mState == WebTransportSessionProxyState::ACTIVE) {
+      listener = mListener;
+    } else {
+      MOZ_ASSERT(false, "mState is not ACTIVE");
     }
   }
 
@@ -720,8 +774,23 @@ NS_IMETHODIMP
 WebTransportSessionProxy::OnSessionClosed(uint32_t status,
                                           const nsACString& reason) {
   MOZ_ASSERT(OnSocketThread(), "not on socket thread");
-  LOG(("WebTransportSessionProxy::OnSessionClosed"));
   MutexAutoLock lock(mMutex);
+  LOG(
+      ("WebTransportSessionProxy::OnSessionClosed %p mState=%d "
+       "mStopRequestCalled=%d",
+       this, mState, mStopRequestCalled));
+  // Since OnSessionReady on the listener is called on the main thread,
+  // OnSessionClosed and OnSessionReady can be racy. If OnStopRequest is not
+  // called yet, OnSessionClosed needs to wait.
+  if (!mStopRequestCalled) {
+    nsCString closeReason(reason);
+    mPendingEvents.AppendElement(
+        [self = RefPtr{this}, status(status), closeReason(closeReason)]() {
+          Unused << self->OnSessionClosed(status, closeReason);
+        });
+    return NS_OK;
+  }
+
   switch (mState) {
     case WebTransportSessionProxyState::INIT:
     case WebTransportSessionProxyState::NEGOTIATING:
@@ -734,10 +803,7 @@ WebTransportSessionProxy::OnSessionClosed(uint32_t status,
       mReason = reason;
       mWebTransportSession = nullptr;
       ChangeState(WebTransportSessionProxyState::CLOSE_CALLBACK_PENDING);
-      RefPtr<WebTransportSessionProxy> self(this);
-      Unused << NS_DispatchToMainThread(NS_NewRunnableFunction(
-          "WebTransportSessionProxy::CallOnSessionClose",
-          [self{std::move(self)}]() { self->CallOnSessionClosed(); }));
+      CallOnSessionClosed();
     } break;
     case WebTransportSessionProxyState::SESSION_CLOSE_PENDING:
       ChangeState(WebTransportSessionProxyState::DONE);
@@ -750,34 +816,49 @@ WebTransportSessionProxy::OnSessionClosed(uint32_t status,
   return NS_OK;
 }
 
+void WebTransportSessionProxy::CallOnSessionClosedLocked() {
+  MutexAutoLock lock(mMutex);
+  CallOnSessionClosed();
+}
+
 void WebTransportSessionProxy::CallOnSessionClosed() {
-  MOZ_ASSERT(NS_IsMainThread(), "not on socket thread");
+  mMutex.AssertCurrentThreadOwns();
+
+  if (!mTarget->IsOnCurrentThread()) {
+    RefPtr<WebTransportSessionProxy> self(this);
+    Unused << mTarget->Dispatch(NS_NewRunnableFunction(
+        "WebTransportSessionProxy::CallOnSessionClosed",
+        [self{std::move(self)}]() { self->CallOnSessionClosedLocked(); }));
+    return;
+  }
+
+  MOZ_ASSERT(mTarget->IsOnCurrentThread());
   nsCOMPtr<WebTransportSessionEventListener> listener;
   nsAutoCString reason;
   uint32_t closeStatus = 0;
-  {
-    MutexAutoLock lock(mMutex);
-    switch (mState) {
-      case WebTransportSessionProxyState::INIT:
-      case WebTransportSessionProxyState::NEGOTIATING:
-      case WebTransportSessionProxyState::NEGOTIATING_SUCCEEDED:
-      case WebTransportSessionProxyState::ACTIVE:
-      case WebTransportSessionProxyState::SESSION_CLOSE_PENDING:
-        MOZ_ASSERT(false,
-                   "CallOnSessionClosed cannot be called in this state.");
-        break;
-      case WebTransportSessionProxyState::CLOSE_CALLBACK_PENDING:
-        listener = mListener;
-        mListener = nullptr;
-        reason = mReason;
-        closeStatus = mCloseStatus;
-        ChangeState(WebTransportSessionProxyState::DONE);
-        break;
-      case WebTransportSessionProxyState::DONE:
-        break;
-    }
+
+  switch (mState) {
+    case WebTransportSessionProxyState::INIT:
+    case WebTransportSessionProxyState::NEGOTIATING:
+    case WebTransportSessionProxyState::NEGOTIATING_SUCCEEDED:
+    case WebTransportSessionProxyState::ACTIVE:
+    case WebTransportSessionProxyState::SESSION_CLOSE_PENDING:
+      MOZ_ASSERT(false, "CallOnSessionClosed cannot be called in this state.");
+      break;
+    case WebTransportSessionProxyState::CLOSE_CALLBACK_PENDING:
+      listener = mListener;
+      mListener = nullptr;
+      reason = mReason;
+      closeStatus = mCloseStatus;
+      ChangeState(WebTransportSessionProxyState::DONE);
+      break;
+    case WebTransportSessionProxyState::DONE:
+      break;
   }
+
   if (listener) {
+    // Don't invoke the callback under the lock.
+    MutexAutoUnlock unlock(mMutex);
     listener->OnSessionClosed(closeStatus, reason);
   }
 }
@@ -849,13 +930,11 @@ void WebTransportSessionProxy::ChangeState(
 
 void WebTransportSessionProxy::NotifyDatagramReceived(
     nsTArray<uint8_t>&& aData) {
-  // TODO: this should be on the target thread, but the target thread is main
-  // thread for now.
-  MOZ_ASSERT(NS_IsMainThread());
-
   nsCOMPtr<WebTransportSessionEventListener> listener;
   {
     MutexAutoLock lock(mMutex);
+    MOZ_ASSERT(mTarget->IsOnCurrentThread());
+
     if (mState != WebTransportSessionProxyState::ACTIVE || !mListener) {
       return;
     }
@@ -869,12 +948,15 @@ NS_IMETHODIMP WebTransportSessionProxy::OnDatagramReceivedInternal(
     nsTArray<uint8_t>&& aData) {
   MOZ_ASSERT(OnSocketThread());
 
-  if (!NS_IsMainThread()) {
-    return NS_DispatchToMainThread(NS_NewRunnableFunction(
-        "WebTransportSessionProxy::OnDatagramReceived",
-        [self = RefPtr{this}, data{std::move(aData)}]() mutable {
-          self->NotifyDatagramReceived(std::move(data));
-        }));
+  {
+    MutexAutoLock lock(mMutex);
+    if (!mTarget->IsOnCurrentThread()) {
+      return mTarget->Dispatch(NS_NewRunnableFunction(
+          "WebTransportSessionProxy::OnDatagramReceived",
+          [self = RefPtr{this}, data{std::move(aData)}]() mutable {
+            self->NotifyDatagramReceived(std::move(data));
+          }));
+    }
   }
 
   NotifyDatagramReceived(std::move(aData));
@@ -887,13 +969,11 @@ NS_IMETHODIMP WebTransportSessionProxy::OnDatagramReceived(
 }
 
 void WebTransportSessionProxy::OnMaxDatagramSizeInternal(uint64_t aSize) {
-  // TODO: this should be on the target thread, but the target thread is main
-  // thread for now.
-  MOZ_ASSERT(NS_IsMainThread());
-
   nsCOMPtr<WebTransportSessionEventListener> listener;
   {
     MutexAutoLock lock(mMutex);
+    MOZ_ASSERT(mTarget->IsOnCurrentThread());
+
     if (mState != WebTransportSessionProxyState::ACTIVE || !mListener) {
       return;
     }
@@ -906,12 +986,15 @@ void WebTransportSessionProxy::OnMaxDatagramSizeInternal(uint64_t aSize) {
 NS_IMETHODIMP WebTransportSessionProxy::OnMaxDatagramSize(uint64_t aSize) {
   MOZ_ASSERT(OnSocketThread());
 
-  if (!NS_IsMainThread()) {
-    return NS_DispatchToMainThread(
-        NS_NewRunnableFunction("WebTransportSessionProxy::OnMaxDatagramSize",
-                               [self = RefPtr{this}, size(aSize)] {
-                                 self->OnMaxDatagramSizeInternal(size);
-                               }));
+  {
+    MutexAutoLock lock(mMutex);
+    if (!mTarget->IsOnCurrentThread()) {
+      return mTarget->Dispatch(
+          NS_NewRunnableFunction("WebTransportSessionProxy::OnMaxDatagramSize",
+                                 [self = RefPtr{this}, size(aSize)] {
+                                   self->OnMaxDatagramSizeInternal(size);
+                                 }));
+    }
   }
 
   OnMaxDatagramSizeInternal(aSize);
@@ -920,13 +1003,10 @@ NS_IMETHODIMP WebTransportSessionProxy::OnMaxDatagramSize(uint64_t aSize) {
 
 void WebTransportSessionProxy::OnOutgoingDatagramOutComeInternal(
     uint64_t aId, WebTransportSessionEventListener::DatagramOutcome aOutCome) {
-  // TODO: this should be on the target thread, but the target thread is main
-  // thread for now.
-  MOZ_ASSERT(NS_IsMainThread());
-
   nsCOMPtr<WebTransportSessionEventListener> listener;
   {
     MutexAutoLock lock(mMutex);
+    MOZ_ASSERT(mTarget->IsOnCurrentThread());
     if (mState != WebTransportSessionProxyState::ACTIVE || !mListener) {
       return;
     }
@@ -941,12 +1021,15 @@ WebTransportSessionProxy::OnOutgoingDatagramOutCome(
     uint64_t aId, WebTransportSessionEventListener::DatagramOutcome aOutCome) {
   MOZ_ASSERT(OnSocketThread());
 
-  if (!NS_IsMainThread()) {
-    return NS_DispatchToMainThread(NS_NewRunnableFunction(
-        "WebTransportSessionProxy::OnOutgoingDatagramOutCome",
-        [self = RefPtr{this}, id(aId), outcome(aOutCome)] {
-          self->OnOutgoingDatagramOutComeInternal(id, outcome);
-        }));
+  {
+    MutexAutoLock lock(mMutex);
+    if (!mTarget->IsOnCurrentThread()) {
+      return mTarget->Dispatch(NS_NewRunnableFunction(
+          "WebTransportSessionProxy::OnOutgoingDatagramOutCome",
+          [self = RefPtr{this}, id(aId), outcome(aOutCome)] {
+            self->OnOutgoingDatagramOutComeInternal(id, outcome);
+          }));
+    }
   }
 
   OnOutgoingDatagramOutComeInternal(aId, aOutCome);

@@ -1030,6 +1030,7 @@ struct ParamTraits<mozilla::layers::ScrollbarData> {
     WriteParam(aWriter, aParam.mThumbRatio);
     WriteParam(aWriter, aParam.mThumbStart);
     WriteParam(aWriter, aParam.mThumbLength);
+    WriteParam(aWriter, aParam.mThumbMinLength);
     WriteParam(aWriter, aParam.mThumbIsAsyncDraggable);
     WriteParam(aWriter, aParam.mScrollTrackStart);
     WriteParam(aWriter, aParam.mScrollTrackLength);
@@ -1042,6 +1043,7 @@ struct ParamTraits<mozilla::layers::ScrollbarData> {
            ReadParam(aReader, &aResult->mThumbRatio) &&
            ReadParam(aReader, &aResult->mThumbStart) &&
            ReadParam(aReader, &aResult->mThumbLength) &&
+           ReadParam(aReader, &aResult->mThumbMinLength) &&
            ReadParam(aReader, &aResult->mThumbIsAsyncDraggable) &&
            ReadParam(aReader, &aResult->mScrollTrackStart) &&
            ReadParam(aReader, &aResult->mScrollTrackLength) &&
@@ -1122,13 +1124,20 @@ struct ParamTraits<mozilla::layers::ZoomTarget> {
       MOZ_ASSERT(rv, "Serialize ##type_## failed");                         \
       WriteParam(aWriter, std::move(v));                                    \
     }                                                                       \
-    static bool Read(MessageReader* aReader, paramType* aResult) {          \
+    static mozilla::Maybe<paramType> Read(MessageReader* aReader) {         \
       mozilla::ipc::ByteBuf in;                                             \
-      bool rv = ReadParam(aReader, &in);                                    \
-      if (!rv) {                                                            \
-        return false;                                                       \
+      mozilla::Maybe<paramType> result;                                     \
+      if (!ReadParam(aReader, &in) || !in.mData) {                          \
+        return result;                                                      \
       }                                                                     \
-      return in.mData && Servo_##type_##_Deserialize(&in, aResult);         \
+      /* TODO: Should be able to initialize `result` in-place instead */    \
+      mozilla::AlignedStorage2<paramType> value;                            \
+      if (!Servo_##type_##_Deserialize(&in, value.addr())) {                \
+        return result;                                                      \
+      }                                                                     \
+      result.emplace(std::move(*value.addr()));                             \
+      value.addr()->~paramType();                                           \
+      return result;                                                        \
     }                                                                       \
   };
 

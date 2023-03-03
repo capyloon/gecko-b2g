@@ -303,6 +303,8 @@ nsresult GfxInfo::GetFeatureStatusImpl(
     } else {
       *aStatus = nsIGfxInfo::FEATURE_STATUS_OK;
     }
+  } else if (aFeature == FEATURE_WEBGL_OPENGL) {
+    *aStatus = nsIGfxInfo::FEATURE_STATUS_OK;
   } else {
     return GfxInfoBase::GetFeatureStatusImpl(aFeature, aStatus,
                                              aSuggestedDriverVersion,
@@ -315,11 +317,6 @@ nsresult GfxInfo::GetFeatureStatusImpl(
 NS_IMETHODIMP
 GfxInfo::GetEmbeddedInFirefoxReality(bool* aEmbeddedInFirefoxReality) {
   return NS_ERROR_FAILURE;
-}
-
-NS_IMETHODIMP
-GfxInfo::GetDesktopEnvironment(nsAString& aDesktopEnvironment) {
-  return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 NS_IMETHODIMP

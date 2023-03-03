@@ -6,12 +6,9 @@
 
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
-import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
-  Region: "resource://gre/modules/Region.sys.mjs",
   SearchUtils: "resource://gre/modules/SearchUtils.sys.mjs",
 });
 
@@ -456,20 +453,9 @@ export class EngineURL {
         continue;
       }
 
-      let paramValue = param.value;
-      // Override the parameter value if the engine has a region
-      // override defined for our current region.
-      if (engine._regionParams?.[lazy.Region.current]) {
-        let override = engine._regionParams[lazy.Region.current].find(
-          p => p.name == param.name
-        );
-        if (override) {
-          paramValue = override.value;
-        }
-      }
       // Preference MozParams might not have a preferenced saved, or a valid value.
-      if (paramValue != null) {
-        var value = ParamSubstitution(paramValue, searchTerms, engine);
+      if (param.value != null) {
+        var value = ParamSubstitution(param.value, searchTerms, engine);
 
         dataArray.push(param.name + "=" + value);
       }
@@ -939,7 +925,6 @@ export class SearchEngine {
   _initWithDetails(details, configuration = {}) {
     this._orderHint = configuration.orderHint;
     this._name = details.name.trim();
-    this._regionParams = configuration.regionParams;
     this._sendAttributionRequest =
       configuration.sendAttributionRequest ?? false;
 
@@ -1026,6 +1011,18 @@ export class SearchEngine {
       );
 
       this._urls.push(url);
+    }
+
+    if (configuration?.urls?.trending) {
+      let trending = this._getEngineURLFromMetaData(
+        lazy.SearchUtils.URL_TYPE.TRENDING_JSON,
+        {
+          method: "GET",
+          template: decodeURI(configuration.urls.trending.fullPath),
+          getParams: configuration.urls.trending.query,
+        }
+      );
+      this._urls.push(trending);
     }
 
     if (details.encoding) {
@@ -1367,21 +1364,13 @@ export class SearchEngine {
   }
 
   get searchForm() {
-    return this._getSearchFormWithPurpose();
-  }
-
-  get sendAttributionRequest() {
-    return this._sendAttributionRequest;
-  }
-
-  _getSearchFormWithPurpose(purpose) {
     // First look for a <Url rel="searchform">
     var searchFormURL = this._getURLOfType(
       lazy.SearchUtils.URL_TYPE.SEARCH,
       "searchform"
     );
     if (searchFormURL) {
-      let submission = searchFormURL.getSubmission("", this, purpose);
+      let submission = searchFormURL.getSubmission("", this);
 
       // If the rel=searchform URL is not type="get" (i.e. has postData),
       // ignore it, since we can only return a URL.
@@ -1406,43 +1395,39 @@ export class SearchEngine {
     return ParamSubstitution(this._searchForm, "", this);
   }
 
+  get sendAttributionRequest() {
+    return this._sendAttributionRequest;
+  }
+
   get queryCharset() {
     return this._queryCharset || lazy.SearchUtils.DEFAULT_QUERY_CHARSET;
   }
 
-  get _defaultMobileResponseType() {
-    let type = lazy.SearchUtils.URL_TYPE.SEARCH;
-
-    let isTablet = Services.sysinfo.get("tablet");
-    if (
-      isTablet &&
-      this.supportsResponseType("application/x-moz-tabletsearch")
-    ) {
-      // Check for a tablet-specific search URL override
-      type = "application/x-moz-tabletsearch";
-    } else if (
-      !isTablet &&
-      this.supportsResponseType("application/x-moz-phonesearch")
-    ) {
-      // Check for a phone-specific search URL override
-      type = "application/x-moz-phonesearch";
-    }
-
-    Object.defineProperty(this, "_defaultMobileResponseType", {
-      value: type,
-      configurable: true,
-    });
-
-    return type;
-  }
-
-  // from nsISearchEngine
-  getSubmission(data, responseType, purpose) {
+  /**
+   * Gets an object that contains information about what to send to the search
+   * engine, for a request. This will be a URI and may also include data for POST
+   * requests.
+   *
+   * @param {string} searchTerms
+   *   The search term(s) for the submission.
+   *   Note: If an empty data string is supplied, the search form of the search
+   *   engine will be returned. This is intentional, as in some cases on the current
+   *   UI an empty search is intended to open the search engine's home/search page.
+   * @param {lazy.SearchUtils.URL_TYPE} [responseType]
+   *   The MIME type that we'd like to receive in response
+   *   to this submission.  If null, will default to "text/html".
+   * @param {string} [purpose]
+   *   A string that indicates the context of the search request. This may then
+   *   be used to provide different submission data depending on the context.
+   * @returns {nsISearchSubmission|null}
+   *   The submission data. If no appropriate submission can be determined for
+   *   the request type, this may be null.
+   */
+  getSubmission(searchTerms, responseType, purpose) {
+    // We can't use a default parameter as that doesn't work correctly with
+    // the idl interfaces.
     if (!responseType) {
-      responseType =
-        AppConstants.platform == "android"
-          ? this._defaultMobileResponseType
-          : lazy.SearchUtils.URL_TYPE.SEARCH;
+      responseType = lazy.SearchUtils.URL_TYPE.SEARCH;
     }
 
     var url = this._getURLOfType(responseType);
@@ -1451,18 +1436,19 @@ export class SearchEngine {
       return null;
     }
 
-    if (!data) {
+    if (
+      !searchTerms &&
+      responseType != lazy.SearchUtils.URL_TYPE.TRENDING_JSON
+    ) {
       // Return a dummy submission object with our searchForm attribute
-      return new Submission(
-        lazy.SearchUtils.makeURI(this._getSearchFormWithPurpose(purpose))
-      );
+      return new Submission(lazy.SearchUtils.makeURI(this.searchForm));
     }
 
     var submissionData = "";
     try {
       submissionData = Services.textToSubURI.ConvertAndEscape(
         this.queryCharset,
-        data
+        searchTerms
       );
     } catch (ex) {
       lazy.logConsole.warn(
@@ -1470,10 +1456,27 @@ export class SearchEngine {
       );
       submissionData = Services.textToSubURI.ConvertAndEscape(
         lazy.SearchUtils.DEFAULT_QUERY_CHARSET,
-        data
+        searchTerms
       );
     }
     return url.getSubmission(submissionData, this, purpose);
+  }
+
+  /**
+   * Returns a search URL with no search terms. This is typically used for
+   * purposes where we want to check something on the URL, but not use it for
+   * an actual submission to the search engine.
+   *
+   * Note: getSubmission cannot be used for this case, as that returns the
+   * search form when passed an empty string.
+   *
+   * @returns {nsIURI}
+   */
+  get searchURLWithNoTerms() {
+    return this._getURLOfType(lazy.SearchUtils.URL_TYPE.SEARCH).getSubmission(
+      "",
+      this
+    ).uri;
   }
 
   /**
@@ -1592,12 +1595,8 @@ export class SearchEngine {
     if (this._searchUrlPublicSuffix != null) {
       return this._searchUrlPublicSuffix;
     }
-    let submission = this.getSubmission(
-      "{searchTerms}",
-      lazy.SearchUtils.URL_TYPE.SEARCH
-    );
     let searchURLPublicSuffix = Services.eTLD.getKnownPublicSuffix(
-      submission.uri
+      this.searchURLWithNoTerms
     );
     return (this._searchUrlPublicSuffix = searchURLPublicSuffix);
   }
@@ -1609,13 +1608,11 @@ export class SearchEngine {
 
   // from nsISearchEngine
   getResultDomain(responseType) {
+    // We can't use a default parameter as that doesn't work correctly with
+    // the idl interfaces.
     if (!responseType) {
-      responseType =
-        AppConstants.platform == "android"
-          ? this._defaultMobileResponseType
-          : lazy.SearchUtils.URL_TYPE.SEARCH;
+      responseType = lazy.SearchUtils.URL_TYPE.SEARCH;
     }
-
     let url = this._getURLOfType(responseType);
     if (url) {
       return url.templateHost;
@@ -1628,12 +1625,7 @@ export class SearchEngine {
    *   URL parsing properties used by _buildParseSubmissionMap.
    */
   getURLParsingInfo() {
-    let responseType =
-      AppConstants.platform == "android"
-        ? this._defaultMobileResponseType
-        : lazy.SearchUtils.URL_TYPE.SEARCH;
-
-    let url = this._getURLOfType(responseType);
+    let url = this._getURLOfType(lazy.SearchUtils.URL_TYPE.SEARCH);
     if (!url || url.method != "GET") {
       return null;
     }
@@ -1734,7 +1726,7 @@ export class SearchEngine {
     }
     let connector = Services.io.QueryInterface(Ci.nsISpeculativeConnect);
 
-    let searchURI = this.getSubmission("dummy").uri;
+    let searchURI = this.searchURLWithNoTerms;
 
     let callbacks = options.window.docShell.QueryInterface(Ci.nsILoadContext);
 

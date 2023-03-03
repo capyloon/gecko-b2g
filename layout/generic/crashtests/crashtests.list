@@ -460,6 +460,7 @@ load 688996-1.html
 load 688996-2.html
 load 691210.html
 load 700031.xhtml
+load 709398-1.html
 load 718516.html
 load 723108.html
 load 724235.html
@@ -760,7 +761,7 @@ load 1588955-very-large-frameset.html
 load 1590569.html
 load 1596310.html
 load 1601819-1.html
-skip load 1608851-1.html # bug 1639947
+load 1608851-1.html
 load 1608851-2.html
 load 1613210.html
 load 1614101.html
@@ -786,7 +787,7 @@ load 1638906.html
 load 1640028.html
 load 1640051.html
 load 1640275.html
-pref(layout.accessiblecaret.enabled,true) asserts(11-13) load 1644819.html # bug 1688115
+pref(layout.accessiblecaret.enabled,true) load 1644819.html
 load 1645549-1.html
 load 1648577.html
 load 1652618.html
@@ -816,3 +817,4 @@ load 1776079.html
 asserts(0-2) load 1791606.html
 load 1799749.html
 pref(layout.css.content-visibility.enabled,true) asserts(1-4) load 1807958.html # asserts from integer overflow & bogus sizes
+load 1816574.html

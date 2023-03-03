@@ -1351,6 +1351,14 @@ bool DocAccessible::PruneOrInsertSubtree(nsIContent* aRoot) {
       return false;
     }
 
+    // If the frame is hidden because its ancestor is specified with
+    // `content-visibility: hidden`, remove its Accessible.
+    if (frame && frame->IsHiddenByContentVisibilityOnAnyAncestor(
+                     nsIFrame::IncludeContentVisibility::Hidden)) {
+      ContentRemoved(aRoot);
+      return false;
+    }
+
     // If it's a XULLabel it was probably reframed because a `value` attribute
     // was added. The accessible creates its text leaf upon construction, so we
     // need to recreate. Remove it, and schedule for reconstruction.
@@ -1554,6 +1562,9 @@ void DocAccessible::SendAccessiblesWillMove() {
     // moved.
     if (!acc->IsDefunct() && acc->IsInDocument()) {
       ids.AppendElement(reinterpret_cast<uintptr_t>(acc->UniqueID()));
+      // acc might have been re-parented. Since we cache bounds relative to the
+      // parent, we need to update the cache.
+      QueueCacheUpdate(acc, CacheDomain::Bounds);
     }
   }
   if (!ids.IsEmpty()) {
@@ -2449,12 +2460,17 @@ void DocAccessible::PutChildrenBack(
 }
 
 void DocAccessible::TrackMovedAccessible(LocalAccessible* aAcc) {
+  MOZ_ASSERT(aAcc->mDoc == this);
   // If an Accessible is inserted and moved during the same tick, don't track
   // it as a move because it hasn't been shown yet.
   if (!mInsertedAccessibles.Contains(aAcc)) {
     mMovedAccessibles.EnsureInserted(aAcc);
   }
   // When we move an Accessible, we're also moving its descendants.
+  if (aAcc->IsOuterDoc()) {
+    // Don't descend into other documents.
+    return;
+  }
   for (uint32_t c = 0, count = aAcc->ContentChildCount(); c < count; ++c) {
     TrackMovedAccessible(aAcc->ContentChildAt(c));
   }

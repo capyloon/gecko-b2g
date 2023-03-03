@@ -614,6 +614,7 @@ WEBIDL_FILES = [
     "GetUserMediaRequest.webidl",
     "Grid.webidl",
     "Headers.webidl",
+    "Highlight.webidl",
     "History.webidl",
     "HTMLAllCollection.webidl",
     "HTMLAnchorElement.webidl",
@@ -694,11 +695,8 @@ WEBIDL_FILES = [
     "IDBCursor.webidl",
     "IDBDatabase.webidl",
     "IDBFactory.webidl",
-    "IDBFileHandle.webidl",
-    "IDBFileRequest.webidl",
     "IDBIndex.webidl",
     "IDBKeyRange.webidl",
-    "IDBMutableFile.webidl",
     "IDBObjectStore.webidl",
     "IDBOpenDBRequest.webidl",
     "IDBRequest.webidl",
@@ -1155,12 +1153,17 @@ WEBIDL_FILES += [
 WEBIDL_FILES += [
     "ExtensionAlarms.webidl",
     "ExtensionBrowser.webidl",
+    "ExtensionBrowserSettings.webidl",
+    "ExtensionBrowserSettingsColorManagement.webidl",
+    "ExtensionDns.webidl",
     "ExtensionEventManager.webidl",
     # ExtensionMockAPI is not a real WebExtensions API, and it is only enabled in tests.
     "ExtensionMockAPI.webidl",
     "ExtensionPort.webidl",
+    "ExtensionProxy.webidl",
     "ExtensionRuntime.webidl",
     "ExtensionScripting.webidl",
+    "ExtensionSetting.webidl",
     "ExtensionTest.webidl",
 ]
 

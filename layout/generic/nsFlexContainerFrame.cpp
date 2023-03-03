@@ -27,6 +27,7 @@
 #include "nsLayoutUtils.h"
 #include "nsPlaceholderFrame.h"
 #include "nsPresContext.h"
+#include "Baseline.h"
 
 using namespace mozilla;
 using namespace mozilla::layout;
@@ -420,13 +421,18 @@ class nsFlexContainerFrame::FlexItem final {
     // If the nsLayoutUtils getter fails, then ask the frame directly:
     auto baselineGroup = aUseFirstBaseline ? BaselineSharingGroup::First
                                            : BaselineSharingGroup::Last;
-    if (mFrame->GetNaturalBaselineBOffset(mWM, baselineGroup, &mAscent)) {
+    if (auto baseline = mFrame->GetNaturalBaselineBOffset(mWM, baselineGroup)) {
+      // Offset for last baseline from `GetNaturalBaselineBOffset` originates
+      // from the frame's block end, so convert it back.
+      mAscent = baselineGroup == BaselineSharingGroup::First
+                    ? *baseline
+                    : mFrame->BSize(mWM) - *baseline;
       return mAscent;
     }
 
     // We couldn't determine a baseline, so we synthesize one from border box:
-    mAscent = mFrame->SynthesizeBaselineBOffsetFromBorderBox(
-        mWM, BaselineSharingGroup::First);
+    mAscent = Baseline::SynthesizeBOffsetFromBorderBox(
+        mFrame, mWM, BaselineSharingGroup::First);
     return mAscent;
   }
 
@@ -813,11 +819,10 @@ class nsFlexContainerFrame::FlexItem final {
   // Indicates whether we think this flex item needs a "final" reflow
   // (after its final flexed size & final position have been determined).
   //
-  // @param aAvailableBSizeForItem the available block-size for this item (in
-  //                               flex container's writing-mode)
+  // @param aParentReflowInput the flex container's reflow input.
   // @return true if such a reflow is needed, or false if we believe it can
   // simply be moved to its final position and skip the reflow.
-  bool NeedsFinalReflow(const nscoord aAvailableBSizeForItem) const;
+  bool NeedsFinalReflow(const ReflowInput& aParentReflowInput) const;
 
   // Gets the block frame that contains the flex item's content.  This is
   // Frame() itself or one of its descendants.
@@ -2374,12 +2379,7 @@ static bool FrameHasRelativeBSizeDependency(nsIFrame* aFrame) {
   return false;
 }
 
-bool FlexItem::NeedsFinalReflow(const nscoord aAvailableBSizeForItem) const {
-  MOZ_ASSERT(
-      aAvailableBSizeForItem == NS_UNCONSTRAINEDSIZE ||
-          aAvailableBSizeForItem > 0,
-      "We can only handle unconstrained or positive available block-size.");
-
+bool FlexItem::NeedsFinalReflow(const ReflowInput& aParentReflowInput) const {
   if (!StaticPrefs::layout_flexbox_item_final_reflow_optimization_enabled()) {
     FLEX_LOG(
         "[perf] Flex item %p needed a final reflow due to optimization being "
@@ -2388,8 +2388,7 @@ bool FlexItem::NeedsFinalReflow(const nscoord aAvailableBSizeForItem) const {
     return true;
   }
 
-  // NOTE: even if aAvailableBSizeForItem == NS_UNCONSTRAINEDSIZE we can still
-  // have continuations from an earlier constrained reflow.
+  // NOTE: We can have continuations from an earlier constrained reflow.
   if (mFrame->GetPrevInFlow() || mFrame->GetNextInFlow()) {
     // This is an item has continuation(s). Reflow it.
     FLEX_LOG("[frag] Flex item %p needed a final reflow due to continuation(s)",
@@ -2397,13 +2396,17 @@ bool FlexItem::NeedsFinalReflow(const nscoord aAvailableBSizeForItem) const {
     return true;
   }
 
-  // Bug 1637091: We can do better and skip this flex item's final reflow if
-  // both this flex item's block-size and overflow areas can fit the
-  // aAvailableBSizeForItem.
-  if (aAvailableBSizeForItem != NS_UNCONSTRAINEDSIZE) {
+  // A flex item can grow its block-size in a fragmented context if there's any
+  // force break within it (bug 1663079), or if it has a repeated table header
+  // or footer (bug 1744363). We currently always reflow it.
+  //
+  // Bug 1815294: investigate if we can design a more specific condition to
+  // prevent triggering O(n^2) behavior when printing a deeply-nested flex
+  // container.
+  if (aParentReflowInput.IsInFragmentedContext()) {
     FLEX_LOG(
         "[frag] Flex item %p needed both a measuring reflow and a final "
-        "reflow due to constrained available block-size",
+        "reflow due to being in a fragmented context.",
         mFrame);
     return true;
   }
@@ -2761,18 +2764,6 @@ nsresult nsFlexContainerFrame::GetFrameName(nsAString& aResult) const {
   return MakeFrameName(u"FlexContainer"_ns, aResult);
 }
 #endif
-
-nscoord nsFlexContainerFrame::GetLogicalBaseline(
-    mozilla::WritingMode aWM) const {
-  NS_ASSERTION(mBaselineFromLastReflow != NS_INTRINSIC_ISIZE_UNKNOWN,
-               "baseline has not been set");
-
-  if (HasAnyStateBits(NS_STATE_FLEX_SYNTHESIZE_BASELINE)) {
-    // Return a baseline synthesized from our margin-box.
-    return nsContainerFrame::GetLogicalBaseline(aWM);
-  }
-  return mBaselineFromLastReflow;
-}
 
 void nsFlexContainerFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
                                             const nsDisplayListSet& aLists) {
@@ -4641,6 +4632,17 @@ void nsFlexContainerFrame::Reflow(nsPresContext* aPresContext,
   }
 }
 
+Maybe<nscoord> nsFlexContainerFrame::GetNaturalBaselineBOffset(
+    WritingMode aWM, BaselineSharingGroup aBaselineGroup) const {
+  if (StyleDisplay()->IsContainLayout() ||
+      HasAnyStateBits(NS_STATE_FLEX_SYNTHESIZE_BASELINE)) {
+    return Nothing{};
+  }
+  return Some(aBaselineGroup == BaselineSharingGroup::First
+                  ? mBaselineFromLastReflow
+                  : mLastBaselineFromLastReflow);
+}
+
 void nsFlexContainerFrame::UnionInFlowChildOverflow(
     OverflowAreas& aOverflowAreas) {
   // The CSS Overflow spec [1] requires that a scrollable container's
@@ -5233,7 +5235,7 @@ std::tuple<nscoord, bool> nsFlexContainerFrame::ReflowChildren(
             "next-in-flow due to position below available space's block-end",
             item.Frame());
         pushedItems.Insert(item.Frame());
-      } else if (item.NeedsFinalReflow(availableBSizeForItem)) {
+      } else if (item.NeedsFinalReflow(aReflowInput)) {
         // The available size must be in item's writing-mode.
         const WritingMode itemWM = item.GetWritingMode();
         const auto availableSize =

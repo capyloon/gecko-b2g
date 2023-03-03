@@ -837,7 +837,7 @@ fn static_assert() {
 </%self:impl_trait>
 
 <% skip_font_longhands = """font-family font-size font-size-adjust font-weight
-                            font-style font-stretch font-synthesis -x-lang
+                            font-style font-stretch -x-lang
                             font-variant-alternates font-variant-east-asian
                             font-variant-ligatures font-variant-numeric
                             font-language-override font-feature-settings
@@ -908,8 +908,6 @@ fn static_assert() {
     ${impl_simple('font_weight', 'mFont.weight')}
     ${impl_simple('font_stretch', 'mFont.stretch')}
     ${impl_simple('font_style', 'mFont.style')}
-
-    ${impl_simple_type_with_conversion("font_synthesis", "mFont.synthesis")}
 
     ${impl_simple("font_variant_alternates", "mFont.variantAlternates")}
 
@@ -997,13 +995,13 @@ fn static_assert() {
 <%def name="impl_coordinated_property_copy(type, ident, gecko_ffi_name)">
     #[allow(non_snake_case)]
     pub fn copy_${type}_${ident}_from(&mut self, other: &Self) {
-        self.gecko.m${type.capitalize()}s.ensure_len(other.gecko.m${type.capitalize()}s.len());
+        self.gecko.m${to_camel_case(type)}s.ensure_len(other.gecko.m${to_camel_case(type)}s.len());
 
-        let count = other.gecko.m${type.capitalize()}${gecko_ffi_name}Count;
-        self.gecko.m${type.capitalize()}${gecko_ffi_name}Count = count;
+        let count = other.gecko.m${to_camel_case(type)}${gecko_ffi_name}Count;
+        self.gecko.m${to_camel_case(type)}${gecko_ffi_name}Count = count;
 
-        let iter = self.gecko.m${type.capitalize()}s.iter_mut().take(count as usize).zip(
-            other.gecko.m${type.capitalize()}s.iter()
+        let iter = self.gecko.m${to_camel_case(type)}s.iter_mut().take(count as usize).zip(
+            other.gecko.m${to_camel_case(type)}s.iter()
         );
 
         for (ours, others) in iter {
@@ -1019,7 +1017,7 @@ fn static_assert() {
 <%def name="impl_coordinated_property_count(type, ident, gecko_ffi_name)">
     #[allow(non_snake_case)]
     pub fn ${type}_${ident}_count(&self) -> usize {
-        self.gecko.m${type.capitalize()}${gecko_ffi_name}Count as usize
+        self.gecko.m${to_camel_case(type)}${gecko_ffi_name}Count as usize
     }
 </%def>
 
@@ -1033,17 +1031,17 @@ fn static_assert() {
         let v = v.into_iter();
         debug_assert_ne!(v.len(), 0);
         let input_len = v.len();
-        self.gecko.m${type.capitalize()}s.ensure_len(input_len);
+        self.gecko.m${to_camel_case(type)}s.ensure_len(input_len);
 
-        self.gecko.m${type.capitalize()}${gecko_ffi_name}Count = input_len as u32;
-        for (gecko, servo) in self.gecko.m${type.capitalize()}s.iter_mut().take(input_len as usize).zip(v) {
+        self.gecko.m${to_camel_case(type)}${gecko_ffi_name}Count = input_len as u32;
+        for (gecko, servo) in self.gecko.m${to_camel_case(type)}s.iter_mut().take(input_len as usize).zip(v) {
             gecko.m${gecko_ffi_name} = servo;
         }
     }
     #[allow(non_snake_case)]
     pub fn ${type}_${ident}_at(&self, index: usize)
         -> longhands::${type}_${ident}::computed_value::SingleComputedValue {
-        self.gecko.m${type.capitalize()}s[index % self.${type}_${ident}_count()].m${gecko_ffi_name}.clone()
+        self.gecko.m${to_camel_case(type)}s[index % self.${type}_${ident}_count()].m${gecko_ffi_name}.clone()
     }
     ${impl_coordinated_property_copy(type, ident, gecko_ffi_name)}
     ${impl_coordinated_property_count(type, ident, gecko_ffi_name)}
@@ -1720,7 +1718,9 @@ mask-mode mask-repeat mask-clip mask-origin mask-composite mask-position-x mask-
                           animation-play-state animation-iteration-count
                           animation-timing-function animation-composition animation-timeline
                           transition-duration transition-delay
-                          transition-timing-function transition-property""" %>
+                          transition-timing-function transition-property
+                          scroll-timeline-name scroll-timeline-axis
+                          view-timeline-name view-timeline-axis view-timeline-inset""" %>
 
 <%self:impl_trait style_struct_name="UI" skip_longhands="${skip_ui_longhands}">
     ${impl_coordinated_property('transition', 'delay', 'Delay')}
@@ -1903,6 +1903,13 @@ mask-mode mask-repeat mask-clip mask-origin mask-composite mask-position-x mask-
     ${impl_coordinated_property('animation', 'iteration_count', 'IterationCount')}
     ${impl_coordinated_property('animation', 'timeline', 'Timeline')}
     ${impl_coordinated_property('animation', 'timing_function', 'TimingFunction')}
+
+    ${impl_coordinated_property('scroll_timeline', 'name', 'Name')}
+    ${impl_coordinated_property('scroll_timeline', 'axis', 'Axis')}
+
+    ${impl_coordinated_property('view_timeline', 'name', 'Name')}
+    ${impl_coordinated_property('view_timeline', 'axis', 'Axis')}
+    ${impl_coordinated_property('view_timeline', 'inset', 'Inset')}
 </%self:impl_trait>
 
 <%self:impl_trait style_struct_name="XUL">

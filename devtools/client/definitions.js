@@ -45,7 +45,7 @@ loader.lazyGetter(
   this,
   "NewPerformancePanel",
   () =>
-    require("resource://devtools/client/performance-new/panel.js")
+    require("resource://devtools/client/performance-new/panel/panel.js")
       .PerformancePanel
 );
 loader.lazyGetter(
@@ -261,7 +261,7 @@ Tools.performance = {
   id: "performance",
   ordinal: 6,
   icon: "chrome://devtools/skin/images/tool-profiler.svg",
-  url: "chrome://devtools/content/performance-new/index.xhtml",
+  url: "chrome://devtools/content/performance-new/panel/index.xhtml",
   visibilityswitch: "devtools.performance.enabled",
   label: l10n("performance.label"),
   panelLabel: l10n("performance.panelLabel"),
@@ -361,7 +361,14 @@ Tools.storage = {
   inMenu: false,
 
   isToolSupported(toolbox) {
-    return toolbox.target.hasActor("storage");
+    const { descriptorFront } = toolbox.commands;
+    // Storage is available on all contexts debugging a BrowsingContext.
+    // As of today, this is all but worker toolboxes.
+    return (
+      descriptorFront.isTabDescriptor ||
+      descriptorFront.isParentProcessDescriptor ||
+      descriptorFront.isWebExtensionDescriptor
+    );
   },
 
   build(iframeWindow, toolbox, commands) {

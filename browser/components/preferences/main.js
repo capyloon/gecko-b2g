@@ -786,6 +786,15 @@ var gMainPane = {
     });
   },
 
+  handleSubcategory(subcategory) {
+    if (subcategory == "migrate") {
+      this.showMigrationWizardDialog();
+      return true;
+    }
+
+    return false;
+  },
+
   // CONTAINERS
 
   /*
@@ -1699,7 +1708,31 @@ var gMainPane = {
           preference.setElementValue(element);
         }
       }
-    })().catch(Cu.reportError);
+    })().catch(console.error);
+  },
+
+  /**
+   * Displays the migration wizard dialog in an HTML dialog.
+   */
+  async showMigrationWizardDialog() {
+    let migrationWizardDialog = document.getElementById(
+      "migrationWizardDialog"
+    );
+
+    if (migrationWizardDialog.open) {
+      return;
+    }
+
+    await customElements.whenDefined("migration-wizard");
+
+    // If we've been opened before, remove the old wizard and insert a
+    // new one to put it back into its starting state.
+    migrationWizardDialog.firstElementChild?.remove();
+    let wizard = document.createElement("migration-wizard");
+    wizard.toggleAttribute("dialog-mode", true);
+    migrationWizardDialog.appendChild(wizard);
+
+    migrationWizardDialog.showModal();
   },
 
   /**
@@ -2912,7 +2945,7 @@ var gMainPane = {
    * response to the choice, if one is made.
    */
   chooseFolder() {
-    return this.chooseFolderTask().catch(Cu.reportError);
+    return this.chooseFolderTask().catch(console.error);
   },
   async chooseFolderTask() {
     let [title] = await document.l10n.formatValues([
@@ -2955,7 +2988,7 @@ var gMainPane = {
    * preferences.
    */
   displayDownloadDirPref() {
-    this.displayDownloadDirPrefTask().catch(Cu.reportError);
+    this.displayDownloadDirPrefTask().catch(console.error);
 
     // don't override the preference's value in UI
     return undefined;
@@ -3663,6 +3696,12 @@ const AppearanceChooser = {
       });
 
     this.warning = document.getElementById("web-appearance-override-warning");
+
+    document
+      .getElementById("migrationWizardDialog")
+      .addEventListener("MigrationWizard:Close", function(e) {
+        e.currentTarget.close();
+      });
 
     FORCED_COLORS_QUERY.addEventListener("change", this);
     Services.prefs.addObserver(PREF_USE_SYSTEM_COLORS, this);

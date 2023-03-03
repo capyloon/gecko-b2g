@@ -61,10 +61,14 @@ browsertime-tp6:
                         - --browsertime-no-ffwindowrecorder
                         - --conditioned-profile=settled
                         - --extra-profiler-run
+                        - --extra-summary-methods=mean
+                        - --extra-summary-methods=geomean
                     default:
                         - --chimera
                         - --conditioned-profile=settled
                         - --extra-profiler-run
+                        - --extra-summary-methods=mean
+                        - --extra-summary-methods=geomean
         run-on-projects:
             by-subtest:
                 netflix:  # Bug 1756212 - Disable temporarily due to perma on mac
@@ -417,10 +421,7 @@ browsertime-youtube-playback:
         by-subtest:
             youtube-playback-hfr: 3600
             youtube-playback-widevine.*: 3600
-            default:
-                by-test-platform:
-                    windows10-aarch64/opt: 3600
-                    default: 2700
+            default: 2700
 
 browsertime-tp6-live:
     <<: *tp6-defaults
@@ -554,7 +555,7 @@ browsertime-custom:
             windows.*-32.*: []
             .*64.*shippable-qr/.*: [mozilla-central]
             default: []
-    tier: 2
+    tier: 1
     treeherder-symbol: Btime(ps)
 
 browsertime-first-install:
@@ -573,7 +574,7 @@ browsertime-first-install:
             windows.*-32.*: []
             .*64.*shippable-qr/.*: [trunk]
             default: []
-    tier: 2
+    tier: 1
     treeherder-symbol: Btime(welcome)
 
 browsertime-grandprix:
@@ -592,3 +593,20 @@ browsertime-grandprix:
             default: []
     tier: 3
     treeherder-symbol: Btime(grandprix)
+
+browsertime-regression-tests:
+    raptor:
+        apps: [firefox]
+        subtests: [[constant-regression, regress-c]]
+    description: Raptor (browsertime) tests for our regression detection system
+    max-run-time: 700
+    run-on-projects: [autoland]
+    limit-platforms:
+        - .*linux(?!.*shippable)(?!.*clang).*
+    mozharness:
+        extra-options:
+            by-test-platform:
+                windows10-64.*shippable.*-qr.*: []
+                default: []
+    tier: 2
+    treeherder-symbol: Btime(regressor)

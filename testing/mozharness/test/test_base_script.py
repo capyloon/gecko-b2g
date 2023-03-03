@@ -226,7 +226,7 @@ class TestScript(unittest.TestCase):
             env={"GARBLE": "FARG"},
             error_list=errors.PythonErrorList,
         )
-        error_logsize = os.path.getsize("test_logs/test_error.log")
+        error_logsize = os.path.getsize("test_logs/test_info.log")
         self.assertTrue(error_logsize > 0, msg="command not found error not hit")
 
     def test_run_command_in_bad_dir(self):
@@ -320,7 +320,13 @@ class TestScript(unittest.TestCase):
                     extract_to=self.tmpdir,
                 )
 
-        for archive in ("archive-setuid.tar", "archive-escape.tar"):
+        for archive in (
+            "archive-setuid.tar",
+            "archive-escape.tar",
+            "archive-link.tar",
+            "archive-link-abs.tar",
+            "archive-double-link.tar",
+        ):
             with self.assertRaises(Exception):
                 self.s.download_unpack(
                     url=os.path.join(archives_path, archive),
@@ -371,7 +377,13 @@ class TestScript(unittest.TestCase):
                     self.tmpdir,
                 )
 
-        for archive in ("archive-setuid.tar", "archive-escape.tar"):
+        for archive in (
+            "archive-setuid.tar",
+            "archive-escape.tar",
+            "archive-link.tar",
+            "archive-link-abs.tar",
+            "archive-double-link.tar",
+        ):
             with self.assertRaises(Exception):
                 self.s.unpack(os.path.join(archives_path, archive), self.tmpdir)
 

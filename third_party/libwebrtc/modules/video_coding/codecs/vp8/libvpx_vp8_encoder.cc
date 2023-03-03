@@ -40,7 +40,7 @@
 #include "rtc_base/logging.h"
 #include "rtc_base/trace_event.h"
 #include "system_wrappers/include/field_trial.h"
-#include "libyuv/include/libyuv/scale.h"
+#include "third_party/libyuv/include/libyuv/scale.h"
 #include "vpx/vp8cx.h"
 
 namespace webrtc {
@@ -1178,8 +1178,6 @@ int LibvpxVp8Encoder::GetEncodedPartitions(const VideoFrame& input_image,
         libvpx_->codec_control(&encoders_[encoder_idx], VP8E_GET_LAST_QUANTIZER,
                                &qp_128);
         encoded_images_[encoder_idx].qp_ = qp_128;
-        encoded_images_[encoder_idx].SetAtTargetQuality(
-            qp_128 <= variable_framerate_experiment_.steady_state_qp);
         encoded_complete_callback_->OnEncodedImage(encoded_images_[encoder_idx],
                                                    &codec_specific);
         const size_t steady_state_size = SteadyStateSize(

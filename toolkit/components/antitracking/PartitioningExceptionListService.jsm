@@ -6,11 +6,9 @@
 
 const lazy = {};
 
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "RemoteSettings",
-  "resource://services-settings/remote-settings.js"
-);
+ChromeUtils.defineESModuleGetters(lazy, {
+  RemoteSettings: "resource://services-settings/remote-settings.sys.mjs",
+});
 
 const COLLECTION_NAME = "partitioning-exempt-urls";
 const PREF_NAME = "privacy.restrict3rdpartystorage.skip_list";
@@ -40,7 +38,7 @@ class Feature {
 
   observe(subject, topic, data) {
     if (topic != "nsPref:changed" || data != this.prefName) {
-      Cu.reportError(`Unexpected event ${topic} with ${data}`);
+      console.error(`Unexpected event ${topic} with ${data}`);
       return;
     }
 

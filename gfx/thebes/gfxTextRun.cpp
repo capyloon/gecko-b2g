@@ -25,13 +25,12 @@
 #include "mozilla/Likely.h"
 #include "gfx2DGlue.h"
 #include "mozilla/gfx/Logging.h"  // for gfxCriticalError
+#include "mozilla/intl/String.h"
 #include "mozilla/intl/UnicodeProperties.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/Unused.h"
 #include "SharedFontList-impl.h"
 #include "TextDrawTarget.h"
-
-#include <unicode/unorm2.h>
 
 #ifdef XP_WIN
 #  include "gfxWindowsPlatform.h"
@@ -580,10 +579,11 @@ void gfxTextRun::Draw(const Range aRange, const gfx::Point aPt,
   bool skipDrawing =
       !mDontSkipDrawing && (mFontGroup ? mFontGroup->ShouldSkipDrawing()
                                        : mReleasedFontGroupSkippedDrawing);
+  auto* textDrawer = aParams.context->GetTextDrawer();
   if (aParams.drawMode & DrawMode::GLYPH_FILL) {
     DeviceColor currentColor;
     if (aParams.context->GetDeviceColor(currentColor) && currentColor.a == 0 &&
-        !aParams.context->GetTextDrawer()) {
+        !textDrawer) {
       skipDrawing = true;
     }
   }
@@ -611,7 +611,7 @@ void gfxTextRun::Draw(const Range aRange, const gfx::Point aPt,
   bool mayNeedBuffering =
       aParams.drawMode & DrawMode::GLYPH_FILL &&
       aParams.context->HasNonOpaqueNonTransparentColor(currentColor) &&
-      !aParams.context->GetTextDrawer();
+      !textDrawer;
 
   // If we need to double-buffer, we'll need to measure the text first to
   // get the bounds of the area of interest. Ideally we'd do that just for
@@ -642,6 +642,10 @@ void gfxTextRun::Draw(const Range aRange, const gfx::Point aPt,
   params.paintSVGGlyphs =
       !aParams.callbacks || aParams.callbacks->mShouldPaintSVGGlyphs;
   params.dt = aParams.context->GetDrawTarget();
+  params.textDrawer = textDrawer;
+  if (textDrawer) {
+    params.clipRect = textDrawer->GeckoClipRect();
+  }
   params.allowGDI = aParams.allowGDI;
 
   GlyphRunIterator iter(this, aRange);
@@ -663,9 +667,8 @@ void gfxTextRun::Draw(const Range aRange, const gfx::Point aPt,
         // drawTarget's current clip, the skia backend fails to clip properly.
         // This means we may use a larger buffer than actually needed, but is
         // otherwise harmless.
-        metrics =
-            MeasureText(aRange, gfxFont::LOOSE_INK_EXTENTS,
-                        aParams.context->GetDrawTarget(), aParams.provider);
+        metrics = MeasureText(aRange, gfxFont::LOOSE_INK_EXTENTS, params.dt,
+                              aParams.provider);
         if (IsRightToLeft()) {
           metrics.mBoundingBox.MoveBy(
               gfxPoint(aPt.x - metrics.mAdvanceWidth, aPt.y));
@@ -2246,13 +2249,17 @@ already_AddRefed<gfxFont> gfxFontGroup::GetDefaultFont() {
       if (pfl->SharedFontList()->GetGeneration() != oldGeneration) {
         return GetDefaultFont();
       }
-    } else {
-      gfxFontEntry* fe = pfl->GetDefaultFontEntry();
-      if (fe) {
-        RefPtr<gfxFont> f = fe->FindOrMakeFont(&mStyle);
-        if (f) {
-          return f.forget();
-        }
+    }
+  }
+
+  if (!mDefaultFont) {
+    // We must have failed to find anything usable in our font-family list,
+    // or it's badly broken. One more last-ditch effort to make a font:
+    gfxFontEntry* fe = pfl->GetDefaultFontEntry();
+    if (fe) {
+      RefPtr<gfxFont> f = fe->FindOrMakeFont(&mStyle);
+      if (f) {
+        return f.forget();
       }
     }
   }
@@ -3080,12 +3087,9 @@ already_AddRefed<gfxFont> gfxFontGroup::FindFontForChar(
     if (aPrevMatchedFont->HasCharacter(aCh) || IsDefaultIgnorable(aCh)) {
       return do_AddRef(aPrevMatchedFont);
     }
-    // Get the singleton NFC normalizer; this does not need to be deleted.
-    static UErrorCode err = U_ZERO_ERROR;
-    static const UNormalizer2* nfc = unorm2_getNFCInstance(&err);
     // Check if this char and preceding char can compose; if so, is the
     // combination supported by the current font.
-    int32_t composed = unorm2_composePair(nfc, aPrevCh, aCh);
+    uint32_t composed = intl::String::ComposePairNFC(aPrevCh, aCh);
     if (composed > 0 && aPrevMatchedFont->HasCharacter(composed)) {
       return do_AddRef(aPrevMatchedFont);
     }
@@ -3254,6 +3258,15 @@ already_AddRefed<gfxFont> gfxFontGroup::FindFontForChar(
     // If the provided glyph matches the preference, accept the font.
     if (hasColorGlyph == PrefersColor(presentation)) {
       *aMatchType = t;
+      return true;
+    }
+    // If the character was a TextDefault char, but the next char is VS16,
+    // and the font is a COLR font that supports both these codepoints, then
+    // we'll assume it knows what it is doing (eg Twemoji Mozilla keycap
+    // sequences).
+    // TODO: reconsider all this as part of any fix for bug 543200.
+    if (aNextCh == kVariationSelector16 && emojiPresentation == TextDefault &&
+        f->HasCharacter(aNextCh) && f->GetFontEntry()->TryGetColorGlyphs()) {
       return true;
     }
     // Otherwise, remember the first potential fallback, but keep searching.

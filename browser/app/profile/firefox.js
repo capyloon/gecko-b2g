@@ -70,9 +70,6 @@ pref("extensions.langpacks.signatures.required", true);
 pref("xpinstall.signatures.required", true);
 pref("xpinstall.signatures.devInfoURL", "https://wiki.mozilla.org/Addons/Extension_Signing");
 
-// Enable extensionStorage storage actor by default
-pref("devtools.storage.extensionStorage.enabled", true);
-
 // Dictionary download preference
 pref("browser.dictionaries.download.url", "https://addons.mozilla.org/%LOCALE%/firefox/language-tools/");
 
@@ -352,7 +349,7 @@ pref("browser.theme.colorway-closet", true);
 // theme with the same id (as part of preparing to remove from mozilla-central
 // all the expired built-in colorways themes, after existing users have been
 // migrated to colorways themes hosted on AMO).
-pref("browser.theme.colorway-migration", false);
+pref("browser.theme.colorway-migration", true);
 
 // Whether using `ctrl` when hitting return/enter in the URL bar
 // (or clicking 'go') should prefix 'www.' and suffix
@@ -408,11 +405,15 @@ pref("browser.urlbar.suggest.calculator",           false);
   pref("browser.urlbar.suggest.quickactions", true);
   pref("browser.urlbar.shortcuts.quickactions", true);
   pref("browser.urlbar.quickactions.showPrefs", true);
-  pref("browser.urlbar.quickactions.showInZeroPrefix", false);
 #endif
 
 // Feature gate pref for weather suggestions in the urlbar.
 pref("browser.urlbar.weather.featureGate", false);
+
+// If true, weather suggestions will be shown on "zero prefix", which means when
+// the user focuses the urlbar without typing anything. If false, the user must
+// type weather-related keywords to show weather suggestions.
+pref("browser.urlbar.weather.zeroPrefix", true);
 
 // If `browser.urlbar.weather.featureGate` is true, this controls whether
 // weather suggestions are turned on.
@@ -506,7 +507,13 @@ pref("browser.urlbar.switchTabs.adoptIntoActiveWindow", false);
 pref("browser.urlbar.openintab", false);
 
 // Enable three-dot options button and menu for eligible results.
+#ifdef EARLY_BETA_OR_EARLIER
+pref("browser.urlbar.resultMenu", true);
+#else
 pref("browser.urlbar.resultMenu", false);
+#endif
+// Allow the result menu button to be reached with the Tab key.
+pref("browser.urlbar.resultMenu.keyboardAccessible", true);
 
 // If true, we show tail suggestions when available.
 pref("browser.urlbar.richSuggestions.tail", true);
@@ -669,6 +676,9 @@ pref("browser.search.widget.inNavBar", false);
 pref("browser.search.separatePrivateDefault.ui.enabled", false);
 // The maximum amount of times the private default banner is shown.
 pref("browser.search.separatePrivateDefault.ui.banner.max", 0);
+
+// Enables search SERP telemetry (impressions, engagements and abandonment)
+pref("browser.search.serpEventTelemetry.enabled", false);
 
 // Enables the display of the Mozilla VPN banner in private browsing windows
 pref("browser.privatebrowsing.vpnpromourl", "https://vpn.mozilla.org/?utm_source=firefox-browser&utm_medium=firefox-%CHANNEL%-browser&utm_campaign=private-browsing-vpn-link");
@@ -938,6 +948,10 @@ pref("privacy.panicButton.enabled",         true);
 
 // Time until temporary permissions expire, in ms
 pref("privacy.temporary_permission_expire_time_ms",  3600000);
+
+// Enables protection mechanism against password spoofing for cross domain auh requests
+// See bug 791594
+pref("privacy.authPromptSpoofingProtection",         true);
 
 pref("network.proxy.share_proxy_settings",  false); // use the same proxy settings for all protocols
 
@@ -1257,7 +1271,11 @@ pref("browser.bookmarks.editDialog.maxRecentFolders", 7);
 
 // By default the Edit Bookmark dialog is instant-apply. This feature pref will allow to
 // just save on Accept, once the project is complete.
-pref("browser.bookmarks.editDialog.delayedApply.enabled", false);
+#ifdef NIGHTLY_BUILD
+  pref("browser.bookmarks.editDialog.delayedApply.enabled", true);
+#else
+  pref("browser.bookmarks.editDialog.delayedApply.enabled", false);
+#endif
 
 #if defined(XP_WIN) && defined(MOZ_SANDBOX)
   // This controls the strength of the Windows content process sandbox for
@@ -1266,6 +1284,9 @@ pref("browser.bookmarks.editDialog.delayedApply.enabled", false);
   // See - security/sandbox/win/src/sandboxbroker/sandboxBroker.cpp
   // SetSecurityLevelForContentProcess() for what the different settings mean.
   pref("security.sandbox.content.level", 6);
+
+  // Pref controlling if messages relevant to sandbox violations are logged.
+  pref("security.sandbox.logging.enabled", false);
 #endif
 
 #if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
@@ -1292,6 +1313,9 @@ pref("browser.bookmarks.editDialog.delayedApply.enabled", false);
   // this pref overridden) if OOP WebGL is disabled. OOP WebGL is disabled
   // for some tests.
   pref("security.sandbox.content.mac.disconnect-windowserver", true);
+
+  // Pref controlling if messages relevant to sandbox violations are logged.
+  pref("security.sandbox.logging.enabled", false);
 #endif
 
 #if defined(XP_LINUX) && defined(MOZ_SANDBOX)
@@ -1323,18 +1347,11 @@ pref("browser.bookmarks.editDialog.delayedApply.enabled", false);
   pref("security.sandbox.content.level", 1);
 #endif
 
-#if defined(MOZ_SANDBOX)
+#if defined(MOZ_CONTENT_TEMP_DIR)
   // ID (a UUID when set by gecko) that is used to form the name of a
   // sandbox-writable temporary directory to be used by content processes
-  // when a temporary writable file is required in a level 1 sandbox.
+  // when a temporary writable file is required.
   pref("security.sandbox.content.tempDirSuffix", "");
-  pref("security.sandbox.plugin.tempDirSuffix", "");
-
-  // This pref determines if messages relevant to sandbox violations are
-  // logged.
-  #if defined(XP_WIN) || defined(XP_MACOSX)
-    pref("security.sandbox.logging.enabled", false);
-  #endif
 #endif
 
 // This pref governs whether we attempt to work around problems caused by
@@ -1656,8 +1673,6 @@ pref("browser.aboutwelcome.enabled", true);
 // Used to set multistage welcome UX
 pref("browser.aboutwelcome.screens", "");
 pref("browser.aboutwelcome.skipFocus", true);
-// Used to enable template for MR 2022 Onboarding
-pref("browser.aboutwelcome.templateMR", true);
 // Used to enable window modal onboarding
 pref("browser.aboutwelcome.showModal", false);
 
@@ -1807,18 +1822,22 @@ pref("media.gmp.trial-create.enabled", true);
 pref("media.gmp-gmpopenh264.visible", true);
 pref("media.gmp-gmpopenh264.enabled", true);
 
-// Block WebAudio from playing automatically.
-pref("media.autoplay.block-webaudio", true);
-
 pref("media.videocontrols.picture-in-picture.enabled", true);
 pref("media.videocontrols.picture-in-picture.audio-toggle.enabled", true);
 pref("media.videocontrols.picture-in-picture.video-toggle.enabled", true);
 pref("media.videocontrols.picture-in-picture.video-toggle.visibility-threshold", "1.0");
 pref("media.videocontrols.picture-in-picture.keyboard-controls.enabled", true);
 
+// Preferences for the older translation service backed by external services. This is
+// planned to be replaced with an integration of the Firefox Translations service.
+// The prefs for the new service are located under "browser.translations" in
+// modules/libpref/init/all.js
+//
+// See Bug 971044.
 pref("browser.translation.detectLanguage", false);
 pref("browser.translation.neverForLanguages", "");
-// Show the translation UI bits, like the info bar, notification icon and preferences.
+// Show the older translation UI that uses external services. This includes UI such as
+// the info bar, notification icon and preferences.
 pref("browser.translation.ui.show", false);
 // Allows to define the translation engine. Google is default, Bing or Yandex are other options.
 pref("browser.translation.engine", "Google");
@@ -1850,9 +1869,6 @@ pref("media.gmp-provider.enabled", true);
 
 // Enable Dynamic First-Party Isolation by default.
 pref("network.cookie.cookieBehavior", 5 /* BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN */);
-
-// Target URL for the learn more link of the TCP in standard mode section.
-pref("privacy.restrict3rdpartystorage.preferences.learnMoreURLSuffix", "total-cookie-protection");
 
 // Enable Dynamic First-Party Isolation in the private browsing mode.
 pref("network.cookie.cookieBehavior.pbmode", 5 /* BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN */);
@@ -1942,8 +1958,9 @@ pref("browser.contentblocking.reportBreakage.url", "https://tracking-protection-
 // Enable Protections report's Lockwise card by default.
 pref("browser.contentblocking.report.lockwise.enabled", true);
 
-// Enable Protections report's Monitor card by default.
-pref("browser.contentblocking.report.monitor.enabled", true);
+// Disable rotections report's Monitor card by default. The new Monitor API does
+// not support this feature as of now. See Bug 1815751.
+pref("browser.contentblocking.report.monitor.enabled", false);
 
 // Disable Protections report's Proxy card by default.
 pref("browser.contentblocking.report.proxy.enabled", false);
@@ -1976,6 +1993,10 @@ pref("browser.promo.focus.enabled", true);
 
 // Default to enabling pin promos to be shown where allowed.
 pref("browser.promo.pin.enabled", true);
+
+// Default to enabling cookie banner reduction promos to be shown where allowed.
+// Set to true for Fx113 (see bug 1808611)
+pref("browser.promo.cookiebanners.enabled", false);
 
 // Comma separated string of mozilla vpn supported platforms.
 pref("browser.contentblocking.report.vpn_platforms", "win,mac,linux");
@@ -2153,6 +2174,7 @@ pref("browser.migrate.safari.enabled", true);
 pref("browser.migrate.vivaldi.enabled", true);
 
 pref("browser.migrate.content-modal.enabled", false);
+pref("browser.migrate.content-modal.import-all.enabled", false);
 
 pref("extensions.pocket.api", "api.getpocket.com");
 pref("extensions.pocket.enabled", true);
@@ -2177,18 +2199,14 @@ pref("signon.management.page.fileImport.enabled", false);
 
 #ifdef NIGHTLY_BUILD
 pref("signon.management.page.os-auth.enabled", true);
-
-// "not available"  - feature is not available (will be removed after QA).
+#else
+pref("signon.management.page.os-auth.enabled", false);
+#endif
 // "available"      - user can see feature offer.
 // "offered"        - we have offered feature to user and they have not yet made a decision.
 // "enabled"        - user opted in to the feature.
 // "disabled"       - user opted out of the feature.
-// will be enabled after QA round
-pref("signon.firefoxRelay.feature", "not available");
-#else
-pref("signon.management.page.os-auth.enabled", false);
-pref("signon.firefoxRelay.feature", "not available");
-#endif
+pref("signon.firefoxRelay.feature", "available");
 pref("signon.management.page.breach-alerts.enabled", true);
 pref("signon.management.page.vulnerable-passwords.enabled", true);
 pref("signon.management.page.sort", "name");
@@ -2330,6 +2348,7 @@ pref("browser.toolbars.bookmarks.showOtherBookmarks", true);
 // quick access to sign-in and manage your Firefox Account.
 pref("identity.fxaccounts.toolbar.enabled", true);
 pref("identity.fxaccounts.toolbar.accessed", false);
+pref("identity.fxaccounts.toolbar.defaultVisible", false);
 
 // Prefs for different services supported by Firefox Account
 pref("identity.fxaccounts.service.monitorLoginUrl", "https://monitor.firefox.com/");
@@ -2763,5 +2782,35 @@ pref("browser.pdfjs.feature-tour", "{\"screen\":\"\",\"complete\":false}");
   pref("cookiebanners.service.mode.privateBrowsing", 1);
 #endif
 
-// Enables the cookie banner desktop UI.
-pref("cookiebanners.ui.desktop.enabled", false);
+#if defined(EARLY_BETA_OR_EARLIER)
+  // Enables the cookie banner desktop UI.
+  pref("cookiebanners.ui.desktop.enabled", true);
+#else
+  pref("cookiebanners.ui.desktop.enabled", false);
+#endif
+
+// Controls which variant of the cookie banner CFR the user is presented with.
+pref("cookiebanners.ui.desktop.cfrVariant", 0);
+
+// Parameters for the swipe-to-navigation icon.
+//
+// `navigation-icon-{start|end}-position` is the start or the end position of
+// the icon movement in response to the user's swipe gesture. `0` means the icon
+// positions at the left edge of the browser window. For example on Mac, when
+// the user started swipe gesture left to right, the icon appears at a point
+// where left side 20px of the icon is outside of the browser window's view.
+//
+// `navigation-icon-{min|max}-radius` is the minimum or the maximum radius of
+// the icon's outer circle size in response to the user's swipe gesture.  `-1`
+// means that the circle radius never changes.
+#ifdef XP_MACOSX
+  pref("browser.swipe.navigation-icon-start-position", -20);
+  pref("browser.swipe.navigation-icon-end-position", 0);
+  pref("browser.swipe.navigation-icon-min-radius", -1);
+  pref("browser.swipe.navigation-icon-max-radius", -1);
+#else
+  pref("browser.swipe.navigation-icon-start-position", -40);
+  pref("browser.swipe.navigation-icon-end-position", 60);
+  pref("browser.swipe.navigation-icon-min-radius", 12);
+  pref("browser.swipe.navigation-icon-max-radius", 20);
+#endif

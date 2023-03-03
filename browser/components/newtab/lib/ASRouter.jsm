@@ -11,6 +11,12 @@ const { AppConstants } = ChromeUtils.importESModule(
   "resource://gre/modules/AppConstants.sys.mjs"
 );
 const lazy = {};
+
+ChromeUtils.defineESModuleGetters(lazy, {
+  Downloader: "resource://services-settings/Attachments.sys.mjs",
+  MacAttribution: "resource:///modules/MacAttribution.sys.mjs",
+});
+
 XPCOMUtils.defineLazyModuleGetters(lazy, {
   SnippetsTestMessageProvider:
     "resource://activity-stream/lib/SnippetsTestMessageProvider.jsm",
@@ -28,7 +34,6 @@ XPCOMUtils.defineLazyModuleGetters(lazy, {
   ASRouterTriggerListeners:
     "resource://activity-stream/lib/ASRouterTriggerListeners.jsm",
   KintoHttpClient: "resource://services-common/kinto-http-client.js",
-  Downloader: "resource://services-settings/Attachments.jsm",
   RemoteImages: "resource://activity-stream/lib/RemoteImages.jsm",
   RemoteL10n: "resource://activity-stream/lib/RemoteL10n.jsm",
   ExperimentAPI: "resource://nimbus/ExperimentAPI.jsm",
@@ -38,7 +43,6 @@ XPCOMUtils.defineLazyModuleGetters(lazy, {
     "resource://messaging-system/lib/SpecialMessageActions.jsm",
   TargetingContext: "resource://messaging-system/targeting/Targeting.jsm",
   Utils: "resource://services-settings/Utils.jsm",
-  MacAttribution: "resource:///modules/MacAttribution.jsm",
 });
 XPCOMUtils.defineLazyServiceGetters(lazy, {
   BrowserHandler: ["@mozilla.org/browser/clh;1", "nsIBrowserHandler"],
@@ -53,14 +57,14 @@ const { CFRMessageProvider } = ChromeUtils.import(
 const { OnboardingMessageProvider } = ChromeUtils.import(
   "resource://activity-stream/lib/OnboardingMessageProvider.jsm"
 );
-const { RemoteSettings } = ChromeUtils.import(
-  "resource://services-settings/remote-settings.js"
+const { RemoteSettings } = ChromeUtils.importESModule(
+  "resource://services-settings/remote-settings.sys.mjs"
 );
 const { CFRPageActions } = ChromeUtils.import(
   "resource://activity-stream/lib/CFRPageActions.jsm"
 );
-const { AttributionCode } = ChromeUtils.import(
-  "resource:///modules/AttributionCode.jsm"
+const { AttributionCode } = ChromeUtils.importESModule(
+  "resource:///modules/AttributionCode.sys.mjs"
 );
 
 // List of hosts for endpoints that serve router messages.
@@ -102,6 +106,10 @@ const USE_REMOTE_L10N_PREF =
 const MESSAGING_EXPERIMENTS_DEFAULT_FEATURES = [
   "cfr",
   "fxms-message-1",
+  "fxms-message-2",
+  "fxms-message-3",
+  "fxms-message-4",
+  "fxms-message-5",
   "infobar",
   "moments-page",
   "pbNewtab",
@@ -366,8 +374,8 @@ const MessageLoaderUtils = {
       : MESSAGING_EXPERIMENTS_DEFAULT_FEATURES;
     let experiments = [];
     for (const featureId of featureIds) {
-      let featureAPI = lazy.NimbusFeatures[featureId];
-      let experimentData = lazy.ExperimentAPI.getExperimentMetaData({
+      const featureAPI = lazy.NimbusFeatures[featureId];
+      const experimentData = lazy.ExperimentAPI.getExperimentMetaData({
         featureId,
       });
 
@@ -380,41 +388,56 @@ const MessageLoaderUtils = {
         continue;
       }
 
-      let message = featureAPI.getAllVariables();
+      const featureValue = featureAPI.getAllVariables();
 
-      if (message?.id) {
-        // Cache the Nimbus feature ID on the message because there is not a 1-1
-        // correspondance between templates and features. This is used when
-        // recording expose events (see |sendTriggerMessage|).
-        message._nimbusFeature = featureId;
-        experiments.push(message);
+      // If the value is a multi-message config, add each message in the
+      // messages array. Cache the Nimbus feature ID on each message, because
+      // there is not a 1-1 correspondance between templates and features.
+      // This is used when recording expose events (see |sendTriggerMessage|).
+      const messages =
+        featureValue?.template === "multi" &&
+        Array.isArray(featureValue.messages)
+          ? featureValue.messages
+          : [featureValue];
+      for (const message of messages) {
+        if (message?.id) {
+          message._nimbusFeature = featureId;
+          experiments.push(message);
+        }
       }
 
-      if (!REACH_EVENT_GROUPS.includes(featureId)) {
+      // Add Reach messages from unenrolled sibling branches, provided we are
+      // recording Reach events for this feature. If we are in a rollout, we do
+      // not have sibling branches.
+      if (!REACH_EVENT_GROUPS.includes(featureId) || !experimentData) {
         continue;
       }
 
-      // If we are in a rollout, we do not have sibling branches.
-      if (experimentData) {
-        // Check other sibling branches for triggers, add them to the return
-        // array if found any. The `forReachEvent` label is used to identify
-        // those branches so that they would only used to record the Reach
-        // event.
-        const branches =
-          (await lazy.ExperimentAPI.getAllBranches(experimentData.slug)) || [];
-        for (const branch of branches) {
-          let branchValue = branch[featureId].value;
-          if (
-            branch.slug !== experimentData.branch.slug &&
-            branchValue?.trigger
-          ) {
-            experiments.push({
-              forReachEvent: { sent: false, group: featureId },
-              experimentSlug: experimentData.slug,
-              branchSlug: branch.slug,
-              ...branchValue,
-            });
+      // Check other sibling branches for triggers, add them to the return array
+      // if found any. The `forReachEvent` label is used to identify those
+      // branches so that they would only be used to record the Reach event.
+      const branches =
+        (await lazy.ExperimentAPI.getAllBranches(experimentData.slug)) || [];
+      for (const branch of branches) {
+        let branchValue = branch[featureId].value;
+        if (!branchValue || branch.slug === experimentData.branch.slug) {
+          continue;
+        }
+        const branchMessages =
+          branchValue?.template === "multi" &&
+          Array.isArray(branchValue.messages)
+            ? branchValue.messages
+            : [branchValue];
+        for (const message of branchMessages) {
+          if (!message?.trigger) {
+            continue;
           }
+          experiments.push({
+            forReachEvent: { sent: false, group: featureId },
+            experimentSlug: experimentData.slug,
+            branchSlug: branch.slug,
+            ...message,
+          });
         }
       }
     }
@@ -1806,6 +1829,7 @@ class _ASRouter {
       FOCUS: { enabledPref: "browser.promo.focus.enabled" },
       VPN: { enabledPref: "browser.vpn_promo.enabled" },
       PIN: { enabledPref: "browser.promo.pin.enabled" },
+      COOKIE_BANNERS: { enabledPref: "browser.promo.cookiebanners.enabled" },
     };
     await this.loadMessagesFromAllProviders();
 

@@ -1,7 +1,14 @@
 #!/bin/bash
 
+function show_error_msg()
+{
+  echo "*** ERROR *** $? line $1 $0 did not complete successfully!"
+  echo "$ERROR_HELP"
+}
+ERROR_HELP=""
+
 # Print an Error message if `set -eE` causes the script to exit due to a failed command
-trap 'echo "*** ERROR *** $? $LINENO $0 did not complete successfully!"' ERR
+trap 'show_error_msg $LINENO' ERR
 
 source dom/media/webrtc/third_party_build/use_config_env.sh
 
@@ -16,12 +23,26 @@ echo "MOZ_PRIOR_LIBWEBRTC_BRANCH: $MOZ_PRIOR_LIBWEBRTC_BRANCH"
 # * o pipefail: All stages of all pipes should succeed.
 set -eEuo pipefail
 
+# wipe resume_state for new run
+rm -f $STATE_DIR/resume_state
+
+# If there is no cache file for the branch-head lookups done in
+# update_example_config.sh, go ahead and copy our small pre-warmed
+# version.
+if [ ! -f $STATE_DIR/milestone.cache ]; then
+  cp $SCRIPT_DIR/pre-warmed-milestone.cache $STATE_DIR/milestone.cache
+fi
+
 # read the last line of README.moz-ff-commit to retrieve our current base
 # commit in moz-libwebrtc
 MOZ_LIBWEBRTC_BASE=`tail -1 third_party/libwebrtc/README.moz-ff-commit`
 
 CURRENT_DIR=`pwd`
 cd $MOZ_LIBWEBRTC_SRC
+
+# do a sanity fetch in case this was not a freshly cloned copy of the
+# repo, meaning it may not have all the mozilla branches present.
+git fetch --all
 
 # pull new upstream commits
 if [ "0" == `grep "https://webrtc.googlesource.com/src" .git/config | wc -l | tr -d " " || true` ]; then
@@ -55,35 +76,33 @@ CHERRY_PICK_BASE=`git merge-base $MOZ_PRIOR_LIBWEBRTC_BRANCH master`
 echo "common commit: $CHERRY_PICK_BASE"
 
 # create a new branch at the common commit and checkout the new branch
+ERROR_HELP=$"
+Unable to create branch '$MOZ_LIBWEBRTC_BRANCH'.  This probably means
+that prep_repo.sh is being called on a repo that already has a patch
+stack in progress.  If you're sure you want to do this, the following
+commands will allow the process to continue:
+  ( cd $MOZ_LIBWEBRTC_SRC && \\
+    git checkout $MOZ_LIBWEBRTC_BRANCH && \\
+    git checkout -b $MOZ_LIBWEBRTC_BRANCH-old && \\
+    git branch -D $MOZ_LIBWEBRTC_BRANCH ) && \\
+  bash $0
+"
 git branch $MOZ_LIBWEBRTC_BRANCH $CHERRY_PICK_BASE
+ERROR_HELP=""
 git checkout $MOZ_LIBWEBRTC_BRANCH
 
 # grab the patches for all the commits in chrome's release branch for libwebrtc
-git format-patch -k $CHERRY_PICK_BASE..branch-heads/$MOZ_PRIOR_UPSTREAM_BRANCH_HEAD_NUM
+git format-patch -o $TMP_DIR -k $CHERRY_PICK_BASE..branch-heads/$MOZ_PRIOR_UPSTREAM_BRANCH_HEAD_NUM
 # tweak the release branch commit summaries to show they were cherry picked
-sed -i.bak -e "/^Subject: / s/^Subject: /Subject: (cherry-pick-branch-heads\/$MOZ_PRIOR_UPSTREAM_BRANCH_HEAD_NUM) /" *.patch
-git am *.patch # applies to branch mozpatches
-rm *.patch
-
-# write no-op files for the cherry-picked release branch commits.  For more
-# details on what this is doing, see make_upstream_revert_noop.sh.
-COMMITS=`git log -r $CHERRY_PICK_BASE..branch-heads/$MOZ_PRIOR_UPSTREAM_BRANCH_HEAD_NUM --format='%h'`
-for commit in $COMMITS; do
-
-  echo "Processing release branch commit $commit for no-op handling"
-  CHERRY_PICK_COMMIT=`git show $commit | grep "cherry picked from commit" | tr -d "()" | awk '{ print $5; }'`
-  SHORT_SHA=`git show --name-only $CHERRY_PICK_COMMIT --format='%h' | head -1`
-
-  echo "We already cherry-picked this when we vendored $commit." \
-  > ~/$SHORT_SHA.no-op-cherry-pick-msg
-
-done
+sed -i.bak -e "/^Subject: / s/^Subject: /Subject: (cherry-pick-branch-heads\/$MOZ_PRIOR_UPSTREAM_BRANCH_HEAD_NUM) /" $TMP_DIR/*.patch
+git am $TMP_DIR/*.patch # applies to branch mozpatches
+rm $TMP_DIR/*.patch $TMP_DIR/*.patch.bak
 
 # grab all the moz patches and apply
 # git format-patch -k $MOZ_LIBWEBRTC_BASE..$MOZ_PRIOR_LIBWEBRTC_BRANCH
-git format-patch -k branch-heads/$MOZ_PRIOR_UPSTREAM_BRANCH_HEAD_NUM..$MOZ_PRIOR_LIBWEBRTC_BRANCH
-git am *.patch # applies to branch mozpatches
-rm *.patch
+git format-patch -o $TMP_DIR -k branch-heads/$MOZ_PRIOR_UPSTREAM_BRANCH_HEAD_NUM..$MOZ_PRIOR_LIBWEBRTC_BRANCH
+git am $TMP_DIR/*.patch # applies to branch mozpatches
+rm $TMP_DIR/*.patch
 
 cd $CURRENT_DIR
 

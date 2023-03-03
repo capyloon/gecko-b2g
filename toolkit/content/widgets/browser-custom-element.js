@@ -48,6 +48,10 @@
     NetUtil: "resource://gre/modules/NetUtil.jsm",
   });
 
+  XPCOMUtils.defineLazyGetter(lazy, "blankURI", () =>
+    Services.io.newURI("about:blank")
+  );
+
   let lazyPrefs = {};
   XPCOMUtils.defineLazyPreferenceGetter(
     lazyPrefs,
@@ -127,7 +131,11 @@
 
       this._originalURI = null;
       this._showingSearchTerms = false;
-
+      // When we open a prompt in reaction to a 401, if this 401 comes from
+      // a different base domain, the url of that site will be stored here
+      // and will be used for auth prompt spoofing protections.
+      // See bug 791594 for reference.
+      this._currentAuthPromptURI = null;
       /**
        * These are managed by the tabbrowser:
        */
@@ -256,6 +264,8 @@
 
       this._originalURI = null;
 
+      this._currentAuthPromptURI = null;
+
       this._showingSearchTerms = false;
 
       this._documentContentType = null;
@@ -367,7 +377,14 @@
       return this.webNavigation.canGoForward;
     }
 
+    // While an auth prompt from a base domain different than the current sites is open, we want to display the url of the cross domain site.
+    // This is to prevent possible auth spoofing scenarios.
+    // The URL of the requesting origin is provided by 'currentAuthPromptURI', this will only be non null while an auth prompt is open.
+    // See bug 791594 for reference.
     get currentURI() {
+      if (this.currentAuthPromptURI) {
+        return this.currentAuthPromptURI;
+      }
       if (this.webNavigation) {
         return this.webNavigation.currentURI;
       }
@@ -778,6 +795,13 @@
       return this._showingSearchTerms;
     }
 
+    set currentAuthPromptURI(aURI) {
+      this._currentAuthPromptURI = aURI;
+    }
+
+    get currentAuthPromptURI() {
+      return this._currentAuthPromptURI;
+    }
     _wrapURIChangeCall(fn) {
       if (!this.isRemoteBrowser) {
         this.isNavigating = true;
@@ -831,38 +855,35 @@
       this.webNavigation.stop(flags);
     }
 
+    _fixLoadParamsToLoadURIOptions(params) {
+      let loadFlags =
+        params.loadFlags || params.flags || Ci.nsIWebNavigation.LOAD_FLAGS_NONE;
+      delete params.flags;
+      params.loadFlags = loadFlags;
+    }
+
     /**
      * throws exception for unknown schemes
      */
-    loadURI(aURI, aParams = {}) {
-      if (!aURI) {
-        aURI = "about:blank";
+    loadURI(uri, params = {}) {
+      if (!uri) {
+        uri = lazy.blankURI;
       }
-      let {
-        referrerInfo,
-        triggeringPrincipal,
-        triggeringRemoteType,
-        postData,
-        headers,
-        csp,
-        remoteTypeOverride,
-      } = aParams;
-      let loadFlags =
-        aParams.loadFlags ||
-        aParams.flags ||
-        Ci.nsIWebNavigation.LOAD_FLAGS_NONE;
-      let loadURIOptions = {
-        triggeringPrincipal,
-        triggeringRemoteType,
-        csp,
-        referrerInfo,
-        loadFlags,
-        postData,
-        headers,
-        remoteTypeOverride,
-      };
+      this._fixLoadParamsToLoadURIOptions(params);
+      this._wrapURIChangeCall(() => this.webNavigation.loadURI(uri, params));
+    }
+
+    /**
+     * throws exception for unknown schemes
+     */
+    fixupAndLoadURIString(uriString, params = {}) {
+      if (!uriString) {
+        this.loadURI(null, params);
+        return;
+      }
+      this._fixLoadParamsToLoadURIOptions(params);
       this._wrapURIChangeCall(() =>
-        this.webNavigation.loadURI(aURI, loadURIOptions)
+        this.webNavigation.fixupAndLoadURIString(uriString, params)
       );
     }
 
@@ -1095,12 +1116,12 @@
               this.docShell.browsingContext.useGlobalHistory = true;
             } catch (ex) {
               // This can occur if the Places database is locked
-              Cu.reportError("Error enabling browser global history: " + ex);
+              console.error("Error enabling browser global history: ", ex);
             }
           }
         }
       } catch (e) {
-        Cu.reportError(e);
+        console.error(e);
       }
       try {
         // Ensures the securityUI is initialized.

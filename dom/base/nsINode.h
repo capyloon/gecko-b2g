@@ -191,8 +191,11 @@ enum {
   NODE_HAS_NONCE_AND_HEADER_CSP = NODE_FLAG_BIT(16),
 
   NODE_KEEPS_DOMARENA = NODE_FLAG_BIT(17),
+
+  NODE_MAY_HAVE_ELEMENT_CHILDREN = NODE_FLAG_BIT(18),
+
   // Remaining bits are node type specific.
-  NODE_TYPE_SPECIFIC_BITS_OFFSET = 18
+  NODE_TYPE_SPECIFIC_BITS_OFFSET = 19
 };
 
 // Make sure we have space for our bits
@@ -383,8 +386,6 @@ class nsINode : public mozilla::dom::EventTarget {
   enum {
     /** form control elements */
     eHTML_FORM_CONTROL = 1 << 6,
-    /** SVG use targets */
-    eUSE_TARGET = 1 << 9,
     /** SVG shapes such as lines and polygons, but not images */
     eSHAPE = 1 << 12
   };
@@ -821,6 +822,8 @@ class nsINode : public mozilla::dom::EventTarget {
   inline bool IsAnyOfSVGElements(First aFirst, Args... aArgs) const {
     return IsSVGElement() && IsNodeInternal(aFirst, aArgs...);
   }
+
+  virtual bool IsSVGGraphicsElement() const { return false; }
 
   inline bool IsXULElement() const {
     return IsElement() && IsInNamespace(kNameSpaceID_XUL);
@@ -1278,7 +1281,7 @@ class nsINode : public mozilla::dom::EventTarget {
     virtual ~nsSlots();
 
     virtual void Traverse(nsCycleCollectionTraversalCallback&);
-    virtual void Unlink();
+    virtual void Unlink(nsINode&);
 
     /**
      * A list of mutation observers
@@ -1907,6 +1910,7 @@ class nsINode : public mozilla::dom::EventTarget {
   void ClearPointerLock() { ClearBoolFlag(ElementHasPointerLock); }
   bool MayHaveAnimations() const { return GetBoolFlag(ElementHasAnimations); }
   void SetMayHaveAnimations() { SetBoolFlag(ElementHasAnimations); }
+  void ClearMayHaveAnimations() { ClearBoolFlag(ElementHasAnimations); }
   void SetHasValidDir() { SetBoolFlag(NodeHasValidDirAttribute); }
   void ClearHasValidDir() { ClearBoolFlag(NodeHasValidDirAttribute); }
   bool HasValidDir() const { return GetBoolFlag(NodeHasValidDirAttribute); }

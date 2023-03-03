@@ -127,6 +127,7 @@ AppWindow::AppWindow(uint32_t aChromeFlags)
       mIgnoreXULSizeMode(false),
       mDestroying(false),
       mRegistered(false),
+      mDominantClientSize(false),
       mChromeFlags(aChromeFlags),
       mWidgetListenerDelegate(this) {}
 
@@ -158,7 +159,7 @@ NS_INTERFACE_MAP_END
 nsresult AppWindow::Initialize(nsIAppWindow* aParent, nsIAppWindow* aOpener,
                                int32_t aInitialWidth, int32_t aInitialHeight,
                                bool aIsHiddenWindow,
-                               nsWidgetInitData& widgetInitData) {
+                               widget::InitData& widgetInitData) {
   nsresult rv;
   nsCOMPtr<nsIWidget> parentWidget;
 
@@ -437,9 +438,7 @@ static LayoutDeviceIntSize GetOuterToInnerSizeDifference(nsIWidget* aWindow) {
   if (!aWindow) {
     return LayoutDeviceIntSize();
   }
-  LayoutDeviceIntSize baseSize(200, 200);
-  LayoutDeviceIntSize windowSize = aWindow->ClientToWindowSize(baseSize);
-  return windowSize - baseSize;
+  return aWindow->ClientToWindowSizeDifference();
 }
 
 static CSSIntSize GetOuterToInnerSizeDifferenceInCSSPixels(
@@ -675,20 +674,7 @@ double AppWindow::GetWidgetCSSToDeviceScale() {
 }
 
 NS_IMETHODIMP AppWindow::SetPositionDesktopPix(int32_t aX, int32_t aY) {
-  mWindow->Move(aX, aY);
-  if (mSizingShellFromXUL) {
-    // If we're invoked for sizing from XUL, we want to neither ignore anything
-    // nor persist anything, since it's already the value in XUL.
-    return NS_OK;
-  }
-  if (!mChromeLoaded) {
-    // If we're called before the chrome is loaded someone obviously wants this
-    // window at this position. We don't persist this one-time position.
-    mIgnoreXULPosition = true;
-    return NS_OK;
-  }
-  PersistentAttributesDirty(PersistentAttribute::Position, Sync);
-  return NS_OK;
+  return MoveResize(Some(DesktopIntPoint(aX, aY)), Nothing(), false);
 }
 
 // The parameters here are device pixels; do the best we can to convert to
@@ -696,9 +682,7 @@ NS_IMETHODIMP AppWindow::SetPositionDesktopPix(int32_t aX, int32_t aY) {
 NS_IMETHODIMP AppWindow::SetPosition(int32_t aX, int32_t aY) {
   // Don't reset the window's size mode here - platforms that don't want to move
   // maximized windows should reset it in their respective Move implementation.
-  DesktopToLayoutDeviceScale currScale = mWindow->GetDesktopToDeviceScale();
-  DesktopPoint pos = LayoutDeviceIntPoint(aX, aY) / currScale;
-  return SetPositionDesktopPix(pos.x, pos.y);
+  return MoveResize(Some(LayoutDeviceIntPoint(aX, aY)), Nothing(), false);
 }
 
 NS_IMETHODIMP AppWindow::GetPosition(int32_t* aX, int32_t* aY) {
@@ -709,29 +693,7 @@ NS_IMETHODIMP AppWindow::SetSize(int32_t aCX, int32_t aCY, bool aRepaint) {
   /* any attempt to set the window's size or position overrides the window's
      zoom state. this is important when these two states are competing while
      the window is being opened. but it should probably just always be so. */
-  mWindow->SetSizeMode(nsSizeMode_Normal);
-
-  mIntrinsicallySized = false;
-
-  DesktopToLayoutDeviceScale scale = mWindow->GetDesktopToDeviceScale();
-  DesktopSize size = LayoutDeviceIntSize(aCX, aCY) / scale;
-  mWindow->Resize(size.width, size.height, aRepaint);
-  if (mSizingShellFromXUL) {
-    // If we're invoked for sizing from XUL, we want to neither ignore anything
-    // nor persist anything, since it's already the value in XUL.
-    return NS_OK;
-  }
-  if (!mChromeLoaded) {
-    // If we're called before the chrome is loaded someone obviously wants this
-    // window at this size & in the normal size mode (since it is the only mode
-    // in which setting dimensions makes sense). We don't persist this one-time
-    // size.
-    mIgnoreXULSize = true;
-    mIgnoreXULSizeMode = true;
-    return NS_OK;
-  }
-  PersistentAttributesDirty(PersistentAttribute::Size, Sync);
-  return NS_OK;
+  return MoveResize(Nothing(), Some(LayoutDeviceIntSize(aCX, aCY)), aRepaint);
 }
 
 NS_IMETHODIMP AppWindow::GetSize(int32_t* aCX, int32_t* aCY) {
@@ -743,30 +705,9 @@ NS_IMETHODIMP AppWindow::SetPositionAndSize(int32_t aX, int32_t aY, int32_t aCX,
   /* any attempt to set the window's size or position overrides the window's
      zoom state. this is important when these two states are competing while
      the window is being opened. but it should probably just always be so. */
-  mWindow->SetSizeMode(nsSizeMode_Normal);
-
-  mIntrinsicallySized = false;
-
-  DesktopToLayoutDeviceScale scale = mWindow->GetDesktopToDeviceScale();
-  DesktopRect rect = LayoutDeviceIntRect(aX, aY, aCX, aCY) / scale;
-  mWindow->Resize(rect.X(), rect.Y(), rect.Width(), rect.Height(),
-                  !!(aFlags & nsIBaseWindow::eRepaint));
-  if (mSizingShellFromXUL) {
-    // If we're invoked for sizing from XUL, we want to neither ignore anything
-    // nor persist anything, since it's already the value in XUL.
-    return NS_OK;
-  }
-  if (!mChromeLoaded) {
-    // If we're called before the chrome is loaded someone obviously wants this
-    // window at this size and position. We don't persist this one-time setting.
-    mIgnoreXULPosition = true;
-    mIgnoreXULSize = true;
-    mIgnoreXULSizeMode = true;
-    return NS_OK;
-  }
-  PersistentAttributesDirty(
-      {PersistentAttribute::Size, PersistentAttribute::Position}, Sync);
-  return NS_OK;
+  return MoveResize(Some(LayoutDeviceIntPoint(aX, aY)),
+                    Some(LayoutDeviceIntSize(aCX, aCY)),
+                    !!(aFlags & nsIBaseWindow::eRepaint));
 }
 
 NS_IMETHODIMP AppWindow::GetPositionAndSize(int32_t* x, int32_t* y, int32_t* cx,
@@ -785,19 +726,89 @@ NS_IMETHODIMP AppWindow::GetPositionAndSize(int32_t* x, int32_t* y, int32_t* cx,
 
 NS_IMETHODIMP
 AppWindow::SetDimensions(DimensionRequest&& aRequest) {
-  // For the chrome the inner size is the root shell size, and for the content
-  // it's the primary content size. We lack an indicator here that would allow
-  // us to distinguish between the two.
-  return NS_ERROR_NOT_IMPLEMENTED;
+  if (aRequest.mDimensionKind == DimensionKind::Inner) {
+    // For the chrome the inner size is the root shell size, and for the
+    // content it's the primary content size. We lack an indicator here that
+    // would allow us to distinguish between the two.
+    return NS_ERROR_NOT_IMPLEMENTED;
+  }
+
+  MOZ_TRY(aRequest.SupplementFrom(this));
+  return aRequest.ApplyOuterTo(this);
 }
 
 NS_IMETHODIMP
 AppWindow::GetDimensions(DimensionKind aDimensionKind, int32_t* aX, int32_t* aY,
                          int32_t* aCX, int32_t* aCY) {
-  // For the chrome the inner size is the root shell size, and for the content
-  // it's the primary content size. We lack an indicator here that would allow
-  // us to distinguish between the two.
-  return NS_ERROR_NOT_IMPLEMENTED;
+  if (aDimensionKind == DimensionKind::Inner) {
+    // For the chrome the inner size is the root shell size, and for the
+    // content it's the primary content size. We lack an indicator here that
+    // would allow us to distinguish between the two.
+    return NS_ERROR_NOT_IMPLEMENTED;
+  }
+  return GetPositionAndSize(aX, aY, aCX, aCY);
+}
+
+nsresult AppWindow::MoveResize(const Maybe<LayoutDeviceIntPoint>& aPosition,
+                               const Maybe<LayoutDeviceIntSize>& aSize,
+                               bool aRepaint) {
+  DesktopToLayoutDeviceScale scale = mWindow->GetDesktopToDeviceScale();
+
+  return MoveResize(aPosition ? Some(*aPosition / scale) : Nothing(),
+                    aSize ? Some(*aSize / scale) : Nothing(), aRepaint);
+}
+
+nsresult AppWindow::MoveResize(const Maybe<DesktopPoint>& aPosition,
+                               const Maybe<DesktopSize>& aSize, bool aRepaint) {
+  NS_ENSURE_STATE(mWindow);
+  PersistentAttributes dirtyAttributes;
+
+  if (!aPosition && !aSize) {
+    MOZ_ASSERT_UNREACHABLE("Doing nothing?");
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  if (aSize) {
+    mWindow->SetSizeMode(nsSizeMode_Normal);
+    mIntrinsicallySized = false;
+    mDominantClientSize = false;
+  }
+
+  if (aPosition && aSize) {
+    mWindow->Resize(aPosition->x, aPosition->y, aSize->width, aSize->height,
+                    aRepaint);
+    dirtyAttributes = {PersistentAttribute::Size,
+                       PersistentAttribute::Position};
+  } else if (aSize) {
+    mWindow->Resize(aSize->width, aSize->height, aRepaint);
+    dirtyAttributes = {PersistentAttribute::Size};
+  } else if (aPosition) {
+    mWindow->Move(aPosition->x, aPosition->y);
+    dirtyAttributes = {PersistentAttribute::Position};
+  }
+
+  if (mSizingShellFromXUL) {
+    // If we're invoked for sizing from XUL, we want to neither ignore anything
+    // nor persist anything, since it's already the value in XUL.
+    return NS_OK;
+  }
+  if (!mChromeLoaded) {
+    // If we're called before the chrome is loaded someone obviously wants this
+    // window at this size & in the normal size mode (since it is the only mode
+    // in which setting dimensions makes sense). We don't persist this one-time
+    // position/size.
+    if (aPosition) {
+      mIgnoreXULPosition = true;
+    }
+    if (aSize) {
+      mIgnoreXULSize = true;
+      mIgnoreXULSizeMode = true;
+    }
+    return NS_OK;
+  }
+
+  PersistentAttributesDirty(dirtyAttributes, Sync);
+  return NS_OK;
 }
 
 NS_IMETHODIMP AppWindow::Center(nsIAppWindow* aRelative, bool aScreen,
@@ -1592,6 +1603,13 @@ void AppWindow::SyncAttributesToWidget() {
 
   nsAutoString attr;
 
+  // Some attributes can change the client size (e.g. chromemargin on Windows
+  // and MacOS). But we might want to keep it.
+  const LayoutDeviceIntSize oldClientSize = mWindow->GetClientSize();
+  // We have to check now whether we want to restore the client size, as any
+  // change in size will reset its state.
+  bool maintainClientSize = mDominantClientSize;
+
   // "hidechrome" attribute
   if (windowElement->AttrValueIs(kNameSpaceID_None, nsGkAtoms::hidechrome,
                                  nsGkAtoms::_true, eCaseMatters)) {
@@ -1604,9 +1622,8 @@ void AppWindow::SyncAttributesToWidget() {
   nsIntMargin margins;
   windowElement->GetAttribute(u"chromemargin"_ns, attr);
   if (nsContentUtils::ParseIntMarginValue(attr, margins)) {
-    LayoutDeviceIntMargin tmp =
-        LayoutDeviceIntMargin::FromUnknownMargin(margins);
-    mWindow->SetNonClientMargins(tmp);
+    mWindow->SetNonClientMargins(
+        LayoutDeviceIntMargin::FromUnknownMargin(margins));
   }
 
   NS_ENSURE_TRUE_VOID(mWindow);
@@ -1649,6 +1666,14 @@ void AppWindow::SyncAttributesToWidget() {
   windowElement->GetAttribute(u"macanimationtype"_ns, attr);
   if (attr.EqualsLiteral("document")) {
     mWindow->SetWindowAnimationType(nsIWidget::eDocumentWindowAnimation);
+  }
+
+  // Check if the client size did change and if we want to restore it.
+  if (maintainClientSize && mWindow->SizeMode() == nsSizeMode_Normal &&
+      oldClientSize != mWindow->GetClientSize()) {
+    mWindow->ResizeClient(oldClientSize / mWindow->GetDesktopToDeviceScale(),
+                          true);
+    mDominantClientSize = true;
   }
 }
 
@@ -2213,11 +2238,19 @@ nsresult AppWindow::SetRootShellSize(int32_t aWidth, int32_t aHeight) {
 
 NS_IMETHODIMP AppWindow::SizeShellTo(nsIDocShellTreeItem* aShellItem,
                                      int32_t aCX, int32_t aCY) {
+  MOZ_ASSERT(aShellItem == mDocShell || aShellItem == mPrimaryContentShell);
+  if (aShellItem == mDocShell) {
+    auto newSize =
+        LayoutDeviceIntSize(aCX, aCY) + GetOuterToInnerSizeDifference(mWindow);
+    SetSize(newSize.width, newSize.height, /* aRepaint = */ true);
+    mDominantClientSize = true;
+    return NS_OK;
+  }
+
   // XXXTAB This is wrong, we should actually reflow based on the passed in
   // shell.  For now we are hacking and doing delta sizing.  This is bad
   // because it assumes all size we add will go to the shell which probably
   // won't happen.
-
   nsCOMPtr<nsIBaseWindow> shellAsWin(do_QueryInterface(aShellItem));
   NS_ENSURE_TRUE(shellAsWin, NS_ERROR_FAILURE);
 
@@ -2541,8 +2574,11 @@ void AppWindow::ApplyChromeFlags() {
 NS_IMETHODIMP
 AppWindow::BeforeStartLayout() {
   ApplyChromeFlags();
-  LoadPersistentWindowState();
+  // Ordering here is important, loading width/height values in
+  // LoadPersistentWindowState() depends on the chromemargin attribute (since
+  // we need to translate outer to inner sizes).
   SyncAttributesToWidget();
+  LoadPersistentWindowState();
   if (mWindow) {
     SizeShell();
   }
@@ -2606,11 +2642,6 @@ void AppWindow::IntrinsicallySizeShell(const CSSIntSize& aWindowDiff,
     return;
   }
   RefPtr<nsDocShell> docShell = mDocShell;
-  nsCOMPtr<nsIDocShellTreeOwner> treeOwner;
-  docShell->GetTreeOwner(getter_AddRefs(treeOwner));
-  if (!treeOwner) {
-    return;
-  }
 
   CSSIntCoord maxWidth = 0;
   CSSIntCoord maxHeight = 0;
@@ -2639,7 +2670,7 @@ void AppWindow::IntrinsicallySizeShell(const CSSIntSize& aWindowDiff,
 
   int32_t width = pc->CSSPixelsToDevPixels(size->width);
   int32_t height = pc->CSSPixelsToDevPixels(size->height);
-  treeOwner->SizeShellTo(docShell, width, height);
+  SizeShellTo(docShell, width, height);
 
   // Update specified size for the final LoadPositionFromXUL call.
   aSpecWidth = size->width + aWindowDiff.width;
@@ -2758,6 +2789,7 @@ void AppWindow::SizeShellToWithLimit(int32_t aDesiredWidth,
   // has yet to complete can still change the size. We want the latest call to
   // define the final size.
   SetSize(winWidth, winHeight, true);
+  mDominantClientSize = true;
 }
 
 nsresult AppWindow::GetTabCount(uint32_t* aResult) {
@@ -2808,6 +2840,7 @@ bool AppWindow::WindowMoved(nsIWidget* aWidget, int32_t x, int32_t y) {
 
 bool AppWindow::WindowResized(nsIWidget* aWidget, int32_t aWidth,
                               int32_t aHeight) {
+  mDominantClientSize = false;
   if (mDocShell) {
     mDocShell->SetPositionAndSize(0, 0, aWidth, aHeight, 0);
   }

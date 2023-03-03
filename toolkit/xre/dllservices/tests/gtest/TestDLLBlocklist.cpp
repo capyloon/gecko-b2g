@@ -14,6 +14,7 @@
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Char16.h"
 #include "mozilla/gtest/MozAssertions.h"
+#include "mozilla/WindowsStackCookie.h"
 #include "nsDirectoryServiceDefs.h"
 #include "nsDirectoryServiceUtils.h"
 #include "nsString.h"
@@ -80,6 +81,17 @@ TEST(TestDllBlocklist, AllowDllByVersion)
   EXPECT_TRUE(!!::GetModuleHandleW(kLeafName.get()));
 }
 
+TEST(TestDllBlocklist, GPUProcessOnly_AllowInMainProcess)
+{
+  constexpr auto kLeafName = u"TestDllBlocklist_GPUProcessOnly.dll"_ns;
+  nsString dllPath = GetFullPath(kLeafName);
+
+  nsModuleHandle hDll(::LoadLibraryW(dllPath.get()));
+
+  EXPECT_TRUE(!!hDll);
+  EXPECT_TRUE(!!::GetModuleHandleW(kLeafName.get()));
+}
+
 TEST(TestDllBlocklist, SocketProcessOnly_AllowInMainProcess)
 {
   constexpr auto kLeafName = u"TestDllBlocklist_SocketProcessOnly.dll"_ns;
@@ -102,8 +114,10 @@ TEST(TestDllBlocklist, UtilityProcessOnly_AllowInMainProcess)
   EXPECT_TRUE(!!::GetModuleHandleW(kLeafName.get()));
 }
 
-// RedirectToNoOpEntryPoint needs the launcher process.
 #if defined(MOZ_LAUNCHER_PROCESS)
+// RedirectToNoOpEntryPoint needs the launcher process.
+// This test will fail in debug x64 if we mistakenly reintroduce stack buffers
+// in patched_NtMapViewOfSection (see bug 1733532).
 TEST(TestDllBlocklist, NoOpEntryPoint)
 {
   // DllMain of this dll has MOZ_RELEASE_ASSERT.  This test makes sure we load
@@ -125,7 +139,9 @@ TEST(TestDllBlocklist, NoOpEntryPoint)
 #  endif
 }
 
-// User blocklist needs the launcher process
+// User blocklist needs the launcher process.
+// This test will fail in debug x64 if we mistakenly reintroduce stack buffers
+// in patched_NtMapViewOfSection (see bug 1733532).
 TEST(TestDllBlocklist, UserBlocked)
 {
   constexpr auto kLeafName = u"TestDllBlocklist_UserBlocked.dll"_ns;

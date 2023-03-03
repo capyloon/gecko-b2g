@@ -82,6 +82,7 @@
 #include "mozilla/layers/WebRenderLayerManager.h"
 #include "mozilla/webrender/WebRenderAPI.h"
 #include "mozilla/widget/CompositorWidget.h"
+#include "mozilla/widget/Screen.h"
 #include "gfxUtils.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/gfx/BorrowedContext.h"
@@ -254,7 +255,7 @@ nsChildView::~nsChildView() {
 }
 
 nsresult nsChildView::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
-                             const LayoutDeviceIntRect& aRect, nsWidgetInitData* aInitData) {
+                             const LayoutDeviceIntRect& aRect, widget::InitData* aInitData) {
   NS_OBJC_BEGIN_TRY_IGNORE_BLOCK;
 
   // Because the hidden window is created outside of an event loop,
@@ -1257,7 +1258,7 @@ nsresult nsChildView::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStatu
   // listener from the parent popup instead.
   nsCOMPtr<nsIWidget> parentWidget = mParentWidget;
   if (!listener && parentWidget) {
-    if (parentWidget->WindowType() == eWindowType_popup) {
+    if (parentWidget->GetWindowType() == WindowType::Popup) {
       // Check just in case event->mWidget isn't this widget
       if (event->mWidget) {
         listener = event->mWidget->GetWidgetListener();
@@ -1276,7 +1277,7 @@ nsresult nsChildView::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStatu
 
 nsIWidget* nsChildView::GetWidgetForListenerEvents() {
   // If there is no listener, use the parent popup's listener if that exists.
-  if (!mWidgetListener && mParentWidget && mParentWidget->WindowType() == eWindowType_popup) {
+  if (!mWidgetListener && mParentWidget && mParentWidget->GetWindowType() == WindowType::Popup) {
     return mParentWidget;
   }
 
@@ -1315,21 +1316,23 @@ bool nsChildView::PaintWindow(LayoutDeviceIntRegion aRegion) {
 bool nsChildView::PaintWindowInDrawTarget(gfx::DrawTarget* aDT,
                                           const LayoutDeviceIntRegion& aRegion,
                                           const gfx::IntSize& aSurfaceSize) {
-  RefPtr<gfxContext> targetContext = gfxContext::CreateOrNull(aDT);
-  MOZ_ASSERT(targetContext);
+  if (!aDT || !aDT->IsValid()) {
+    return false;
+  }
+  gfxContext targetContext(aDT);
 
   // Set up the clip region and clear existing contents in the backing surface.
-  targetContext->NewPath();
+  targetContext.NewPath();
   for (auto iter = aRegion.RectIter(); !iter.Done(); iter.Next()) {
     const LayoutDeviceIntRect& r = iter.Get();
-    targetContext->Rectangle(gfxRect(r.x, r.y, r.width, r.height));
+    targetContext.Rectangle(gfxRect(r.x, r.y, r.width, r.height));
     aDT->ClearRect(gfx::Rect(r.ToUnknownRect()));
   }
-  targetContext->Clip();
+  targetContext.Clip();
 
   nsAutoRetainCocoaObject kungFuDeathGrip(mView);
   if (GetWindowRenderer()->GetBackendType() == LayersBackend::LAYERS_NONE) {
-    nsBaseWidget::AutoLayerManagerSetup setupLayerManager(this, targetContext,
+    nsBaseWidget::AutoLayerManagerSetup setupLayerManager(this, &targetContext,
                                                           BufferMode::BUFFER_NONE);
     return PaintWindow(aRegion);
   }
@@ -2397,56 +2400,57 @@ NSEvent* gLastDragMouseDownEvent = nil;  // [strong]
   }
 
   nsCOMPtr<nsIWidget> rollupWidget = rollupListener->GetRollupWidget();
-  if (rollupWidget) {
-    NSWindow* currentPopup = static_cast<NSWindow*>(rollupWidget->GetNativeData(NS_NATIVE_WINDOW));
-    if (!nsCocoaUtils::IsEventOverWindow(theEvent, currentPopup)) {
-      // event is not over the rollup window, default is to roll up
-      bool shouldRollup = true;
+  if (!rollupWidget) {
+    return consumeEvent;
+  }
 
-      // check to see if scroll/zoom events should roll up the popup
-      if (isWheelTypeEvent) {
-        shouldRollup = rollupListener->ShouldRollupOnMouseWheelEvent();
-        // consume scroll events that aren't over the popup
-        // unless the popup is an arrow panel
-        consumeEvent = rollupListener->ShouldConsumeOnMouseWheelEvent();
-      }
+  NSWindow* currentPopup = static_cast<NSWindow*>(rollupWidget->GetNativeData(NS_NATIVE_WINDOW));
+  if (nsCocoaUtils::IsEventOverWindow(theEvent, currentPopup)) {
+    return consumeEvent;
+  }
 
-      // if we're dealing with menus, we probably have submenus and
-      // we don't want to rollup if the click is in a parent menu of
-      // the current submenu
-      uint32_t popupsToRollup = UINT32_MAX;
-      AutoTArray<nsIWidget*, 5> widgetChain;
-      uint32_t sameTypeCount = rollupListener->GetSubmenuWidgetChain(&widgetChain);
-      for (uint32_t i = 0; i < widgetChain.Length(); i++) {
-        nsIWidget* widget = widgetChain[i];
-        NSWindow* currWindow = (NSWindow*)widget->GetNativeData(NS_NATIVE_WINDOW);
-        if (nsCocoaUtils::IsEventOverWindow(theEvent, currWindow)) {
-          // don't roll up if the mouse event occurred within a menu of the
-          // same type. If the mouse event occurred in a menu higher than
-          // that, roll up, but pass the number of popups to Rollup so
-          // that only those of the same type close up.
-          if (i < sameTypeCount) {
-            shouldRollup = false;
-          } else {
-            popupsToRollup = sameTypeCount;
-          }
-          break;
-        }
-      }
-
-      if (shouldRollup) {
-        if ([theEvent type] == NSEventTypeLeftMouseDown) {
-          NSPoint point = [NSEvent mouseLocation];
-          FlipCocoaScreenCoordinate(point);
-          LayoutDeviceIntPoint devPoint = mGeckoChild->CocoaPointsToDevPixels(point);
-          consumeEvent = (BOOL)rollupListener->Rollup(popupsToRollup, true, &devPoint, nullptr);
-        } else {
-          consumeEvent = (BOOL)rollupListener->Rollup(popupsToRollup, true, nullptr, nullptr);
-        }
-      }
+  // Check to see if scroll/zoom events should roll up the popup
+  if (isWheelTypeEvent) {
+    // consume scroll events that aren't over the popup unless the popup is an
+    // arrow panel.
+    consumeEvent = rollupListener->ShouldConsumeOnMouseWheelEvent();
+    if (!rollupListener->ShouldRollupOnMouseWheelEvent()) {
+      return consumeEvent;
     }
   }
 
+  // if we're dealing with menus, we probably have submenus and
+  // we don't want to rollup if the click is in a parent menu of
+  // the current submenu
+  uint32_t popupsToRollup = UINT32_MAX;
+  AutoTArray<nsIWidget*, 5> widgetChain;
+  uint32_t sameTypeCount = rollupListener->GetSubmenuWidgetChain(&widgetChain);
+  for (uint32_t i = 0; i < widgetChain.Length(); i++) {
+    nsIWidget* widget = widgetChain[i];
+    NSWindow* currWindow = (NSWindow*)widget->GetNativeData(NS_NATIVE_WINDOW);
+    if (nsCocoaUtils::IsEventOverWindow(theEvent, currWindow)) {
+      // don't roll up if the mouse event occurred within a menu of the
+      // same type. If the mouse event occurred in a menu higher than
+      // that, roll up, but pass the number of popups to Rollup so
+      // that only those of the same type close up.
+      if (i < sameTypeCount) {
+        return consumeEvent;
+      }
+      popupsToRollup = sameTypeCount;
+      break;
+    }
+  }
+
+  LayoutDeviceIntPoint devPoint;
+  nsIRollupListener::RollupOptions rollupOptions{popupsToRollup,
+                                                 nsIRollupListener::FlushViews::Yes};
+  if ([theEvent type] == NSEventTypeLeftMouseDown) {
+    NSPoint point = [NSEvent mouseLocation];
+    FlipCocoaScreenCoordinate(point);
+    devPoint = mGeckoChild->CocoaPointsToDevPixels(point);
+    rollupOptions.mPoint = &devPoint;
+  }
+  consumeEvent = (BOOL)rollupListener->Rollup(rollupOptions);
   return consumeEvent;
 
   NS_OBJC_END_TRY_BLOCK_RETURN(NO);
@@ -4456,8 +4460,7 @@ static CFTypeRefPtr<CFURLRef> GetPasteLocation(NSPasteboard* aPasteboard) {
   nsAutoRetainCocoaObject kungFuDeathGrip(self);
 
   // Make sure that the service will accept strings or HTML.
-  if (![types containsObject:[UTIHelper stringFromPboardType:NSStringPboardType]] &&
-      ![types containsObject:[UTIHelper stringFromPboardType:NSPasteboardTypeString]] &&
+  if (![types containsObject:[UTIHelper stringFromPboardType:NSPasteboardTypeString]] &&
       ![types containsObject:[UTIHelper stringFromPboardType:NSPasteboardTypeHTML]]) {
     return NO;
   }
@@ -4513,7 +4516,7 @@ static CFTypeRefPtr<CFURLRef> GetPasteLocation(NSPasteboard* aPasteboard) {
   if (NS_FAILED(rv)) return NO;
   trans->Init(nullptr);
 
-  trans->AddDataFlavor(kUnicodeMime);
+  trans->AddDataFlavor(kTextMime);
   trans->AddDataFlavor(kHTMLMime);
 
   rv = nsClipboard::TransferableFromPasteboard(trans, pboard);
@@ -4883,21 +4886,21 @@ BOOL ChildViewMouseTracker::WindowAcceptsEvent(NSWindow* aWindow, NSEvent* aEven
 
   NSWindow* topLevelWindow = nil;
 
-  switch (windowWidget->WindowType()) {
-    case eWindowType_popup:
+  switch (windowWidget->GetWindowType()) {
+    case WindowType::Popup:
       // If this is a context menu, it won't have a parent. So we'll always
       // accept mouse move events on context menus even when none of our windows
       // is active, which is the right thing to do.
       // For panels, the parent window is the XUL window that owns the panel.
       return WindowAcceptsEvent([aWindow parentWindow], aEvent, aView, aIsClickThrough);
 
-    case eWindowType_toplevel:
-    case eWindowType_dialog:
+    case WindowType::TopLevel:
+    case WindowType::Dialog:
       if ([aWindow attachedSheet]) return NO;
 
       topLevelWindow = aWindow;
       break;
-    case eWindowType_sheet: {
+    case WindowType::Sheet: {
       nsIWidget* parentWidget = windowWidget->GetSheetWindowParent();
       if (!parentWidget) return YES;
 

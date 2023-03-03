@@ -69,6 +69,12 @@ XPCOMUtils.defineLazyGetter(this, "SMALLSVG_DATA_URI", function() {
   );
 });
 
+XPCOMUtils.defineLazyGetter(this, "PlacesFrecencyRecalculator", () => {
+  return Cc["@mozilla.org/places/frecency-recalculator;1"].getService(
+    Ci.nsIObserver
+  ).wrappedJSObject;
+});
+
 var gTestDir = do_get_cwd();
 
 // Initialize profile.
@@ -717,18 +723,6 @@ function do_compare_arrays(a1, a2, sorted) {
     !a2.filter(e => !a1.includes(e)).length
   );
 }
-
-/**
- * Generic nsINavBookmarkObserver that doesn't implement anything, but provides
- * dummy methods to prevent errors about an object not having a certain method.
- */
-function NavBookmarkObserver() {}
-
-NavBookmarkObserver.prototype = {
-  onItemRemoved() {},
-  onItemChanged() {},
-  QueryInterface: ChromeUtils.generateQI(["nsINavBookmarkObserver"]),
-};
 
 /**
  * Generic nsINavHistoryResultObserver that doesn't implement anything, but

@@ -103,6 +103,11 @@ const MIGRATOR_MODULES = Object.freeze({
     moduleURI: "resource:///modules/ChromeProfileMigrator.sys.mjs",
     platforms: ["macosx", "win"],
   },
+
+  InternalTestingProfileMigrator: {
+    moduleURI: "resource:///modules/InternalTestingProfileMigrator.sys.mjs",
+    platforms: ["linux", "macosx", "win"],
+  },
 });
 
 /**
@@ -167,7 +172,7 @@ class MigrationUtils {
         aFunction.apply(null, arguments);
         success = true;
       } catch (ex) {
-        Cu.reportError(ex);
+        console.error(ex);
       }
       // Do not change this to call aCallback directly in try try & catch
       // blocks, because if aCallback throws, we may end up calling aCallback
@@ -204,12 +209,19 @@ class MigrationUtils {
    *   trying to open.
    * @param {string} selectQuery
    *   The SELECT query to use to fetch the rows.
+   * @param {Promise} [testDelayPromise]
+   *   An optional promise to await for after the first loop, used in tests.
    *
    * @returns {Promise<object[]|Error>}
    *   A promise that resolves to an array of rows. The promise will be
    *   rejected if the read/fetch failed even after retrying.
    */
-  getRowsFromDBWithoutLocks(path, description, selectQuery) {
+  getRowsFromDBWithoutLocks(
+    path,
+    description,
+    selectQuery,
+    testDelayPromise = null
+  ) {
     let dbOptions = {
       readOnly: true,
       ignoreLockingMode: true,
@@ -220,23 +232,24 @@ class MigrationUtils {
     const RETRYINTERVAL = 100;
     return (async function innerGetRows() {
       let rows = null;
-      for (let retryCount = RETRYLIMIT; retryCount && !rows; retryCount--) {
+      for (let retryCount = RETRYLIMIT; retryCount; retryCount--) {
         // Attempt to get the rows. If this succeeds, we will bail out of the loop,
         // close the database in a failsafe way, and pass the rows back.
         // If fetching the rows throws, we will wait RETRYINTERVAL ms
         // and try again. This will repeat a maximum of RETRYLIMIT times.
         let db;
         let didOpen = false;
-        let previousException = { message: null };
+        let previousExceptionMessage = null;
         try {
           db = await lazy.Sqlite.openConnection(dbOptions);
           didOpen = true;
           rows = await db.execute(selectQuery);
+          break;
         } catch (ex) {
-          if (previousException.message != ex.message) {
-            Cu.reportError(ex);
+          if (previousExceptionMessage != ex.message) {
+            console.error(ex);
           }
-          previousException = ex;
+          previousExceptionMessage = ex.message;
         } finally {
           try {
             if (didOpen) {
@@ -244,9 +257,10 @@ class MigrationUtils {
             }
           } catch (ex) {}
         }
-        if (previousException) {
-          await new Promise(resolve => lazy.setTimeout(resolve, RETRYINTERVAL));
-        }
+        await Promise.all([
+          new Promise(resolve => lazy.setTimeout(resolve, RETRYINTERVAL)),
+          testDelayPromise,
+        ]);
       }
       if (!rows) {
         throw new Error(
@@ -342,7 +356,7 @@ class MigrationUtils {
     try {
       return migrator && (await migrator.isSourceAvailable()) ? migrator : null;
     } catch (ex) {
-      Cu.reportError(ex);
+      console.error(ex);
       return null;
     }
   }
@@ -402,7 +416,7 @@ class MigrationUtils {
         key = "firefox";
       }
     } catch (ex) {
-      Cu.reportError("Could not detect default browser: " + ex);
+      console.error("Could not detect default browser: ", ex);
     }
 
     // "firefox" is the least useful entry here, and might just be because we've set
@@ -443,7 +457,7 @@ class MigrationUtils {
             // Save the value for future callers.
             gPreviousDefaultBrowserKey = key;
           } catch (ex) {
-            Cu.reportError(
+            console.error(
               "Could not convert old default browser value to description."
             );
           }
@@ -498,31 +512,21 @@ class MigrationUtils {
    *   True if the source selection page of the wizard should be skipped.
    * @param {string} [aOptions.profileId]
    *   An identifier for the profile to use when migrating.
+   * @returns {Promise<undefined>}
+   *   If the new content-modal migration dialog is enabled and an
+   *   about:preferences tab can be opened, this will resolve when
+   *   that tab has been switched to. Otherwise, this will resolve
+   *   just after opening the dialog window.
    */
   showMigrationWizard(aOpener, aOptions) {
     if (
       Services.prefs.getBoolPref("browser.migrate.content-modal.enabled", false)
     ) {
-      const DIALOG_URL =
-        "chrome://browser/content/migration/migration-dialog.html";
-      if (aOpener?.gBrowser) {
-        const { gBrowser } = aOpener;
-        const { selectedBrowser } = gBrowser;
-        const { dialog } = gBrowser.getTabDialogBox(selectedBrowser).open(
-          DIALOG_URL,
-          { features: "resizable=no" },
-          {
-            onResize: () => {
-              dialog.resizeVertically();
-            },
-            options: aOptions,
-          }
-        );
-      } else {
+      let openStandaloneWindow = () => {
         const FEATURES = "dialog,centerscreen,resizable=no";
         const win = Services.ww.openWindow(
           aOpener,
-          DIALOG_URL,
+          "chrome://browser/content/migration/migration-dialog-window.html",
           "_blank",
           FEATURES,
           {
@@ -532,23 +536,38 @@ class MigrationUtils {
             options: aOptions,
           }
         );
+        return Promise.resolve();
+      };
+
+      if (aOptions.isStartupMigration) {
+        openStandaloneWindow();
+        return Promise.resolve();
       }
-    } else {
-      // Legacy migration dialog
-      const DIALOG_URL = "chrome://browser/content/migration/migration.xhtml";
-      let features = "chrome,dialog,modal,centerscreen,titlebar,resizable=no";
-      if (AppConstants.platform == "macosx" && !this.isStartupMigration) {
-        let win = Services.wm.getMostRecentWindow("Browser:MigrationWizard");
-        if (win) {
-          win.focus();
-          return;
-        }
-        // On mac, the migration wiazrd should only be modal in the case of
-        // startup-migration.
-        features = "centerscreen,chrome,resizable=no";
+
+      if (aOpener?.openPreferences) {
+        return aOpener.openPreferences("general-migrate");
       }
-      Services.ww.openWindow(aOpener, DIALOG_URL, "_blank", features, aOptions);
+
+      // If somehow we failed to open about:preferences, fall back to opening
+      // the top-level window.
+      openStandaloneWindow();
+      return Promise.resolve();
     }
+    // Legacy migration dialog
+    const DIALOG_URL = "chrome://browser/content/migration/migration.xhtml";
+    let features = "chrome,dialog,modal,centerscreen,titlebar,resizable=no";
+    if (AppConstants.platform == "macosx" && !this.isStartupMigration) {
+      let win = Services.wm.getMostRecentWindow("Browser:MigrationWizard");
+      if (win) {
+        win.focus();
+        return Promise.resolve();
+      }
+      // On mac, the migration wiazrd should only be modal in the case of
+      // startup-migration.
+      features = "centerscreen,chrome,resizable=no";
+    }
+    Services.ww.openWindow(aOpener, DIALOG_URL, "_blank", features, aOptions);
+    return Promise.resolve();
   }
 
   /**
@@ -718,7 +737,7 @@ class MigrationUtils {
           );
         }
       },
-      ex => Cu.reportError(ex)
+      ex => console.error(ex)
     );
   }
 

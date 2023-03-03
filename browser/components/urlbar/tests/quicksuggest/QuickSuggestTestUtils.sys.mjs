@@ -250,6 +250,20 @@ class _QuickSuggestTestUtils {
   }
 
   /**
+   * Clears the current remote settings results and adds a new set of results.
+   * This can be used to add remote settings results after
+   * `ensureQuickSuggestInit()` has been called.
+   *
+   * @param {Array} results
+   *   Array of remote settings result objects.
+   */
+  async setRemoteSettingsResults(results) {
+    let { remoteSettings } = lazy.QuickSuggest;
+    remoteSettings._test_resultsByKeyword.clear();
+    await remoteSettings._test_addResults(results);
+  }
+
+  /**
    * Sets the quick suggest configuration. You should call this again with
    * `DEFAULT_CONFIG` before your test finishes. See also `withConfig()`.
    *
@@ -399,27 +413,35 @@ class _QuickSuggestTestUtils {
       "Result sponsored label"
     );
 
-    let helpButton = row._buttons.get("help");
-    this.Assert.ok(helpButton, "The help button should be present");
     this.Assert.equal(
       result.payload.helpUrl,
       lazy.QuickSuggest.HELP_URL,
       "Result helpURL"
     );
 
-    let blockButton = row._buttons.get("block");
-    if (!isBestMatch) {
-      this.Assert.equal(
-        !!blockButton,
-        lazy.UrlbarPrefs.get("quickSuggestBlockingEnabled"),
-        "The block button is present iff quick suggest blocking is enabled"
+    if (lazy.UrlbarPrefs.get("resultMenu")) {
+      this.Assert.ok(
+        row._buttons.get("menu"),
+        "The menu button should be present"
       );
     } else {
-      this.Assert.equal(
-        !!blockButton,
-        lazy.UrlbarPrefs.get("bestMatchBlockingEnabled"),
-        "The block button is present iff best match blocking is enabled"
-      );
+      let helpButton = row._buttons.get("help");
+      this.Assert.ok(helpButton, "The help button should be present");
+
+      let blockButton = row._buttons.get("block");
+      if (!isBestMatch) {
+        this.Assert.equal(
+          !!blockButton,
+          lazy.UrlbarPrefs.get("quickSuggestBlockingEnabled"),
+          "The block button is present iff quick suggest blocking is enabled"
+        );
+      } else {
+        this.Assert.equal(
+          !!blockButton,
+          lazy.UrlbarPrefs.get("bestMatchBlockingEnabled"),
+          "The block button is present iff best match blocking is enabled"
+        );
+      }
     }
 
     return details;

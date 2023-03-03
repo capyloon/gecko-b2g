@@ -82,11 +82,11 @@ testing = ["pytest", "pytest-cov"]
 
 [[package]]
 name = "certifi"
-version = "2018.4.16"
+version = "2022.12.7"
 description = "Python package for providing Mozilla's CA Bundle."
 category = "main"
 optional = false
-python-versions = "*"
+python-versions = ">=3.6"
 
 [[package]]
 name = "chardet"
@@ -214,7 +214,7 @@ python-versions = ">=3.6"
 
 [[package]]
 name = "glean-parser"
-version = "6.4.0"
+version = "7.0.0"
 description = "Parser tools for Mozilla's Glean telemetry"
 category = "main"
 optional = false
@@ -300,8 +300,8 @@ ansicon = {version = "*", markers = "platform_system == \"Windows\""}
 
 [[package]]
 name = "jsmin"
-version = "2.1.0"
-description = "JavaScript minifier.\nPLEASE UPDATE TO VERSION >= 2.0.6. Older versions have a serious bug related to comments."
+version = "3.0.0"
+description = "JavaScript minifier."
 category = "main"
 optional = false
 python-versions = "*"
@@ -365,7 +365,7 @@ six = "*"
 
 [[package]]
 name = "mozilla-repo-urls"
-version = "0.1.0"
+version = "0.1.1"
 description = "Process Mozilla's repository URLs. The intent is to centralize URLs parsing."
 category = "main"
 optional = false
@@ -655,7 +655,7 @@ test = ["pytest", "pytest-cov", "pytest-mock", "httmock", "mock", "setuptools-li
 
 [[package]]
 name = "taskcluster-taskgraph"
-version = "3.5.1"
+version = "3.5.2"
 description = "Build taskcluster taskgraphs"
 category = "main"
 optional = false
@@ -797,7 +797,7 @@ testing = ["pytest (>=4.6)", "pytest-checkdocs (>=1.2.3)", "pytest-flake8", "pyt
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.6"
-content-hash = "16adc4b6292094b504000d2c7b9dd1af8103f0220be93894238b60455d9dc87b"
+content-hash = "a43dc447469a334d2dfe1a1397ecd6d03702590bb1b0d2b3cbbf68fb2edd1ff2"
 
 [metadata.files]
 aiohttp = [
@@ -864,8 +864,8 @@ cbor2 = [
     {file = "cbor2-4.0.1.tar.gz", hash = "sha256:cee0d01e520563b5a73c72eace5c428bb68aefb1b3f7aee5d692d3af6a1e5172"},
 ]
 certifi = [
-    {file = "certifi-2018.4.16-py2.py3-none-any.whl", hash = "sha256:9fa520c1bacfb634fa7af20a76bcbd3d5fb390481724c597da32c719a7dca4b0"},
-    {file = "certifi-2018.4.16.tar.gz", hash = "sha256:13e698f54293db9f89122b0581843a782ad0934a4fe0172d2a980ba77fc61bb7"},
+    {file = "certifi-2022.12.7-py3-none-any.whl", hash = "sha256:4ad3232f5e926d6718ec31cfc1fcadfde020920e278684144551c91769c7bc18"},
+    {file = "certifi-2022.12.7.tar.gz", hash = "sha256:35824b4c3a97115964b408844d64aa14db1cc518f6562e8d7261699d1350a9e3"},
 ]
 chardet = [
     {file = "chardet-4.0.0-py2.py3-none-any.whl", hash = "sha256:f864054d66fd9118f2e67044ac8981a54775ec5b67aed0441892edb553d21da5"},
@@ -918,8 +918,8 @@ giturlparse = [
     {file = "giturlparse-0.10.0.tar.gz", hash = "sha256:2595ab291d30717cda8474b874c9fd509f1b9802ad7f6968c36a45e4b13eb337"},
 ]
 glean-parser = [
-    {file = "glean_parser-6.4.0-py3-none-any.whl", hash = "sha256:011c187aeb655af03a24bf1970aeac685e29a8ff1cbdfe9ccbd441bca9d7005e"},
-    {file = "glean_parser-6.4.0.tar.gz", hash = "sha256:f7e53d911324710634b636a8e8f9a2d124ea874c70d29154d3fc595e56b090a3"},
+    {file = "glean_parser-7.0.0-py3-none-any.whl", hash = "sha256:c9df09b8cbe149e840125153e0ffebda264f45cd9e51805dbc0288bf203c54ab"},
+    {file = "glean_parser-7.0.0.tar.gz", hash = "sha256:c48960dd6fc0dc506f54e1229ff92ed10766cc65e598e9b9c8b798be81a4ccd5"},
 ]
 idna = [
     {file = "idna-2.10-py2.py3-none-any.whl", hash = "sha256:b97d804b1e9b523befed77c48dacec60e6dcb0b5391d57af6a65a312a90648c0"},
@@ -945,7 +945,7 @@ jinxed = [
     {file = "jinxed-1.2.0.tar.gz", hash = "sha256:032acda92d5c57cd216033cbbd53de731e6ed50deb63eb4781336ca55f72cda5"},
 ]
 jsmin = [
-    {file = "jsmin-2.1.0.tar.gz", hash = "sha256:5d07bf0251a4128e5e8e8eef603849b6b5741c337bff087731a248f9cc774f56"},
+    {file = "jsmin-3.0.0.tar.gz", hash = "sha256:88fc1bd6033a47c5911dbcada7d279c7a8b7ad0841909590f6a742c20c4d2e08"},
 ]
 json-e = [
     {file = "json-e-2.7.0.tar.gz", hash = "sha256:d8c1ec3f5bbc7728c3a504ebe58829f283c64eca230871e4eefe974b4cdaae4a"},
@@ -1034,8 +1034,8 @@ mohawk = [
     {file = "mohawk-0.3.4.tar.gz", hash = "sha256:e98b331d9fa9ece7b8be26094cbe2d57613ae882133cc755167268a984bc0ab3"},
 ]
 mozilla-repo-urls = [
-    {file = "mozilla-repo-urls-0.1.0.tar.gz", hash = "sha256:aa43ebcc4744b4cf20bf27f8dff885e82efee21a0219ba20f6bd99931cabd7b9"},
-    {file = "mozilla_repo_urls-0.1.0-py3-none-any.whl", hash = "sha256:5978abd796ae2b51a66e571754f0c559050cb4a024f2bf401471fa7ac4afd54e"},
+    {file = "mozilla-repo-urls-0.1.1.tar.gz", hash = "sha256:7364da790751db2a060eb45adbf1d7db89a145ed279ba235f3425db9dd255915"},
+    {file = "mozilla_repo_urls-0.1.1-py3-none-any.whl", hash = "sha256:30510d3519479aa70211145d0ac9cf6e2fadcb8d30fa3b196bb957bd773502ba"},
 ]
 mozilla-version = [
     {file = "mozilla-version-0.3.4.tar.gz", hash = "sha256:3ed4deb7a6fb25c83a5346ef4de08ddff9b2ddc4d16dd8fafb4a84978cc71255"},
@@ -1217,8 +1217,8 @@ taskcluster = [
     {file = "taskcluster-44.2.2.tar.gz", hash = "sha256:0266a6a901e1a2ec838984a7f24e7adb6d58f9f2e221a7f613388f8f23f786fc"},
 ]
 taskcluster-taskgraph = [
-    {file = "taskcluster-taskgraph-3.5.1.tar.gz", hash = "sha256:e08b935175349ef8728ff5f19c7e9866a562256180f5580b291da3217cb5016c"},
-    {file = "taskcluster_taskgraph-3.5.1-py3-none-any.whl", hash = "sha256:dc56b87228fb8eb1ef611750202344817a8cf5d825c0dc7e2dcc0f8b2795cbcd"},
+    {file = "taskcluster-taskgraph-3.5.2.tar.gz", hash = "sha256:62f1a320d6b310f65151904a9992719a9b2c4c41ef8f57be810899fd3c5d2703"},
+    {file = "taskcluster_taskgraph-3.5.2-py3-none-any.whl", hash = "sha256:6a024ba2383f56e11b764500f92837afb825612a49d24bde9791dfa7aa7ddaec"},
 ]
 taskcluster-urls = [
     {file = "taskcluster-urls-13.0.1.tar.gz", hash = "sha256:b25e122ecec249c4299ac7b20b08db76e3e2025bdaeb699a9d444556de5fd367"},

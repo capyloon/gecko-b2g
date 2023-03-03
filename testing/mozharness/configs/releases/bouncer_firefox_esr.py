@@ -116,6 +116,48 @@ config = {
                 "win64",
             ],
         },
+        "pkg": {
+            "product-name": "Firefox-%(version)s-pkg-SSL",
+            "platforms": ["osx"],
+        },
+        "pkg-latest": {
+            "product-name": "Firefox-esr-pkg-latest-SSL",
+            "platforms": ["osx"],
+        },
+        "pkg-next-latest": {
+            "product-name": "Firefox-esr-next-pkg-latest-SSL",
+            "platforms": ["osx"],
+        },
+        "langpack": {
+            "product-name": "Firefox-%(version)s-langpack-SSL",
+            "platforms": [
+                "linux",
+                "linux64",
+                "osx",
+                "win",
+                "win64",
+            ],
+        },
+        "langpack-latest": {
+            "product-name": "Firefox-esr-langpack-latest-SSL",
+            "platforms": [
+                "linux",
+                "linux64",
+                "osx",
+                "win",
+                "win64",
+            ],
+        },
+        "langpack-latest-next": {
+            "product-name": "Firefox-esr-next-langpack-latest-SSL",
+            "platforms": [
+                "linux",
+                "linux64",
+                "osx",
+                "win",
+                "win64",
+            ],
+        },
         "complete-mar": {
             "product-name": "Firefox-%(version)s-Complete",
             "platforms": [

@@ -14,23 +14,30 @@
  * limitations under the License.
  */
 
-import Protocol from 'devtools-protocol';
-import expect from 'expect';
 import * as fs from 'fs';
 import * as path from 'path';
-import rimraf from 'rimraf';
-import sinon from 'sinon';
-import {Browser, BrowserContext} from '../../lib/cjs/puppeteer/api/Browser.js';
-import {Page} from '../../lib/cjs/puppeteer/common/Page.js';
-import {isErrorLike} from '../../lib/cjs/puppeteer/util/ErrorLike.js';
+
+import {TestServer} from '@pptr/testserver';
+import {Protocol} from 'devtools-protocol';
+import expect from 'expect';
+import * as Mocha from 'mocha';
+import {Browser} from 'puppeteer-core/internal/api/Browser.js';
+import {BrowserContext} from 'puppeteer-core/internal/api/BrowserContext.js';
+import {Page} from 'puppeteer-core/internal/api/Page.js';
+import {
+  setLogCapture,
+  getCapturedLogs,
+} from 'puppeteer-core/internal/common/Debug.js';
 import {
   PuppeteerLaunchOptions,
   PuppeteerNode,
-} from '../../lib/cjs/puppeteer/node/Puppeteer.js';
-import puppeteer from '../../lib/cjs/puppeteer/puppeteer.js';
-import {TestServer} from '../../utils/testserver/lib/index.js';
+} from 'puppeteer-core/internal/node/PuppeteerNode.js';
+import {isErrorLike} from 'puppeteer-core/internal/util/ErrorLike.js';
+import puppeteer from 'puppeteer/lib/cjs/puppeteer/puppeteer.js';
+import rimraf from 'rimraf';
+import sinon from 'sinon';
+
 import {extendExpectWithToBeGolden} from './utils.js';
-import * as Mocha from 'mocha';
 
 const setupServer = async () => {
   const assetsPath = path.join(__dirname, '../assets');
@@ -64,8 +71,11 @@ const product =
 
 const alternativeInstall = process.env['PUPPETEER_ALT_INSTALL'] || false;
 
-const headless = (process.env['HEADLESS'] || 'true').trim().toLowerCase();
-const isHeadless = headless === 'true' || headless === 'chrome';
+const headless = (process.env['HEADLESS'] || 'true').trim().toLowerCase() as
+  | 'true'
+  | 'false'
+  | 'new';
+const isHeadless = headless === 'true' || headless === 'new';
 const isFirefox = product === 'firefox';
 const isChrome = product === 'chrome';
 const protocol = process.env['PUPPETEER_PROTOCOL'] || 'cdp';
@@ -87,7 +97,7 @@ const defaultBrowserOptions = Object.assign(
   {
     handleSIGINT: true,
     executablePath: process.env['BINARY'],
-    headless: headless === 'chrome' ? ('chrome' as const) : isHeadless,
+    headless: headless === 'new' ? ('new' as const) : isHeadless,
     dumpio: !!process.env['DUMPIO'],
     protocol: protocol as 'cdp' | 'webDriverBiDi',
   },
@@ -100,14 +110,6 @@ const defaultBrowserOptions = Object.assign(
       `WARN: running ${product} tests with ${defaultBrowserOptions.executablePath}`
     );
   } else {
-    // TODO(jackfranklin): declare updateRevision in some form for the Firefox
-    // launcher.
-    if (product === 'firefox') {
-      // @ts-expect-error _updateRevision is defined on the FF launcher
-      // but not the Chrome one. The types need tidying so that TS can infer that
-      // properly and not error here.
-      await puppeteer._launcher._updateRevision();
-    }
     const executablePath = puppeteer.executablePath();
     if (!fs.existsSync(executablePath)) {
       throw new Error(
@@ -150,7 +152,7 @@ interface PuppeteerTestState {
   isFirefox: boolean;
   isChrome: boolean;
   isHeadless: boolean;
-  headless: string;
+  headless: 'true' | 'false' | 'new';
   puppeteerPath: string;
 }
 const state: Partial<PuppeteerTestState> = {};
@@ -179,8 +181,8 @@ if (
   }
   -> mode: ${
     isHeadless
-      ? headless === 'chrome'
-        ? '--headless=chrome'
+      ? headless === 'new'
+        ? '--headless=new'
         : '--headless'
       : 'headful'
   }`
@@ -229,7 +231,9 @@ export const mochaHooks = {
       state.isChrome = isChrome;
       state.isHeadless = isHeadless;
       state.headless = headless;
-      state.puppeteerPath = path.resolve(path.join(__dirname, '../..'));
+      state.puppeteerPath = path.resolve(
+        path.join(__dirname, '..', '..', 'packages', 'puppeteer')
+      );
     },
   ],
 
@@ -278,6 +282,34 @@ export const expectCookieEquals = (
   for (let i = 0; i < cookies.length; i++) {
     expect(cookies[i]).toMatchObject(expectedCookies[i]!);
   }
+};
+
+/**
+ * Use it if you want to capture debug logs for a specitic test suite in CI.
+ * This describe function enables capturing of debug logs and would print them
+ * only if a test fails to reduce the amount of output.
+ */
+export const describeWithDebugLogs = (
+  description: string,
+  body: (this: Mocha.Suite) => void
+): Mocha.Suite | void => {
+  describe(description + '-debug', () => {
+    beforeEach(() => {
+      setLogCapture(true);
+    });
+
+    afterEach(function () {
+      if (this.currentTest?.state === 'failed') {
+        console.log(
+          `\n"${this.currentTest.fullTitle()}" failed. Here is a debug log:`
+        );
+        console.log(getCapturedLogs().join('\n') + '\n');
+      }
+      setLogCapture(false);
+    });
+
+    describe(description, body);
+  });
 };
 
 export const shortWaitForArrayToHaveAtLeastNElements = async (

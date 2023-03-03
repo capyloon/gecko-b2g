@@ -606,18 +606,30 @@ self.onmessage = (0, _workerUtils.workerHandler)({
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.default = assert;
+exports.default = void 0;
 
 var _environment = __webpack_require__(968);
 
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
-function assert(condition, message) {
-  if ((0, _environment.isNodeTest)() && !condition) {
-    throw new Error(`Assertion failure: ${message}`);
-  }
+let assert; // TODO: try to enable these assertions on mochitest by also enabling it on:
+//   import flags from "devtools/shared/flags";
+//   if (flags.testing)
+// Unfortunately it throws a lot on mochitests...
+
+if ((0, _environment.isNodeTest)()) {
+  assert = function (condition, message) {
+    if (!condition) {
+      throw new Error(`Assertion failure: ${message}`);
+    }
+  };
+} else {
+  assert = function () {};
 }
+
+var _default = assert;
+exports.default = _default;
 
 /***/ }),
 
@@ -687,9 +699,11 @@ function buildQuery(originalQuery, modifiers, {
 
   if (originalQuery === "") {
     return new RegExp(originalQuery);
-  }
+  } // Remove the backslashes at the end of the query as it
+  // breaks the RegExp
 
-  let query = originalQuery; // If we don't want to do a regexMatch, we need to escape all regex related characters
+
+  let query = originalQuery.replace(/\\$/, ""); // If we don't want to do a regexMatch, we need to escape all regex related characters
   // so they would actually match.
 
   if (!regexMatch) {
@@ -734,16 +748,11 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 // Maybe reuse file search's functions?
-function findSourceMatches(sourceId, content, queryText) {
+function findSourceMatches(sourceId, content, queryText, modifiers) {
   if (queryText == "") {
     return [];
   }
 
-  const modifiers = {
-    caseSensitive: false,
-    regexMatch: false,
-    wholeWord: false
-  };
   const text = content.value;
   const lines = text.split("\n");
   return (0, _getMatches.default)(queryText, text, modifiers).map(({

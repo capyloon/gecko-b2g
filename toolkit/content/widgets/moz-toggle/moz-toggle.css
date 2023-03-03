@@ -13,16 +13,20 @@
   opacity: 0.4
 }
 
-button,
-label {
+.toggle-button,
+.label-wrapper {
   grid-row: 1;
 }
 
-p {
-  grid-row: 2;
-  font-size: .85em;
-  line-height: 1.25;
+.description-wrapper {
   color: var(--in-content-deemphasized-text);
+}
+
+.description-wrapper,
+.description-wrapper ::slotted([slot="support-link"]) {
+  grid-row: 2;
+  font-size: 0.867rem;
+  line-height: 1.25;
   margin: 0;
   grid-column: 1 / -1;
 }
@@ -103,13 +107,13 @@ p {
   background-color: var(--in-content-box-background);
 }
 
-.toggle-button[aria-pressed="true"]:not(:active, :hover:active):before {
-  outline-color: var(--in-content-box-background);
+.toggle-button[aria-pressed="true"]:-moz-locale-dir(rtl)::before,
+.toggle-button[aria-pressed="true"]:dir(rtl)::before {
+  translate: calc(-1 * var(--dot-transform-x));
 }
 
-.toggle-button:-moz-locale-dir(rtl)::before,
-.toggle-button:dir(rtl)::before {
-  scale: -1;
+.toggle-button[aria-pressed="true"]:not(:active, :hover:active)::before {
+  outline-color: var(--in-content-box-background);
 }
 
 @media (prefers-reduced-motion: no-preference) {

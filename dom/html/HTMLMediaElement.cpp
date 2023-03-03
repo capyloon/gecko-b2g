@@ -135,8 +135,8 @@
 #include <limits>
 #include <type_traits>
 
-mozilla::LazyLogModule gMediaElementLog("nsMediaElement");
-mozilla::LazyLogModule gMediaElementEventsLog("nsMediaElementEvents");
+mozilla::LazyLogModule gMediaElementLog("HTMLMediaElement");
+mozilla::LazyLogModule gMediaElementEventsLog("HTMLMediaElementEvents");
 
 extern mozilla::LazyLogModule gAutoplayPermissionLog;
 #define AUTOPLAY_LOG(msg, ...) \
@@ -6528,6 +6528,10 @@ bool HTMLMediaElement::HadCrossOriginRedirects() {
     return mDecoder->HadCrossOriginRedirects();
   }
   return false;
+}
+
+bool HTMLMediaElement::ShouldResistFingerprinting() const {
+  return OwnerDoc()->ShouldResistFingerprinting();
 }
 
 already_AddRefed<nsIPrincipal> HTMLMediaElement::GetCurrentVideoPrincipal() {

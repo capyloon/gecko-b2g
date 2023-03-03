@@ -1024,8 +1024,11 @@ JSObject* StructuredCloneHolder::CustomReadHandler(
   if (StaticPrefs::dom_media_webcodecs_enabled() &&
       aTag == SCTAG_DOM_VIDEOFRAME &&
       CloneScope() == StructuredCloneScope::SameProcess) {
-    return VideoFrame::ReadStructuredClone(aCx, mGlobal, aReader,
-                                           VideoFrames()[aIndex]);
+    JS::Rooted<JSObject*> global(aCx, mGlobal->GetGlobalJSObject());
+    if (VideoFrame_Binding::ConstructorEnabled(aCx, global)) {
+      return VideoFrame::ReadStructuredClone(aCx, mGlobal, aReader,
+                                             VideoFrames()[aIndex]);
+    }
   }
 
   return ReadFullySerializableObjects(aCx, aReader, aTag);
@@ -1279,6 +1282,13 @@ StructuredCloneHolder::CustomReadTransferHandler(
       aTag == SCTAG_DOM_VIDEOFRAME &&
       CloneScope() == StructuredCloneScope::SameProcess) {
     MOZ_ASSERT(aContent);
+
+    JS::Rooted<JSObject*> globalObj(aCx, mGlobal->GetGlobalJSObject());
+    // aContent will be released in CustomFreeTransferHandler.
+    if (!VideoFrame_Binding::ConstructorEnabled(aCx, globalObj)) {
+      return false;
+    }
+
     VideoFrame::TransferredData* data =
         static_cast<VideoFrame::TransferredData*>(aContent);
     nsCOMPtr<nsIGlobalObject> global = mGlobal;
@@ -1583,7 +1593,7 @@ bool StructuredCloneHolder::CustomCanTransferHandler(
       // https://streams.spec.whatwg.org/#ref-for-transfer-steps
       // Step 1: If ! IsReadableStreamLocked(value) is true, throw a
       // "DataCloneError" DOMException.
-      return !IsReadableStreamLocked(stream);
+      return !stream->Locked();
     }
   }
 
@@ -1594,7 +1604,7 @@ bool StructuredCloneHolder::CustomCanTransferHandler(
       // https://streams.spec.whatwg.org/#ref-for-transfer-steps①
       // Step 1: If ! IsWritableStreamLocked(value) is true, throw a
       // "DataCloneError" DOMException.
-      return !IsWritableStreamLocked(stream);
+      return !stream->Locked();
     }
   }
 
@@ -1605,8 +1615,7 @@ bool StructuredCloneHolder::CustomCanTransferHandler(
       // https://streams.spec.whatwg.org/#ref-for-transfer-steps②
       // Step 3 + 4: If ! Is{Readable,Writable}StreamLocked(value) is true,
       // throw a "DataCloneError" DOMException.
-      return !IsReadableStreamLocked(stream->Readable()) &&
-             !IsWritableStreamLocked(stream->Writable());
+      return !stream->Readable()->Locked() && !stream->Writable()->Locked();
     }
   }
 

@@ -9,11 +9,11 @@ job-defaults:
         by-test-platform:
             android-em-7.*: geckoview-test_runner.apk
             android-hw.*: geckoview-test_runner.apk
-            windows10-64-2004-shippable-qr/opt:
+            windows1.*-shippable-qr/opt:
                 by-variant:
                     msix: target.installer.msix
                     default: null
-            windows10-64-2004-qr/opt:
+            windows1.*-qr/opt:
                 by-variant:
                     msix: target.installer.msix
                     default: null
@@ -62,7 +62,6 @@ mochitest-plain:
         - xorigin
         - no-fission
         - socketprocess_networking
-        - wayland
         - webrender-sw+no-fission
         - webrender-sw
         - headless
@@ -71,22 +70,24 @@ mochitest-plain:
         by-variant:
             conditioned_profile:
                 by-test-platform:
+                    .*asan.*: []
+                    .*ccov.*: []
                     linux1804-64(-shippable)?-qr/opt: ['trunk']
-                    windows10-64-2004(-shippable)?-qr/opt: ['trunk']
+                    windows1.*64.*(-shippable)?-qr/opt: ['trunk']
                     default: []
             xorigin:
                 by-test-platform:
-                    (linux.*64|macosx.*64|windows10.*2004)(-shippable)?-qr/(opt|debug|asan|tsan): ['trunk']
+                    .*asan.*: []
+                    windows.*ccov.*: []
+                    (linux.*64|macosx.*64|windows1.*)(-shippable)?-qr/(opt|debug): ['trunk']
                     windows.*64-ccov-qr/opt: ['mozilla-central']
                     linux.*64-ccov-qr/opt: ['mozilla-central']
                     default: []
             socketprocess_networking:
                 by-test-platform:
-                    (linux.*64|macosx.*64|windows10-64-2004)(-shippable)?-qr/(opt|debug): ['autoland', 'mozilla-central']
-                    default: []
-            wayland:
-                by-test-platform:
-                    linux1804-64-qr/debug: built-projects
+                    .*asan.*: []
+                    .*ccov.*: []
+                    (linux.*64|macosx.*64|windows1.*-64.*)(-shippable)?-qr/(opt|debug): ['autoland', 'mozilla-central']
                     default: []
             webrender-sw+no-fission:
                 by-test-platform:
@@ -128,7 +129,7 @@ mochitest-plain:
             linux.*64-asan/opt: 10
             linux.*64-tsan-qr/opt: 20
             linux.*64-.*cov/opt: 10
-            windows10-64-2004-ccov.*/.*: 10
+            windows.*-ccov.*/.*: 10
             macosx.*64-ccov.*/.*: 10
             default: 5
     instance-size:
@@ -159,7 +160,6 @@ mochitest-a11y:
     variants:
         - 1proc
         - socketprocess_networking+1proc
-        - wayland+1proc
         - webrender-sw+1proc
         - a11y-no-cache+1proc
     run-on-projects:
@@ -167,10 +167,6 @@ mochitest-a11y:
             socketprocess_networking+1proc:
                 by-test-platform:
                     linux.*64-qr/debug: ['autoland', 'mozilla-central']
-                    default: []
-            wayland+1proc:
-                by-test-platform:
-                    linux.*64-qr/debug: built-projects
                     default: []
             webrender-sw+1proc:
                 by-test-platform:
@@ -192,7 +188,6 @@ mochitest-browser-chrome:
     variants:
         - webrender-sw
         - webrender-sw+a11y-checks
-        - webrender-sw+wayland
         - socketprocess_networking
         - msix
     run-on-projects:
@@ -204,7 +199,7 @@ mochitest-browser-chrome:
                     linux.*64-shippable-qr/opt: ['release']
                     linux.*64(-shippable)?-qr/opt: built-projects
                     linux.*64-devedition-qr/opt: built-projects
-                    windows10-64-2004-qr/debug: built-projects
+                    windows1.*-64.*-qr/debug: built-projects
                     default: []
             webrender-sw+a11y-checks:
                 by-test-platform:
@@ -212,13 +207,14 @@ mochitest-browser-chrome:
                     default: []
             socketprocess_networking:
                 by-test-platform:
-                    (linux.*64|macosx.*64|windows10-64-2004)(-shippable)?-qr/(opt|debug): ['autoland', 'mozilla-central']
+                    .*asan.*: []
+                    .*ccov.*: []
+                    (linux.*64|macosx.*64|windows1.*-64.*)(-shippable)?-qr/(opt|debug): ['autoland', 'mozilla-central']
                     default: []
-            webrender-sw+wayland: []
             msix:
                 by-test-platform:
-                    windows10-64-2004-shippable-qr/opt: built-projects
-                    windows10-64-2004-qr/opt: built-projects
+                    windows1.*-shippable-qr/opt: built-projects
+                    windows1.*-qr/opt: built-projects
                     default: []
             default:
                 by-test-platform:
@@ -238,9 +234,10 @@ mochitest-browser-chrome:
             linux.*64-asan-qr/opt: 16
             linux.*64-tsan-qr/opt: 32
             macosx.*64/debug: 16
-            windows10-64-2004-ccov.*/.*: 14
-            windows10.*-asan-qr/opt: 12
-            windows10-32-qr/debug: 12
+            windows.*-ccov.*/.*: 14
+            windows.*-asan-qr/opt: 12
+            windows7-32.*: 20
+            windows.*32-qr/debug: 12
             default: 7
     max-run-time:
         by-variant:
@@ -248,7 +245,7 @@ mochitest-browser-chrome:
             default:
                 by-test-platform:
                     linux.*64-ccov.*/.*: 9000
-                    windows10-64-2004-ccov.*/.*: 10800
+                    windows.*-ccov.*/.*: 10800
                     macosx.*64-ccov.*/.*: 10800
                     linux.*64-tsan-qr/opt: 10800
                     linux.*-qr/opt: 5400
@@ -308,7 +305,7 @@ mochitest-browser-media:
             wmf-media-engine:
                 by-test-platform:
                     .*asan.*: []
-                    windows10-64-2004.*: ['autoland', 'mozilla-central']
+                    windows1.*-64.*: ['autoland', 'mozilla-central']
                     default: []
             default:
                 by-test-platform:
@@ -351,17 +348,14 @@ mochitest-chrome:
     variants:
         - 1proc
         - socketprocess_networking+1proc
-        - wayland+1proc
         - webrender-sw+1proc
     run-on-projects:
         by-variant:
             socketprocess_networking+1proc:
                 by-test-platform:
-                    (linux.*64|macosx.*64|windows10-64-2004)(-shippable)?-qr/(opt|debug): ['autoland', 'mozilla-central']
-                    default: []
-            wayland+1proc:
-                by-test-platform:
-                    linux.*64-qr/debug: built-projects
+                    .*asan.*: []
+                    .*ccov.*: []
+                    (linux.*64|macosx.*64|windows1.*-64.*)(-shippable)?-qr/(opt|debug): ['autoland', 'mozilla-central']
                     default: []
             webrender-sw+1proc:
                 by-test-platform:
@@ -392,7 +386,6 @@ mochitest-devtools-chrome:
     variants:
         - a11y-checks
         - socketprocess_networking
-        - wayland
         - webrender-sw
         - devtools-no-eft+no-fission
     run-on-projects:
@@ -407,12 +400,9 @@ mochitest-devtools-chrome:
                     default: []
             socketprocess_networking:
                 by-test-platform:
-                    (linux.*64|macosx.*64|windows10-64-2004)(-shippable)?-qr/(opt|debug): ['autoland', 'mozilla-central']
-                    default: []
-            wayland:
-                by-test-platform:
-                    linux.*64-ccov-qr/opt: []
-                    linux.*64(-shippable)?-qr/(opt|debug): built-projects
+                    .*asan.*: []
+                    .*ccov.*: []
+                    (linux.*64|macosx.*64|windows.*)(-shippable)?-qr/(opt|debug): ['autoland', 'mozilla-central']
                     default: []
             webrender-sw:
                 by-test-platform:
@@ -426,7 +416,7 @@ mochitest-devtools-chrome:
     tier: default
     max-run-time:
         by-test-platform:
-            windows10-64-2004-ccov.*/.*: 10800
+            windows.*-ccov.*/.*: 10800
             macosx.*64-ccov.*/.*: 9000
             linux.*64-ccov.*/.*: 7200
             linux.*64-tsan-qr/opt: 7200
@@ -458,15 +448,10 @@ mochitest-plain-gpu:
     loopback-video: true
     variants:
         - no-fission
-        - wayland
         - webrender-sw+no-fission
         - webrender-sw
     run-on-projects:
         by-variant:
-            wayland:
-                by-test-platform:
-                    linux.*64-qr/debug: built-projects
-                    default: []
             webrender-sw+no-fission:
                 by-test-platform:
                     android-em-7.0-x86_64-qr/debug: built-projects
@@ -520,15 +505,10 @@ mochitest-chrome-gpu:
     variants:
         - 1proc
         - socketprocess_networking+1proc
-        - wayland+1proc
         - webrender-sw+1proc
     run-on-projects:
         by-variant:
             socketprocess_networking+1proc: []
-            wayland+1proc:
-                by-test-platform:
-                    linux.*64-qr/debug: built-projects
-                    default: []
             webrender-sw+1proc:
                 by-test-platform:
                     android-em-7.0-x86_64-qr/debug: built-projects
@@ -559,7 +539,7 @@ mochitest-media:
     schedules-component: mochitest-plain
     max-run-time:
         by-test-platform:
-            windows10-64-2004-ccov.*/.*: 7200
+            windows.*-ccov.*/.*: 7200
             macosx.*64-ccov.*/.*: 7200
             linux.*64-tsan-qr/opt: 7200
             default: 5400
@@ -567,7 +547,6 @@ mochitest-media:
         - no-fission
         - socketprocess+no-fission
         - socketprocess
-        - wayland
         - webgl-ipc
         - webrender-sw+no-fission
         - webrender-sw
@@ -578,10 +557,11 @@ mochitest-media:
             webgl-ipc:
                 by-test-platform:
                     android.*: []
+                    windows.*ccov.*: []
                     linux.*64(-shippable|-asan|-tsan)?-qr/opt: ['autoland', 'mozilla-central']
                     macosx.*64(-shippable)?-qr/(opt|debug): ['autoland', 'mozilla-central']
-                    windows10-(32|64)-2004(-shippable)?-qr/(opt|debug): ['autoland', 'mozilla-central']
-                    windows10-64-2004-asan-qr/opt: ['autoland', 'mozilla-central']
+                    windows1.*(-shippable)?-qr/(opt|debug): ['autoland', 'mozilla-central']
+                    windows.*-asan-qr/opt: ['autoland', 'mozilla-central']
                     default: []
             socketprocess+no-fission:
                 by-test-platform:
@@ -593,15 +573,12 @@ mochitest-media:
             socketprocess:
                 by-test-platform:
                     android.*: []
+                    windows.*ccov.*: []
                     linux.*64(-asan|-devedition|-shippable)?-qr/(opt|debug): built-projects
                     linux.*64-tsan-qr/opt: ['autoland', 'mozilla-central']
                     macosx.*-64(-devedition|-shippable)?-qr/(opt|debug): built-projects
-                    windows10-(32|64)-2004(-devedition|-shippable)?-qr/(opt|debug): built-projects
-                    windows10-64-2004-asan-qr/opt: ['autoland', 'mozilla-central']
-                    default: []
-            wayland:
-                by-test-platform:
-                    linux.*64-qr/debug: ['autoland', 'mozilla-central']
+                    windows1.*(-devedition|-shippable)?-qr/(opt|debug): built-projects
+                    windows.*-asan-qr/opt: ['autoland', 'mozilla-central']
                     default: []
             webrender-sw+no-fission:
                 by-test-platform:
@@ -625,20 +602,19 @@ mochitest-media:
                     default: []
             wmf-media-engine:
                 by-test-platform:
-                    windows10-64-2004.*: ['autoland', 'mozilla-central']
+                    windows1.*-64.*: ['autoland', 'mozilla-central']
                     default: []
             msix:
                 by-test-platform:
-                    windows10-64-2004-shippable-qr/opt: built-projects
-                    windows10-64-2004-qr/opt: ['autoland']
+                    windows1.*-shippable-qr/opt: built-projects
+                    windows1.*-qr/opt: ['autoland']
                     default: []
             default:
                 by-test-platform:
                     android.*: []
                     linux.*(asan|ccov)/opt: []
                     .*(ccov/|asan/|-32).*: built-projects
-                    (android|linux|windows10-64-2004|macos)(?!.*-qr).*: []
-                    windows10-aarch64-qr/.*: ['mozilla-central', 'mozilla-beta', 'mozilla-release']
+                    (android|linux|windows10-64-2004|windows11-64-2009|macos)(?!.*-qr).*: []
                     default: built-projects
     loopback-video: true
     chunks:
@@ -647,7 +623,7 @@ mochitest-media:
             default:
                 by-test-platform:
                     (android|macos).*/opt: 1
-                    ^(?!.*asan).*windows10.*/opt: 1
+                    ^(?!.*asan).*windows1.*/opt: 1
                     linux.*/debug: 3
                     linux.*64-tsan-qr/opt: 5
                     default: 2
@@ -657,7 +633,7 @@ mochitest-media:
             by-test-platform:
                 android.*: false
                 macosx.*64.*: false
-                windows10-64-2004.*: false
+                windows1.*: false
                 default: true
         extra-options:
             by-test-platform:
@@ -673,7 +649,6 @@ mochitest-media:
             .*ccov.*: 2
             android-em.*: 1
             android-em-7.0-x86_64-qr/debug-isolated-process: 3
-            windows10-aarch64-qr.*: 2
             android-hw.*: 1
             default: default
 
@@ -708,7 +683,6 @@ mochitest-webgl1-core:
             default: 1800
     variants:
         - no-fission
-        - wayland
         - webgl-ipc
         - webrender-sw+no-fission
         - webrender-sw
@@ -721,10 +695,6 @@ mochitest-webgl1-core:
                     linux.*-64.*: ["trunk"]
                     mac.*: ["trunk"]
                     win.*: ["trunk"]
-                    default: []
-            wayland:
-                by-test-platform:
-                    linux.*64-qr/debug: built-projects
                     default: []
             webrender-sw+no-fission:
                 by-test-platform:
@@ -770,7 +740,6 @@ mochitest-webgl1-ext:
     variants:
         - no-fission
         - webgl-ipc
-        - wayland
         - webrender-sw+no-fission
         - webrender-sw
     run-on-projects:
@@ -781,11 +750,7 @@ mochitest-webgl1-ext:
                     .*-tsan.*: []
                     linux.*-64.*: built-projects
                     mac.*: ["trunk"]
-                    windows10-64-2004.*: built-projects
-                    default: []
-            wayland:
-                by-test-platform:
-                    linux.*64(-shippable)?-qr/(opt|debug): built-projects
+                    windows.*-64.*: built-projects
                     default: []
             webrender-sw+no-fission:
                 by-test-platform:
@@ -832,7 +797,6 @@ mochitest-webgl2-core:
     variants:
         - no-fission
         - webgl-ipc
-        - wayland
         - webrender-sw+no-fission
         - webrender-sw
     run-on-projects:
@@ -845,10 +809,6 @@ mochitest-webgl2-core:
                     linux.*-64.*: ["trunk"]
                     mac.*: ["trunk"]
                     win.*: ["trunk"]
-                    default: []
-            wayland:
-                by-test-platform:
-                    linux.*64(-shippable|-asan)?-qr/(opt|debug): built-projects
                     default: []
             webrender-sw+no-fission:
                 by-test-platform:
@@ -887,7 +847,6 @@ mochitest-webgl2-ext:
         - webgl-ipc
         - webrender-sw+no-fission
         - webrender-sw
-        - wayland
     run-on-projects:
         by-variant:
             webgl-ipc:
@@ -897,10 +856,6 @@ mochitest-webgl2-ext:
                     linux.*-64.*: ["trunk"]
                     mac.*: ["trunk"]
                     win.*: ["trunk"]
-                    default: []
-            wayland:
-                by-test-platform:
-                    linux.*64(-shippable|-asan)?-qr/(opt|debug): built-projects
                     default: []
             webrender-sw+no-fission:
                 by-test-platform:
@@ -940,7 +895,6 @@ mochitest-webgl2-deqp:
     schedules-component: mochitest-plain
     virtualization: virtual-with-gpu
     variants:
-        - wayland
         - webgl-ipc
         - webrender-sw
     run-on-projects: []  # Don't run this for now.
@@ -964,11 +918,9 @@ mochitest-webgpu:
     loopback-video: true
     variants:
         - no-fission
-        - wayland
         - webrender-sw+no-fission
     run-on-projects:
         by-variant:
-            wayland: []
             webrender-sw+no-fission:
                 by-test-platform:
                     android-em-7.0-x86_64-qr/debug: ["trunk"]
@@ -1006,14 +958,15 @@ mochitest-remote:
     variants:
         - no-fission
         - socketprocess_networking
-        - wayland
         - webrender-sw+no-fission
         - webrender-sw
     run-on-projects:
         by-variant:
             socketprocess_networking:
                 by-test-platform:
-                    (linux.*64|macosx.*64|windows10-64-2004)(-shippable)?-qr/(opt|debug): ['autoland', 'mozilla-central']
+                    .*asan.*: []
+                    .*ccov.*: []
+                    (linux.*64|macosx.*64|windows1.*-64.*)(-shippable)?-qr/(opt|debug): ['autoland', 'mozilla-central']
                     default: []
             webrender-sw+no-fission:
                 by-test-platform:
@@ -1022,10 +975,6 @@ mochitest-remote:
             webrender-sw:
                 by-test-platform:
                     linux.*64-qr/debug: ['all']
-                    default: []
-            wayland:
-                by-test-platform:
-                    linux.*64-qr/debug: built-projects
                     default: []
             no-fission:
                 by-test-platform:
@@ -1042,7 +991,4 @@ mochitest-remote:
         mochitest-flavor: browser
         extra-options:
             - --setpref=remote.log.level=Trace
-    virtualization:
-        by-test-platform:
-            windows10-64.*: virtual
-            default: virtual
+    virtualization: virtual

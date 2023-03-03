@@ -2,10 +2,22 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-using struct mozilla::void_t from "mozilla/ipc/IPCCore.h";
+include PBackgroundSharedTypes;
+
+[RefCounted] using class mozilla::ipc::DataPipeReceiver from "mozilla/ipc/DataPipe.h";
+[RefCounted] using class mozilla::ipc::DataPipeSender from "mozilla/ipc/DataPipe.h";
 
 namespace mozilla {
 namespace dom {
+struct BidirectionalStream {
+  DataPipeReceiver inStream;
+  DataPipeSender outStream;
+};
+
+union BidirectionalStreamResponse {
+  nsresult;
+  BidirectionalStream;
+};
 
 async protocol PWebTransport
 {
@@ -14,8 +26,17 @@ async protocol PWebTransport
    * TODO: documentation
    */
   async Close(uint32_t code, nsCString reason);
+  async CreateUnidirectionalStream(int64_t? sendOrder)
+      returns(DataPipeSender sender);
+  async CreateBidirectionalStream(int64_t? sendOrder)
+      returns(BidirectionalStreamResponse response);
 
  child:
+
+  async IncomingUnidirectionalStream(DataPipeReceiver receive);
+  async IncomingBidirectionalStream(DataPipeReceiver receive, DataPipeSender send);
+
+  async RemoteClosed(bool cleanly, uint32_t code, nsCString reason);
 
   async CloseAll()
       returns(nsresult rv);
@@ -23,4 +44,3 @@ async protocol PWebTransport
 
 } // namespace dom
 } // namespace mozilla
-

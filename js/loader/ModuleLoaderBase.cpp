@@ -55,6 +55,7 @@ mozilla::LazyLogModule ModuleLoaderBase::gModuleLoaderBaseLog(
 //////////////////////////////////////////////////////////////
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(ModuleLoaderBase)
+  NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
 
 NS_IMPL_CYCLE_COLLECTION(ModuleLoaderBase, mFetchedModules,
@@ -560,7 +561,7 @@ nsresult ModuleLoaderBase::OnFetchComplete(ModuleLoadRequest* aRequest,
   MOZ_ASSERT(NS_SUCCEEDED(rv) == bool(aRequest->mModuleScript));
   SetModuleFetchFinishedAndResumeWaitingRequests(aRequest, rv);
 
-  if (aRequest->mModuleScript && !aRequest->mModuleScript->HasParseError()) {
+  if (!aRequest->IsErrored()) {
     StartFetchingModuleDependencies(aRequest);
   }
 

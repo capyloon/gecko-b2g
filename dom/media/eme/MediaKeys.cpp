@@ -36,6 +36,9 @@
 #ifdef XP_WIN
 #  include "mozilla/WindowsVersion.h"
 #endif
+#ifdef MOZ_WMF_CDM
+#  include "mozilla/WMFCDMProxy.h"
+#endif
 
 #ifdef B2G_MEDIADRM
 #  include "mozilla/GonkDrmCDMProxy.h"
@@ -450,6 +453,11 @@ already_AddRefed<CDMProxy> MediaKeys::CreateCDMProxy() {
         mConfig.mPersistentState == MediaKeysRequirement::Required);
   } else
 #endif
+#ifdef MOZ_WMF_CDM
+      if (IsPlayReadyKeySystem(mKeySystem)) {
+    proxy = new WMFCDMProxy(this, mKeySystem, mConfig);
+  } else
+#endif
   {
     proxy = new ChromiumCDMProxy(
         this, mKeySystem, new MediaKeysGMPCrashHelper(this),
@@ -603,7 +611,7 @@ already_AddRefed<DetailedPromise> MediaKeys::Init(ErrorResult& aRv) {
   AddRef();
   mProxy->Init(mCreatePromiseId, NS_ConvertUTF8toUTF16(origin),
                NS_ConvertUTF8toUTF16(topLevelOrigin),
-               KeySystemToGMPName(mKeySystem));
+               KeySystemToProxyName(mKeySystem));
 
   ConnectInnerWindow();
 

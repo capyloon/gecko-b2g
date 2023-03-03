@@ -111,36 +111,57 @@ json.clone = function(value, nodeCache) {
       seen = new Set();
     }
 
-    const type = typeof value;
-
     if ([undefined, null].includes(value)) {
       return null;
-    } else if (["boolean", "number", "string"].includes(type)) {
+    }
+
+    const type = typeof value;
+
+    if (["boolean", "number", "string"].includes(type)) {
       // Primitive values
       return value;
-    } else if (
-      lazy.element.isElement(value) ||
-      lazy.element.isShadowRoot(value)
-    ) {
-      // Convert DOM elements (eg. HTMLElement, XULElement, et al) and
-      // ShadowRoot instances to WebReference references.
+    }
 
-      // Evaluation of code will take place in mutable sandboxes, which are
-      // created to waive xrays by default. As such DOM nodes have to be
-      // unwaived before accessing the ownerGlobal is possible, which is
-      // needed by ContentDOMReference.
-      const el = Cu.unwaiveXrays(value);
+    // Evaluation of code might take place in mutable sandboxes, which are
+    // created to waive XRays by default. As such DOM nodes would have to be
+    // unwaived before accessing properties like "ownerGlobal" is possible.
+    //
+    // Until bug 1743788 is fixed there might be the possibility that more
+    // objects might need to be unwaived as well.
+    const isNode = Node.isInstance(value);
+    if (isNode) {
+      value = Cu.unwaiveXrays(value);
+    }
 
-      // Don't create a reference for stale elements.
-      if (lazy.element.isStale(el)) {
+    if (isNode && lazy.element.isElement(value)) {
+      // Convert DOM elements to WebReference instances.
+
+      if (lazy.element.isStale(value)) {
+        // Don't create a reference for stale elements.
         throw new lazy.error.StaleElementReferenceError(
-          lazy.pprint`The element ${el} is no longer attached to the DOM`
+          lazy.pprint`The element ${value} is no longer attached to the DOM`
         );
       }
 
-      const nodeRef = nodeCache.getOrCreateNodeReference(el);
-      return lazy.WebReference.from(el, nodeRef).toJSON();
-    } else if (typeof value.toJSON == "function") {
+      const nodeRef = nodeCache.getOrCreateNodeReference(value);
+      return lazy.WebReference.from(value, nodeRef).toJSON();
+    }
+
+    if (isNode && lazy.element.isShadowRoot(value)) {
+      // Convert ShadowRoot instances to WebReference references.
+
+      if (lazy.element.isDetached(value)) {
+        // Don't create a reference for detached shadow roots.
+        throw new lazy.error.DetachedShadowRootError(
+          lazy.pprint`The ShadowRoot ${value} is no longer attached to the DOM`
+        );
+      }
+
+      const nodeRef = nodeCache.getOrCreateNodeReference(value);
+      return lazy.WebReference.from(value, nodeRef).toJSON();
+    }
+
+    if (typeof value.toJSON == "function") {
       // custom JSON representation
       let unsafeJSON;
       try {
@@ -148,6 +169,7 @@ json.clone = function(value, nodeCache) {
       } catch (e) {
         throw new lazy.error.JavaScriptError(`toJSON() failed with: ${e}`);
       }
+
       return cloneJSON(unsafeJSON, seen);
     }
 
@@ -199,10 +221,15 @@ json.deserialize = function(value, nodeCache, win) {
           // Create a WebReference based on the WebElement identifier.
           const webRef = lazy.WebReference.fromJSON(value);
 
-          if (
-            webRef instanceof lazy.WebElement ||
-            webRef instanceof lazy.ShadowRoot
-          ) {
+          if (webRef instanceof lazy.ShadowRoot) {
+            return lazy.element.getKnownShadowRoot(
+              win.browsingContext,
+              webRef.uuid,
+              nodeCache
+            );
+          }
+
+          if (webRef instanceof lazy.WebElement) {
             return lazy.element.getKnownElement(
               win.browsingContext,
               webRef.uuid,

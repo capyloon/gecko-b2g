@@ -48,6 +48,7 @@
 #include "nsAppRunner.h"
 #include "nsAppDirectoryServiceDefs.h"
 #include "nsCSSProps.h"
+#include "nsContentUtils.h"
 
 #include "gfxCrashReporterUtils.h"
 #include "gfxPlatform.h"
@@ -588,8 +589,8 @@ static void WebRenderDebugPrefChangeCallback(const char* aPrefName, void*) {
   GFX_WEBRENDER_DEBUG(".capture-profiler", wr::DebugFlags::PROFILER_CAPTURE)
   GFX_WEBRENDER_DEBUG(".window-visibility",
                       wr::DebugFlags::WINDOW_VISIBILITY_DBG)
+  GFX_WEBRENDER_DEBUG(".restrict-blob-size", wr::DebugFlags::RESTRICT_BLOB_SIZE)
 #undef GFX_WEBRENDER_DEBUG
-
   gfx::gfxVars::SetWebRenderDebugFlags(flags.bits);
 }
 
@@ -1870,6 +1871,11 @@ bool gfxPlatform::IsFontFormatSupported(
   return true;
 }
 
+bool gfxPlatform::IsKnownIconFontFamily(const nsAtom* aFamilyName) const {
+  return gfxPlatformFontList::PlatformFontList()->IsKnownIconFontFamily(
+      aFamilyName);
+}
+
 gfxFontEntry* gfxPlatform::LookupLocalFont(nsPresContext* aPresContext,
                                            const nsACString& aFontName,
                                            WeightRange aWeightForEntry,
@@ -2468,7 +2474,7 @@ void gfxPlatform::InitAcceleration() {
         gfxPlatformGtk::GetPlatform()->InitVAAPIConfig(
             StaticPrefs::
                 media_hardware_video_decoding_force_enabled_AtStartup() ||
-            StaticPrefs::media_ffmpeg_vaapi_enabled());
+            StaticPrefs::media_ffmpeg_vaapi_enabled_AtStartup());
 #else
     if (
 #  ifdef XP_WIN
@@ -2730,7 +2736,7 @@ void gfxPlatform::InitWebRenderConfig() {
                                  "FEATURE_FAILURE_WR_NO_GFX_INFO"_ns);
         useVideoOverlay = false;
       } else {
-        if (status != nsIGfxInfo::FEATURE_STATUS_OK) {
+        if (status != nsIGfxInfo::FEATURE_ALLOW_ALWAYS) {
           FeatureState& feature = gfxConfig::GetFeature(Feature::VIDEO_OVERLAY);
           feature.DisableByDefault(FeatureStatus::Blocked,
                                    "Blocklisted by gfxInfo", failureId);
@@ -2858,8 +2864,8 @@ void gfxPlatform::InitWebRenderConfig() {
   // Set features that affect WR's RendererOptions
   gfxVars::SetUseGLSwizzle(
       IsFeatureSupported(nsIGfxInfo::FEATURE_GL_SWIZZLE, true));
-  gfxVars::SetUseWebRenderScissoredCacheClears(IsFeatureSupported(
-      nsIGfxInfo::FEATURE_WEBRENDER_SCISSORED_CACHE_CLEARS, true));
+  gfxVars::SetUseWebRenderScissoredCacheClears(gfx::gfxConfig::IsEnabled(
+      gfx::Feature::WEBRENDER_SCISSORED_CACHE_CLEARS));
 
   // The RemoveShaderCacheFromDiskIfNecessary() needs to be called after
   // WebRenderConfig initialization.
@@ -2933,7 +2939,21 @@ void gfxPlatform::InitWebGLConfig() {
 
   bool allowWebGLOop =
       IsFeatureOk(nsIGfxInfo::FEATURE_ALLOW_WEBGL_OUT_OF_PROCESS);
-  gfxVars::SetAllowWebglOop(allowWebGLOop);
+  if (!kIsAndroid) {
+    gfxVars::SetAllowWebglOop(allowWebGLOop);
+  } else {
+    // On android, enable out-of-process WebGL only when GPU process exists.
+    gfxVars::SetAllowWebglOop(allowWebGLOop &&
+                              gfxConfig::IsEnabled(Feature::GPU_PROCESS));
+    // Enable gl::SharedSurface of AndroidHardwareBuffer when API version is 26+
+    // and out-of-process WebGL is enabled.
+#ifdef MOZ_WIDGET_ANDROID
+    if (gfxVars::AllowWebglOop() && jni::GetAPIVersion() >= 26 &&
+        StaticPrefs::webgl_out_of_process_enable_ahardwarebuffer_AtStartup()) {
+      gfxVars::SetUseAHardwareBufferSharedSurfaceWebglOop(true);
+    }
+#endif
+  }
 
   bool threadsafeGL = IsFeatureOk(nsIGfxInfo::FEATURE_THREADSAFE_GL);
   threadsafeGL |= StaticPrefs::webgl_threadsafe_gl_force_enabled_AtStartup();
@@ -2959,11 +2979,13 @@ void gfxPlatform::InitWebGLConfig() {
   gfxVars::SetWebglOopAsyncPresentForceSync(webglOopAsyncPresentForceSync);
 
   if (kIsAndroid) {
-    // Don't enable robust buffer access on Adreno 630 devices.
-    // It causes the linking of some shaders to fail. See bug 1485441.
+    // Don't enable robust buffer access on Adreno 620 and 630 devices.
+    // It causes the linking of some shaders to fail. See bug 1485441 and
+    // bug 1810693.
     nsAutoString renderer;
     gfxInfo->GetAdapterDeviceID(renderer);
-    if (renderer.Find(u"Adreno (TM) 630") != -1) {
+    if ((renderer.Find(u"Adreno (TM) 620") != -1) ||
+        (renderer.Find(u"Adreno (TM) 630") != -1)) {
       gfxVars::SetAllowEglRbab(false);
     }
   }
@@ -2992,15 +3014,16 @@ void gfxPlatform::InitWebGPUConfig() {
   }
 
   FeatureState& feature = gfxConfig::GetFeature(Feature::WEBGPU);
-  feature.SetDefaultFromPref("dom.webgpu.enabled", true, false);
-
-  if (StaticPrefs::gfx_webgpu_force_enabled_AtStartup()) {
-    feature.UserForceEnable("Force-enabled by pref");
-  }
+  feature.EnableByDefault();
 
   nsCString message;
   nsCString failureId;
   if (!IsGfxInfoStatusOkay(nsIGfxInfo::FEATURE_WEBGPU, &message, failureId)) {
+    if (StaticPrefs::gfx_webgpu_ignore_blocklist_AtStartup()) {
+      feature.UserForceEnable(
+          "Ignoring blocklist entry because of gfx.webgpu.force-enabled:true.");
+    }
+
     feature.Disable(FeatureStatus::Blocklisted, message.get(), failureId);
   }
 
@@ -3135,6 +3158,11 @@ static void AcceleratedCanvas2DPrefChangeCallback(const char*, void*) {
     feature.UserForceEnable("Force-enabled by pref");
   }
 
+  if (kIsAndroid && !gfxConfig::IsEnabled(Feature::GPU_PROCESS)) {
+    feature.Disable(FeatureStatus::Blocked, "Disabled by GPU Process disabled",
+                    "FEATURE_FAILURE_DISABLED_BY_GPU_PROCESS_DISABLED"_ns);
+  }
+
   // Check if blocklisted despite the default pref.
   nsCString message;
   nsCString failureId;
@@ -3253,7 +3281,8 @@ bool gfxPlatform::IsInLayoutAsapMode() {
 
 static int LayoutFrameRateFromPrefs() {
   auto val = StaticPrefs::layout_frame_rate();
-  if (StaticPrefs::privacy_resistFingerprinting()) {
+  if (nsContentUtils::ShouldResistFingerprinting(
+          "The frame rate is a global property.")) {
     val = 60;
   }
   return val;
@@ -3711,6 +3740,15 @@ bool gfxPlatform::FallbackFromAcceleration(FeatureStatus aStatus,
 /* static */
 void gfxPlatform::DisableGPUProcess() {
   gfxVars::SetRemoteCanvasEnabled(false);
+  if (kIsAndroid) {
+    // On android, enable out-of-process WebGL only when GPU process exists.
+    gfxVars::SetAllowWebglOop(false);
+    // On android, enable accelerated canvas only when GPU process exists.
+    gfxVars::SetUseAcceleratedCanvas2D(false);
+    gfxConfig::Disable(Feature::ACCELERATED_CANVAS2D, FeatureStatus::Blocked,
+                       "Disabled by GPU Process disabled",
+                       "FEATURE_FAILURE_DISABLED_BY_GPU_PROCESS_DISABLED"_ns);
+  }
 
   RemoteTextureMap::Init();
   if (gfxVars::UseCanvasRenderThread()) {

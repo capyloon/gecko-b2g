@@ -20,6 +20,8 @@ use std::os::raw::c_void;
 use std::ptr;
 use style::applicable_declarations::ApplicableDeclarationBlock;
 use style::author_styles::AuthorStyles;
+use style::color::mix::ColorInterpolationMethod;
+use style::color::AbsoluteColor;
 use style::context::ThreadLocalStyleContext;
 use style::context::{CascadeInputs, QuirksMode, SharedStyleContext, StyleContext};
 use style::counter_style;
@@ -46,8 +48,8 @@ use style::gecko_bindings::bindings::Gecko_GetOrCreateInitialKeyframe;
 use style::gecko_bindings::bindings::Gecko_GetOrCreateKeyframeAtStart;
 use style::gecko_bindings::bindings::Gecko_HaveSeenPtr;
 use style::gecko_bindings::structs;
-use style::gecko_bindings::structs::gfxFontFeatureValueSet;
 use style::gecko_bindings::structs::gfx::FontPaletteValueSet;
+use style::gecko_bindings::structs::gfxFontFeatureValueSet;
 use style::gecko_bindings::structs::ipc::ByteBuf;
 use style::gecko_bindings::structs::nsAtom;
 use style::gecko_bindings::structs::nsCSSCounterDesc;
@@ -85,11 +87,10 @@ use style::gecko_bindings::structs::{nsINode as RawGeckoNode, Element as RawGeck
 use style::gecko_bindings::structs::{
     RawServoAnimationValue, RawServoAuthorStyles, RawServoContainerRule, RawServoCounterStyleRule,
     RawServoDeclarationBlock, RawServoFontFaceRule, RawServoFontFeatureValuesRule,
-    RawServoFontPaletteValuesRule,
-    RawServoImportRule, RawServoKeyframe, RawServoKeyframesRule, RawServoLayerBlockRule,
-    RawServoLayerStatementRule, RawServoMediaList, RawServoMediaRule, RawServoMozDocumentRule,
-    RawServoNamespaceRule, RawServoPageRule, RawServoSharedMemoryBuilder, RawServoStyleSet,
-    RawServoStyleSheetContents, RawServoSupportsRule, ServoCssRules,
+    RawServoFontPaletteValuesRule, RawServoImportRule, RawServoKeyframe, RawServoKeyframesRule,
+    RawServoLayerBlockRule, RawServoLayerStatementRule, RawServoMediaList, RawServoMediaRule,
+    RawServoMozDocumentRule, RawServoNamespaceRule, RawServoPageRule, RawServoSharedMemoryBuilder,
+    RawServoStyleSet, RawServoStyleSheetContents, RawServoSupportsRule, ServoCssRules,
 };
 use style::gecko_bindings::sugar::ownership::{FFIArcHelpers, HasArcFFI, HasFFI};
 use style::gecko_bindings::sugar::ownership::{
@@ -112,7 +113,9 @@ use style::properties::{SourcePropertyDeclaration, StyleBuilder};
 use style::rule_cache::RuleCacheConditions;
 use style::rule_tree::{CascadeLevel, StrongRuleNode};
 use style::selector_parser::PseudoElementCascadeType;
-use style::shared_lock::{Locked, SharedRwLock, SharedRwLockReadGuard, StylesheetGuards, ToCssWithGuard};
+use style::shared_lock::{
+    Locked, SharedRwLock, SharedRwLockReadGuard, StylesheetGuards, ToCssWithGuard,
+};
 use style::string_cache::{Atom, WeakAtom};
 use style::style_adjuster::StyleAdjuster;
 use style::stylesheets::container_rule::ContainerSizeQuery;
@@ -141,7 +144,6 @@ use style::values::computed::font::{
 };
 use style::values::computed::{self, Context, ToComputedValue};
 use style::values::distance::ComputeSquaredDistance;
-use style::values::generics::color::ColorInterpolationMethod;
 use style::values::generics::easing::BeforeFlag;
 use style::values::specified::gecko::IntersectionObserverRootMargin;
 use style::values::specified::source_size_list::SourceSizeList;
@@ -1038,13 +1040,13 @@ macro_rules! impl_basic_serde_funcs {
         }
 
         #[no_mangle]
-        pub extern "C" fn $de_name(input: &ByteBuf, v: &mut $computed_type) -> bool {
+        pub unsafe extern "C" fn $de_name(input: &ByteBuf, v: *mut $computed_type) -> bool {
             let buf = match deserialize(view_byte_buf(input)) {
                 Ok(buf) => buf,
                 Err(..) => return false,
             };
 
-            *v = buf;
+            std::ptr::write(v, buf);
             true
         }
     };
@@ -1207,7 +1209,13 @@ pub extern "C" fn Servo_StyleSet_GetBaseComputedValuesForElement(
         thread_local: &mut tlc,
     };
 
-    resolve_rules_for_element_with_context(element, context, without_animations_rules, &computed_values).into()
+    resolve_rules_for_element_with_context(
+        element,
+        context,
+        without_animations_rules,
+        &computed_values,
+    )
+    .into()
 }
 
 #[no_mangle]
@@ -1258,7 +1266,13 @@ pub extern "C" fn Servo_StyleSet_GetComputedValuesByAddingAnimation(
         thread_local: &mut tlc,
     };
 
-    resolve_rules_for_element_with_context(element, context, with_animations_rules, &computed_values).into()
+    resolve_rules_for_element_with_context(
+        element,
+        context,
+        with_animations_rules,
+        &computed_values,
+    )
+    .into()
 }
 
 #[no_mangle]
@@ -3015,7 +3029,8 @@ pub extern "C" fn Servo_FontFeatureValuesRule_GetFontFamily(
     result: &mut nsACString,
 ) {
     read_locked_arc(rule, |rule: &FontFeatureValuesRule| {
-        rule.family_names.to_css(&mut CssWriter::new(result))
+        rule.family_names
+            .to_css(&mut CssWriter::new(result))
             .unwrap()
     })
 }
@@ -3036,8 +3051,7 @@ pub extern "C" fn Servo_FontPaletteValuesRule_GetName(
     result: &mut nsACString,
 ) {
     read_locked_arc(rule, |rule: &FontPaletteValuesRule| {
-        rule.name.to_css(&mut CssWriter::new(result))
-            .unwrap()
+        rule.name.to_css(&mut CssWriter::new(result)).unwrap()
     })
 }
 
@@ -3048,7 +3062,8 @@ pub extern "C" fn Servo_FontPaletteValuesRule_GetFontFamily(
 ) {
     read_locked_arc(rule, |rule: &FontPaletteValuesRule| {
         if !rule.family_names.is_empty() {
-            rule.family_names.to_css(&mut CssWriter::new(result))
+            rule.family_names
+                .to_css(&mut CssWriter::new(result))
                 .unwrap()
         }
     })
@@ -3060,7 +3075,8 @@ pub extern "C" fn Servo_FontPaletteValuesRule_GetBasePalette(
     result: &mut nsACString,
 ) {
     read_locked_arc(rule, |rule: &FontPaletteValuesRule| {
-        rule.base_palette.to_css(&mut CssWriter::new(result))
+        rule.base_palette
+            .to_css(&mut CssWriter::new(result))
             .unwrap()
     })
 }
@@ -3072,7 +3088,8 @@ pub extern "C" fn Servo_FontPaletteValuesRule_GetOverrideColors(
 ) {
     read_locked_arc(rule, |rule: &FontPaletteValuesRule| {
         if !rule.override_colors.is_empty() {
-            rule.override_colors.to_css(&mut CssWriter::new(result))
+            rule.override_colors
+                .to_css(&mut CssWriter::new(result))
                 .unwrap()
         }
     })
@@ -3241,7 +3258,7 @@ pub extern "C" fn Servo_FontFaceRule_GetFontLanguageOverride(
     rule: &RawServoFontFaceRule,
     out: &mut computed::FontLanguageOverride,
 ) -> bool {
-    simple_font_descriptor_getter_impl!(rule, out, language_override, compute_non_system)
+    simple_font_descriptor_getter_impl!(rule, out, language_override, clone)
 }
 
 // Returns a Percentage of -1.0 if the override descriptor is present but 'normal'
@@ -4041,6 +4058,45 @@ fn debug_atom_array(atoms: &nsTArray<structs::RefPtr<nsAtom>>) -> String {
 }
 
 #[no_mangle]
+pub extern "C" fn Servo_ComputedValues_ResolveHighlightPseudoStyle(
+    element: &RawGeckoElement,
+    highlight_name: *const nsAtom,
+    raw_data: &RawServoStyleSet,
+) -> Strong<ComputedValues> {
+    let element = GeckoElement(element);
+    let data = element
+        .borrow_data()
+        .expect("Calling ResolveHighlightPseudoStyle on unstyled element?");
+    let pseudo_element = unsafe {
+        AtomIdent::with(highlight_name, |atom| {
+            PseudoElement::Highlight(atom.to_owned())
+        })
+    };
+
+    let doc_data = PerDocumentStyleData::from_ffi(raw_data).borrow();
+
+    let matching_fn = |pseudo: &PseudoElement| *pseudo == pseudo_element;
+
+    let global_style_data = &*GLOBAL_STYLE_DATA;
+    let guard = global_style_data.shared_lock.read();
+    let style = get_pseudo_style(
+        &guard,
+        element,
+        &pseudo_element,
+        RuleInclusion::All,
+        &data.styles,
+        None,
+        &doc_data.stylist,
+        /* is_probe = */ true,
+        Some(&matching_fn),
+    );
+    match style {
+        Some(s) => s.into(),
+        None => Strong::null(),
+    }
+}
+
+#[no_mangle]
 pub extern "C" fn Servo_ComputedValues_ResolveXULTreePseudoStyle(
     element: &RawGeckoElement,
     pseudo_tag: *mut nsAtom,
@@ -4284,7 +4340,7 @@ fn dump_properties_and_rules(cv: &ComputedValues, properties: &LonghandIdSet) {
     println_stderr!("  Properties:");
     for p in properties.iter() {
         let mut v = nsCString::new();
-        cv.get_resolved_value(p, &mut v).unwrap();
+        cv.computed_or_resolved_value(p, None, &mut v).unwrap();
         println_stderr!("    {:?}: {}", p, v);
     }
     dump_rules(cv);
@@ -4320,27 +4376,24 @@ pub extern "C" fn Servo_ComputedValues_EqualForCachedAnonymousContentStyle(
 ) -> bool {
     let mut differing_properties = a.differing_properties(b);
 
-    // Ignore any difference in -x-lang, which we can't override in the
-    // rules in minimal-xul.css, but which makes no difference for the
-    // anonymous content subtrees we cache style for.
+    // Ignore any difference in -x-lang, which we can't override in the rules in scrollbars.css,
+    // but which makes no difference for the anonymous content subtrees we cache style for.
     differing_properties.remove(LonghandId::XLang);
-    // Similarly, -x-lang can influence the font-family fallback we have for
-    // the initial font-family so remove it as well.
+    // Similarly, -x-lang can influence the font-family fallback we have for the initial
+    // font-family so remove it as well.
     differing_properties.remove(LonghandId::FontFamily);
 
-    // Ignore any difference in pref-controlled, inherited properties.  These
-    // properties may or may not be set by the 'all' declaration in the
-    // minimal-xul.css rule, depending on whether the pref was enabled at the
-    // time the UA sheets were parsed.
+    // Ignore any difference in pref-controlled, inherited properties.  These properties may or may
+    // not be set by the 'all' declaration in scrollbars.css, depending on whether the pref was
+    // enabled at the time the UA sheets were parsed.
     //
-    // If you add a new pref-controlled, inherited property, it must be defined
-    // with `has_effect_on_gecko_scrollbars=False` to declare that
-    // different values of this property on a <scrollbar> element or its
-    // descendant scrollbar part elements should have no effect on their
-    // rendering and behavior.
+    // If you add a new pref-controlled, inherited property, it must be defined with
+    // `has_effect_on_gecko_scrollbars=False` to declare that different values of this property on
+    // a <scrollbar> element or its descendant scrollbar part elements should have no effect on
+    // their rendering and behavior.
     //
-    // If you do need a pref-controlled, inherited property to have an effect
-    // on these elements, then you will need to add some checks to the
+    // If you do need a pref-controlled, inherited property to have an effect on these elements,
+    // then you will need to add some checks to the
     // nsIAnonymousContentCreator::CreateAnonymousContent implementations of
     // ScrollFrameHelper and nsScrollbarFrame to clear the AnonymousContentKey
     // if a non-initial value is used.
@@ -6755,24 +6808,56 @@ pub extern "C" fn Servo_StyleSet_HasDocumentStateDependency(
     data.stylist.has_document_state_dependency(state)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn Servo_GetPropertyValue(
+
+fn computed_or_resolved_value(
     style: &ComputedValues,
     prop: nsCSSPropertyID,
+    context: Option<&style::values::resolved::Context>,
     value: &mut nsACString,
 ) {
     if let Ok(longhand) = LonghandId::from_nscsspropertyid(prop) {
-        style.get_resolved_value(longhand, value).unwrap();
-        return;
+        return style.computed_or_resolved_value(longhand, context, value).unwrap();
     }
 
     let shorthand =
         ShorthandId::from_nscsspropertyid(prop).expect("Not a shorthand nor a longhand?");
     let mut block = PropertyDeclarationBlock::new();
     for longhand in shorthand.longhands() {
-        block.push(style.resolved_declaration(longhand), Importance::Normal);
+        block.push(style.computed_or_resolved_declaration(longhand, context), Importance::Normal);
     }
     block.shorthand_to_css(shorthand, value).unwrap();
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn Servo_GetComputedValue(
+    style: &ComputedValues,
+    prop: nsCSSPropertyID,
+    value: &mut nsACString,
+) {
+    computed_or_resolved_value(style, prop, None, value)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn Servo_GetResolvedValue(
+    style: &ComputedValues,
+    prop: nsCSSPropertyID,
+    raw_data: &RawServoStyleSet,
+    element: &RawGeckoElement,
+    value: &mut nsACString,
+) {
+    use style::values::resolved;
+
+    let data = PerDocumentStyleData::from_ffi(raw_data).borrow();
+    let device = data.stylist.device();
+    let context = resolved::Context {
+        style,
+        device,
+        element_info: resolved::ResolvedElementInfo {
+            element: GeckoElement(element),
+        },
+    };
+
+    computed_or_resolved_value(style, prop, Some(&context), value)
 }
 
 #[no_mangle]
@@ -7613,14 +7698,15 @@ pub extern "C" fn Servo_InterpolateColor(
     right: &AnimatedRGBA,
     progress: f32,
 ) -> AnimatedRGBA {
-    style::values::animated::color::Color::mix(
+    style::color::mix::mix(
         interpolation,
-        left,
+        &AbsoluteColor::from(left.clone()),
         progress,
-        right,
+        &AbsoluteColor::from(right.clone()),
         1.0 - progress,
         /* normalize_weights = */ false,
     )
+    .into()
 }
 
 #[no_mangle]

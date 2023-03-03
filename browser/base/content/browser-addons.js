@@ -289,13 +289,10 @@ var gXPInstallObserver = {
       displayURI: installInfo.originatingURI,
       persistent: true,
       hideClose: true,
-    };
-
-    if (gUnifiedExtensions.isEnabled) {
-      options.popupOptions = {
+      popupOptions: {
         position: "bottomright topright",
-      };
-    }
+      },
+    };
 
     let acceptInstallation = () => {
       for (let install of installInfo.installs) {
@@ -524,13 +521,10 @@ var gXPInstallObserver = {
       persistent: true,
       hideClose: true,
       timeout: Date.now() + 30000,
-    };
-
-    if (gUnifiedExtensions.isEnabled) {
-      options.popupOptions = {
+      popupOptions: {
         position: "bottomright topright",
-      };
-    }
+      },
+    };
 
     switch (aTopic) {
       case "addon-install-disabled": {
@@ -1249,37 +1243,36 @@ var gUnifiedExtensions = {
       return;
     }
 
-    if (this.isEnabled) {
-      this._button = document.getElementById("unified-extensions-button");
-      // TODO: Bug 1778684 - Auto-hide button when there is no active extension.
-      this._button.hidden = false;
+    this._button = document.getElementById("unified-extensions-button");
+    // TODO: Bug 1778684 - Auto-hide button when there is no active extension.
+    this._button.hidden = false;
 
-      document
-        .getElementById("nav-bar")
-        .setAttribute("unifiedextensionsbuttonshown", true);
+    document
+      .getElementById("nav-bar")
+      .setAttribute("unifiedextensionsbuttonshown", true);
 
-      gBrowser.addTabsProgressListener(this);
-      window.addEventListener("TabSelect", () => this.updateAttention());
+    gBrowser.addTabsProgressListener(this);
+    window.addEventListener("TabSelect", () => this.updateAttention());
 
-      this.permListener = () => this.updateAttention();
-      lazy.ExtensionPermissions.addListener(this.permListener);
+    this.permListener = () => this.updateAttention();
+    lazy.ExtensionPermissions.addListener(this.permListener);
 
-      gNavToolbox.addEventListener("customizationstarting", this);
-    }
+    gNavToolbox.addEventListener("customizationstarting", this);
+    CustomizableUI.addListener(this);
 
     this._initialized = true;
   },
 
   uninit() {
-    if (this.permListener) {
-      lazy.ExtensionPermissions.removeListener(this.permListener);
-      this.permListener = null;
+    if (!this._initialized) {
+      return;
     }
-    gNavToolbox.removeEventListener("customizationstarting", this);
-  },
 
-  get isEnabled() {
-    return true;
+    lazy.ExtensionPermissions.removeListener(this.permListener);
+    this.permListener = null;
+
+    gNavToolbox.removeEventListener("customizationstarting", this);
+    CustomizableUI.removeListener(this);
   },
 
   onLocationChange(browser, webProgress, _request, _uri, flags) {
@@ -1317,25 +1310,21 @@ var gUnifiedExtensions = {
   },
 
   getPopupAnchorID(aBrowser, aWindow) {
-    if (this.isEnabled) {
-      const anchorID = "unified-extensions-button";
-      const attr = anchorID + "popupnotificationanchor";
+    const anchorID = "unified-extensions-button";
+    const attr = anchorID + "popupnotificationanchor";
 
-      if (!aBrowser[attr]) {
-        // A hacky way of setting the popup anchor outside the usual url bar
-        // icon box, similar to how it was done for CFR.
-        // See: https://searchfox.org/mozilla-central/rev/c5c002f81f08a73e04868e0c2bf0eb113f200b03/toolkit/modules/PopupNotifications.sys.mjs#40
-        aBrowser[attr] = aWindow.document.getElementById(
-          anchorID
-          // Anchor on the toolbar icon to position the popup right below the
-          // button.
-        ).firstElementChild;
-      }
-
-      return anchorID;
+    if (!aBrowser[attr]) {
+      // A hacky way of setting the popup anchor outside the usual url bar
+      // icon box, similar to how it was done for CFR.
+      // See: https://searchfox.org/mozilla-central/rev/c5c002f81f08a73e04868e0c2bf0eb113f200b03/toolkit/modules/PopupNotifications.sys.mjs#40
+      aBrowser[attr] = aWindow.document.getElementById(
+        anchorID
+        // Anchor on the toolbar icon to position the popup right below the
+        // button.
+      ).firstElementChild;
     }
 
-    return "addons-notification-icon";
+    return anchorID;
   },
 
   get button() {
@@ -1427,10 +1416,15 @@ var gUnifiedExtensions = {
   },
 
   onPanelViewHiding(panelview) {
+    if (window.closed) {
+      return;
+    }
     const list = panelview.querySelector(".unified-extensions-list");
     while (list.lastChild) {
       list.lastChild.remove();
     }
+    // If temporary access was granted, (maybe) clear attention indicator.
+    requestAnimationFrame(() => this.updateAttention());
   },
 
   _panel: null,
@@ -1485,7 +1479,15 @@ var gUnifiedExtensions = {
         // The button should directly open `about:addons` when the user does not
         // have any active extensions listed in the unified extensions panel.
         if (!this.hasExtensionsInPanel()) {
-          await BrowserOpenAddonsMgr("addons://discover/");
+          let viewID;
+          if (
+            Services.prefs.getBoolPref("extensions.getAddons.showPane", true)
+          ) {
+            viewID = "addons://discover/";
+          } else {
+            viewID = "addons://list/extension";
+          }
+          await BrowserOpenAddonsMgr(viewID);
           return;
         }
       }
@@ -1632,5 +1634,74 @@ var gUnifiedExtensions = {
     CustomizableUI.addWidgetToArea(widgetId, newArea, newPosition);
 
     this.updateAttention();
+  },
+
+  onWidgetAdded(aWidgetId, aArea, aPosition) {
+    // When we pin a widget to the toolbar from a narrow window, the widget
+    // will be overflowed directly. In this case, we do not want to change the
+    // class name since it is going to be changed by `onWidgetOverflow()`
+    // below.
+    if (CustomizableUI.getWidget(aWidgetId)?.forWindow(window)?.overflowed) {
+      return;
+    }
+
+    const inPanel =
+      CustomizableUI.getAreaType(aArea) !== CustomizableUI.TYPE_TOOLBAR;
+
+    this._updateWidgetClassName(aWidgetId, inPanel);
+  },
+
+  onWidgetOverflow(aNode, aContainer) {
+    // We register a CUI listener for each window so we make sure that we
+    // handle the event for the right window here.
+    if (window !== aNode.ownerGlobal) {
+      return;
+    }
+
+    this._updateWidgetClassName(aNode.getAttribute("widget-id"), true);
+  },
+
+  onWidgetUnderflow(aNode, aContainer) {
+    // We register a CUI listener for each window so we make sure that we
+    // handle the event for the right window here.
+    if (window !== aNode.ownerGlobal) {
+      return;
+    }
+
+    this._updateWidgetClassName(aNode.getAttribute("widget-id"), false);
+  },
+
+  onAreaNodeRegistered(aArea, aContainer) {
+    // We register a CUI listener for each window so we make sure that we
+    // handle the event for the right window here.
+    if (window !== aContainer.ownerGlobal) {
+      return;
+    }
+
+    const inPanel =
+      CustomizableUI.getAreaType(aArea) !== CustomizableUI.TYPE_TOOLBAR;
+
+    for (const widgetId of CustomizableUI.getWidgetIdsInArea(aArea)) {
+      this._updateWidgetClassName(widgetId, inPanel);
+    }
+  },
+
+  // This internal method is used to change some CSS classnames on the action
+  // button of an extension (CUI) widget. When the widget is placed in the
+  // panel, the action button should have the `.subviewbutton` class and not
+  // the `.toolbarbutton-1` one. When NOT placed in the panel, it is the other
+  // way around.
+  _updateWidgetClassName(aWidgetId, inPanel) {
+    if (!CustomizableUI.isWebExtensionWidget(aWidgetId)) {
+      return;
+    }
+
+    const actionButton = CustomizableUI.getWidget(aWidgetId)
+      ?.forWindow(window)
+      ?.node?.querySelector(".unified-extensions-item-action-button");
+    if (actionButton) {
+      actionButton.classList.toggle("subviewbutton", inPanel);
+      actionButton.classList.toggle("toolbarbutton-1", !inPanel);
+    }
   },
 };

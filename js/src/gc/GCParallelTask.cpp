@@ -64,8 +64,7 @@ void js::GCParallelTask::startOrRunIfIdle(AutoLockHelperThreadState& lock) {
   joinWithLockHeld(lock);
 
   if (!CanUseExtraThreads()) {
-    AutoUnlockHelperThreadState unlock(lock);
-    runFromMainThread();
+    runFromMainThread(lock);
     return;
   }
 
@@ -96,17 +95,20 @@ void js::GCParallelTask::joinWithLockHeld(AutoLockHelperThreadState& lock,
     // and run it from the main thread. This stops us from blocking here when
     // the helper threads are busy with other tasks.
     cancelDispatchedTask(lock);
-    AutoUnlockHelperThreadState unlock(lock);
-    runFromMainThread();
+    runFromMainThread(lock);
   } else {
     // Otherwise wait for the task to complete.
     joinNonIdleTask(deadline, lock);
   }
 
   if (isIdle(lock)) {
-    if (phaseKind != gcstats::PhaseKind::NONE) {
-      gc->stats().recordParallelPhase(phaseKind, duration());
-    }
+    recordDuration();
+  }
+}
+
+void GCParallelTask::recordDuration() {
+  if (phaseKind != gcstats::PhaseKind::NONE) {
+    gc->stats().recordParallelPhase(phaseKind, duration_);
   }
 }
 
@@ -139,23 +141,17 @@ void js::GCParallelTask::cancelDispatchedTask(AutoLockHelperThreadState& lock) {
   setIdle(lock);
 }
 
-static inline TimeDuration TimeSince(TimeStamp prev) {
-  TimeStamp now = TimeStamp::Now();
-  // Sadly this happens sometimes.
-  MOZ_ASSERT(now >= prev);
-  if (now < prev) {
-    now = prev;
-  }
-  return now - prev;
-}
-
-void js::GCParallelTask::runFromMainThread() {
+void js::GCParallelTask::runFromMainThread(AutoLockHelperThreadState& lock) {
   assertIdle();
   MOZ_ASSERT(js::CurrentThreadCanAccessRuntime(gc->rt));
-  AutoLockHelperThreadState lock;
   state_ = State::Running;
   runTask(gc->rt->gcContext(), lock);
   state_ = State::Idle;
+}
+
+void js::GCParallelTask::runFromMainThread() {
+  AutoLockHelperThreadState lock;
+  runFromMainThread(lock);
 }
 
 class MOZ_RAII AutoGCContext {

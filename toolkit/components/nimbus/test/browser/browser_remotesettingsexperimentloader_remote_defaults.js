@@ -3,12 +3,12 @@
 
 "use strict";
 
-const { RemoteSettings } = ChromeUtils.import(
-  "resource://services-settings/remote-settings.js"
+const { RemoteSettings } = ChromeUtils.importESModule(
+  "resource://services-settings/remote-settings.sys.mjs"
 );
 const {
   _ExperimentFeature: ExperimentFeature,
-  NimbusFeatures,
+
   ExperimentAPI,
 } = ChromeUtils.import("resource://nimbus/ExperimentAPI.jsm");
 const { ExperimentTestUtils } = ChromeUtils.import(
@@ -19,9 +19,6 @@ const { ExperimentManager } = ChromeUtils.import(
 );
 const { RemoteSettingsExperimentLoader } = ChromeUtils.import(
   "resource://nimbus/lib/RemoteSettingsExperimentLoader.jsm"
-);
-const { TelemetryEnvironment } = ChromeUtils.importESModule(
-  "resource://gre/modules/TelemetryEnvironment.sys.mjs"
 );
 
 const FOO_FAKE_FEATURE_MANIFEST = {

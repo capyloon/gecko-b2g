@@ -634,8 +634,11 @@ void DCLayerTree::AddSurface(wr::NativeSurfaceId aId,
 
   wr::DeviceIntPoint virtualOffset = surface->GetVirtualOffset();
 
-  gfx::Matrix transform(aTransform.m11, aTransform.m12, aTransform.m21,
-                        aTransform.m22, aTransform.m41, aTransform.m42);
+  float sx = aTransform.scale.x;
+  float sy = aTransform.scale.y;
+  float tx = aTransform.offset.x;
+  float ty = aTransform.offset.y;
+  gfx::Matrix transform(sx, 0.0, 0.0, sy, tx, ty);
 
   surface->PresentExternalSurface(transform);
 
@@ -1096,13 +1099,37 @@ void DCSurfaceVideo::PresentVideo() {
     return;
   }
 
-  HRESULT hr;
-  hr = mVideoSwapChain->Present(0, 0);
+  auto start = TimeStamp::Now();
+  HRESULT hr = mVideoSwapChain->Present(0, 0);
+  auto end = TimeStamp::Now();
+
   if (FAILED(hr) && hr != DXGI_STATUS_OCCLUDED) {
     gfxCriticalNoteOnce << "video Present failed: " << gfx::hexa(hr);
   }
 
   mPrevTexture = mRenderTextureHost;
+
+  // Disable video overlay if mVideoSwapChain->Present() is too slow. It drops
+  // fps.
+
+  if (!StaticPrefs::gfx_webrender_dcomp_video_check_slow_present()) {
+    return;
+  }
+
+  const auto maxWaitDurationMs = 2.0;
+  const auto maxSlowPresentCount = 5;
+  const auto duration = (end - start).ToMilliseconds();
+
+  if (duration > maxWaitDurationMs) {
+    mSlowPresentCount++;
+  } else {
+    mSlowPresentCount = 0;
+  }
+
+  if (mSlowPresentCount > maxSlowPresentCount) {
+    gfxCriticalNoteOnce << "Video swapchain present is slow";
+    RenderThread::Get()->HandleWebRenderError(WebRenderError::VIDEO_OVERLAY);
+  }
 }
 
 DXGI_FORMAT DCSurfaceVideo::GetSwapChainFormat() {

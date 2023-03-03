@@ -14,26 +14,26 @@ const CONTAINER_ID = "root";
  * the parent page pointing to the element they describe.
  * @param {Window} Window in which messages will be rendered
  * @param {String} Name of the pref used to track progress through a given feature tour
- * @param {String} Optional string to pass as the source when checking for messages to show, 
- * defaults to this.doc.location.pathname.toLowerCase().
+ * @param {String} Optional string to pass as the page when checking for messages to show,
+ * in the case of the browser chrome the string "chrome" is used.
  * @param {Browser} browser
 
  */
 export class FeatureCallout {
-  constructor({ win, prefName, source, browser }) {
+  constructor({ win, prefName, page, browser }) {
     this.win = win || window;
     this.doc = win.document;
     this.browser = browser || this.win.docShell.chromeEventHandler;
     this.config = null;
     this.loadingConfig = false;
+    this.message = null;
     this.currentScreen = null;
     this.renderObserver = null;
     this.savedActiveElement = null;
     this.ready = false;
-    this.listenersRegistered = false;
+    this._positionListenersRegistered = false;
     this.AWSetup = false;
-    this.source = source || this.doc.location.pathname.toLowerCase();
-    this.focusHandler = this._focusHandler.bind(this);
+    this.page = page;
 
     XPCOMUtils.defineLazyPreferenceGetter(
       this,
@@ -70,41 +70,34 @@ export class FeatureCallout {
       return this.win.pageEventManager;
     });
 
-    const inChrome =
-      this.win.location.toString() === "chrome://browser/content/browser.xhtml";
     // When the window is focused, ensure tour is synced with tours in
     // any other instances of the parent page. This does not apply when
     // the Callout is shown in the browser chrome.
-    if (!inChrome) {
-      this.win.addEventListener(
-        "visibilitychange",
-        this._handlePrefChange.bind(this)
-      );
+    if (this.page !== "chrome") {
+      this.win.addEventListener("visibilitychange", this);
     }
+  }
 
-    const positionCallout = this._positionCallout.bind(this);
+  _addPositionListeners() {
+    if (!this._positionListenersRegistered) {
+      this.win.addEventListener("resize", this);
+      const parentEl = this.doc.querySelector(
+        this.currentScreen?.parent_selector
+      );
+      parentEl?.addEventListener("toggle", this);
+      this._positionListenersRegistered = true;
+    }
+  }
 
-    this._addPositionListeners = () => {
-      if (!this.listenersRegistered) {
-        this.win.addEventListener("resize", positionCallout);
-        const parentEl = this.doc.querySelector(
-          this.currentScreen?.parent_selector
-        );
-        parentEl?.addEventListener("toggle", positionCallout);
-        this.listenersRegistered = true;
-      }
-    };
-
-    this._removePositionListeners = () => {
-      if (this.listenersRegistered) {
-        this.win.removeEventListener("resize", positionCallout);
-        const parentEl = this.doc.querySelector(
-          this.currentScreen?.parent_selector
-        );
-        parentEl?.removeEventListener("toggle", positionCallout);
-        this.listenersRegistered = false;
-      }
-    };
+  _removePositionListeners() {
+    if (this._positionListenersRegistered) {
+      this.win.removeEventListener("resize", this);
+      const parentEl = this.doc.querySelector(
+        this.currentScreen?.parent_selector
+      );
+      parentEl?.removeEventListener("toggle", this);
+      this._positionListenersRegistered = false;
+    }
   }
 
   async _handlePrefChange() {
@@ -133,7 +126,7 @@ export class FeatureCallout {
     // End the tour according to the tour progress pref or if the user disabled
     // contextual feature recommendations.
     if (prefVal.complete || !this.cfrFeaturesUserPref) {
-      this._endTour();
+      this.endTour();
       this.currentScreen = null;
     } else if (prefVal.screen !== this.currentScreen?.id) {
       this.ready = false;
@@ -149,6 +142,76 @@ export class FeatureCallout {
       }, TRANSITION_MS);
     }
   }
+
+  handleEvent(event) {
+    switch (event.type) {
+      case "focus": {
+        let container = this.doc.getElementById(CONTAINER_ID);
+        if (!container) {
+          return;
+        }
+        // If focus has fired on the feature callout window itself, or on something
+        // contained in that window, ignore it, as we can't possibly place the focus
+        // on it after the callout is closd.
+        if (
+          event.target.id === CONTAINER_ID ||
+          (Node.isInstance(event.target) && container.contains(event.target))
+        ) {
+          return;
+        }
+        // Save this so that if the next focus event is re-entering the popup,
+        // then we'll put the focus back here where the user left it once we exit
+        // the feature callout series.
+        this.savedActiveElement = this.doc.activeElement;
+        break;
+      }
+
+      case "keypress": {
+        if (event.key !== "Escape") {
+          return;
+        }
+        let container = this.doc.getElementById(CONTAINER_ID);
+        if (!container) {
+          return;
+        }
+        let focusedElement =
+          this.page === "chrome"
+            ? Services.focus.focusedElement
+            : this.doc.activeElement;
+        // If the window has a focused element, let it handle the ESC key instead.
+        if (
+          !focusedElement ||
+          focusedElement === this.doc.body ||
+          focusedElement === this.browser ||
+          container.contains(focusedElement)
+        ) {
+          this.win.AWSendEventTelemetry?.({
+            event: "DISMISS",
+            event_context: {
+              source: `KEY_${event.key}`,
+              page: this.page,
+            },
+            message_id: this.config?.id.toUpperCase(),
+          });
+          this._dismiss();
+          event.preventDefault();
+        }
+        break;
+      }
+
+      case "visibilitychange":
+        this._handlePrefChange();
+        break;
+
+      case "resize":
+      case "toggle":
+        this._positionCallout();
+        break;
+
+      default:
+    }
+  }
+
   _addCalloutLinkElements() {
     const addStylesheet = href => {
       if (this.doc.querySelector(`link[href="${href}"]`)) {
@@ -186,6 +249,16 @@ export class FeatureCallout {
     // This means the message was misconfigured, mistargeted, or the
     // content of the parent page is not as expected.
     if (!parent && !this.currentScreen?.content.callout_position_override) {
+      if (this.message?.template === "feature_callout") {
+        Services.telemetry.recordEvent(
+          "messaging_experiments",
+          "feature_callout",
+          "create_failed",
+          `${this.message.id || "no_message"}-${this.currentScreen
+            ?.parent_selector || "no_current_screen"}`
+        );
+      }
+
       return false;
     }
 
@@ -197,6 +270,8 @@ export class FeatureCallout {
       "hidden"
     );
     container.id = CONTAINER_ID;
+    // This value is reported as the "page" in about:welcome telemetry
+    container.dataset.page = this.page;
     container.setAttribute(
       "aria-describedby",
       `#${CONTAINER_ID} .welcome-text`
@@ -588,7 +663,7 @@ export class FeatureCallout {
     );
     this.win.AWSendToParent = (name, data) => receive(name)(data);
     this.win.AWFinish = () => {
-      this._endTour();
+      this.endTour();
     };
     this.AWSetup = true;
   }
@@ -606,12 +681,14 @@ export class FeatureCallout {
     windowFuncs.forEach(func => delete this.win[func]);
   }
 
-  _endTour(skipFadeOut = false) {
-    // We don't want focus events that happen during teardown to effect
+  endTour(skipFadeOut = false) {
+    // We don't want focus events that happen during teardown to affect
     // this.savedActiveElement
-    this.win.removeEventListener("focus", this.focusHandler, {
+    this.win.removeEventListener("focus", this, {
       capture: true,
+      passive: true,
     });
+    this.win.removeEventListener("keypress", this, { capture: true });
     this.win.pageEventManager?.clear();
 
     // We're deleting featureTourProgress here to ensure that the
@@ -636,6 +713,15 @@ export class FeatureCallout {
       },
       skipFadeOut ? 0 : TRANSITION_MS
     );
+  }
+
+  _dismiss() {
+    let action = this.currentScreen?.content.dismiss_button?.action;
+    if (action?.type) {
+      this.win.AWSendToParent("SPECIAL_ACTION", action);
+    } else {
+      this.endTour();
+    }
   }
 
   async _addScriptsAndRender() {
@@ -687,8 +773,9 @@ export class FeatureCallout {
       browser: this.browser,
       // triggerId and triggerContext
       id: "featureCalloutCheck",
-      context: { source: this.source },
+      context: { source: this.page },
     });
+    this.message = result.message;
     this.loadingConfig = false;
 
     if (result.message.template !== "feature_callout") {
@@ -722,28 +809,6 @@ export class FeatureCallout {
       this._observeRender(container);
       this._addPositionListeners();
     }
-  }
-
-  _focusHandler(e) {
-    let container = this.doc.getElementById(CONTAINER_ID);
-    if (!container) {
-      return;
-    }
-
-    // If focus has fired on the feature callout window itself, or on something
-    // contained in that window, ignore it, as we can't possibly place the focus
-    // on it after the callout is closd.
-    if (
-      e.target.id === CONTAINER_ID ||
-      (Node.isInstance(e.target) && container.contains(e.target))
-    ) {
-      return;
-    }
-
-    // Save this so that if the next focus event is re-entering the popup,
-    // then we'll put the focus back here where the user left it once we exit
-    // the feature callout series.
-    this.savedActiveElement = this.doc.activeElement;
   }
 
   /**
@@ -789,7 +854,7 @@ export class FeatureCallout {
    * @param {Event} event Triggering event
    */
   _handlePageEventAction(action, event) {
-    const page = this.doc.location.href;
+    const page = this.page;
     const message_id = this.config?.id.toUpperCase();
     const source = this._getUniqueElementIdentifier(event.target);
     this.win.AWSendEventTelemetry?.({
@@ -811,7 +876,7 @@ export class FeatureCallout {
         event_context: { source: `PAGE_EVENT:${source}`, page },
         message_id,
       });
-      this._endTour();
+      this._dismiss();
     }
   }
 
@@ -867,11 +932,13 @@ export class FeatureCallout {
             this._attachPageEventListeners(
               this.currentScreen?.content?.page_event_listeners
             );
+            this.win.addEventListener("keypress", this, { capture: true });
             this._positionCallout();
             let container = this.doc.getElementById(CONTAINER_ID);
             container.focus();
-            this.win.addEventListener("focus", this.focusHandler, {
+            this.win.addEventListener("focus", this, {
               capture: true, // get the event before retargeting
+              passive: true,
             });
           });
         });

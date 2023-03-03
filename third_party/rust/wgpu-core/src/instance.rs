@@ -54,22 +54,22 @@ fn downlevel_default_limits_less_than_default_limits() {
 pub struct Instance {
     #[allow(dead_code)]
     pub name: String,
-    #[cfg(feature = "vulkan")]
+    #[cfg(all(feature = "vulkan", not(target_arch = "wasm32")))]
     pub vulkan: Option<HalInstance<hal::api::Vulkan>>,
-    #[cfg(feature = "metal")]
+    #[cfg(all(feature = "metal", any(target_os = "macos", target_os = "ios")))]
     pub metal: Option<HalInstance<hal::api::Metal>>,
-    #[cfg(feature = "dx12")]
+    #[cfg(all(feature = "dx12", windows))]
     pub dx12: Option<HalInstance<hal::api::Dx12>>,
-    #[cfg(feature = "dx11")]
+    #[cfg(all(feature = "dx11", windows))]
     pub dx11: Option<HalInstance<hal::api::Dx11>>,
     #[cfg(feature = "gles")]
     pub gl: Option<HalInstance<hal::api::Gles>>,
 }
 
 impl Instance {
-    pub fn new(name: &str, backends: Backends) -> Self {
-        fn init<A: HalApi>(_: A, mask: Backends) -> Option<A::Instance> {
-            if mask.contains(A::VARIANT.into()) {
+    pub fn new(name: &str, instance_desc: wgt::InstanceDescriptor) -> Self {
+        fn init<A: HalApi>(_: A, instance_desc: &wgt::InstanceDescriptor) -> Option<A::Instance> {
+            if instance_desc.backends.contains(A::VARIANT.into()) {
                 let mut flags = hal::InstanceFlags::empty();
                 if cfg!(debug_assertions) {
                     flags |= hal::InstanceFlags::VALIDATION;
@@ -78,6 +78,7 @@ impl Instance {
                 let hal_desc = hal::InstanceDescriptor {
                     name: "wgpu",
                     flags,
+                    dx12_shader_compiler: instance_desc.dx12_shader_compiler.clone(),
                 };
                 unsafe { hal::Instance::init(&hal_desc).ok() }
             } else {
@@ -87,16 +88,16 @@ impl Instance {
 
         Self {
             name: name.to_string(),
-            #[cfg(feature = "vulkan")]
-            vulkan: init(hal::api::Vulkan, backends),
-            #[cfg(feature = "metal")]
-            metal: init(hal::api::Metal, backends),
-            #[cfg(feature = "dx12")]
-            dx12: init(hal::api::Dx12, backends),
-            #[cfg(feature = "dx11")]
-            dx11: init(hal::api::Dx11, backends),
+            #[cfg(all(feature = "vulkan", not(target_arch = "wasm32")))]
+            vulkan: init(hal::api::Vulkan, &instance_desc),
+            #[cfg(all(feature = "metal", any(target_os = "macos", target_os = "ios")))]
+            metal: init(hal::api::Metal, &instance_desc),
+            #[cfg(all(feature = "dx12", windows))]
+            dx12: init(hal::api::Dx12, &instance_desc),
+            #[cfg(all(feature = "dx11", windows))]
+            dx11: init(hal::api::Dx11, &instance_desc),
             #[cfg(feature = "gles")]
-            gl: init(hal::api::Gles, backends),
+            gl: init(hal::api::Gles, &instance_desc),
         }
     }
 
@@ -112,13 +113,13 @@ impl Instance {
                 }
             }
         }
-        #[cfg(feature = "vulkan")]
+        #[cfg(all(feature = "vulkan", not(target_arch = "wasm32")))]
         destroy(hal::api::Vulkan, &self.vulkan, surface.vulkan);
-        #[cfg(feature = "metal")]
+        #[cfg(all(feature = "metal", any(target_os = "macos", target_os = "ios")))]
         destroy(hal::api::Metal, &self.metal, surface.metal);
-        #[cfg(feature = "dx12")]
+        #[cfg(all(feature = "dx12", windows))]
         destroy(hal::api::Dx12, &self.dx12, surface.dx12);
-        #[cfg(feature = "dx11")]
+        #[cfg(all(feature = "dx11", windows))]
         destroy(hal::api::Dx11, &self.dx11, surface.dx11);
         #[cfg(feature = "gles")]
         destroy(hal::api::Gles, &self.gl, surface.gl);
@@ -127,13 +128,13 @@ impl Instance {
 
 pub struct Surface {
     pub(crate) presentation: Option<Presentation>,
-    #[cfg(feature = "vulkan")]
+    #[cfg(all(feature = "vulkan", not(target_arch = "wasm32")))]
     pub vulkan: Option<HalSurface<hal::api::Vulkan>>,
-    #[cfg(feature = "metal")]
+    #[cfg(all(feature = "metal", any(target_os = "macos", target_os = "ios")))]
     pub metal: Option<HalSurface<hal::api::Metal>>,
-    #[cfg(feature = "dx12")]
+    #[cfg(all(feature = "dx12", windows))]
     pub dx12: Option<HalSurface<hal::api::Dx12>>,
-    #[cfg(feature = "dx11")]
+    #[cfg(all(feature = "dx11", windows))]
     pub dx11: Option<HalSurface<hal::api::Dx11>>,
     #[cfg(feature = "gles")]
     pub gl: Option<HalSurface<hal::api::Gles>>,
@@ -263,6 +264,10 @@ impl<A: HalApi> Adapter<A> {
         flags.set(
             wgt::TextureFormatFeatureFlags::MULTISAMPLE_X8,
             caps.contains(Tfc::MULTISAMPLE_X8),
+        );
+        flags.set(
+            wgt::TextureFormatFeatureFlags::MULTISAMPLE_X16,
+            caps.contains(Tfc::MULTISAMPLE_X16),
         );
 
         flags.set(
@@ -463,13 +468,13 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
 
         let surface = Surface {
             presentation: None,
-            #[cfg(feature = "vulkan")]
+            #[cfg(all(feature = "vulkan", not(target_arch = "wasm32")))]
             vulkan: init::<hal::api::Vulkan>(&self.instance.vulkan, display_handle, window_handle),
-            #[cfg(feature = "metal")]
+            #[cfg(all(feature = "metal", any(target_os = "macos", target_os = "ios")))]
             metal: init::<hal::api::Metal>(&self.instance.metal, display_handle, window_handle),
-            #[cfg(feature = "dx12")]
+            #[cfg(all(feature = "dx12", windows))]
             dx12: init::<hal::api::Dx12>(&self.instance.dx12, display_handle, window_handle),
-            #[cfg(feature = "dx11")]
+            #[cfg(all(feature = "dx11", windows))]
             dx11: init::<hal::api::Dx11>(&self.instance.dx11, display_handle, window_handle),
             #[cfg(feature = "gles")]
             gl: init::<hal::api::Gles>(&self.instance.gl, display_handle, window_handle),
@@ -480,8 +485,11 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         id.0
     }
 
-    #[cfg(feature = "metal")]
-    pub fn instance_create_surface_metal(
+    /// # Safety
+    ///
+    /// `layer` must be a valid pointer.
+    #[cfg(all(feature = "metal", any(target_os = "macos", target_os = "ios")))]
+    pub unsafe fn instance_create_surface_metal(
         &self,
         layer: *mut std::ffi::c_void,
         id_in: Input<G, SurfaceId>,
@@ -498,7 +506,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                 },
                 //acquired_texture: None,
             }),
-            #[cfg(feature = "vulkan")]
+            #[cfg(all(feature = "vulkan", not(target_arch = "wasm32")))]
             vulkan: None,
             #[cfg(feature = "gles")]
             gl: None,
@@ -563,7 +571,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         Ok(id.0)
     }
 
-    #[cfg(feature = "dx12")]
+    #[cfg(all(feature = "dx12", windows))]
     /// # Safety
     ///
     /// The visual must be valid and able to be used to make a swapchain with.
@@ -576,10 +584,38 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
 
         let surface = Surface {
             presentation: None,
-            #[cfg(feature = "vulkan")]
+            #[cfg(all(feature = "vulkan", not(target_arch = "wasm32")))]
             vulkan: None,
             dx12: self.instance.dx12.as_ref().map(|inst| HalSurface {
                 raw: unsafe { inst.create_surface_from_visual(visual as _) },
+            }),
+            dx11: None,
+            #[cfg(feature = "gles")]
+            gl: None,
+        };
+
+        let mut token = Token::root();
+        let id = self.surfaces.prepare(id_in).assign(surface, &mut token);
+        id.0
+    }
+
+    #[cfg(all(feature = "dx12", windows))]
+    /// # Safety
+    ///
+    /// The surface_handle must be valid and able to be used to make a swapchain with.
+    pub unsafe fn instance_create_surface_from_surface_handle(
+        &self,
+        surface_handle: *mut std::ffi::c_void,
+        id_in: Input<G, SurfaceId>,
+    ) -> SurfaceId {
+        profiling::scope!("Instance::instance_create_surface_from_surface_handle");
+
+        let surface = Surface {
+            presentation: None,
+            #[cfg(all(feature = "vulkan", not(target_arch = "wasm32")))]
+            vulkan: None,
+            dx12: self.instance.dx12.as_ref().map(|inst| HalSurface {
+                raw: unsafe { inst.create_surface_from_surface_handle(surface_handle) },
             }),
             dx11: None,
             #[cfg(feature = "gles")]
@@ -635,23 +671,23 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
 
         let mut adapters = Vec::new();
 
-        #[cfg(feature = "vulkan")]
+        #[cfg(all(feature = "vulkan", not(target_arch = "wasm32")))]
         self.enumerate(
             hal::api::Vulkan,
             &self.instance.vulkan,
             &inputs,
             &mut adapters,
         );
-        #[cfg(feature = "metal")]
+        #[cfg(all(feature = "metal", any(target_os = "macos", target_os = "ios")))]
         self.enumerate(
             hal::api::Metal,
             &self.instance.metal,
             &inputs,
             &mut adapters,
         );
-        #[cfg(feature = "dx12")]
+        #[cfg(all(feature = "dx12", windows))]
         self.enumerate(hal::api::Dx12, &self.instance.dx12, &inputs, &mut adapters);
-        #[cfg(feature = "dx11")]
+        #[cfg(all(feature = "dx11", windows))]
         self.enumerate(hal::api::Dx11, &self.instance.dx11, &inputs, &mut adapters);
         #[cfg(feature = "gles")]
         self.enumerate(hal::api::Gles, &self.instance.gl, &inputs, &mut adapters);
@@ -736,7 +772,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
             .transpose()?;
         let mut device_types = Vec::new();
 
-        #[cfg(feature = "vulkan")]
+        #[cfg(all(feature = "vulkan", not(target_arch = "wasm32")))]
         let (id_vulkan, adapters_vk) = gather(
             hal::api::Vulkan,
             self.instance.vulkan.as_ref(),
@@ -745,7 +781,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
             desc.force_fallback_adapter,
             &mut device_types,
         );
-        #[cfg(feature = "metal")]
+        #[cfg(all(feature = "metal", any(target_os = "macos", target_os = "ios")))]
         let (id_metal, adapters_metal) = gather(
             hal::api::Metal,
             self.instance.metal.as_ref(),
@@ -754,7 +790,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
             desc.force_fallback_adapter,
             &mut device_types,
         );
-        #[cfg(feature = "dx12")]
+        #[cfg(all(feature = "dx12", windows))]
         let (id_dx12, adapters_dx12) = gather(
             hal::api::Dx12,
             self.instance.dx12.as_ref(),
@@ -763,7 +799,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
             desc.force_fallback_adapter,
             &mut device_types,
         );
-        #[cfg(feature = "dx11")]
+        #[cfg(all(feature = "dx11", windows))]
         let (id_dx11, adapters_dx11) = gather(
             hal::api::Dx11,
             self.instance.dx11.as_ref(),
@@ -825,19 +861,19 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         };
 
         let mut selected = preferred_gpu.unwrap_or(0);
-        #[cfg(feature = "vulkan")]
+        #[cfg(all(feature = "vulkan", not(target_arch = "wasm32")))]
         if let Some(id) = self.select(&mut selected, id_vulkan, adapters_vk) {
             return Ok(id);
         }
-        #[cfg(feature = "metal")]
+        #[cfg(all(feature = "metal", any(target_os = "macos", target_os = "ios")))]
         if let Some(id) = self.select(&mut selected, id_metal, adapters_metal) {
             return Ok(id);
         }
-        #[cfg(feature = "dx12")]
+        #[cfg(all(feature = "dx12", windows))]
         if let Some(id) = self.select(&mut selected, id_dx12, adapters_dx12) {
             return Ok(id);
         }
-        #[cfg(feature = "dx11")]
+        #[cfg(all(feature = "dx11", windows))]
         if let Some(id) = self.select(&mut selected, id_dx11, adapters_dx11) {
             return Ok(id);
         }
@@ -865,13 +901,13 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         let fid = A::hub(self).adapters.prepare(input);
 
         match A::VARIANT {
-            #[cfg(feature = "vulkan")]
+            #[cfg(all(feature = "vulkan", not(target_arch = "wasm32")))]
             Backend::Vulkan => fid.assign(Adapter::new(hal_adapter), &mut token).0,
-            #[cfg(feature = "metal")]
+            #[cfg(all(feature = "metal", any(target_os = "macos", target_os = "ios")))]
             Backend::Metal => fid.assign(Adapter::new(hal_adapter), &mut token).0,
-            #[cfg(feature = "dx12")]
+            #[cfg(all(feature = "dx12", windows))]
             Backend::Dx12 => fid.assign(Adapter::new(hal_adapter), &mut token).0,
-            #[cfg(feature = "dx11")]
+            #[cfg(all(feature = "dx11", windows))]
             Backend::Dx11 => fid.assign(Adapter::new(hal_adapter), &mut token).0,
             #[cfg(feature = "gles")]
             Backend::Gl => fid.assign(Adapter::new(hal_adapter), &mut token).0,

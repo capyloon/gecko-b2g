@@ -205,8 +205,13 @@ static void OnLeaveIonFrame(JSContext* cx, const InlineFrameIterator& frame,
   RematerializedFrame* rematFrame = nullptr;
   {
     JS::AutoSaveExceptionState savedExc(cx);
-    rematFrame =
-        act->getRematerializedFrame(cx, frame.frame(), frame.frameNo());
+
+    // We can run recover instructions without invalidating because we're
+    // already leaving the frame.
+    MaybeReadFallback::FallbackConsequence consequence =
+        MaybeReadFallback::Fallback_DoNothing;
+    rematFrame = act->getRematerializedFrame(cx, frame.frame(), frame.frameNo(),
+                                             consequence);
     if (!rematFrame) {
       return;
     }
@@ -1921,11 +1926,13 @@ bool SnapshotIterator::initInstructionResults(MaybeReadFallback& fallback) {
   if (!results) {
     AutoRealm ar(cx, fallback.frame->script());
 
-    // We do not have the result yet, which means that an observable stack
-    // slot is requested.  As we do not want to bailout every time for the
-    // same reason, we need to recompile without optimizing away the
-    // observable stack slots.  The script would later be recompiled to have
-    // support for Argument objects.
+    // We are going to run recover instructions. To avoid problems where recover
+    // instructions are not idempotent (for example, if we allocate an object,
+    // object identity may be observable), we should not execute code in the
+    // Ion stack frame afterwards. To avoid doing so, we invalidate the script.
+    // This is not necessary for bailouts or other cases where we are leaving
+    // the frame anyway. We only need it for niche cases like debugger
+    // introspection or Function.arguments.
     if (fallback.consequence == MaybeReadFallback::Fallback_Invalidate) {
       ionScript_->invalidate(cx, fallback.frame->script(),
                              /* resetUses = */ false,
@@ -2296,7 +2303,12 @@ uintptr_t MachineState::read(Register reg) const {
 
 template <typename T>
 T MachineState::read(FloatRegister reg) const {
+#if !defined(JS_CODEGEN_RISCV64)
   MOZ_ASSERT(reg.size() == sizeof(T));
+#else
+  // RISCV64 always store FloatRegister as 64bit.
+  MOZ_ASSERT(reg.size() == sizeof(double));
+#endif
 
 #if !defined(JS_CODEGEN_NONE) && !defined(JS_CODEGEN_WASM32)
   if (state_.is<BailoutState>()) {

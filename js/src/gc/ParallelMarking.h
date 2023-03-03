@@ -9,6 +9,7 @@
 
 #include "mozilla/Atomics.h"
 #include "mozilla/DoublyLinkedList.h"
+#include "mozilla/TimeStamp.h"
 
 #include "gc/GCMarker.h"
 #include "js/HeapAPI.h"
@@ -28,8 +29,12 @@ class ParallelMarkTask;
 
 // Per-runtime parallel marking state.
 //
-// This is created on the main thread and coordinates parallel marking using
-// several helper threads.
+// This class is used on the main thread and coordinates parallel marking using
+// several helper threads running ParallelMarkTasks.
+//
+// This uses a work-requesting approach. Threads mark until they run out of
+// work and then add themselves to a list of waiting tasks and block. Running
+// tasks with enough work may donate work to a waiting task and resume it.
 class MOZ_STACK_CLASS ParallelMarker {
  public:
   explicit ParallelMarker(GCRuntime* gc);
@@ -37,7 +42,7 @@ class MOZ_STACK_CLASS ParallelMarker {
   bool mark(SliceBudget& sliceBudget);
 
   bool hasWaitingTasks() { return waitingTaskCount != 0; }
-  void stealWorkFrom(GCMarker* victim);
+  void donateWorkFrom(GCMarker* src);
 
  private:
   bool markOneColor(MarkColor color, SliceBudget& sliceBudget);
@@ -71,7 +76,7 @@ class MOZ_STACK_CLASS ParallelMarker {
 };
 
 // A helper thread task that performs parallel marking.
-class MOZ_STACK_CLASS ParallelMarkTask
+class alignas(TypicalCacheLineSize) ParallelMarkTask
     : public GCParallelTask,
       public mozilla::DoublyLinkedListElement<ParallelMarkTask> {
  public:
@@ -82,14 +87,17 @@ class MOZ_STACK_CLASS ParallelMarkTask
   ~ParallelMarkTask();
 
   void run(AutoLockHelperThreadState& lock) override;
-  void markOrSteal(AutoLockGC& lock);
+
+  void recordDuration() override;
+
+ private:
+  void markOrRequestWork(AutoLockGC& lock);
   bool tryMarking(AutoLockGC& lock);
-  bool tryStealing(AutoLockGC& lock);
+  bool requestWork(AutoLockGC& lock);
 
   void waitUntilResumed(AutoLockGC& lock);
   void resume(const AutoLockGC& lock);
 
- private:
   bool hasWork() const;
 
   // The following fields are only accessed by the marker thread:
@@ -100,6 +108,10 @@ class MOZ_STACK_CLASS ParallelMarkTask
   ConditionVariable resumed;
 
   GCLockData<bool> isWaiting;
+
+  // Length of time this task spent blocked waiting for work.
+  MainThreadOrGCTaskData<mozilla::TimeDuration> markTime;
+  MainThreadOrGCTaskData<mozilla::TimeDuration> waitTime;
 };
 
 }  // namespace gc

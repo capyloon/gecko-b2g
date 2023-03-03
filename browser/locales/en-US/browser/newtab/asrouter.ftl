@@ -64,31 +64,6 @@ cfr-doorhanger-extension-total-users =
      *[other] { $total } users
   }
 
-## Cookie Banner Handling Onboarding
-
-# Simplified version of the headline if the original text doesn't work
-# in your language: `See fewer cookie requests`.
-cfr-cookie-banner-handling-header = Cookie banners begone!
-cfr-cookie-banner-handling-body = Allow { -brand-short-name } to automatically reject all cookie banner requests, when possible. Otherwise, all cookies will be accepted to dismiss even more banners.
-cfr-cookie-banner-accept-button = Dismiss Requests
-  .accesskey = D
-cfr-cookie-banner-reject-button = Not Now
-  .accesskey = N
-
-cfr-cookie-banner-handling-header-variant-1 = See fewer cookie pop-ups
-cfr-cookie-banner-handling-body-variant-1 = Let { -brand-short-name } automatically answer cookie pop-ups for you so you can get back to distraction-free browsing. { -brand-short-name } will reject all requests if possible, or accept all if not.
-cfr-cookie-banner-accept-button-variant-1 = Dismiss Pop-ups
-  .accesskey = D
-cfr-cookie-banner-reject-button-variant-1 = No thanks
-  .accesskey = N
-
-cfr-cookie-banner-handling-header-variant-2 = Cookie Banner Reduction
-cfr-cookie-banner-handling-body-variant-2 = Allow { -brand-short-name } to decline a site’s cookie consent request if possible or accept cookie access when not possible?
-cfr-cookie-banner-accept-button-variant-2 = Allow
-  .accesskey = A
-cfr-cookie-banner-reject-button-variant-2 = Not now
-  .accesskey = N
-
 ## Firefox Accounts Message
 
 cfr-doorhanger-bookmark-fxa-header = Sync your bookmarks everywhere.
@@ -145,13 +120,6 @@ cfr-doorhanger-video-support-body = Videos on this site may not play correctly o
 cfr-doorhanger-video-support-header = Update { -brand-short-name } to play video
 cfr-doorhanger-video-support-primary-button = Update Now
   .accesskey = U
-
-## Spotlight modal shared strings
-
-spotlight-learn-more-collapsed = Learn more
-  .title = Expand to learn more about the feature
-spotlight-learn-more-expanded = Learn more
-  .title = Close
 
 ## VPN promotion dialog for public Wi-Fi users
 ##
@@ -236,6 +204,30 @@ colorways-cfr-header-28days = Independent Voices colorways expire January 16
 colorways-cfr-header-14days = Independent Voices colorways expire in two weeks
 colorways-cfr-header-7days =  Independent Voices colorways expire this week
 colorways-cfr-header-today = Independent Voices colorways expire today
+
+## Cookie Banner Handling CFR
+
+# Alternate headline for localization: "See fewer cookie requests"
+cfr-cookiebanner-header = Cookie banners begone!
+cfr-cookiebanner-body = Allow { -brand-short-name } to automatically reject all cookie banner requests when possible.
+cfr-cookiebanner-accept-button-v2 = Reject Requests
+  .accesskey = R
+cfr-cookiebanner-reject-button = Not Now
+  .accesskey = N
+
+cfr-cookiebanner-header-variant-1 = See fewer cookie pop-ups
+cfr-cookiebanner-body-variant-1 = Let { -brand-short-name } automatically answer cookie pop-ups for you so you can get back to distraction-free browsing. { -brand-short-name } will reject all requests if possible.
+cfr-cookiebanner-accept-button-variant-1 = Dismiss Pop-ups
+  .accesskey = D
+cfr-cookiebanner-reject-button-variant-1 = No Thanks
+  .accesskey = N
+
+cfr-cookiebanner-header-variant-2 = Cookie Banner Reduction
+cfr-cookiebanner-body-variant-2 = Reduce the amount of cookie banners you see by allowing { -brand-short-name } to decline a website’s cookie consent request if possible.
+cfr-cookiebanner-accept-button-variant-2 = Allow
+  .accesskey = A
+cfr-cookiebanner-reject-button-variant-2 = Not Now
+  .accesskey = N
 
 ## These strings are used in the Fox doodle Pin/set default spotlights
 

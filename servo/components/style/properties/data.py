@@ -461,6 +461,7 @@ class Longhand(Property):
                 "Display",
                 "FillRule",
                 "Float",
+                "FontLanguageOverride",
                 "FontSizeAdjust",
                 "FontStretch",
                 "FontStyle",
@@ -498,6 +499,7 @@ class Longhand(Property):
                 "PageOrientation",
                 "Percentage",
                 "PrintColorAdjust",
+                "ForcedColorAdjust",
                 "Resize",
                 "RubyPosition",
                 "SVGOpacity",
@@ -908,7 +910,6 @@ class PropertyRestrictions:
                 "text-combine-upright",
                 "ruby-position",
                 # XXX Should these really apply to cue?
-                "font-synthesis",
                 "-moz-osx-font-smoothing",
                 # FIXME(emilio): background-blend-mode should be part of the
                 # background shorthand, and get reset, per
@@ -919,6 +920,7 @@ class PropertyRestrictions:
             + PropertyRestrictions.shorthand(data, "background")
             + PropertyRestrictions.shorthand(data, "outline")
             + PropertyRestrictions.shorthand(data, "font")
+            + PropertyRestrictions.shorthand(data, "font-synthesis")
         )
 
 

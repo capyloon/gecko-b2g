@@ -10,16 +10,16 @@
 import { isFulfilled } from "../utils/async-value";
 import {
   getFirstSourceActorForGeneratedSource,
-  hasPrettySource,
   getSourceList,
   getSettledSourceTextContent,
+  isSourceBlackBoxed,
 } from "../selectors";
-import { isThirdParty } from "../utils/source";
 import { createLocation } from "../utils/location";
 import { loadSourceText } from "./sources/loadSourceText";
 import {
-  getTextSearchOperation,
-  getTextSearchStatus,
+  getProjectSearchOperation,
+  getProjectSearchStatus,
+  getTextSearchModifiers,
 } from "../selectors/project-text-search";
 import { statusType } from "../reducers/project-text-search";
 
@@ -61,13 +61,17 @@ export function closeProjectSearch(cx) {
 export function stopOngoingSearch(cx) {
   return ({ dispatch, getState }) => {
     const state = getState();
-    const ongoingSearch = getTextSearchOperation(state);
-    const status = getTextSearchStatus(state);
+    const ongoingSearch = getProjectSearchOperation(state);
+    const status = getProjectSearchStatus(state);
     if (ongoingSearch && status !== statusType.done) {
       ongoingSearch.cancel();
       dispatch(updateSearchStatus(cx, statusType.cancelled));
     }
   };
+}
+
+export function toggleProjectSearchModifier(cx, modifier) {
+  return { type: "TOGGLE_PROJECT_SEARCH_MODIFIER", cx, modifier };
 }
 
 export function searchSources(cx, query) {
@@ -79,15 +83,37 @@ export function searchSources(cx, query) {
     await dispatch(clearSearchResults(cx));
     await dispatch(addSearchQuery(cx, query));
     dispatch(updateSearchStatus(cx, statusType.fetching));
-    let validSources = getSourceList(getState()).filter(
-      source => !hasPrettySource(getState(), source.id) && !isThirdParty(source)
+    const validSources = getSourceList(getState()).filter(
+      source => !isSourceBlackBoxed(getState(), source)
     );
     // Sort original entries first so that search results are more useful.
-    // See bug 1642778.
-    validSources = [
-      ...validSources.filter(x => x.isOriginal),
-      ...validSources.filter(x => !x.isOriginal),
-    ];
+    // Deprioritize third-party scripts, so their results show last.
+    validSources.sort((a, b) => {
+      function isThirdParty(source) {
+        return (
+          source?.url &&
+          (source.url.includes("node_modules") ||
+            source.url.includes("bower_components"))
+        );
+      }
+
+      if (a.isOriginal && !isThirdParty(a)) {
+        return -1;
+      }
+
+      if (b.isOriginal && !isThirdParty(b)) {
+        return 1;
+      }
+
+      if (!isThirdParty(a) && isThirdParty(b)) {
+        return -1;
+      }
+      if (isThirdParty(a) && !isThirdParty(b)) {
+        return 1;
+      }
+      return 0;
+    });
+
     for (const source of validSources) {
       if (cancelled) {
         return;
@@ -115,17 +141,22 @@ export function searchSource(cx, source, sourceActor, query) {
     if (!source) {
       return;
     }
+    const state = getState();
     const location = createLocation({
       sourceId: source.id,
       sourceActorId: sourceActor ? sourceActor.actor : null,
     });
-    const content = getSettledSourceTextContent(getState(), location);
+
+    const modifiers = getTextSearchModifiers(state);
+    const content = getSettledSourceTextContent(state, location);
     let matches = [];
+
     if (content && isFulfilled(content) && content.value.type === "text") {
       matches = await searchWorker.findSourceMatches(
         source.id,
         content.value,
-        query
+        query,
+        modifiers
       );
     }
     if (!matches.length) {

@@ -12,27 +12,17 @@
   --toolbar-non-lwt-bgcolor: color-mix(in srgb, -moz-dialog 85%, white);
   --toolbar-non-lwt-textcolor: -moz-dialogtext;
 
-  --panel-separator-color: ThreeDLightShadow;
-
   --chrome-content-separator-color: ThreeDShadow;
 }
 
 @media (-moz-windows-default-theme) {
   :root {
     --toolbar-non-lwt-bgcolor: -moz-dialog;
-
-    --panel-separator-color: hsla(210,4%,10%,.14);
   }
 }
 
 :root:-moz-lwtheme {
   --chrome-content-separator-color: rgba(0,0,0,.3);
-
-  --panel-separator-color: hsla(210,4%,10%,.14);
-}
-
-:root[lwt-popup-brighttext] {
-  --panel-separator-color: rgba(249,249,250,.1);
 }
 
 #menubar-items {
@@ -382,7 +372,6 @@ toolbarbutton.bookmark-item[dragover="true"][open="true"] {
 #BMB_bookmarksToolbar,
 #panelMenu_bookmarksToolbar {
   list-style-image: url("chrome://browser/skin/places/bookmarksToolbar.svg");
-  -moz-image-region: auto;
 }
 
 /* Status panel */
@@ -566,23 +555,4 @@ menupopup[touchmode] :is(menu, menuitem, menucaption) {
     margin-top: 0;
     margin-inline: 0;
   }
-}
-
-#historySwipeAnimationPreviousArrow {
-  background: url("chrome://browser/skin/history-swipe-arrow.svg")
-              center left / 192px 192px no-repeat transparent;
-  will-change: transform;
-  -moz-context-properties: fill;
-}
-#historySwipeAnimationPreviousArrow:-moz-locale-dir(rtl) {
-  transform: scaleX(-1);
-}
-#historySwipeAnimationNextArrow {
-  background: url("chrome://browser/skin/history-swipe-arrow.svg")
-              center left / 192px 192px no-repeat transparent;
-  will-change: transform;
-  -moz-context-properties: fill;
-}
-#historySwipeAnimationNextArrow:-moz-locale-dir(ltr) {
-  transform: scaleX(-1);
 }

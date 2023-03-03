@@ -168,6 +168,12 @@ ScreenOrientation::LockOrientationTask::Run() {
     return NS_OK;
   }
 
+  nsCOMPtr<nsPIDOMWindowInner> owner = mScreenOrientation->GetOwner();
+  if (!owner || !owner->IsFullyActive()) {
+    mPromise->MaybeRejectWithAbortError("The document is not fully active.");
+    return NS_OK;
+  }
+
   // Step to lock the orientation as defined in the spec.
   if (mDocument->GetOrientationPendingPromise() != mPromise) {
     // The document's pending promise is not associated with this task
@@ -422,21 +428,28 @@ already_AddRefed<Promise> ScreenOrientation::LockInternal(
     hal::ScreenOrientation aOrientation, ErrorResult& aRv) {
   // Steps to apply an orientation lock as defined in spec.
 
+  // Step 1.
+  // Let document be this's relevant global object's associated Document.
+
   Document* doc = GetResponsibleDocument();
   if (NS_WARN_IF(!doc)) {
-    aRv.Throw(NS_ERROR_UNEXPECTED);
+    aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return nullptr;
   }
 
+  // Step 2.
+  // If document is not fully active, return a promise rejected with an
+  // "InvalidStateError" DOMException.
+
   nsCOMPtr<nsPIDOMWindowInner> owner = GetOwner();
   if (NS_WARN_IF(!owner)) {
-    aRv.Throw(NS_ERROR_UNEXPECTED);
+    aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return nullptr;
   }
 
   nsCOMPtr<nsIDocShell> docShell = owner->GetDocShell();
   if (NS_WARN_IF(!docShell)) {
-    aRv.Throw(NS_ERROR_UNEXPECTED);
+    aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return nullptr;
   }
 
@@ -445,6 +458,11 @@ already_AddRefed<Promise> ScreenOrientation::LockInternal(
   RefPtr<Promise> p = Promise::Create(go, aRv);
   if (NS_WARN_IF(aRv.Failed())) {
     return nullptr;
+  }
+
+  if (!owner->IsFullyActive()) {
+    p->MaybeReject(NS_ERROR_DOM_INVALID_STATE_ERR);
+    return p.forget();
   }
 
   // Step 3.
@@ -614,18 +632,25 @@ void ScreenOrientation::CleanupFullscreenListener() {
 }
 
 OrientationType ScreenOrientation::DeviceType(CallerType aCallerType) const {
-  return nsContentUtils::ResistFingerprinting(aCallerType)
-             ? OrientationType::Landscape_primary
-             : mType;
+  if (nsContentUtils::ShouldResistFingerprinting(aCallerType,
+                                                 GetOwnerGlobal())) {
+    return OrientationType::Landscape_primary;
+  }
+  return mType;
 }
 
 uint16_t ScreenOrientation::DeviceAngle(CallerType aCallerType) const {
-  return nsContentUtils::ResistFingerprinting(aCallerType) ? 0 : mAngle;
+  if (nsContentUtils::ShouldResistFingerprinting(aCallerType,
+                                                 GetOwnerGlobal())) {
+    return 0;
+  }
+  return mAngle;
 }
 
 OrientationType ScreenOrientation::GetType(CallerType aCallerType,
                                            ErrorResult& aRv) const {
-  if (nsContentUtils::ResistFingerprinting(aCallerType)) {
+  if (nsContentUtils::ShouldResistFingerprinting(aCallerType,
+                                                 GetOwnerGlobal())) {
     return OrientationType::Landscape_primary;
   }
 
@@ -641,7 +666,8 @@ OrientationType ScreenOrientation::GetType(CallerType aCallerType,
 
 uint16_t ScreenOrientation::GetAngle(CallerType aCallerType,
                                      ErrorResult& aRv) const {
-  if (nsContentUtils::ResistFingerprinting(aCallerType)) {
+  if (nsContentUtils::ShouldResistFingerprinting(aCallerType,
+                                                 GetOwnerGlobal())) {
     return 0;
   }
 
@@ -723,12 +749,12 @@ Document* ScreenOrientation::GetResponsibleDocument() const {
 }
 
 void ScreenOrientation::MaybeChanged() {
-  if (ShouldResistFingerprinting()) {
+  Document* doc = GetResponsibleDocument();
+  if (!doc || doc->ShouldResistFingerprinting()) {
     return;
   }
 
-  Document* doc = GetResponsibleDocument();
-  BrowsingContext* bc = doc ? doc->GetBrowsingContext() : nullptr;
+  BrowsingContext* bc = doc->GetBrowsingContext();
   if (!bc) {
     return;
   }
@@ -810,19 +836,6 @@ ScreenOrientation::DispatchChangeEventAndResolvePromise() {
 JSObject* ScreenOrientation::WrapObject(JSContext* aCx,
                                         JS::Handle<JSObject*> aGivenProto) {
   return ScreenOrientation_Binding::Wrap(aCx, this, aGivenProto);
-}
-
-bool ScreenOrientation::ShouldResistFingerprinting() const {
-  if (nsContentUtils::ShouldResistFingerprinting(
-          "Legacy RFP function called to avoid observed hangs in the code "
-          "below if we can avoid it.")) {
-    bool resist = false;
-    if (nsCOMPtr<nsPIDOMWindowInner> owner = GetOwner()) {
-      resist = nsContentUtils::ShouldResistFingerprinting(owner->GetDocShell());
-    }
-    return resist;
-  }
-  return false;
 }
 
 NS_IMPL_ISUPPORTS(ScreenOrientation::VisibleEventListener, nsIDOMEventListener)

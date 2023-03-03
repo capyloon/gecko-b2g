@@ -18,6 +18,21 @@
       "resource://testing-common/BrowserTestUtils.sys.mjs"
     );
 
+   const MIGRATOR_PROFILE_INSTANCES = [
+      {
+        key: "some-browser-0",
+        displayName: "Some Browser 0",
+        resourceTypes: ["HISTORY", "FORMDATA", "PASSWORDS", "BOOKMARKS"],
+        profile: { id: "person-2", name: "Person 2" },
+      },
+      {
+        key: "some-browser-1",
+        displayName: "Some Browser 1",
+        resourceTypes: ["HISTORY", "BOOKMARKS"],
+        profile: null,
+      },
+    ];
+
     let gWiz = null;
     let gShadowRoot = null;
     let gDeck = null;
@@ -53,7 +68,7 @@
       let content = document.getElementById("content");
       let promise = new Promise(resolve => {
         content.addEventListener("MigrationWizard:Init", resolve, { once: true });
-      })
+      });
       content.appendChild(wiz);
       await promise;
       ok(true, "Saw MigrationWizard:Init event.");
@@ -69,13 +84,98 @@
     add_task(async function test_selection() {
       gWiz.setState({
         page: MigrationWizardConstants.PAGES.SELECTION,
-        migrators: ["some-browser-0", "some-browser-1"],
+        migrators: MIGRATOR_PROFILE_INSTANCES,
+        showImportAll: false,
       });
 
       let selector = gShadowRoot.querySelector("#browser-profile-selector");
       is(selector.childElementCount, 2, "Should have two child elements");
       is(selector.children[0].value, "some-browser-0");
       is(selector.children[1].value, "some-browser-1");
+
+      let resourceTypeList = gShadowRoot.querySelector("#resource-type-list");
+
+      // Test that the resource type checkboxes are shown or hidden depending on
+      // which resourceTypes are included with the MigratorProfileInstance.
+      for (let migratorInstance of MIGRATOR_PROFILE_INSTANCES) {
+        selector.value = migratorInstance.key;
+        // Apparently we have to dispatch our own "change" events for <select>
+        // dropdowns.
+        selector.dispatchEvent(new CustomEvent("change", { "bubbles" : true }));
+
+        for (let resourceType in MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES) {
+          let node = resourceTypeList.querySelector(`label[data-resource-type="${resourceType}"]`);
+          if (migratorInstance.resourceTypes.includes(resourceType)) {
+            ok(!isHidden(node), `Selection for ${resourceType} should be shown.`);
+          } else {
+            ok(isHidden(node), `Selection for ${resourceType} should be hidden.`);
+          }
+        }
+      }
+
+      let selectAll = gShadowRoot.querySelector("#select-all");
+      let summary = gShadowRoot.querySelector("summary");
+      let details = gShadowRoot.querySelector("details");
+      ok(isHidden(selectAll), "Selection for select-all should be hidden.");
+      ok(isHidden(summary), "Summary should be hidden.");
+      ok(!isHidden(details), "Details should be shown.");
+    });
+
+    /**
+     * Tests variant 2 of the migration wizard
+     */
+    add_task(async function test_selection_variant_2() {
+      gWiz.setState({
+        page: MigrationWizardConstants.PAGES.SELECTION,
+        migrators: MIGRATOR_PROFILE_INSTANCES,
+        showImportAll: true,
+      });
+
+      let selector = gShadowRoot.querySelector("#browser-profile-selector");
+      is(selector.childElementCount, 2, "Should have two child elements");
+      is(selector.children[0].value, "some-browser-0");
+      is(selector.children[1].value, "some-browser-1");
+
+      let resourceTypeList = gShadowRoot.querySelector("#resource-type-list");
+
+      // Test that the resource type checkboxes are shown or hidden depending on
+      // which resourceTypes are included with the MigratorProfileInstance.
+      for (let migratorInstance of MIGRATOR_PROFILE_INSTANCES) {
+        selector.value = migratorInstance.key;
+        // Apparently we have to dispatch our own "change" events for <select>
+        // dropdowns.
+        selector.dispatchEvent(new CustomEvent("change", { "bubbles" : true }));
+
+        for (let resourceType in MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES) {
+          let node = resourceTypeList.querySelector(`label[data-resource-type="${resourceType}"]`);
+          if (migratorInstance.resourceTypes.includes(resourceType)) {
+            ok(!isHidden(node), `Selection for ${resourceType} should be shown.`);
+          } else {
+            ok(isHidden(node), `Selection for ${resourceType} should be hidden.`);
+          }
+        }
+      }
+
+      let selectAll = gShadowRoot.querySelector("#select-all");
+      let summary = gShadowRoot.querySelector("summary");
+      let details = gShadowRoot.querySelector("details");
+      ok(!isHidden(selectAll), "Selection for select-all should be shown.");
+      ok(!isHidden(summary), "Summary should be shown.");
+      ok(!isHidden(details), "Details should be shown.");
+
+      let selectAllCheckbox = gShadowRoot.querySelector(".select-all-checkbox");
+      selectAllCheckbox.checked = true;
+      selectAllCheckbox.dispatchEvent(new CustomEvent("change"));
+      let checkboxes = gShadowRoot.querySelectorAll(
+        'label[data-resource-type] > input[type="checkbox"]'
+      );
+      for (let checkbox of checkboxes) {
+        is(
+          checkbox.checked,
+          selectAllCheckbox.checked,
+          "Testing if checking select-all selects unchecked resources"
+        );
+      }
     });
 
     /**
@@ -133,6 +233,13 @@
         "migration-wizard-progress-header",
         "Should be showing in-progress header string"
       );
+
+      let progressPage = gShadowRoot.querySelector("div[name='page-progress']");
+      let doneButton = progressPage.querySelector("#done-button");
+      ok(isHidden(doneButton), "Done button should be hidden");
+      let cancelButton = progressPage.querySelector(".cancel-close");
+      ok(!isHidden(cancelButton), "Cancel button should be visible");
+      ok(cancelButton.disabled, "Cancel button should be disabled");
     });
 
     /**
@@ -194,6 +301,12 @@
         "migration-wizard-progress-done-header",
         "Should be showing completed migration header string"
       );
+
+      let progressPage = gShadowRoot.querySelector("div[name='page-progress']");
+      let doneButton = progressPage.querySelector("#done-button");
+      ok(!isHidden(doneButton), "Done button should be visible and enabled");
+      let cancelButton = progressPage.querySelector(".cancel-close");
+      ok(isHidden(cancelButton), "Cancel button should be hidden");
     });
 
     /**
@@ -205,14 +318,14 @@
       gWiz.toggleAttribute("dialog-mode", true);
       gWiz.setState({
         page: MigrationWizardConstants.PAGES.SELECTION,
-        migrators: ["some-browser-0", "some-browser-1"],
+        migrators: MIGRATOR_PROFILE_INSTANCES,
       });
 
       // For now, there's only a single .cancel-close button, so let's just test
       // that one. Let's make this test fail if there are multiple so that we can
       // then update this test to switch to the right pages to test those buttons
       // too.
-      let buttons = gShadowRoot.querySelectorAll(".cancel-close");
+      let buttons = gShadowRoot.querySelectorAll(".cancel-close:not([disabled])");
       is(
         buttons.length,
         1,
@@ -232,7 +345,7 @@
 </head>
 <body>
 <p id="display"></p>
-<div id="content"><migration-wizard id="test-wizard"></migration-wizard></div>
+<div id="content"><migration-wizard id="test-wizard" dialog-mode=""></migration-wizard></div>
 <pre id="test"></pre>
 </body>
 </html>

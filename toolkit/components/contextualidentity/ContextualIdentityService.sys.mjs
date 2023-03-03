@@ -205,7 +205,7 @@ _ContextualIdentityService.prototype = {
   loadError(error) {
     if (error != null && error.name != "NotFoundError") {
       // Let's report the error.
-      Cu.reportError(error);
+      console.error(error);
     }
 
     // If synchronous loading happened in the meantime, exit now.
@@ -421,6 +421,12 @@ _ContextualIdentityService.prototype = {
     } catch (error) {
       this.loadError(error);
     }
+  },
+
+  getPublicUserContextIds() {
+    return this._identities
+      .filter(identity => identity.public)
+      .map(identity => identity.userContextId);
   },
 
   getPrivateUserContextIds() {

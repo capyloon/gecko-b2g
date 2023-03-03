@@ -169,7 +169,8 @@ RTCRtpTransceiver::RTCRtpTransceiver(
       mCallWrapper(aCallWrapper),
       mSendTrack(aSendTrack),
       mIdGenerator(aIdGenerator),
-      mPrivacyNeeded(aPrivacyNeeded),
+      mPrincipalPrivacy(aPrivacyNeeded ? PrincipalPrivacy::Private
+                                       : PrincipalPrivacy::NonPrivate),
       mIsVideo(aIsVideo),
       INIT_CANONICAL(mMid, std::string()),
       INIT_CANONICAL(mSyncGroup, std::string()) {}
@@ -213,7 +214,7 @@ void RTCRtpTransceiver::Init(const RTCRtpTransceiverInit& aInit,
     return;
   }
 
-  mReceiver = new RTCRtpReceiver(mWindow, mPrivacyNeeded, mPc,
+  mReceiver = new RTCRtpReceiver(mWindow, mPrincipalPrivacy, mPc,
                                  mTransportHandler, mCallWrapper->mCallThread,
                                  mStsThread, mConduit, this, trackingId);
 
@@ -400,6 +401,15 @@ nsresult RTCRtpTransceiver::UpdateConduit() {
   return NS_OK;
 }
 
+void RTCRtpTransceiver::UpdatePrincipalPrivacy(PrincipalPrivacy aPrivacy) {
+  if (mPrincipalPrivacy == aPrivacy) {
+    return;
+  }
+
+  mPrincipalPrivacy = aPrivacy;
+  mReceiver->UpdatePrincipalPrivacy(mPrincipalPrivacy);
+}
+
 void RTCRtpTransceiver::ResetSync() { mSyncGroup = std::string(); }
 
 // TODO: Only called from one place in PeerConnectionImpl, synchronously, when
@@ -584,8 +594,6 @@ void RTCRtpTransceiver::SetDirectionInternal(
 }
 
 void RTCRtpTransceiver::SetAddTrackMagic() {
-  // TODO(bug 1767820): Refactor this to only forbid removal, not to set the
-  // magic bit
   // We do this immediately, without waiting for a SyncToJsep, because this is
   // set at transceiver creation time.
   GetJsepTransceiver()->SetAddTrackMagic();
@@ -857,8 +865,6 @@ void RTCRtpTransceiver::StopImpl() {
   if (mStopped) {
     return;
   }
-  mSender->Stop();
-  mReceiver->Stop();
 
   if (mCallWrapper) {
     auto conduit = std::move(mConduit);
@@ -875,6 +881,10 @@ void RTCRtpTransceiver::StopImpl() {
   }
   mStopped = true;
   mCurrentDirection.SetNull();
+
+  mSender->Stop();
+  mReceiver->Stop();
+
   auto self = nsMainThreadPtrHandle<RTCRtpTransceiver>(
       new nsMainThreadPtrHolder<RTCRtpTransceiver>(
           "RTCRtpTransceiver::StopImpl::self", this, false));

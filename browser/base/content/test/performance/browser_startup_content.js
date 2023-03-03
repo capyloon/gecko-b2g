@@ -24,7 +24,6 @@ const known_scripts = {
 
     // General utilities
     "resource://gre/modules/AppConstants.sys.mjs",
-    "resource://gre/modules/DeferredTask.sys.mjs",
     "resource://gre/modules/Timer.sys.mjs",
     "resource://gre/modules/XPCOMUtils.sys.mjs",
 
@@ -35,7 +34,6 @@ const known_scripts = {
     "resource:///actors/AboutReaderChild.sys.mjs",
     "resource:///actors/BrowserTabChild.sys.mjs",
     "resource:///actors/LinkHandlerChild.jsm",
-    "resource:///actors/PageStyleChild.jsm",
     "resource:///actors/SearchSERPTelemetryChild.jsm",
     "resource://gre/actors/ContentMetaChild.jsm",
     "resource://gre/modules/Readerable.jsm",
@@ -58,7 +56,7 @@ const known_scripts = {
   ]),
 };
 
-if (!gFissionBrowser) {
+if (!Services.appinfo.sessionHistoryInParent) {
   known_scripts.modules.add(
     "resource:///modules/sessionstore/ContentSessionStore.sys.mjs"
   );
@@ -120,6 +118,7 @@ add_task(async function() {
     url:
       getRootDirectory(gTestPath).replace(
         "chrome://mochitests/content",
+        // eslint-disable-next-line @microsoft/sdl/no-insecure-url
         "http://example.com"
       ) + "file_empty.html",
     forceNewProcess: true,

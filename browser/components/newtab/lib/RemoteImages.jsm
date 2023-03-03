@@ -9,17 +9,15 @@ const { JSONFile } = ChromeUtils.importESModule(
 const { PromiseUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/PromiseUtils.sys.mjs"
 );
-const { RemoteSettings } = ChromeUtils.import(
-  "resource://services-settings/remote-settings.js"
+const { RemoteSettings } = ChromeUtils.importESModule(
+  "resource://services-settings/remote-settings.sys.mjs"
 );
 
 const lazy = {};
 
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "Downloader",
-  "resource://services-settings/Attachments.jsm"
-);
+ChromeUtils.defineESModuleGetters(lazy, {
+  Downloader: "resource://services-settings/Attachments.sys.mjs",
+});
 
 ChromeUtils.defineModuleGetter(
   lazy,
@@ -56,17 +54,7 @@ const PREFETCH_FINISHED_TOPIC = "remote-images:prefetch-finished";
  * corresponds to a function that accepts a message and returns all record IDs
  * for remote images.
  */
-const MessageInspectors = {
-  spotlight(message) {
-    if (
-      message.content.template === "logo-and-content" &&
-      message.content.logo?.imageId
-    ) {
-      return [message.content.logo.imageId];
-    }
-    return [];
-  },
-};
+const MessageInspectors = {};
 
 class _RemoteImages {
   #dbPromise;

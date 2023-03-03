@@ -15,31 +15,42 @@ ChromeUtils.defineESModuleGetters(lazy, {
   BookmarkJSONUtils: "resource://gre/modules/BookmarkJSONUtils.sys.mjs",
   BrowserSearchTelemetry: "resource:///modules/BrowserSearchTelemetry.sys.mjs",
   BuiltInThemes: "resource:///modules/BuiltInThemes.sys.mjs",
+
   ContextualIdentityService:
     "resource://gre/modules/ContextualIdentityService.sys.mjs",
+
   DAPTelemetrySender: "resource://gre/modules/DAPTelemetrySender.sys.mjs",
   DeferredTask: "resource://gre/modules/DeferredTask.sys.mjs",
+  DoHController: "resource:///modules/DoHController.sys.mjs",
+
   DownloadsViewableInternally:
     "resource:///modules/DownloadsViewableInternally.sys.mjs",
+
   E10SUtils: "resource://gre/modules/E10SUtils.sys.mjs",
+  FxAccounts: "resource://gre/modules/FxAccounts.sys.mjs",
   Integration: "resource://gre/modules/Integration.sys.mjs",
   Interactions: "resource:///modules/Interactions.sys.mjs",
   Log: "resource://gre/modules/Log.sys.mjs",
+  LoginBreaches: "resource:///modules/LoginBreaches.sys.mjs",
   NewTabUtils: "resource://gre/modules/NewTabUtils.sys.mjs",
   OsEnvironment: "resource://gre/modules/OsEnvironment.sys.mjs",
   PageDataService: "resource:///modules/pagedata/PageDataService.sys.mjs",
+  PermissionUI: "resource:///modules/PermissionUI.sys.mjs",
   PlacesBackups: "resource://gre/modules/PlacesBackups.sys.mjs",
   PlacesDBUtils: "resource://gre/modules/PlacesDBUtils.sys.mjs",
   PlacesUIUtils: "resource:///modules/PlacesUIUtils.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
   QuickSuggest: "resource:///modules/QuickSuggest.sys.mjs",
+  RemoteSettings: "resource://services-settings/remote-settings.sys.mjs",
   ScreenshotsUtils: "resource:///modules/ScreenshotsUtils.sys.mjs",
   SearchSERPTelemetry: "resource:///modules/SearchSERPTelemetry.sys.mjs",
   SessionStartup: "resource:///modules/sessionstore/SessionStartup.sys.mjs",
   SessionStore: "resource:///modules/sessionstore/SessionStore.sys.mjs",
   ShortcutUtils: "resource://gre/modules/ShortcutUtils.sys.mjs",
+  TRRRacer: "resource:///modules/TRRPerformance.sys.mjs",
   TelemetryUtils: "resource://gre/modules/TelemetryUtils.sys.mjs",
+  UIState: "resource://services-sync/UIState.sys.mjs",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
   WebChannel: "resource://gre/modules/WebChannel.sys.mjs",
   WindowsRegistry: "resource://gre/modules/WindowsRegistry.sys.mjs",
@@ -50,8 +61,10 @@ ChromeUtils.defineESModuleGetters(lazy, {
 XPCOMUtils.defineLazyModuleGetters(lazy, {
   AboutNewTab: "resource:///modules/AboutNewTab.jsm",
   AddonManager: "resource://gre/modules/AddonManager.jsm",
+
   ASRouterDefaultConfig:
     "resource://activity-stream/lib/ASRouterDefaultConfig.jsm",
+
   ASRouterNewTabHook: "resource://activity-stream/lib/ASRouterNewTabHook.jsm",
   ASRouter: "resource://activity-stream/lib/ASRouter.jsm",
   Blocklist: "resource://gre/modules/Blocklist.jsm",
@@ -60,38 +73,38 @@ XPCOMUtils.defineLazyModuleGetters(lazy, {
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.jsm",
   Corroborate: "resource://gre/modules/Corroborate.jsm",
   Discovery: "resource:///modules/Discovery.jsm",
-  DoHController: "resource:///modules/DoHController.jsm",
+  ExperimentAPI: "resource://nimbus/ExperimentAPI.jsm",
   ExtensionsUI: "resource:///modules/ExtensionsUI.jsm",
   FeatureGate: "resource://featuregates/FeatureGate.jsm",
-  FxAccounts: "resource://gre/modules/FxAccounts.jsm",
   HomePage: "resource:///modules/HomePage.jsm",
-  LoginBreaches: "resource:///modules/LoginBreaches.jsm",
   NetUtil: "resource://gre/modules/NetUtil.jsm",
   NimbusFeatures: "resource://nimbus/ExperimentAPI.jsm",
   Normandy: "resource://normandy/Normandy.jsm",
+
   OnboardingMessageProvider:
     "resource://activity-stream/lib/OnboardingMessageProvider.jsm",
+
   PageActions: "resource:///modules/PageActions.jsm",
   PageThumbs: "resource://gre/modules/PageThumbs.jsm",
   PdfJs: "resource://pdf.js/PdfJs.jsm",
-  PermissionUI: "resource:///modules/PermissionUI.jsm",
   PluralForm: "resource://gre/modules/PluralForm.jsm",
   ProcessHangMonitor: "resource:///modules/ProcessHangMonitor.jsm",
   PublicSuffixList: "resource://gre/modules/netwerk-dns/PublicSuffixList.jsm",
-  RemoteSettings: "resource://services-settings/remote-settings.js",
+
   RemoteSecuritySettings:
     "resource://gre/modules/psm/RemoteSecuritySettings.jsm",
+
   RFPHelper: "resource://gre/modules/RFPHelper.jsm",
   SafeBrowsing: "resource://gre/modules/SafeBrowsing.jsm",
   Sanitizer: "resource:///modules/Sanitizer.jsm",
   SaveToPocket: "chrome://pocket/content/SaveToPocket.jsm",
   ShellService: "resource:///modules/ShellService.jsm",
+
   SpecialMessageActions:
     "resource://messaging-system/lib/SpecialMessageActions.jsm",
+
   TabCrashHandler: "resource:///modules/ContentCrashHandlers.jsm",
   TabUnloader: "resource:///modules/TabUnloader.jsm",
-  TRRRacer: "resource:///modules/TRRPerformance.jsm",
-  UIState: "resource://services-sync/UIState.jsm",
 });
 
 if (AppConstants.MOZ_UPDATER) {
@@ -204,10 +217,10 @@ let JSPROCESSACTORS = {
 let JSWINDOWACTORS = {
   AboutLogins: {
     parent: {
-      moduleURI: "resource:///actors/AboutLoginsParent.jsm",
+      esModuleURI: "resource:///actors/AboutLoginsParent.sys.mjs",
     },
     child: {
-      moduleURI: "resource:///actors/AboutLoginsChild.jsm",
+      esModuleURI: "resource:///actors/AboutLoginsChild.sys.mjs",
       events: {
         AboutLoginsCopyLoginDetail: { wantUntrusted: true },
         AboutLoginsCreateLogin: { wantUntrusted: true },
@@ -308,10 +321,10 @@ let JSWINDOWACTORS = {
 
   AboutPrivateBrowsing: {
     parent: {
-      moduleURI: "resource:///actors/AboutPrivateBrowsingParent.jsm",
+      esModuleURI: "resource:///actors/AboutPrivateBrowsingParent.sys.mjs",
     },
     child: {
-      moduleURI: "resource:///actors/AboutPrivateBrowsingChild.jsm",
+      esModuleURI: "resource:///actors/AboutPrivateBrowsingChild.sys.mjs",
 
       events: {
         DOMDocElementInserted: { capture: true },
@@ -604,6 +617,7 @@ let JSWINDOWACTORS = {
       esModuleURI: "resource:///actors/MigrationWizardChild.sys.mjs",
       events: {
         "MigrationWizard:Init": { wantUntrusted: true },
+        "MigrationWizard:BeginMigration": { wantsUntrusted: true },
       },
     },
 
@@ -613,7 +627,7 @@ let JSWINDOWACTORS = {
       "about:welcome",
       "about:welcome?*",
       "about:preferences",
-      "chrome://browser/content/migration/migration-dialog.html",
+      "chrome://browser/content/migration/migration-dialog-window.html",
     ],
   },
 
@@ -632,13 +646,10 @@ let JSWINDOWACTORS = {
     child: {
       moduleURI: "resource:///actors/PageStyleChild.jsm",
       events: {
-        pageshow: {},
+        pageshow: { createActor: false },
       },
     },
 
-    // Only matching web pages, as opposed to internal about:, chrome: or
-    // resource: pages. See https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Match_patterns
-    matches: ["*://*/*", "file:///*"],
     messageManagerGroups: ["browsers"],
     allFrames: true,
   },
@@ -748,10 +759,10 @@ let JSWINDOWACTORS = {
 
   ASRouter: {
     parent: {
-      moduleURI: "resource:///actors/ASRouterParent.jsm",
+      esModuleURI: "resource:///actors/ASRouterParent.sys.mjs",
     },
     child: {
-      moduleURI: "resource:///actors/ASRouterChild.jsm",
+      esModuleURI: "resource:///actors/ASRouterChild.sys.mjs",
       events: {
         // This is added so the actor instantiates immediately and makes
         // methods available to the page js on load.
@@ -775,6 +786,8 @@ let JSWINDOWACTORS = {
     allFrames: true,
   },
 
+  // The older translations feature backed by external services.
+  // This is being replaced by a newer ML-backed translation service. See Bug 971044.
   Translation: {
     parent: {
       moduleURI: "resource:///modules/translation/TranslationParent.jsm",
@@ -1626,7 +1639,7 @@ BrowserGlue.prototype = {
         let { Troubleshoot } = ChromeUtils.importESModule(
           "resource://gre/modules/Troubleshoot.sys.mjs"
         );
-        Troubleshoot.snapshot(snapshotData => {
+        Troubleshoot.snapshot().then(snapshotData => {
           // for privacy we remove crash IDs and all preferences (but bug 1091944
           // exists to expose prefs once we are confident of privacy implications)
           delete snapshotData.crashes;
@@ -2667,17 +2680,6 @@ BrowserGlue.prototype = {
         },
       },
 
-      {
-        name: "urlQueryStrippingListService.init",
-        task: () => {
-          // Init the url query stripping list.
-          let urlQueryStrippingListService = Cc[
-            "@mozilla.org/query-stripping-list-service;1"
-          ].getService(Ci.nsIURLQueryStrippingListService);
-          urlQueryStrippingListService.init();
-        },
-      },
-
       // Run TRR performance measurements for DoH.
       {
         name: "doh-rollout.trrRacer.run",
@@ -2713,6 +2715,22 @@ BrowserGlue.prototype = {
         name: "initializeFOG",
         task: () => {
           Services.fog.initializeFOG();
+
+          // Grabbing the configuration here in case the registration of the
+          // callback below doesn't trigger invoking the callback if we are
+          // already enrolled. See Bug 1818738 for more info.
+          Services.fog.setMetricsFeatureConfig(
+            JSON.stringify(
+              lazy.NimbusFeatures.glean.getVariable("metricsDisabled")
+            )
+          );
+
+          // Register Glean to listen for experiment updates releated to the
+          // "glean" feature defined in the t/c/nimbus/FeatureManifest.yaml
+          lazy.ExperimentAPI.on("update", { featureId: "glean" }, () => {
+            let cfg = lazy.NimbusFeatures.glean.getVariable("metricsDisabled");
+            Services.fog.setMetricsFeatureConfig(JSON.stringify(cfg));
+          });
         },
       },
 
@@ -2842,6 +2860,14 @@ BrowserGlue.prototype = {
           lazy.NimbusFeatures.dapTelemetry.getVariable("enabled"),
         task: () => {
           lazy.DAPTelemetrySender.startup();
+        },
+      },
+
+      {
+        // Starts the JSOracle process for ORB JavaScript validation, if it hasn't started already.
+        name: "start-orb-javascript-oracle",
+        task: () => {
+          ChromeUtils.ensureJSOracleStarted();
         },
       },
 
@@ -3506,7 +3532,7 @@ BrowserGlue.prototype = {
   _migrateUI: function BG__migrateUI() {
     // Use an increasing number to keep track of the current migration state.
     // Completely unrelated to the current Firefox release number.
-    const UI_VERSION = 133;
+    const UI_VERSION = 136;
     const BROWSER_DOCURL = AppConstants.BROWSER_CHROME_URL;
 
     const PROFILE_DIR = Services.dirsvc.get("ProfD", Ci.nsIFile).path;
@@ -3913,7 +3939,7 @@ BrowserGlue.prototype = {
           .catch(console.error)
           .then(() => enableProfilerButton(wasAddonActive))
           .catch(console.error);
-      }, Cu.reportError);
+      }, console.error);
     }
 
     // Clear unused socks proxy backup values - see bug 1625773.
@@ -4119,19 +4145,6 @@ BrowserGlue.prototype = {
       }
     }
 
-    if (currentUIVersion < 117) {
-      // Update urlbar result groups for the following changes:
-      // 110 (bug 1662167): Add INPUT_HISTORY group
-      // 111 (bug 1677126): Add REMOTE_TABS group
-      // 112 (bug 1712352): Add ABOUT_PAGES group
-      // 113 (bug 1714409): Add HEURISTIC_ENGINE_ALIAS group
-      // 114 (bug 1662172): Add HEURISTIC_BOOKMARK_KEYWORD group
-      // 115 (bug 1713322): Move TAIL_SUGGESTION group and rename properties
-      // 116 (bug 1717509): Remove HEURISTIC_UNIFIED_COMPLETE group
-      // 117 (bug 1710518): Add GENERAL_PARENT group
-      lazy.UrlbarPrefs.migrateResultGroups();
-    }
-
     if (currentUIVersion < 120) {
       // Migrate old titlebar bool pref to new int-based one.
       const oldPref = "browser.tabs.drawInTitlebar";
@@ -4282,16 +4295,11 @@ BrowserGlue.prototype = {
       }
     }
 
-    function migrateXULAttributeToStyle(id, attr) {
+    function migrateXULAttributeToStyle(url, id, attr) {
       try {
-        let value = Services.xulStore.getValue(BROWSER_DOCURL, id, attr);
+        let value = Services.xulStore.getValue(url, id, attr);
         if (value) {
-          Services.xulStore.setValue(
-            BROWSER_DOCURL,
-            id,
-            "style",
-            `width: ${value}px;`
-          );
+          Services.xulStore.setValue(url, id, "style", `${attr}: ${value}px;`);
         }
       } catch (ex) {
         console.error(`Error migrating ${id}'s ${attr} value: `, ex);
@@ -4304,7 +4312,7 @@ BrowserGlue.prototype = {
 
     // Bug 1793366: migrate sidebar persisted attribute from width to style.
     if (currentUIVersion < 130) {
-      migrateXULAttributeToStyle("sidebar-box", "width");
+      migrateXULAttributeToStyle(BROWSER_DOCURL, "sidebar-box", "width");
     }
 
     // Migration 131 was moved to 133 to allow for an uplift.
@@ -4325,6 +4333,31 @@ BrowserGlue.prototype = {
       xulStore.removeValue(BROWSER_DOCURL, "urlbar-container", "width");
     }
 
+    // Migration 134 was removed because it was no longer necessary.
+
+    if (currentUIVersion < 135 && AppConstants.platform == "linux") {
+      // Avoid changing titlebar setting for users that used to had it off.
+      try {
+        if (!Services.prefs.prefHasUserValue("browser.tabs.inTitlebar")) {
+          let de = Services.appinfo.desktopEnvironment;
+          let oldDefault = de.includes("gnome") || de.includes("pantheon");
+          if (!oldDefault) {
+            Services.prefs.setIntPref("browser.tabs.inTitlebar", 0);
+          }
+        }
+      } catch (e) {
+        console.error("Error migrating tabsInTitlebar setting", e);
+      }
+    }
+
+    if (currentUIVersion < 136) {
+      migrateXULAttributeToStyle(
+        "chrome://browser/content/places/places.xhtml",
+        "placesList",
+        "width"
+      );
+    }
+
     // Update the migration version.
     Services.prefs.setIntPref("browser.migration.version", UI_VERSION);
   },
@@ -4337,25 +4370,20 @@ BrowserGlue.prototype = {
     let tab;
 
     const upgradeTabsProgressListener = {
-      onLocationChange(
-        aBrowser,
-        aWebProgress,
-        aRequest,
-        aLocationURI,
-        aFlags,
-        aIsSimulated
-      ) {
+      onLocationChange(aBrowser) {
         if (aBrowser === tab.linkedBrowser) {
-          // We're now far enough along in the load that we no longer have to
-          // worry about a call to onLocationChange triggering SubDialog.abort,
-          // so display the dialog
-          const config = {
-            type: "SHOW_SPOTLIGHT",
-            data,
-          };
-          lazy.SpecialMessageActions.handleAction(config, tab.linkedBrowser);
+          lazy.setTimeout(() => {
+            // We're now far enough along in the load that we no longer have to
+            // worry about a call to onLocationChange triggering SubDialog.abort,
+            // so display the dialog
+            const config = {
+              type: "SHOW_SPOTLIGHT",
+              data,
+            };
+            lazy.SpecialMessageActions.handleAction(config, tab.linkedBrowser);
 
-          gBrowser.removeTabsProgressListener(upgradeTabsProgressListener);
+            gBrowser.removeTabsProgressListener(upgradeTabsProgressListener);
+          }, 0);
         }
       },
     };
@@ -4383,6 +4411,7 @@ BrowserGlue.prototype = {
           id: data?.id || "ABOUT_WELCOME_MODAL",
           backdrop: data?.backdrop,
           screens: data?.screens,
+          UTMTerm: data?.UTMTerm,
         },
       },
     };
@@ -5200,7 +5229,7 @@ var ContentBlockingCategoriesPrefs = {
  * can also be overridden by system add-ons or tests to provide new ones.
  *
  * This override ability is provided by Integration.sys.mjs. See
- * PermissionUI.jsm for an example of how to provide a new prompt
+ * PermissionUI.sys.mjs for an example of how to provide a new prompt
  * from an add-on.
  */
 const ContentPermissionIntegration = {
@@ -5218,7 +5247,7 @@ const ContentPermissionIntegration = {
    *        Example: "geolocation"
    * @param {nsIContentPermissionRequest} request
    *        The request for a permission from content.
-   * @return {PermissionPrompt} (see PermissionUI.jsm),
+   * @return {PermissionPrompt} (see PermissionUI.sys.mjs),
    *         or undefined if the type cannot be handled.
    */
   createPermissionPrompt(type, request) {

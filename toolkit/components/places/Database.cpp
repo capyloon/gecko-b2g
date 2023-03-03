@@ -1268,6 +1268,13 @@ nsresult Database::InitSchema(bool* aDatabaseMigrated) {
 
       // Firefox 110 uses schema version 71
 
+      if (currentSchemaVersion < 72) {
+        rv = MigrateV72Up();
+        NS_ENSURE_SUCCESS(rv, rv);
+      }
+
+      // Firefox 111 uses schema version 72
+
       // Schema Upgrades must add migration code here.
       // >>> IMPORTANT! <<<
       // NEVER MIX UP SYNC AND ASYNC EXECUTION IN MIGRATORS, YOU MAY LOCK THE
@@ -2470,6 +2477,16 @@ nsresult Database::MigrateV71Up() {
   return NS_OK;
 }
 
+nsresult Database::MigrateV72Up() {
+  // Recalculate frecency of unvisited bookmarks.
+  nsresult rv = mMainConn->ExecuteSimpleSQL(
+      "UPDATE moz_places "
+      "SET recalc_frecency = 1 "
+      "WHERE foreign_count > 0 AND visit_count = 0"_ns);
+  NS_ENSURE_SUCCESS(rv, rv);
+  return NS_OK;
+}
+
 nsresult Database::RecalculateOriginFrecencyStatsInternal() {
   return mMainConn->ExecuteSimpleSQL(nsLiteralCString(
       "INSERT OR REPLACE INTO moz_meta(key, value) VALUES "
@@ -2718,7 +2735,10 @@ void Database::Shutdown() {
   MOZ_ALWAYS_SUCCEEDS(mMainConn->ExecuteSimpleSQLAsync(
       "PRAGMA optimize(0x02)"_ns, nullptr, getter_AddRefs(ps)));
 
-  (void)mMainConn->AsyncClose(connectionShutdown);
+  if (NS_FAILED(mMainConn->AsyncClose(connectionShutdown))) {
+    mozilla::Unused << connectionShutdown->Complete(NS_ERROR_UNEXPECTED,
+                                                    nullptr);
+  }
   mMainConn = nullptr;
 }
 

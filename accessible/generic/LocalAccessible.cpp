@@ -53,6 +53,7 @@
 #include "nsIContent.h"
 #include "nsIFormControl.h"
 
+#include "nsDisplayList.h"
 #include "nsLayoutUtils.h"
 #include "nsPresContext.h"
 #include "nsIFrame.h"
@@ -322,7 +323,7 @@ uint64_t LocalAccessible::VisibilityState() const {
   nsIFrame* curFrame = frame;
   do {
     nsView* view = curFrame->GetView();
-    if (view && view->GetVisibility() == nsViewVisibility_kHide) {
+    if (view && view->GetVisibility() == ViewVisibility::Hide) {
       return states::INVISIBLE;
     }
 
@@ -370,7 +371,7 @@ uint64_t LocalAccessible::VisibilityState() const {
   // marked invisible.
   // XXX Can we just remove this check? Why do we need to mark empty
   // text invisible?
-  if (frame->IsTextFrame() && !(frame->GetStateBits() & NS_FRAME_OUT_OF_FLOW) &&
+  if (frame->IsTextFrame() && !frame->HasAnyStateBits(NS_FRAME_OUT_OF_FLOW) &&
       frame->GetRect().IsEmpty()) {
     nsIFrame::RenderedText text = frame->GetRenderedText(
         0, UINT32_MAX, nsIFrame::TextOffsetType::OffsetsInContentText,
@@ -407,7 +408,7 @@ uint64_t LocalAccessible::NativeState() const {
 
   nsIFrame* frame = GetFrame();
   if (frame) {
-    if (frame->GetStateBits() & NS_FRAME_OUT_OF_FLOW) state |= states::FLOATING;
+    if (frame->HasAnyStateBits(NS_FRAME_OUT_OF_FLOW)) state |= states::FLOATING;
 
     // XXX we should look at layout for non XUL box frames, but need to decide
     // how that interacts with ARIA.
@@ -446,7 +447,23 @@ uint64_t LocalAccessible::NativeInteractiveState() const {
   if (NativelyUnavailable()) return states::UNAVAILABLE;
 
   nsIFrame* frame = GetFrame();
-  if (frame && frame->IsFocusable()) return states::FOCUSABLE;
+  // If we're caching this remote document in the parent process, we
+  // need to cache focusability irrespective of visibility. Otherwise,
+  // if this document is invisible when it first loads, we'll cache that
+  // all descendants are unfocusable and this won't get updated when the
+  // document becomes visible. Even if we did get notified when the
+  // document becomes visible, it would be wasteful to walk the entire
+  // tree to figure out what is now focusable and push cache updates.
+  // Although ignoring visibility means IsFocusable will return true for
+  // visibility: hidden, etc., this isn't a problem because we don't include
+  // those hidden elements in the a11y tree anyway.
+  const bool ignoreVisibility =
+      mDoc->IPCDoc() && StaticPrefs::accessibility_cache_enabled_AtStartup();
+  if (frame && frame->IsFocusable(
+                   /* aWithMouse */ false,
+                   /* aCheckVisibility */ !ignoreVisibility)) {
+    return states::FOCUSABLE;
+  }
 
   return 0;
 }
@@ -601,6 +618,11 @@ LocalAccessible* LocalAccessible::LocalChildAtPoint(
 
 nsIFrame* LocalAccessible::FindNearestAccessibleAncestorFrame() {
   nsIFrame* frame = GetFrame();
+  if (frame->StyleDisplay()->mPosition == StylePositionProperty::Fixed &&
+      nsLayoutUtils::IsReallyFixedPos(frame)) {
+    return mDoc->PresShellPtr()->GetRootFrame();
+  }
+
   if (IsDoc()) {
     // We bound documents by their own frame, which is their PresShell's root
     // frame. We cache the document offset elsewhere in BundleFieldsForCache
@@ -636,7 +658,40 @@ nsRect LocalAccessible::ParentRelativeBounds() {
       // example) employ things like 0x0 buttons with visual overflow. Without
       // this, such frames aren't navigable by screen readers.
       result = frame->InkOverflowRectRelativeToSelf();
-      nsLayoutUtils::TransformRect(frame, boundingFrame, result);
+      result.MoveBy(frame->GetOffsetTo(boundingFrame));
+    }
+
+    if (boundingFrame->GetRect().IsEmpty()) {
+      // boundingFrame might be the first in an ib-split-sibling chain. If its
+      // rect is empty, GetAllInFlowRectsUnion might exclude its origin. For
+      // example, if boundingFrame is empty with an origin of (0, -840) but
+      // has a non-empty ib-split-sibling with (0, 0), the union rect will
+      // originate at (0, 0). This means the bounds returned for our parent
+      // Accessible might be offset from boundingFrame's rect. Since result is
+      // currently relative to boundingFrame's rect, we might need to adjust it
+      // to make it parent relative.
+      nsRect boundingUnion =
+          nsLayoutUtils::GetAllInFlowRectsUnion(boundingFrame, boundingFrame);
+      if (!boundingUnion.IsEmpty()) {
+        result.MoveBy(-boundingUnion.TopLeft());
+      } else {
+        // Since GetAllInFlowRectsUnion returned an empty rect on our parent
+        // Accessible, we would have used the ink overflow rect. However,
+        // GetAllInFlowRectsUnion calculates relative to the bounding frame's
+        // main rect, not its ink overflow rect. We need to adjust for the ink
+        // overflow offset to make our result parent relative.
+        nsRect boundingOverflow =
+            boundingFrame->InkOverflowRectRelativeToSelf();
+        result.MoveBy(-boundingOverflow.TopLeft());
+      }
+    }
+
+    if (frame->StyleDisplay()->mPosition == StylePositionProperty::Fixed &&
+        nsLayoutUtils::IsReallyFixedPos(frame)) {
+      // If we're dealing with a fixed position frame, we've already made it
+      // relative to the document which should have gotten rid of its scroll
+      // offset.
+      return result;
     }
 
     if (nsIScrollableFrame* sf =
@@ -645,9 +700,9 @@ nsRect LocalAccessible::ParentRelativeBounds() {
                 : boundingFrame->GetScrollTargetFrame()) {
       // If boundingFrame has a scroll position, result is currently relative
       // to that. Instead, we want result to remain the same regardless of
-      // scrolling. We then subtract the scroll position later when calculating
-      // absolute bounds. We do this because we don't want to push cache
-      // updates for the bounds of all descendants every time we scroll.
+      // scrolling. We then subtract the scroll position later when
+      // calculating absolute bounds. We do this because we don't want to push
+      // cache updates for the bounds of all descendants every time we scroll.
       nsPoint scrollPos = sf->GetScrollPosition().ApplyResolution(
           mDoc->PresShellPtr()->GetResolution());
       result.MoveBy(scrollPos.x, scrollPos.y);
@@ -3399,48 +3454,24 @@ already_AddRefed<AccAttributes> LocalAccessible::BundleFieldsForCache(
         nsTArray<int32_t> charData;
 
         if (nsTextFrame* currTextFrame = do_QueryFrame(frame)) {
-          nsTextFrame* prevTextFrame = currTextFrame;
-          nsRect frameRect = currTextFrame->GetRect();
-          nsIFrame* nearestAccAncestorFrame =
-              LocalParent() ? LocalParent()->GetFrame() : nullptr;
           while (currTextFrame) {
-            nsRect contRect = currTextFrame->GetRect();
-            if (prevTextFrame->GetParent() != currTextFrame->GetParent() &&
-                nearestAccAncestorFrame) {
-              // Continuations can span multiple frame tree subtrees,
-              // particularly when multiline text is nested within both block
-              // and inline elements. In addition to using the position of this
-              // continuation to offset our char rects, we'll need to offset
-              // this continuation from the continuations that occurred before
-              // it. We don't know how many there are or what subtrees they're
-              // in, so we use a transform here. This also ensures our offset is
-              // accurate even if the intervening inline elements are not
-              // present in the a11y tree.
-              contRect = frameRect;
-              nsLayoutUtils::TransformRect(currTextFrame,
-                                           nearestAccAncestorFrame, contRect);
-            }
+            nsPoint contOffset = currTextFrame->GetOffsetTo(frame);
             nsTArray<nsRect> charBounds;
             currTextFrame->GetCharacterRectsInRange(
                 currTextFrame->GetContentOffset(),
                 currTextFrame->GetContentEnd(), charBounds);
-            for (const nsRect& charRect : charBounds) {
+            for (nsRect& charRect : charBounds) {
               // We expect each char rect to be relative to the text leaf
               // acc this text lives in. Unfortunately, GetCharacterRectsInRange
               // returns rects relative to their continuation. Add the
               // continuation's relative position here to make our final
-              // rect relative to the text leaf acc. Continuation rects include
-              // the padding of their parent text frame, so we compute the
-              // relative offset here instead of using `contRect`'s coordinates
-              // outright.
-              int computedX = charRect.x + (contRect.x - frameRect.x);
-              int computedY = charRect.y + (contRect.y - frameRect.y);
-              charData.AppendElement(computedX);
-              charData.AppendElement(computedY);
+              // rect relative to the text leaf acc.
+              charRect.MoveBy(contOffset);
+              charData.AppendElement(charRect.x);
+              charData.AppendElement(charRect.y);
               charData.AppendElement(charRect.width);
               charData.AppendElement(charRect.height);
             }
-            prevTextFrame = currTextFrame;
             currTextFrame = currTextFrame->GetNextContinuation();
           }
         }
@@ -3454,16 +3485,12 @@ already_AddRefed<AccAttributes> LocalAccessible::BundleFieldsForCache(
   if (aCacheDomain & CacheDomain::TransformMatrix) {
     bool transformed = false;
     if (frame && frame->IsTransformed()) {
-      // We need to find a frame to make our transform relative to.
-      // It's important this frame have a corresponding accessible,
-      // because this transform is applied while walking the accessibility
-      // tree (in the parent process), not the frame tree.
-      nsIFrame* boundingFrame = FindNearestAccessibleAncestorFrame();
       // This matrix is only valid when applied to CSSPixel points/rects
-      // in the coordinate space of `frame`. It also includes the translation
-      // to the parent space.
-      gfx::Matrix4x4Flagged mtx = nsLayoutUtils::GetTransformToAncestor(
-          RelativeTo{frame}, RelativeTo{boundingFrame}, nsIFrame::IN_CSS_UNITS);
+      // in the coordinate space of `frame`.
+      gfx::Matrix4x4 mtx = nsDisplayTransform::GetResultingTransformMatrix(
+          frame, nsPoint(0, 0), AppUnitsPerCSSPixel(),
+          nsDisplayTransform::INCLUDE_PERSPECTIVE |
+              nsDisplayTransform::OFFSET_BY_ORIGIN);
       // We might get back the identity matrix. This can happen if there is no
       // actual transform. For example, if an element has
       // will-change: transform, nsIFrame::IsTransformed will return true, but
@@ -3472,8 +3499,7 @@ already_AddRefed<AccAttributes> LocalAccessible::BundleFieldsForCache(
       // point caching it.
       transformed = !mtx.IsIdentity();
       if (transformed) {
-        UniquePtr<gfx::Matrix4x4> ptr =
-            MakeUnique<gfx::Matrix4x4>(mtx.GetMatrix());
+        UniquePtr<gfx::Matrix4x4> ptr = MakeUnique<gfx::Matrix4x4>(mtx);
         fields->SetAttribute(nsGkAtoms::transform, std::move(ptr));
       }
     }
@@ -3580,6 +3606,14 @@ already_AddRefed<AccAttributes> LocalAccessible::BundleFieldsForCache(
       fields->SetAttribute(nsGkAtoms::opacity, opacity);
     } else if (aUpdateType == CacheUpdateType::Update) {
       fields->SetAttribute(nsGkAtoms::opacity, DeleteEntry());
+    }
+
+    if (frame &&
+        frame->StyleDisplay()->mPosition == StylePositionProperty::Fixed &&
+        nsLayoutUtils::IsReallyFixedPos(frame)) {
+      fields->SetAttribute(nsGkAtoms::position, nsGkAtoms::fixed);
+    } else if (aUpdateType != CacheUpdateType::Initial) {
+      fields->SetAttribute(nsGkAtoms::position, DeleteEntry());
     }
   }
 
@@ -3801,6 +3835,19 @@ void LocalAccessible::MaybeQueueCacheUpdateForStyleChanges() {
       mDoc->QueueCacheUpdate(this, CacheDomain::Style);
     }
 
+    nsAutoCString oldPosition, newPosition;
+    mOldComputedStyle->GetComputedPropertyValue(eCSSProperty_position,
+                                                oldPosition);
+    newStyle->GetComputedPropertyValue(eCSSProperty_position, newPosition);
+
+    if (oldPosition != newPosition) {
+      RefPtr<nsAtom> oldAtom = NS_Atomize(oldPosition);
+      RefPtr<nsAtom> newAtom = NS_Atomize(newPosition);
+      if (oldAtom == nsGkAtoms::fixed || newAtom == nsGkAtoms::fixed) {
+        mDoc->QueueCacheUpdate(this, CacheDomain::Style);
+      }
+    }
+
     bool newHasValidTransformStyle =
         newStyle->StyleDisplay()->HasTransform(frame);
     bool oldHasValidTransformStyle =
@@ -3830,22 +3877,6 @@ void LocalAccessible::MaybeQueueCacheUpdateForStyleChanges() {
       // send a DeleteEntry() instead. See BundleFieldsForCache for
       // more information.
       mDoc->QueueCacheUpdate(this, CacheDomain::TransformMatrix);
-    }
-
-    if (newStyle->StyleDisplay()->IsPositionedStyle()) {
-      // We normally rely on reflow to know when bounds might have changed.
-      // However, changing the CSS left, top, etc. properties doesn't always
-      // cause reflow.
-      for (auto prop : {eCSSProperty_left, eCSSProperty_right, eCSSProperty_top,
-                        eCSSProperty_bottom}) {
-        nsAutoCString oldVal, newVal;
-        mOldComputedStyle->GetComputedPropertyValue(prop, oldVal);
-        newStyle->GetComputedPropertyValue(prop, newVal);
-        if (oldVal != newVal) {
-          mDoc->QueueCacheUpdate(this, CacheDomain::Bounds);
-          break;
-        }
-      }
     }
 
     mOldComputedStyle = newStyle;

@@ -26,7 +26,6 @@
 #include "nsIContent.h"
 #include "nsNameSpaceManager.h"
 #include "nsBoxLayoutState.h"
-#include "nsMenuBarListener.h"
 #include "nsString.h"
 #include "nsITheme.h"
 #include "nsUnicharUtils.h"
@@ -303,10 +302,12 @@ bool nsDisplayXULTextBox::CreateWebRenderCommands(
   RefPtr<mozilla::layout::TextDrawTarget> textDrawer =
       new mozilla::layout::TextDrawTarget(aBuilder, aResources, aSc, aManager,
                                           this, bounds);
-  RefPtr<gfxContext> captureCtx =
-      gfxContext::CreateOrNull(textDrawer, deviceOffset);
+  if (!textDrawer->IsValid()) {
+    return false;
+  }
+  gfxContext captureCtx(textDrawer, deviceOffset);
 
-  Paint(aDisplayListBuilder, captureCtx);
+  Paint(aDisplayListBuilder, &captureCtx);
   textDrawer->TerminateShadows();
 
   return textDrawer->Finish();
@@ -470,7 +471,7 @@ void nsTextBoxFrame::DrawText(gfxContext& aRenderingContext,
     }
   }
 
-  RefPtr<gfxContext> refContext =
+  UniquePtr<gfxContext> refContext =
       PresShell()->CreateReferenceRenderingContext();
   DrawTarget* refDrawTarget = refContext->GetDrawTarget();
 
@@ -483,7 +484,7 @@ void nsTextBoxFrame::DrawText(gfxContext& aRenderingContext,
 
   nsresult rv = NS_ERROR_FAILURE;
 
-  if (mState & NS_FRAME_IS_BIDI) {
+  if (HasAnyStateBits(NS_FRAME_IS_BIDI)) {
     presContext->SetBidiEnabled();
     mozilla::intl::BidiEmbeddingLevel level =
         nsBidiPresUtils::BidiLevelFromStyle(Style());
@@ -727,8 +728,10 @@ void nsTextBoxFrame::UpdateAccessTitle() {
    * toolkit/components/prompts/src/CommonDialog.jsm (setLabelForNode)
    * toolkit/content/widgets/text.js (formatAccessKey)
    */
-  int32_t menuAccessKey = nsMenuBarListener::GetMenuAccessKey();
-  if (!menuAccessKey || mAccessKey.IsEmpty()) return;
+  uint32_t menuAccessKey = LookAndFeel::GetMenuAccessKey();
+  if (!menuAccessKey || mAccessKey.IsEmpty()) {
+    return;
+  }
 
   if (!AlwaysAppendAccessKey() &&
       FindInReadable(mAccessKey, mTitle, nsCaseInsensitiveStringComparator))
@@ -774,49 +777,49 @@ void nsTextBoxFrame::UpdateAccessTitle() {
 }
 
 void nsTextBoxFrame::UpdateAccessIndex() {
-  int32_t menuAccessKey = nsMenuBarListener::GetMenuAccessKey();
-  if (menuAccessKey) {
-    if (mAccessKey.IsEmpty()) {
-      if (mAccessKeyInfo) {
-        delete mAccessKeyInfo;
-        mAccessKeyInfo = nullptr;
-      }
-    } else {
-      if (!mAccessKeyInfo) {
-        mAccessKeyInfo = new nsAccessKeyInfo();
-        if (!mAccessKeyInfo) return;
-      }
-
-      nsAString::const_iterator start, end;
-
-      mCroppedTitle.BeginReading(start);
-      mCroppedTitle.EndReading(end);
-
-      // remember the beginning of the string
-      nsAString::const_iterator originalStart = start;
-
-      bool found;
-      if (!AlwaysAppendAccessKey()) {
-        // not appending access key - do case-sensitive search
-        // first
-        found = FindInReadable(mAccessKey, start, end);
-        if (!found) {
-          // didn't find it - perform a case-insensitive search
-          start = originalStart;
-          found = FindInReadable(mAccessKey, start, end,
-                                 nsCaseInsensitiveStringComparator);
-        }
-      } else {
-        found = RFindInReadable(mAccessKey, start, end,
-                                nsCaseInsensitiveStringComparator);
-      }
-
-      if (found)
-        mAccessKeyInfo->mAccesskeyIndex = Distance(originalStart, start);
-      else
-        mAccessKeyInfo->mAccesskeyIndex = kNotFound;
-    }
+  uint32_t menuAccessKey = LookAndFeel::GetMenuAccessKey();
+  if (!menuAccessKey) {
+    return;
   }
+  if (mAccessKey.IsEmpty()) {
+    if (mAccessKeyInfo) {
+      delete mAccessKeyInfo;
+      mAccessKeyInfo = nullptr;
+    }
+    return;
+  }
+  if (!mAccessKeyInfo) {
+    mAccessKeyInfo = new nsAccessKeyInfo();
+  }
+
+  nsAString::const_iterator start, end;
+
+  mCroppedTitle.BeginReading(start);
+  mCroppedTitle.EndReading(end);
+
+  // remember the beginning of the string
+  nsAString::const_iterator originalStart = start;
+
+  bool found;
+  if (!AlwaysAppendAccessKey()) {
+    // not appending access key - do case-sensitive search
+    // first
+    found = FindInReadable(mAccessKey, start, end);
+    if (!found) {
+      // didn't find it - perform a case-insensitive search
+      start = originalStart;
+      found = FindInReadable(mAccessKey, start, end,
+                             nsCaseInsensitiveStringComparator);
+    }
+  } else {
+    found = RFindInReadable(mAccessKey, start, end,
+                            nsCaseInsensitiveStringComparator);
+  }
+
+  if (found)
+    mAccessKeyInfo->mAccesskeyIndex = Distance(originalStart, start);
+  else
+    mAccessKeyInfo->mAccesskeyIndex = kNotFound;
 }
 
 void nsTextBoxFrame::RecomputeTitle() {
