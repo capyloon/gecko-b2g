@@ -801,6 +801,12 @@ bool ServoStyleSet::StyleDocument(ServoTraversalFlags aFlags) {
     return false;
   }
 
+  Element* rootElement = mDocument->GetRootElement();
+  if (rootElement && MOZ_UNLIKELY(!rootElement->HasServoData())) {
+    StyleNewSubtree(rootElement);
+    return true;
+  }
+
   PreTraverse(aFlags);
   AutoPrepareTraversal guard(this);
   const SnapshotTable& snapshots = Snapshots();
@@ -808,9 +814,6 @@ bool ServoStyleSet::StyleDocument(ServoTraversalFlags aFlags) {
   // Restyle the document from the root element and each of the document level
   // NAC subtree roots.
   bool postTraversalRequired = false;
-
-  Element* rootElement = mDocument->GetRootElement();
-  MOZ_ASSERT_IF(rootElement, rootElement->HasServoData());
 
   if (ShouldTraverseInParallel()) {
     aFlags |= ServoTraversalFlags::ParallelTraversal;
@@ -1392,10 +1395,34 @@ bool ServoStyleSet::MightHaveAttributeDependency(const Element& aElement,
                                                      aAttribute);
 }
 
+bool ServoStyleSet::MightHaveNthOfIDDependency(const Element& aElement,
+                                               nsAtom* aOldID,
+                                               nsAtom* aNewID) const {
+  return Servo_StyleSet_MightHaveNthOfIDDependency(mRawSet.get(), &aElement,
+                                                   aOldID, aNewID);
+}
+
+bool ServoStyleSet::MightHaveNthOfClassDependency(const Element& aElement) {
+  return Servo_StyleSet_MightHaveNthOfClassDependency(mRawSet.get(), &aElement,
+                                                      &Snapshots());
+}
+
+bool ServoStyleSet::MightHaveNthOfAttributeDependency(
+    const Element& aElement, nsAtom* aAttribute) const {
+  return Servo_StyleSet_MightHaveNthOfAttributeDependency(
+      mRawSet.get(), &aElement, aAttribute);
+}
+
 bool ServoStyleSet::HasStateDependency(const Element& aElement,
                                        dom::ElementState aState) const {
   return Servo_StyleSet_HasStateDependency(mRawSet.get(), &aElement,
                                            aState.GetInternalValue());
+}
+
+bool ServoStyleSet::HasNthOfStateDependency(const Element& aElement,
+                                            dom::ElementState aState) const {
+  return Servo_StyleSet_HasNthOfStateDependency(mRawSet.get(), &aElement,
+                                                aState.GetInternalValue());
 }
 
 bool ServoStyleSet::HasDocumentStateDependency(

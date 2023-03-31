@@ -111,10 +111,10 @@ struct DispatchGuard {
 }
 
 impl DispatchGuard {
-    pub fn launch(&self, task: impl FnOnce() + Send + 'static) -> Result<(), DispatchError> {
-        let task = Command::Task(Box::new(task));
-        self.send(task)
-    }
+    // pub fn launch(&self, task: impl FnOnce() + Send + 'static) -> Result<(), DispatchError> {
+    //     let task = Command::Task(Box::new(task));
+    //     self.send(task)
+    // }
 
     pub fn shutdown(&mut self) -> Result<(), DispatchError> {
         // Need to flush in order for the thread to actually process anything,

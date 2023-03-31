@@ -10,6 +10,7 @@
 #include "WebTransportStreamProxy.h"
 #include "nsIAsyncVerifyRedirectCallback.h"
 #include "nsIHttpChannel.h"
+#include "nsIHttpChannelInternal.h"
 #include "nsIRequest.h"
 #include "nsNetUtil.h"
 #include "nsProxyRelease.h"
@@ -108,6 +109,30 @@ nsresult WebTransportSessionProxy::AsyncConnect(
     return rv;
   }
 
+  // To establish a WebTransport session with an origin origin, follow
+  // [WEB-TRANSPORT-HTTP3] section 3.3, with using origin, serialized and
+  // isomorphic encoded, as the `Origin` header of the request.
+  // https://www.w3.org/TR/webtransport/#protocol-concepts
+  nsAutoCString serializedOrigin;
+  if (NS_FAILED(aPrincipal->GetAsciiOrigin(serializedOrigin))) {
+    // origin/URI will be missing for system principals
+    // assign null origin
+    serializedOrigin = "null"_ns;
+  }
+
+  rv = httpChannel->SetRequestHeader("Origin"_ns, serializedOrigin, false);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
+  nsCOMPtr<nsIHttpChannelInternal> internalChannel =
+      do_QueryInterface(mChannel);
+  if (!internalChannel) {
+    mChannel = nullptr;
+    return NS_ERROR_ABORT;
+  }
+  Unused << internalChannel->SetWebTransportSessionEventListener(this);
+
   rv = mChannel->AsyncOpen(this);
   if (NS_SUCCEEDED(rv)) {
     cleanup.release();
@@ -117,6 +142,10 @@ nsresult WebTransportSessionProxy::AsyncConnect(
 
 NS_IMETHODIMP
 WebTransportSessionProxy::RetargetTo(nsIEventTarget* aTarget) {
+  if (!aTarget) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
   {
     MutexAutoLock lock(mMutex);
     LOG(("WebTransportSessionProxy::RetargetTo mState=%d", mState));
@@ -733,12 +762,11 @@ WebTransportSessionProxy::OnIncomingStreamAvailableInternal(
          this, mState, mListener.get()));
     if (mState == WebTransportSessionProxyState::ACTIVE) {
       listener = mListener;
-    } else {
-      MOZ_ASSERT(false, "mState is not ACTIVE");
     }
   }
 
   if (!listener) {
+    // Session can be already closed.
     return NS_OK;
   }
 
@@ -935,6 +963,15 @@ void WebTransportSessionProxy::NotifyDatagramReceived(
     MutexAutoLock lock(mMutex);
     MOZ_ASSERT(mTarget->IsOnCurrentThread());
 
+    if (!mStopRequestCalled) {
+      CopyableTArray<uint8_t> copied(aData);
+      mPendingEvents.AppendElement(
+          [self = RefPtr{this}, data = std::move(copied)]() mutable {
+            self->NotifyDatagramReceived(std::move(data));
+          });
+      return;
+    }
+
     if (mState != WebTransportSessionProxyState::ACTIVE || !mListener) {
       return;
     }
@@ -973,6 +1010,13 @@ void WebTransportSessionProxy::OnMaxDatagramSizeInternal(uint64_t aSize) {
   {
     MutexAutoLock lock(mMutex);
     MOZ_ASSERT(mTarget->IsOnCurrentThread());
+
+    if (!mStopRequestCalled) {
+      mPendingEvents.AppendElement([self = RefPtr{this}, size(aSize)]() {
+        self->OnMaxDatagramSizeInternal(size);
+      });
+      return;
+    }
 
     if (mState != WebTransportSessionProxyState::ACTIVE || !mListener) {
       return;

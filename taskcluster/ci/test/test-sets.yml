@@ -87,11 +87,13 @@ browsertime:
     - browsertime-benchmark
     - browsertime-benchmark-wasm
     - browsertime-youtube-playback
+    - browsertime-youtube-playback-power
     - browsertime-custom
     - browsertime-first-install
     - browsertime-grandprix
     - browsertime-responsiveness
     - browsertime-regression-tests
+    - browsertime-upload
 
 browsertime-clang:
     - browsertime-tp6
@@ -111,12 +113,6 @@ browsertime-profiling:
 browsertime-high-priority:
     - browsertime-benchmark
     - browsertime-tp6
-
-# Raptor desktop power tests
-# (requires Intel Power Gadget to be pre-installed)
-raptor-firefox-power:
-    - raptor-youtube-playback-v9-power-firefox
-    - raptor-youtube-playback-h264-power-firefox
 
 awsy:
     - awsy
@@ -191,7 +187,7 @@ windows-7-tests:
     - mochitest-browser-media
     - xpcshell
 
-windows32-2004-tests:
+windows32-2009-tests:
     - cppunit
     - crashtest
     - gtest
@@ -214,35 +210,14 @@ windows32-2004-tests:
 
 windows10-2004-tests:
     - cppunit
-    - crashtest
-    - firefox-ui-functional
     - gtest
-    - jsreftest
-    - marionette
-    - mochitest-a11y
-    - mochitest-browser-a11y
-    - mochitest-browser-chrome
-    - mochitest-browser-media
     - mochitest-chrome
     - mochitest-chrome-gpu
-    - mochitest-devtools-chrome
-    - mochitest-media
     - mochitest-plain
     - mochitest-plain-gpu
-    - mochitest-remote
-    - mochitest-webgpu
-    - mochitest-webgl1-core
-    - mochitest-webgl1-ext
-    - mochitest-webgl2-core
-    - mochitest-webgl2-ext
-    - reftest
-    - telemetry-tests-client
-    - test-verify
-    - test-verify-gpu
-    - test-verify-wpt
     - xpcshell
 
-windows10-64-2004-ccov-tests:
+windows11-64-2009-ccov-tests:
     - jittest
     - test-coverage
     - web-platform-tests

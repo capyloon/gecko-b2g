@@ -22,9 +22,13 @@ const TEST_PAGE_WITH_SOUND = TEST_ROOT + "test-page-with-sound.html";
 const TEST_PAGE_WITH_NAN_VIDEO_DURATION =
   TEST_ROOT + "test-page-with-nan-video-duration.html";
 const TEST_PAGE_WITH_WEBVTT = TEST_ROOT + "test-page-with-webvtt.html";
+const TEST_PAGE_MULTIPLE_CONTEXTS =
+  TEST_ROOT + "test-page-multiple-contexts.html";
 const WINDOW_TYPE = "Toolkit:PictureInPicture";
 const TOGGLE_POSITION_PREF =
   "media.videocontrols.picture-in-picture.video-toggle.position";
+/* As of Bug 1811312, 80% toggle opacity is for the PiP toggle experiment control. */
+const DEFAULT_TOGGLE_OPACITY = 0.8;
 const HAS_USED_PREF =
   "media.videocontrols.picture-in-picture.video-toggle.has-used";
 const SHARED_DATA_KEY = "PictureInPicture:SiteOverrides";
@@ -73,7 +77,7 @@ const DEFAULT_TOGGLE_STYLES = {
   stages: {
     hoverVideo: {
       opacities: {
-        ".pip-wrapper": 0.8,
+        ".pip-wrapper": DEFAULT_TOGGLE_OPACITY,
       },
       hidden: [".pip-expanded"],
     },
@@ -184,16 +188,16 @@ async function assertShowingMessage(browser, videoID, expected) {
  * good indicator for answering if this video is currently open in PiP.
  *
  * @param {Browser} browser
- *   The content browser that the video lives in
+ *   The content browser or browsing contect that the video lives in
  * @param {string} videoId
  *   The id associated with the video
  *
  * @returns {bool}
  *   Whether the video is currently being cloned (And is most likely open in PiP)
  */
-function assertVideoIsBeingCloned(browser, videoId) {
-  return SpecialPowers.spawn(browser, [videoId], async videoID => {
-    let video = content.document.getElementById(videoID);
+function assertVideoIsBeingCloned(browser, selector) {
+  return SpecialPowers.spawn(browser, [selector], async slctr => {
+    let video = content.document.querySelector(slctr);
     await ContentTaskUtils.waitForCondition(() => {
       return video.isCloningElementVisually;
     }, "Video is being cloned visually.");
@@ -204,7 +208,7 @@ function assertVideoIsBeingCloned(browser, videoId) {
  * Ensures that each of the videos loaded inside of a document in a
  * <browser> have reached the HAVE_ENOUGH_DATA readyState.
  *
- * @param {Element} browser The <xul:browser> hosting the <video>(s)
+ * @param {Element} browser The <xul:browser> hosting the <video>(s) or the browsing context
  *
  * @return Promise
  * @resolves When each <video> is in the HAVE_ENOUGH_DATA readyState.
@@ -217,6 +221,7 @@ async function ensureVideosReady(browser) {
   await SpecialPowers.spawn(browser, [], async () => {
     let videos = this.content.document.querySelectorAll("video");
     for (let video of videos) {
+      video.currentTime = 0;
       if (video.readyState < content.HTMLMediaElement.HAVE_ENOUGH_DATA) {
         info(`Waiting for 'canplaythrough' for '${video.id}'`);
         await ContentTaskUtils.waitForEvent(video, "canplaythrough");
@@ -521,6 +526,58 @@ async function getToggleClientRect(
 }
 
 /**
+ * This function will hover over the middle of the video and then
+ * hover over the toggle.
+ * @param browser The current browser
+ * @param videoID The video element id
+ */
+async function hoverToggle(browser, videoID) {
+  await prepareForToggleClick(browser, videoID);
+
+  // Hover the mouse over the video to reveal the toggle.
+  await BrowserTestUtils.synthesizeMouseAtCenter(
+    `#${videoID}`,
+    {
+      type: "mousemove",
+    },
+    browser
+  );
+  await BrowserTestUtils.synthesizeMouseAtCenter(
+    `#${videoID}`,
+    {
+      type: "mouseover",
+    },
+    browser
+  );
+
+  info("Checking toggle policy");
+  await assertTogglePolicy(browser, videoID, null);
+
+  let toggleClientRect = await getToggleClientRect(browser, videoID);
+
+  info("Hovering the toggle rect now.");
+  let toggleCenterX = toggleClientRect.left + toggleClientRect.width / 2;
+  let toggleCenterY = toggleClientRect.top + toggleClientRect.height / 2;
+
+  await BrowserTestUtils.synthesizeMouseAtPoint(
+    toggleCenterX,
+    toggleCenterY,
+    {
+      type: "mousemove",
+    },
+    browser
+  );
+  await BrowserTestUtils.synthesizeMouseAtPoint(
+    toggleCenterX,
+    toggleCenterY,
+    {
+      type: "mouseover",
+    },
+    browser
+  );
+}
+
+/**
  * Test helper for the Picture-in-Picture toggle. Loads a page, and then
  * tests the provided video elements for the toggle both appearing and
  * opening the Picture-in-Picture window in the expected cases.
@@ -718,7 +775,7 @@ async function testToggleHelper(
     let win = await domWindowOpened;
     ok(win, "A Picture-in-Picture window opened.");
 
-    await assertVideoIsBeingCloned(browser, videoID);
+    await assertVideoIsBeingCloned(browser, "#" + videoID);
 
     await BrowserTestUtils.closeWindow(win);
 

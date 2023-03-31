@@ -322,8 +322,9 @@ class ProviderSearchSuggestions extends UrlbarProvider {
       return null;
     }
 
-    this._suggestionsController = new lazy.SearchSuggestionController();
-    this._suggestionsController.formHistoryParam = queryContext.formHistoryName;
+    this._suggestionsController = new lazy.SearchSuggestionController(
+      queryContext.formHistoryName
+    );
 
     // If there's a form history entry that equals the search string, the search
     // suggestions controller will include it, and we'll make a result for it.
@@ -340,6 +341,24 @@ class ProviderSearchSuggestions extends UrlbarProvider {
     this._suggestionsController.maxRemoteResults = allowRemote
       ? queryContext.maxResults + 1
       : 0;
+
+    if (allowRemote && this.#shouldFetchTrending(queryContext)) {
+      if (
+        queryContext.searchMode &&
+        lazy.UrlbarPrefs.get("trending.maxResultsSearchMode") != -1
+      ) {
+        this._suggestionsController.maxRemoteResults = lazy.UrlbarPrefs.get(
+          "trending.maxResultsSearchMode"
+        );
+      } else if (
+        !queryContext.searchMode &&
+        lazy.UrlbarPrefs.get("trending.maxResultsNoSearchMode") != -1
+      ) {
+        this._suggestionsController.maxRemoteResults = lazy.UrlbarPrefs.get(
+          "trending.maxResultsNoSearchMode"
+        );
+      }
+    }
 
     this._suggestionsFetchCompletePromise = this._suggestionsController.fetch(
       searchString,
@@ -435,6 +454,7 @@ class ProviderSearchSuggestions extends UrlbarProvider {
                   alias ? alias : undefined,
                   UrlbarUtils.HIGHLIGHT.TYPED,
                 ],
+                trending: entry.trending,
                 query: [searchString.trim(), UrlbarUtils.HIGHLIGHT.NONE],
                 icon: !entry.value ? engine.iconURI?.spec : undefined,
               }
@@ -521,7 +541,7 @@ class ProviderSearchSuggestions extends UrlbarProvider {
    *   Whether we should fetch trending results.
    */
   #shouldFetchTrending(queryContext) {
-    return (
+    return !!(
       queryContext.searchString == "" &&
       lazy.UrlbarPrefs.get("trending.featureGate") &&
       (queryContext.searchMode ||

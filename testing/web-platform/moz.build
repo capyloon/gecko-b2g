@@ -181,7 +181,7 @@ with Files("tests/cors/**"):
     BUG_COMPONENT = ("Core", "DOM: Security")
 
 with Files("tests/credential-management/**"):
-    BUG_COMPONENT = ("Core", "DOM: Security")
+    BUG_COMPONENT = ("Core", "DOM: Credential Management")
 
 with Files("tests/css/**"):
     BUG_COMPONENT = ("Core", "CSS Parsing and Computation")
@@ -609,9 +609,6 @@ with Files("tests/preload/**"):
 
 with Files("tests/presentation-api/**"):
     BUG_COMPONENT = ("Core", "DOM: Core & HTML")
-
-with Files("tests/priority-hints/**"):
-    BUG_COMPONENT = ("Core", "DOM: Networking")
 
 with Files("tests/proximity/**"):
     BUG_COMPONENT = ("Core", "DOM: Device Interfaces")

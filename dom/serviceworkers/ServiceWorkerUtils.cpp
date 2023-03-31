@@ -140,8 +140,8 @@ void ServiceWorkerScopeAndScriptAreValid(const ClientInfo& aClientInfo,
     return;
   }
 
-  auto hasHTTPScheme = [](nsIURI* aURI) -> bool {
-    return aURI->SchemeIs("http") || aURI->SchemeIs("https");
+  auto hasHTTPorTileScheme = [](nsIURI* aURI) -> bool {
+    return aURI->SchemeIs("http") || aURI->SchemeIs("https") || aURI->SchemeIs("tile");
   };
   auto hasMozExtScheme = [](nsIURI* aURI) -> bool {
     return aURI->SchemeIs("moz-extension");
@@ -150,7 +150,7 @@ void ServiceWorkerScopeAndScriptAreValid(const ClientInfo& aClientInfo,
   nsCOMPtr<nsIPrincipal> principal = principalOrErr.unwrap();
 
   auto isExtension = !!BasePrincipal::Cast(principal)->AddonPolicy();
-  auto hasValidURISchemes = !isExtension ? hasHTTPScheme : hasMozExtScheme;
+  auto hasValidURISchemes = !isExtension ? hasHTTPorTileScheme : hasMozExtScheme;
 
   // https://w3c.github.io/ServiceWorker/#start-register-algorithm step 3.
   if (!hasValidURISchemes(aScriptURI)) {

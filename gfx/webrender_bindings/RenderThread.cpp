@@ -24,6 +24,7 @@
 #include "mozilla/layers/WebRenderBridgeParent.h"
 #include "mozilla/layers/SharedSurfacesParent.h"
 #include "mozilla/layers/SurfacePool.h"
+#include "mozilla/layers/SynchronousTask.h"
 #include "mozilla/PerfStats.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/Telemetry.h"
@@ -145,6 +146,8 @@ void RenderThread::Start(uint32_t aNamespace) {
       {.stackSize = stackSize});
 
   if (NS_FAILED(rv)) {
+    gfxCriticalNote << "Failed to create Renderer thread: "
+                    << gfx::hexa((uint32_t)rv);
     return;
   }
 
@@ -334,9 +337,7 @@ void RenderThread::RemoveRenderer(wr::WindowId aWindowId) {
   auto windows = mWindowInfos.Lock();
   auto it = windows->find(AsUint64(aWindowId));
   MOZ_ASSERT(it != windows->end());
-  WindowInfo* toDelete = it->second;
   windows->erase(it);
-  delete toDelete;
 }
 
 RendererOGL* RenderThread::GetRenderer(wr::WindowId aWindowId) {
@@ -378,33 +379,27 @@ void RenderThread::BeginRecordingForWindow(wr::WindowId aWindowId,
   renderer->BeginRecording(aRecordingStart, aRootPipelineId);
 }
 
-void RenderThread::WriteCollectedFramesForWindow(wr::WindowId aWindowId) {
-  MOZ_ASSERT(IsInRenderThread());
-
-  RendererOGL* renderer = GetRenderer(aWindowId);
-  MOZ_ASSERT(renderer);
-  renderer->WriteCollectedFrames();
-}
-
-Maybe<layers::CollectedFrames> RenderThread::GetCollectedFramesForWindow(
+Maybe<layers::FrameRecording> RenderThread::EndRecordingForWindow(
     wr::WindowId aWindowId) {
   MOZ_ASSERT(IsInRenderThread());
 
   RendererOGL* renderer = GetRenderer(aWindowId);
   MOZ_ASSERT(renderer);
-  return renderer->GetCollectedFrames();
+  return renderer->EndRecording();
+}
+
+void RenderThread::PostHandleFrameOneDoc(wr::WindowId aWindowId, bool aRender,
+                                         bool aTrackedFrame) {
+  PostRunnable(NewRunnableMethod<wr::WindowId, bool, bool>(
+      "wr::RenderThread::HandleFrameOneDoc", this,
+      &RenderThread::HandleFrameOneDoc, aWindowId, aRender, aTrackedFrame));
 }
 
 void RenderThread::HandleFrameOneDoc(wr::WindowId aWindowId, bool aRender,
                                      bool aTrackedFrame) {
-  if (mHasShutdown) {
-    return;
-  }
+  MOZ_ASSERT(IsInRenderThread());
 
-  if (!IsInRenderThread()) {
-    PostRunnable(NewRunnableMethod<wr::WindowId, bool, bool>(
-        "wr::RenderThread::HandleFrameOneDoc", this,
-        &RenderThread::HandleFrameOneDoc, aWindowId, aRender, aTrackedFrame));
+  if (mHasShutdown) {
     return;
   }
 
@@ -436,7 +431,7 @@ void RenderThread::HandleFrameOneDocInner(wr::WindowId aWindowId, bool aRender,
       return;
     }
 
-    WindowInfo* info = it->second;
+    WindowInfo* info = it->second.get();
     PendingFrameInfo& frameInfo = info->mPendingFrames.front();
     frameInfo.mFrameNeedsRender |= aRender;
     render = frameInfo.mFrameNeedsRender;
@@ -513,14 +508,16 @@ void RenderThread::SetProfilerUI(wr::WindowId aWindowId,
   }
 }
 
+void RenderThread::PostEvent(wr::WindowId aWindowId,
+                             UniquePtr<RendererEvent> aEvent) {
+  PostRunnable(NewRunnableMethod<wr::WindowId, UniquePtr<RendererEvent>&&>(
+      "wr::RenderThread::PostEvent", this, &RenderThread::RunEvent, aWindowId,
+      std::move(aEvent)));
+}
+
 void RenderThread::RunEvent(wr::WindowId aWindowId,
                             UniquePtr<RendererEvent> aEvent) {
-  if (!IsInRenderThread()) {
-    PostRunnable(NewRunnableMethod<wr::WindowId, UniquePtr<RendererEvent>&&>(
-        "wr::RenderThread::RunEvent", this, &RenderThread::RunEvent, aWindowId,
-        std::move(aEvent)));
-    return;
-  }
+  MOZ_ASSERT(IsInRenderThread());
 
   aEvent->Run(*this, aWindowId);
   aEvent = nullptr;
@@ -700,7 +697,7 @@ bool RenderThread::TooManyPendingFrames(wr::WindowId aWindowId) {
     MOZ_ASSERT(false);
     return true;
   }
-  WindowInfo* info = it->second;
+  WindowInfo* info = it->second.get();
 
   if (info->PendingCount() > maxFrameCount) {
     return true;
@@ -750,7 +747,7 @@ void RenderThread::DecPendingFrameBuildCount(wr::WindowId aWindowId) {
     MOZ_ASSERT(false);
     return;
   }
-  WindowInfo* info = it->second;
+  WindowInfo* info = it->second.get();
   MOZ_RELEASE_ASSERT(info->mPendingFrameBuild >= 1);
   info->mPendingFrameBuild--;
 }
@@ -762,7 +759,7 @@ void RenderThread::DecPendingFrameCount(wr::WindowId aWindowId) {
     MOZ_ASSERT(false);
     return;
   }
-  WindowInfo* info = it->second;
+  WindowInfo* info = it->second.get();
   info->mPendingFrames.pop();
 }
 
@@ -815,6 +812,50 @@ void RenderThread::UnregisterExternalImage(
         &RenderThread::DeferredRenderTextureHostDestroy));
   } else {
     mRenderTextures.erase(it);
+  }
+}
+
+void RenderThread::DestroyExternalImagesSyncWait(
+    const std::vector<wr::ExternalImageId>&& aIds) {
+  if (!IsInRenderThread()) {
+    layers::SynchronousTask task("Destroy external images");
+
+    RefPtr<Runnable> runnable = NS_NewRunnableFunction(
+        "RenderThread::DestroyExternalImagesSyncWait::Runnable",
+        [&task, ids = std::move(aIds)]() {
+          layers::AutoCompleteTask complete(&task);
+          RenderThread::Get()->DestroyExternalImages(std::move(ids));
+        });
+
+    PostRunnable(runnable.forget());
+    task.Wait();
+    return;
+  }
+  DestroyExternalImages(std::move(aIds));
+}
+
+void RenderThread::DestroyExternalImages(
+    const std::vector<wr::ExternalImageId>&& aIds) {
+  MOZ_ASSERT(IsInRenderThread());
+
+  std::vector<RefPtr<RenderTextureHost>> hosts;
+  {
+    MutexAutoLock lock(mRenderTextureMapLock);
+    if (mHasShutdown) {
+      return;
+    }
+
+    for (auto& id : aIds) {
+      auto it = mRenderTextures.find(id);
+      if (it == mRenderTextures.end()) {
+        continue;
+      }
+      hosts.emplace_back(it->second);
+    }
+  }
+
+  for (auto& host : hosts) {
+    host->Destroy();
   }
 }
 
@@ -1366,7 +1407,7 @@ void wr_notifier_wake_up(mozilla::wr::WrWindowId aWindowId,
   // wake_up is used for things like propagating debug options or memory
   // pressure events, so we are not tracking pending frame counts.
   bool isTrackedFrame = false;
-  mozilla::wr::RenderThread::Get()->HandleFrameOneDoc(
+  mozilla::wr::RenderThread::Get()->PostHandleFrameOneDoc(
       aWindowId, aCompositeNeeded, isTrackedFrame);
 }
 
@@ -1376,15 +1417,16 @@ void wr_notifier_new_frame_ready(mozilla::wr::WrWindowId aWindowId,
   renderThread->DecPendingFrameBuildCount(aWindowId);
 
   bool isTrackedFrame = true;
-  renderThread->HandleFrameOneDoc(aWindowId, aCompositeNeeded, isTrackedFrame);
+  renderThread->PostHandleFrameOneDoc(aWindowId, aCompositeNeeded,
+                                      isTrackedFrame);
 }
 
 void wr_notifier_external_event(mozilla::wr::WrWindowId aWindowId,
                                 size_t aRawEvent) {
   mozilla::UniquePtr<mozilla::wr::RendererEvent> evt(
       reinterpret_cast<mozilla::wr::RendererEvent*>(aRawEvent));
-  mozilla::wr::RenderThread::Get()->RunEvent(mozilla::wr::WindowId(aWindowId),
-                                             std::move(evt));
+  mozilla::wr::RenderThread::Get()->PostEvent(mozilla::wr::WindowId(aWindowId),
+                                              std::move(evt));
 }
 
 static void NotifyScheduleRender(mozilla::wr::WrWindowId aWindowId,

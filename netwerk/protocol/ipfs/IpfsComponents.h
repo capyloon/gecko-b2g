@@ -15,6 +15,8 @@ already_AddRefed<nsIProtocolHandler> ConstructIpfsProtocolHandler();
 
 already_AddRefed<nsIProtocolHandler> ConstructIpnsProtocolHandler();
 
+already_AddRefed<nsIProtocolHandler> ConstructTileProtocolHandler();
+
 }  // namespace ipfs
 
 #endif  // IPFS_COMPONENTS_H_

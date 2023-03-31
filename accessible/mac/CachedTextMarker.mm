@@ -313,16 +313,24 @@ NSAttributedString* CachedTextMarkerRange::AttributedText() const {
           : mRange;
 
   nsAutoString text;
-  RefPtr<AccAttributes> currentRun = range.Start().GetTextAttributes();
+  RefPtr<AccAttributes> currentRun = nullptr;
   Accessible* runAcc = range.Start().mAcc;
   for (TextLeafRange segment : range) {
     TextLeafPoint start = segment.Start();
     if (start.mAcc->IsTextField() && start.mAcc->ChildCount() == 0) {
       continue;
     }
+    if (!currentRun) {
+      // This is the first segment that isn't an empty input.
+      currentRun = start.GetTextAttributes();
+    }
     TextLeafPoint attributesNext;
     do {
       attributesNext = start.FindTextAttrsStart(eDirNext, false);
+      if (attributesNext == start) {
+        // XXX: FindTextAttrsStart should not return the same point.
+        break;
+      }
       RefPtr<AccAttributes> attributes = start.GetTextAttributes();
       MOZ_ASSERT(attributes);
       if (attributes && !attributes->Equal(currentRun)) {

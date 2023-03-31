@@ -230,6 +230,11 @@ ReflowInput::ReflowInput(nsPresContext* aPresContext,
       case LayoutFrameType::Canvas:         // FALLTHROUGH
       case LayoutFrameType::FlexContainer:  // FALLTHROUGH
       case LayoutFrameType::GridContainer:
+        if (mFrame->HasAnyStateBits(NS_FRAME_OUT_OF_FLOW)) {
+          // Never allow breakpoints inside of out-of-flow frames.
+          mFlags.mCanHaveClassABreakpoints = false;
+          break;
+        }
         // This frame type can have class A breakpoints, inherit this flag
         // from the parent (this is done for all flags during construction).
         // This also includes Canvas frames, as each PageContent frame always
@@ -310,19 +315,11 @@ bool ReflowInput::ShouldReflowAllKids() const {
 
 void ReflowInput::SetComputedISize(nscoord aComputedISize,
                                    ResetResizeFlags aFlags) {
-  // It'd be nice to assert that |frame| is not in reflow, but this fails for
-  // two reasons:
-  //
-  // 1) Viewport frames reset the computed isize on a copy of their reflow
-  //    input when reflowing fixed-pos kids.  In that case we actually don't
-  //    want to mess with the resize flags, because comparing the frame's rect
-  //    to the munged computed width is pointless.
-  // 2) nsIFrame::BoxReflow creates a reflow input for its parent.  This reflow
-  //    input is not used to reflow the parent, but just as a parent for the
-  //    frame's own reflow input.  So given a nsBoxFrame inside some non-XUL
-  //    (like a text control, for example), we'll end up creating a reflow
-  //    input for the parent while the parent is reflowing.
-
+  // It'd be nice to assert that |frame| is not in reflow, but this fails
+  // because viewport frames reset the computed isize on a copy of their reflow
+  // input when reflowing fixed-pos kids.  In that case we actually don't want
+  // to mess with the resize flags, because comparing the frame's rect to the
+  // munged computed isize is pointless.
   NS_WARNING_ASSERTION(aComputedISize >= 0, "Invalid computed inline-size!");
   if (ComputedISize() != aComputedISize) {
     mComputedSize.ISize(mWritingMode) = std::max(0, aComputedISize);
@@ -335,18 +332,7 @@ void ReflowInput::SetComputedISize(nscoord aComputedISize,
 void ReflowInput::SetComputedBSize(nscoord aComputedBSize,
                                    ResetResizeFlags aFlags) {
   // It'd be nice to assert that |frame| is not in reflow, but this fails
-  // for two reasons:
-  //
-  // 1) Viewport frames reset the computed block size on a copy of their reflow
-  //    input when reflowing fixed-pos kids. In that case we actually don't want
-  //    to mess with the resize flags, because comparing the frame's rect to the
-  //    munged computed bsize is pointless.
-  // 2) nsIFrame::BoxReflow creates a reflow input for its parent.  This reflow
-  //    input is not used to reflow the parent, but just as a parent for the
-  //    frame's own reflow input.  So given a nsBoxFrame inside some non-XUL
-  //    (like a text control, for example), we'll end up creating a reflow
-  //    input for the parent while the parent is reflowing.
-
+  // for the same reason as above.
   NS_WARNING_ASSERTION(aComputedBSize >= 0, "Invalid computed block-size!");
   if (ComputedBSize() != aComputedBSize) {
     mComputedSize.BSize(mWritingMode) = std::max(0, aComputedBSize);
@@ -711,8 +697,7 @@ void ReflowInput::InitResizeFlags(nsPresContext* aPresContext,
                           mStylePosition->MinBSizeDependsOnContainer(wm) ||
                           mStylePosition->MaxBSizeDependsOnContainer(wm) ||
                           mStylePosition->mOffset.GetBStart(wm).HasPercent() ||
-                          !mStylePosition->mOffset.GetBEnd(wm).IsAuto() ||
-                          mFrame->IsXULBoxFrame();
+                          !mStylePosition->mOffset.GetBEnd(wm).IsAuto();
 
   // If mFrame is a flex item, and mFrame's block axis is the flex container's
   // main axis (e.g. in a column-oriented flex container with same
@@ -1055,12 +1040,6 @@ void ReflowInput::ApplyRelativePositioning(
       mozilla::LogicalPoint(aWritingMode, pos, aContainerSize - frameSize);
 }
 
-// Returns true if aFrame is non-null, a XUL frame, and "XUL-collapsed" (which
-// only becomes a valid question to ask if we know it's a XUL frame).
-static bool IsXULCollapsedXULFrame(nsIFrame* aFrame) {
-  return aFrame && aFrame->IsXULBoxFrame() && aFrame->IsXULCollapsed();
-}
-
 nsIFrame* ReflowInput::GetHypotheticalBoxContainer(nsIFrame* aFrame,
                                                    nscoord& aCBIStartEdge,
                                                    LogicalSize& aCBSize) const {
@@ -1095,22 +1074,10 @@ nsIFrame* ReflowInput::GetHypotheticalBoxContainer(nsIFrame* aFrame,
                  "aFrame shouldn't be in reflow; we'll lie if it is");
     WritingMode wm = aFrame->GetWritingMode();
     // Compute CB's offset & content-box size by subtracting borderpadding from
-    // frame size.  Exception: if the CB is 0-sized, it *might* be a child of a
-    // XUL-collapsed frame and might have nonzero borderpadding that was simply
-    // discarded during its layout. (See the child-zero-sizing in
-    // nsSprocketLayout::XULLayout()).  In that case, we ignore the
-    // borderpadding here (just like we did when laying it out), or else we'd
-    // produce a bogus negative content-box size.
-    aCBIStartEdge = 0;
-    aCBSize = aFrame->GetLogicalSize(wm);
-    if (!aCBSize.IsAllZero() ||
-        (!IsXULCollapsedXULFrame(aFrame->GetParent()))) {
-      // aFrame is not XUL-collapsed (nor is it a child of a XUL-collapsed
-      // frame), so we can go ahead and subtract out border padding.
-      LogicalMargin borderPadding = aFrame->GetLogicalUsedBorderAndPadding(wm);
-      aCBIStartEdge += borderPadding.IStart(wm);
-      aCBSize -= borderPadding.Size(wm);
-    }
+    // frame size.
+    const auto& bp = aFrame->GetLogicalUsedBorderAndPadding(wm);
+    aCBIStartEdge = bp.IStart(wm);
+    aCBSize = aFrame->GetLogicalSize(wm) - bp.Size(wm);
   }
 
   return aFrame;
@@ -2167,11 +2134,6 @@ void ReflowInput::InitConstraints(
     nsPresContext* aPresContext, const Maybe<LogicalSize>& aContainingBlockSize,
     const Maybe<LogicalMargin>& aBorder, const Maybe<LogicalMargin>& aPadding,
     LayoutFrameType aFrameType) {
-  MOZ_ASSERT(!mStyleDisplay->IsFloating(mFrame) ||
-                 (mStyleDisplay->mDisplay != StyleDisplay::MozBox &&
-                  mStyleDisplay->mDisplay != StyleDisplay::MozInlineBox),
-             "Please don't try to float a -moz-box or a -moz-inline-box");
-
   WritingMode wm = GetWritingMode();
   LogicalSize cbSize = aContainingBlockSize.valueOr(
       LogicalSize(mWritingMode, NS_UNCONSTRAINEDSIZE, NS_UNCONSTRAINEDSIZE));

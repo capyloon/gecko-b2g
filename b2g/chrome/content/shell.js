@@ -4,28 +4,28 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { XPCOMUtils } = ChromeUtils.import(
-  "resource://gre/modules/XPCOMUtils.jsm"
+const { XPCOMUtils } = ChromeUtils.importESModule(
+  "resource://gre/modules/XPCOMUtils.sys.mjs"
 );
-const { AppConstants } = ChromeUtils.import(
-  "resource://gre/modules/AppConstants.jsm"
+const { AppConstants } = ChromeUtils.importESModule(
+  "resource://gre/modules/AppConstants.sys.mjs"
 );
-const { MarionetteController } = ChromeUtils.import(
-  "resource://gre/modules/MarionetteController.jsm"
+const { MarionetteController } = ChromeUtils.importESModule(
+  "resource://gre/modules/MarionetteController.sys.mjs"
 );
 
-ChromeUtils.import("resource://gre/modules/ActivitiesService.jsm");
-ChromeUtils.import("resource://gre/modules/AlarmService.jsm");
-ChromeUtils.import("resource://gre/modules/DownloadService.jsm");
+ChromeUtils.importESModule("resource://gre/modules/ActivitiesService.sys.mjs");
+ChromeUtils.importESModule("resource://gre/modules/AlarmService.sys.mjs");
+ChromeUtils.importESModule("resource://gre/modules/DownloadService.sys.mjs");
 ChromeUtils.import("resource://gre/modules/NotificationDB.jsm");
-ChromeUtils.import("resource://gre/modules/ErrorPage.jsm");
-ChromeUtils.import("resource://gre/modules/OrientationChangeHandler.jsm");
+ChromeUtils.importESModule("resource://gre/modules/ErrorPage.sys.mjs");
+ChromeUtils.importESModule("resource://gre/modules/OrientationChangeHandler.sys.mjs");
 
 const lazy = {};
 
 XPCOMUtils.defineLazyGetter(this, "MarionetteHelper", () => {
-  const { MarionetteHelper } = ChromeUtils.import(
-    "chrome://b2g/content/devtools/marionette.js"
+  const { MarionetteHelper } = ChromeUtils.importESModule(
+    "chrome://b2g/content/devtools/marionette.sys.mjs"
   );
   return new MarionetteHelper(shell.contentBrowser);
 });
@@ -37,16 +37,21 @@ XPCOMUtils.defineLazyServiceGetter(
   "nsIVirtualCursorService"
 );
 
+ChromeUtils.defineESModuleGetters(this, {
+  GeckoBridge: "resource://gre/modules/GeckoBridge.sys.mjs",
+  SettingsPrefsSync: "resource://gre/modules/SettingsPrefsSync.sys.mjs",
+});
+
 XPCOMUtils.defineLazyModuleGetters(this, {
-  GeckoBridge: "resource://gre/modules/GeckoBridge.jsm",
   SafeBrowsing: "resource://gre/modules/SafeBrowsing.jsm",
-  SettingsPrefsSync: "resource://gre/modules/SettingsPrefsSync.jsm",
 });
 
 const isGonk = AppConstants.platform === "gonk";
 
 if (isGonk) {
-  ChromeUtils.import("resource://gre/modules/CustomHeaderInjector.jsm");
+  ChromeUtils.importESModule(
+    "resource://gre/modules/CustomHeaderInjector.sys.mjs"
+  );
 
   XPCOMUtils.defineLazyGetter(this, "libcutils", () => {
     const { libcutils } = ChromeUtils.import(
@@ -55,7 +60,9 @@ if (isGonk) {
     return libcutils;
   });
 
-  ChromeUtils.import("resource://gre/modules/NetworkStatsService.jsm");
+  ChromeUtils.importESModule(
+    "resource://gre/modules/NetworkStatsService.sys.mjs"
+  );
 }
 
 try {
@@ -65,7 +72,9 @@ try {
   // event, and yes this is unfortunately a hack. So try not to delay loading
   // this module.
   if (isGonk && Services.prefs.getBoolPref("b2g.multiscreen.enabled")) {
-    ChromeUtils.import("resource://gre/modules/MultiscreenHandler.jsm");
+    ChromeUtils.importESModule(
+      "resource://gre/modules/MultiscreenHandler.sys.mjs"
+    );
   }
 } catch (e) {}
 

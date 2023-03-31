@@ -637,3 +637,171 @@ add_task(async function selected_result_weather() {
   cleanupQuickSuggest();
   await SpecialPowers.popPrefEnv();
 });
+
+add_task(async function selected_result_navigational() {
+  const cleanupQuickSuggest = await ensureQuickSuggestInit({
+    merinoSuggestions: [
+      {
+        title: "Navigational suggestion",
+        url: "https://example.com/navigational-suggestion",
+        provider: "top_picks",
+        is_sponsored: false,
+        score: 0.25,
+        block_id: 0,
+        is_top_pick: true,
+      },
+    ],
+  });
+
+  await doTest(async browser => {
+    await openPopup("only match the Merino suggestion");
+    await selectRowByProvider("UrlbarProviderQuickSuggest");
+    await doEnter();
+
+    assertEngagementTelemetry([
+      {
+        selected_result: "navigational",
+        selected_result_subtype: "",
+        provider: "UrlbarProviderQuickSuggest",
+        results: "search_engine,navigational",
+      },
+    ]);
+  });
+
+  cleanupQuickSuggest();
+});
+
+add_task(async function selected_result_dynamic_wikipedia() {
+  const cleanupQuickSuggest = await ensureQuickSuggestInit({
+    merinoSuggestions: [
+      {
+        block_id: 1,
+        url: "https://example.com/dynamic-wikipedia",
+        title: "Dynamic Wikipedia suggestion",
+        click_url: "https://example.com/click",
+        impression_url: "https://example.com/impression",
+        advertiser: "dynamic-wikipedia",
+        provider: "wikipedia",
+        iab_category: "5 - Education",
+      },
+    ],
+  });
+
+  await doTest(async browser => {
+    await openPopup("only match the Merino suggestion");
+    await selectRowByProvider("UrlbarProviderQuickSuggest");
+    await doEnter();
+
+    assertEngagementTelemetry([
+      {
+        selected_result: "dynamic_wikipedia",
+        selected_result_subtype: "",
+        provider: "UrlbarProviderQuickSuggest",
+        results: "search_engine,dynamic_wikipedia",
+      },
+    ]);
+  });
+
+  cleanupQuickSuggest();
+});
+
+add_task(async function selected_result_search_shortcut_button() {
+  await doTest(async browser => {
+    const oneOffSearchButtons = UrlbarTestUtils.getOneOffSearchButtons(window);
+    await openPopup("x");
+    Assert.ok(!oneOffSearchButtons.selectedButton);
+
+    // Select oneoff button added for test in setup().
+    for (;;) {
+      EventUtils.synthesizeKey("KEY_ArrowDown");
+      if (!oneOffSearchButtons.selectedButton) {
+        continue;
+      }
+
+      if (
+        oneOffSearchButtons.selectedButton.engine.name.includes(
+          "searchSuggestionEngine.xml"
+        )
+      ) {
+        break;
+      }
+    }
+
+    // Search immediately.
+    await doEnter({ shiftKey: true });
+
+    assertEngagementTelemetry([
+      {
+        selected_result: "search_shortcut_button",
+        selected_result_subtype: "",
+        provider: null,
+        results: "search_engine",
+      },
+    ]);
+  });
+});
+
+add_task(async function selected_result_trending() {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["browser.urlbar.suggest.searches", true],
+      ["browser.urlbar.trending.featureGate", true],
+      ["browser.urlbar.trending.requireSearchMode", false],
+      ["browser.urlbar.trending.maxResultsNoSearchMode", 1],
+      ["browser.urlbar.weather.featureGate", false],
+    ],
+  });
+
+  let defaultEngine = await Services.search.getDefault();
+  let extension = await SearchTestUtils.installSearchExtension(
+    {
+      name: "mozengine",
+      search_url: "https://example.org/",
+    },
+    { setAsDefault: true, skipUnload: true }
+  );
+
+  SearchTestUtils.useMockIdleService();
+  await SearchTestUtils.updateRemoteSettingsConfig([
+    {
+      webExtension: { id: "mozengine@tests.mozilla.org" },
+      urls: {
+        trending: {
+          fullPath:
+            "https://example.com/browser/browser/components/search/test/browser/trendingSuggestionEngine.sjs",
+          query: "",
+        },
+      },
+      appliesTo: [{ included: { everywhere: true } }],
+      default: "yes",
+    },
+  ]);
+
+  await doTest(async browser => {
+    await openPopup("");
+    await selectRowByProvider("SearchSuggestions");
+    await doEnter();
+
+    assertEngagementTelemetry([
+      {
+        selected_result: "trending_search",
+        selected_result_subtype: "",
+        provider: "SearchSuggestions",
+        results: "trending_search",
+      },
+    ]);
+  });
+
+  await extension.unload();
+  await Services.search.setDefault(
+    defaultEngine,
+    Ci.nsISearchService.CHANGE_REASON_UNKNOWN
+  );
+  let settingsWritten = SearchTestUtils.promiseSearchNotification(
+    "write-settings-to-disk-complete"
+  );
+  await SearchTestUtils.updateRemoteSettingsConfig();
+  await settingsWritten;
+  await PlacesUtils.history.clear();
+  await SpecialPowers.popPrefEnv();
+});

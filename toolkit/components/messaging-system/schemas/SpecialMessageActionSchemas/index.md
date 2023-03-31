@@ -245,9 +245,24 @@ Action for pinning Firefox to the user's taskbar.
 
 ### `SET_DEFAULT_BROWSER`
 
-Action for configuring the default browser to Firefox on the user's system.
+Action for setting the default browser to Firefox on the user's system.
 
 - args: (none)
+
+### `SET_DEFAULT_PDF_HANDLER`
+
+Action for setting the default PDF handler to Firefox on the user's system.
+
+Windows only.
+
+- args:
+```ts
+{
+  // Only set Firefox as the default PDF handler if the current PDF handler is a
+  // known browser.
+  onlyIfKnownBrowser?: boolean;
+}
+```
 
 ### `SHOW_SPOTLIGHT`
 
@@ -327,8 +342,8 @@ Selects an element in the current Window's document and triggers a click action
 Action for opening about:firefoxview and the colorways modal
 
 
-### `ENABLE_CBH`
+### `RELOAD_BROWSER`
 
 * args: (none)
 
-Action that enables the cookie banner handling feature
+Action for reloading the current browser.

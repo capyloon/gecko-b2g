@@ -287,11 +287,7 @@ pref("browser.shell.setDefaultPDFHandler.onlyReplaceBrowsers", true);
 // The behavior of option 3 is detailed at: http://wiki.mozilla.org/Session_Restore
 pref("browser.startup.page",                1);
 pref("browser.startup.homepage",            "about:home");
-#ifdef NIGHTLY_BUILD
 pref("browser.startup.homepage.abouthome_cache.enabled", true);
-#else
-pref("browser.startup.homepage.abouthome_cache.enabled", false);
-#endif
 pref("browser.startup.homepage.abouthome_cache.loglevel", "Warn");
 
 // Whether we should skip the homepage when opening the first-run page
@@ -410,11 +406,6 @@ pref("browser.urlbar.suggest.calculator",           false);
 // Feature gate pref for weather suggestions in the urlbar.
 pref("browser.urlbar.weather.featureGate", false);
 
-// If true, weather suggestions will be shown on "zero prefix", which means when
-// the user focuses the urlbar without typing anything. If false, the user must
-// type weather-related keywords to show weather suggestions.
-pref("browser.urlbar.weather.zeroPrefix", true);
-
 // If `browser.urlbar.weather.featureGate` is true, this controls whether
 // weather suggestions are turned on.
 pref("browser.urlbar.suggest.weather", true);
@@ -473,9 +464,13 @@ pref("browser.urlbar.quicksuggest.impressionCaps.nonSponsoredEnabled", false);
 // caps.
 pref("browser.urlbar.quicksuggest.impressionCaps.sponsoredEnabled", false);
 
+#ifdef EARLY_BETA_OR_EARLIER
 // Whether the usual non-best-match quick suggest results can be blocked. This
 // pref is a fallback for the Nimbus variable `quickSuggestBlockingEnabled`.
+pref("browser.urlbar.quicksuggest.blockingEnabled", true);
+#else
 pref("browser.urlbar.quicksuggest.blockingEnabled", false);
+#endif
 
 // Whether unit conversion is enabled.
 #ifdef NIGHTLY_BUILD
@@ -590,7 +585,11 @@ pref("browser.urlbar.bestMatch.enabled", false);
 
 // Whether best match results can be blocked. This pref is a fallback for the
 // Nimbus variable `bestMatchBlockingEnabled`.
+#ifdef EARLY_BETA_OR_EARLIER
+pref("browser.urlbar.bestMatch.blockingEnabled", true);
+#else
 pref("browser.urlbar.bestMatch.blockingEnabled", false);
+#endif
 
 // Enable site specific search result.
 pref("browser.urlbar.contextualSearch.enabled", false);
@@ -986,6 +985,8 @@ pref("browser.gesture.twist.end", "cmd_gestureRotateEnd");
   pref("browser.gesture.tap", "");
 #endif
 
+pref("browser.history_swipe_animation.disabled", false);
+
 // 0: Nothing happens
 // 1: Scrolling contents
 // 2: Go back or go forward, in your history
@@ -1269,13 +1270,8 @@ pref("browser.bookmarks.editDialog.firstEditField", "namePicker");
 // The number of recently selected folders in the edit bookmarks dialog.
 pref("browser.bookmarks.editDialog.maxRecentFolders", 7);
 
-// By default the Edit Bookmark dialog is instant-apply. This feature pref will allow to
-// just save on Accept, once the project is complete.
-#ifdef NIGHTLY_BUILD
-  pref("browser.bookmarks.editDialog.delayedApply.enabled", true);
-#else
-  pref("browser.bookmarks.editDialog.delayedApply.enabled", false);
-#endif
+// Whether the Edit Bookmark dialog is delayed-apply.
+pref("browser.bookmarks.editDialog.delayedApply.enabled", true);
 
 #if defined(XP_WIN) && defined(MOZ_SANDBOX)
   // This controls the strength of the Windows content process sandbox for
@@ -1609,6 +1605,7 @@ pref("browser.newtabpage.activity-stream.discoverystream.essentialReadsHeader.en
 pref("browser.newtabpage.activity-stream.discoverystream.recentSaves.enabled", false);
 pref("browser.newtabpage.activity-stream.discoverystream.editorsPicksHeader.enabled", false);
 pref("browser.newtabpage.activity-stream.discoverystream.spoc-positions", "1,5,7,11,18,20");
+pref("browser.newtabpage.activity-stream.discoverystream.spoc-topsites-positions", "1");
 pref("browser.newtabpage.activity-stream.discoverystream.widget-positions", "");
 
 pref("browser.newtabpage.activity-stream.discoverystream.spocs-endpoint", "");
@@ -1827,6 +1824,11 @@ pref("media.videocontrols.picture-in-picture.audio-toggle.enabled", true);
 pref("media.videocontrols.picture-in-picture.video-toggle.enabled", true);
 pref("media.videocontrols.picture-in-picture.video-toggle.visibility-threshold", "1.0");
 pref("media.videocontrols.picture-in-picture.keyboard-controls.enabled", true);
+#ifdef NIGHTLY_BUILD
+  pref("media.videocontrols.picture-in-picture.urlbar-button.enabled", true);
+#else
+  pref("media.videocontrols.picture-in-picture.urlbar-button.enabled", false);
+#endif
 
 // Preferences for the older translation service backed by external services. This is
 // planned to be replaced with an integration of the Firefox Translations service.
@@ -2161,9 +2163,8 @@ pref("browser.migrate.brave.enabled", true);
 pref("browser.migrate.canary.enabled", true);
 
 pref("browser.migrate.chrome.enabled", true);
-// See comments in bug 1340115 on how we got to these numbers.
+// See comments in bug 1340115 on how we got to this number.
 pref("browser.migrate.chrome.history.limit", 2000);
-pref("browser.migrate.chrome.history.maxAgeInDays", 180);
 
 pref("browser.migrate.chrome-beta.enabled", true);
 pref("browser.migrate.chrome-dev.enabled", true);
@@ -2182,9 +2183,23 @@ pref("browser.migrate.vivaldi.enabled", true);
 pref("browser.migrate.content-modal.enabled", false);
 pref("browser.migrate.content-modal.import-all.enabled", false);
 
+// The maximum age of history entries we'll import, in days.
+pref("browser.migrate.history.maxAgeInDays", 180);
+
+// These following prefs are set to true if the user has at some
+// point in the past migrated one of these resource types from
+// another browser. We also attempt to transfer these preferences
+// across profile resets.
+pref("browser.migrate.interactions.bookmarks", false);
+pref("browser.migrate.interactions.history", false);
+pref("browser.migrate.interactions.passwords", false);
+
 pref("extensions.pocket.api", "api.getpocket.com");
+pref("extensions.pocket.bffApi", "firefox-api-proxy.cdn.mozilla.net");
+pref("extensions.pocket.bffRecentSaves", true);
 pref("extensions.pocket.enabled", true);
 pref("extensions.pocket.oAuthConsumerKey", "40249-e88c401e1b1f2242d9e441c4");
+pref("extensions.pocket.oAuthConsumerKeyBff", "94110-6d5ff7a89d72c869766af0e0");
 pref("extensions.pocket.site", "getpocket.com");
 pref("extensions.pocket.onSaveRecs", true);
 pref("extensions.pocket.onSaveRecs.locales", "en-US,en-GB,en-CA");
@@ -2447,6 +2462,10 @@ pref("devtools.gridinspector.showGridLineNumbers", false);
 pref("devtools.gridinspector.showInfiniteLines", false);
 // Max number of grid highlighters that can be displayed
 pref("devtools.gridinspector.maxHighlighters", 3);
+
+// Whether or not simplified highlighters should be used when
+// prefers-reduced-motion is enabled.
+pref("devtools.inspector.simple-highlighters-reduced-motion", false);
 
 // Whether or not the box model panel is opened in the layout view
 pref("devtools.layout.boxmodel.opened", true);
@@ -2819,4 +2838,9 @@ pref("cookiebanners.ui.desktop.cfrVariant", 0);
   pref("browser.swipe.navigation-icon-end-position", 60);
   pref("browser.swipe.navigation-icon-min-radius", 12);
   pref("browser.swipe.navigation-icon-max-radius", 20);
+#endif
+
+// Trigger FOG's Artifact Build support on artifact builds.
+#ifdef MOZ_ARTIFACT_BUILDS
+  pref("telemetry.fog.artifact_build", true);
 #endif

@@ -415,7 +415,6 @@ void* nsChildView::GetNativeData(uint32_t aDataType) {
 
   switch (aDataType) {
     case NS_NATIVE_WIDGET:
-    case NS_NATIVE_DISPLAY:
       retVal = (void*)mView;
       break;
 
@@ -4460,7 +4459,8 @@ static CFTypeRefPtr<CFURLRef> GetPasteLocation(NSPasteboard* aPasteboard) {
   nsAutoRetainCocoaObject kungFuDeathGrip(self);
 
   // Make sure that the service will accept strings or HTML.
-  if (![types containsObject:[UTIHelper stringFromPboardType:NSPasteboardTypeString]] &&
+  if (![types containsObject:[UTIHelper stringFromPboardType:NSStringPboardType]] &&
+      ![types containsObject:[UTIHelper stringFromPboardType:NSPasteboardTypeString]] &&
       ![types containsObject:[UTIHelper stringFromPboardType:NSPasteboardTypeHTML]]) {
     return NO;
   }

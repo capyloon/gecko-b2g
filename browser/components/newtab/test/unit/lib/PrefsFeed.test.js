@@ -177,6 +177,17 @@ describe("PrefsFeed", () => {
       })
     );
   });
+  it("should not send a PREF_CHANGED actions when onPocketExperimentUpdated is called during startup", () => {
+    sandbox
+      .stub(global.NimbusFeatures.pocketNewtab, "getAllVariables")
+      .returns({
+        prefsButtonIcon: "icon-new",
+      });
+    feed.onPocketExperimentUpdated({}, "feature-experiment-loaded");
+    assert.notCalled(feed.store.dispatch);
+    feed.onPocketExperimentUpdated({}, "feature-rollout-loaded");
+    assert.notCalled(feed.store.dispatch);
+  });
   it("should send a PREF_CHANGED actions when onExperimentUpdated is called", () => {
     sandbox.stub(global.NimbusFeatures.newtab, "getAllVariables").returns({
       prefsButtonIcon: "icon-new",
@@ -198,15 +209,15 @@ describe("PrefsFeed", () => {
 
   it("should remove all events on removeListeners", () => {
     feed.geo = "";
-    sandbox.spy(global.NimbusFeatures.pocketNewtab, "off");
-    sandbox.spy(global.NimbusFeatures.newtab, "off");
+    sandbox.spy(global.NimbusFeatures.pocketNewtab, "offUpdate");
+    sandbox.spy(global.NimbusFeatures.newtab, "offUpdate");
     feed.removeListeners();
     assert.calledWith(
-      global.NimbusFeatures.pocketNewtab.off,
+      global.NimbusFeatures.pocketNewtab.offUpdate,
       feed.onPocketExperimentUpdated
     );
     assert.calledWith(
-      global.NimbusFeatures.newtab.off,
+      global.NimbusFeatures.newtab.offUpdate,
       feed.onExperimentUpdated
     );
     assert.calledWith(

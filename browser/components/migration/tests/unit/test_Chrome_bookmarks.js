@@ -60,17 +60,36 @@ async function testBookmarks(migratorKey, subDirs) {
     ignoreExisting: true,
   });
 
+  // Copy Favicons database into Default profile
+  const sourcePath = do_get_file(
+    "AppData/Local/Google/Chrome/User Data/Default/Favicons"
+  ).path;
+  await IOUtils.copy(sourcePath, target.path);
+
+  // Get page url for each favicon
+  let faviconURIs = await MigrationUtils.getRowsFromDBWithoutLocks(
+    sourcePath,
+    "Chrome Bookmark Favicons",
+    `select page_url from icon_mapping`
+  );
+
   target.append("Bookmarks");
   await IOUtils.remove(target.path, { ignoreAbsent: true });
 
   let bookmarksData = {
-    roots: { bookmark_bar: { children: [] }, other: { children: [] } },
+    roots: {
+      bookmark_bar: { children: [] },
+      other: { children: [] },
+      synced: { children: [] },
+    },
   };
   const MAX_BMS = 100;
   let barKids = bookmarksData.roots.bookmark_bar.children;
   let menuKids = bookmarksData.roots.other.children;
+  let syncedKids = bookmarksData.roots.synced.children;
   let currentMenuKids = menuKids;
   let currentBarKids = barKids;
+  let currentSyncedKids = syncedKids;
   for (let i = 0; i < MAX_BMS; i++) {
     currentBarKids.push({
       url: "https://www.chrome-bookmark-bar-bookmark" + i + ".com",
@@ -80,6 +99,11 @@ async function testBookmarks(migratorKey, subDirs) {
     currentMenuKids.push({
       url: "https://www.chrome-menu-bookmark" + i + ".com",
       name: "bookmark for menu " + i,
+      type: "url",
+    });
+    currentSyncedKids.push({
+      url: "https://www.chrome-synced-bookmark" + i + ".com",
+      name: "bookmark for synced " + i,
       type: "url",
     });
     if (i % 20 == 19) {
@@ -98,6 +122,14 @@ async function testBookmarks(migratorKey, subDirs) {
       };
       currentMenuKids.push(nextFolder);
       currentMenuKids = nextFolder.children;
+
+      nextFolder = {
+        name: "synced folder " + Math.ceil(i / 20),
+        type: "folder",
+        children: [],
+      };
+      currentSyncedKids.push(nextFolder);
+      currentSyncedKids = nextFolder.children;
     }
   }
 
@@ -162,6 +194,7 @@ async function testBookmarks(migratorKey, subDirs) {
   const postmenuCount = await getFolderItemCount(
     PlacesUtils.bookmarks.menuGuid
   );
+
   Assert.equal(
     postUnfiledCount - initialUnfiledCount,
     105,
@@ -188,15 +221,22 @@ async function testBookmarks(migratorKey, subDirs) {
     "Telemetry reporting correct."
   );
   Assert.ok(observerNotified, "The observer should be notified upon migration");
+  let pageUrls = Array.from(faviconURIs, f =>
+    Services.io.newURI(f.getResultByName("page_url"))
+  );
+  await assertFavicons(pageUrls);
 }
 
 add_task(async function test_Chrome() {
+  // Expire all favicons before the test to make sure favicons are imported
+  PlacesUtils.favicons.expireAllFavicons();
   let subDirs =
     AppConstants.platform == "linux" ? ["google-chrome"] : ["Google", "Chrome"];
   await testBookmarks("chrome", subDirs);
 });
 
 add_task(async function test_ChromiumEdge() {
+  PlacesUtils.favicons.expireAllFavicons();
   if (AppConstants.platform == "linux") {
     // Edge isn't available on Linux.
     return;

@@ -140,7 +140,6 @@ let propNameWhitelist = [
   // These variables are used in a shorthand, but the CSS parser deletes the values
   // when expanding the shorthands. See https://github.com/w3c/csswg-drafts/issues/2515
   { propName: "--bezier-diagonal-color", isFromDevTools: true },
-  { propName: "--bezier-grid-color", isFromDevTools: true },
 
   // This variable is used from CSS embedded in JS in adjustableTitle.js
   { propName: "--icon-url", isFromDevTools: false },
@@ -300,12 +299,16 @@ function neverMatches(mediaList) {
     android: ["(-moz-platform: android)"],
   };
   for (let platform in perPlatformMediaQueryMap) {
-    if (platform === AppConstants.platform) {
-      continue;
-    }
-    if (perPlatformMediaQueryMap[platform].includes(mediaList.mediaText)) {
-      // This query only matches on another platform that isn't ours.
-      return true;
+    const inThisPlatform = platform === AppConstants.platform;
+    for (const media of perPlatformMediaQueryMap[platform]) {
+      if (inThisPlatform && mediaList.mediaText == "not " + media) {
+        // This query can't match on this platform.
+        return true;
+      }
+      if (!inThisPlatform && mediaList.mediaText == media) {
+        // This query only matches on another platform that isn't ours.
+        return true;
+      }
     }
   }
   return false;

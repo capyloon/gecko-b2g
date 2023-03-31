@@ -20,8 +20,8 @@ XPCOMUtils.defineLazyModuleGetters(lazy, {
 });
 
 XPCOMUtils.defineLazyGetter(lazy, "log", () => {
-  const { Logger } = ChromeUtils.import(
-    "resource://messaging-system/lib/Logger.jsm"
+  const { Logger } = ChromeUtils.importESModule(
+    "resource://messaging-system/lib/Logger.sys.mjs"
   );
   return new Logger("AboutWelcomeChild");
 });
@@ -69,6 +69,10 @@ class AboutWelcomeChild extends JSWindowActorChild {
 
     Cu.exportFunction(this.AWSelectTheme.bind(this), window, {
       defineAs: "AWSelectTheme",
+    });
+
+    Cu.exportFunction(this.AWEvaluateScreenTargeting.bind(this), window, {
+      defineAs: "AWEvaluateScreenTargeting",
     });
 
     Cu.exportFunction(this.AWSendEventTelemetry.bind(this), window, {
@@ -138,6 +142,13 @@ class AboutWelcomeChild extends JSWindowActorChild {
   AWSelectTheme(data) {
     return this.wrapPromise(
       this.sendQuery("AWPage:SELECT_THEME", data.toUpperCase())
+    );
+  }
+
+  AWEvaluateScreenTargeting(data) {
+    return this.sendQueryAndCloneForContent(
+      "AWPage:EVALUATE_SCREEN_TARGETING",
+      data
     );
   }
 

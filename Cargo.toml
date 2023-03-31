@@ -103,9 +103,6 @@ darling = { path = "build/rust/darling" }
 # Patch redox_users to an empty crate
 redox_users = { path = "build/rust/redox_users" }
 
-# Patch memmap2 0.2 to 0.3
-memmap2 = { path = "build/rust/memmap2" }
-
 # Patch getrandom 0.7 to 0.8
 rand = { path = "build/rust/rand" }
 
@@ -127,9 +124,6 @@ bindgen = { path = "build/rust/bindgen" }
 
 # Patch memoffset 0.6 to 0.7
 memoffset = { path = "build/rust/memoffset" }
-
-# Patch nom 6 to 7
-nom = { path = "build/rust/nom" }
 
 # Patch nix 0.24 to 0.25
 nix = { path = "build/rust/nix" }
@@ -172,15 +166,15 @@ warp = { git = "https://github.com/glandium/warp", rev = "4af45fae95bc98b0eba1ef
 fluent-fallback = { path = "b2g/forks/fluent-fallback" }
 glean-core = { path = "b2g/forks/glean-core" }
 
-cssparser = { git = "https://github.com/servo/rust-cssparser", rev = "b196a164dcbb317016d4aa6c58c13147e6045ebb" }
+cssparser = { git = "https://github.com/servo/rust-cssparser", rev = "45bc47e2bcb846f1efb5aea156be5fe7d18624bf" }
 
 # application-services overrides to make updating them all simpler.
-interrupt-support = { git = "https://github.com/bendk/application-services", rev = "ecb35df5fc40357c49922f90e86bf4147fa52953" }
-sql-support = { git = "https://github.com/bendk/application-services", rev = "ecb35df5fc40357c49922f90e86bf4147fa52953" }
-sync15 = { git = "https://github.com/bendk/application-services", rev = "ecb35df5fc40357c49922f90e86bf4147fa52953" }
-tabs = { git = "https://github.com/bendk/application-services", rev = "ecb35df5fc40357c49922f90e86bf4147fa52953" }
-viaduct = { git = "https://github.com/bendk/application-services", rev = "ecb35df5fc40357c49922f90e86bf4147fa52953" }
-webext-storage = { git = "https://github.com/bendk/application-services", rev = "ecb35df5fc40357c49922f90e86bf4147fa52953" }
+interrupt-support = { git = "https://github.com/mozilla/application-services", rev = "86c84c217036c12283d19368867323a66bf35883" }
+sql-support = { git = "https://github.com/mozilla/application-services", rev = "86c84c217036c12283d19368867323a66bf35883" }
+sync15 = { git = "https://github.com/mozilla/application-services", rev = "86c84c217036c12283d19368867323a66bf35883" }
+tabs = { git = "https://github.com/mozilla/application-services", rev = "86c84c217036c12283d19368867323a66bf35883" }
+viaduct = { git = "https://github.com/mozilla/application-services", rev = "86c84c217036c12283d19368867323a66bf35883" }
+webext-storage = { git = "https://github.com/mozilla/application-services", rev = "86c84c217036c12283d19368867323a66bf35883" }
 
 # Patch mio 0.6 to use winapi 0.3 and miow 0.3, getting rid of winapi 0.2.
 # There is not going to be new version of mio 0.6, mio now being >= 0.7.11.

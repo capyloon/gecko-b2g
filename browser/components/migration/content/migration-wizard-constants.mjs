@@ -11,9 +11,12 @@ export const MigrationWizardConstants = Object.freeze({
    * @type {Object<string, string>}
    */
   PAGES: Object.freeze({
+    LOADING: "loading",
     SELECTION: "selection",
     PROGRESS: "progress",
     SAFARI_PERMISSION: "safari-permission",
+    SAFARI_PASSWORD_PERMISSION: "safari-password-permission",
+    NO_BROWSERS_FOUND: "no-browsers-found",
   }),
 
   /**
@@ -43,4 +46,15 @@ export const MigrationWizardConstants = Object.freeze({
 
     // We don't yet show OTHERDATA or SESSION resources.
   }),
+
+  /**
+   * The set of keys that maps to migrators that use the term "favorites"
+   * in the place of "bookmarks". This tends to be browsers from Microsoft.
+   */
+  USES_FAVORITES: Object.freeze([
+    "chromium-edge",
+    "chromium-edge-beta",
+    "edge",
+    "ie",
+  ]),
 });

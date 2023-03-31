@@ -286,8 +286,14 @@
 - name: ArrayState
   gen_boilerplate: false
 
-- name: NewBoundFunction
+- name: BindFunction
   gen_boilerplate: false
+
+- name: NewBoundFunction
+  arguments:
+    templateObj: JSObject*
+  result_type: Object
+  alias_set: none
 
 - name: BoundFunctionNumArgs
   operands:
@@ -1022,6 +1028,17 @@
 - name: WasmTrap
   gen_boilerplate: false
 
+# Trap if the given value is null
+- name: WasmTrapIfNull
+  operands:
+    value: RefOrNull
+  arguments:
+    trap: wasm::Trap
+    bytecodeOffset: wasm::BytecodeOffset
+  guard: true
+  type_policy: none
+  result_type: None
+
 - name: LexicalCheck
   gen_boilerplate: false
 
@@ -1509,6 +1526,16 @@
   movable: true
   congruent_to: if_operands_equal
   alias_set: none
+
+- name: GuardGlobalGeneration
+  arguments:
+   expected: uint32_t
+   generationAddr: const void*
+  result_type: None
+  guard: true
+  movable: true
+  alias_set: custom
+  congruent_to: custom
 
 - name: GuardIsProxy
   operands:

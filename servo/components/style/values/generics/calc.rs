@@ -101,6 +101,7 @@ pub enum SortKey {
     Cqmin,
     Cqw,
     Deg,
+    Dppx,
     Dvb,
     Dvh,
     Dvi,
@@ -192,6 +193,8 @@ pub enum GenericCalcNode<L> {
         /// Is the function mod or rem?
         op: ModRemOp,
     },
+    /// A `hypot()` function
+    Hypot(crate::OwnedSlice<GenericCalcNode<L>>),
 }
 
 pub use self::GenericCalcNode as CalcNode;
@@ -229,12 +232,12 @@ pub trait CalcNodeLeaf: Clone + Sized + PartialOrd + PartialEq + ToCss {
     where
         O: Fn(f32, f32) -> f32;
 
-    /// Multiplies the leaf by a given scalar number.
-    fn mul_by(&mut self, scalar: f32);
+    /// Map the value of this node with the given operation.
+    fn map(&mut self, op: impl FnMut(f32) -> f32);
 
     /// Negates the leaf.
     fn negate(&mut self) {
-        self.mul_by(-1.);
+        self.map(std::ops::Neg::neg);
     }
 
     /// Canonicalizes the expression if necessary.
@@ -245,9 +248,9 @@ pub trait CalcNodeLeaf: Clone + Sized + PartialOrd + PartialEq + ToCss {
 }
 
 impl<L: CalcNodeLeaf> CalcNode<L> {
-    /// Negates the node.
-    pub fn negate(&mut self) {
-        self.mul_by(-1.);
+    /// Negates the leaf.
+    fn negate(&mut self) {
+        self.map(std::ops::Neg::neg);
     }
 
     fn sort_key(&self) -> SortKey {
@@ -286,6 +289,47 @@ impl<L: CalcNodeLeaf> CalcNode<L> {
             },
             _ => Err(()),
         }
+    }
+
+    /// Map the value of this node with the given operation.
+    pub fn map(&mut self, mut op: impl FnMut(f32) -> f32) {
+        fn map_internal<L: CalcNodeLeaf>(node: &mut CalcNode<L>, op: &mut impl FnMut(f32) -> f32) {
+            match node {
+                CalcNode::Leaf(l) => l.map(op),
+                CalcNode::Sum(children) => {
+                    for node in &mut **children {
+                        map_internal(node, op);
+                    }
+                },
+                CalcNode::MinMax(children, _) => {
+                    for node in &mut **children {
+                        map_internal(node, op);
+                    }
+                },
+                CalcNode::Clamp { min, center, max } => {
+                    map_internal(min, op);
+                    map_internal(center, op);
+                    map_internal(max, op);
+                },
+                CalcNode::Round { value, step, .. } => {
+                    map_internal(value, op);
+                    map_internal(step, op);
+                },
+                CalcNode::ModRem {
+                    dividend, divisor, ..
+                } => {
+                    map_internal(dividend, op);
+                    map_internal(divisor, op);
+                },
+                CalcNode::Hypot(children) => {
+                    for node in &mut **children {
+                        map_internal(node, op);
+                    }
+                },
+            }
+        }
+
+        map_internal(self, &mut op);
     }
 
     /// Convert this `CalcNode` into a `CalcNode` with a different leaf kind.
@@ -357,6 +401,7 @@ impl<L: CalcNodeLeaf> CalcNode<L> {
                     op,
                 }
             },
+            Self::Hypot(ref c) => CalcNode::Hypot(map_children(c, map)),
         }
     }
 
@@ -404,8 +449,19 @@ impl<L: CalcNodeLeaf> CalcNode<L> {
             },
             Self::MinMax(ref nodes, op) => {
                 let mut result = nodes[0].resolve_internal(leaf_to_output_fn)?;
+
+                if result.is_nan() {
+                    return Ok(result);
+                }
+
                 for node in nodes.iter().skip(1) {
                     let candidate = node.resolve_internal(leaf_to_output_fn)?;
+
+                    if candidate.is_nan() {
+                        result = candidate;
+                        break;
+                    }
+
                     let candidate_wins = match op {
                         MinMaxOp::Min => candidate < result,
                         MinMaxOp::Max => candidate > result,
@@ -432,6 +488,11 @@ impl<L: CalcNodeLeaf> CalcNode<L> {
                 if result < min {
                     result = min
                 }
+
+                if min.is_nan() || center.is_nan() || max.is_nan() {
+                    result = <O as Float>::nan();
+                }
+
                 result
             },
             Self::Round {
@@ -535,6 +596,13 @@ impl<L: CalcNodeLeaf> CalcNode<L> {
                     ModRemOp::Rem => dividend - divisor * (dividend / divisor).trunc(),
                 }
             },
+            Self::Hypot(ref c) => {
+                let mut result: O = Zero::zero();
+                for child in &**c {
+                    result = result + child.resolve_internal(leaf_to_output_fn)?.powi(2);
+                }
+                result.sqrt()
+            },
         })
     }
 
@@ -562,7 +630,7 @@ impl<L: CalcNodeLeaf> CalcNode<L> {
     /// Multiplies the node by a scalar.
     pub fn mul_by(&mut self, scalar: f32) {
         match *self {
-            Self::Leaf(ref mut l) => l.mul_by(scalar),
+            Self::Leaf(ref mut l) => l.map(|v| v * scalar),
             // Multiplication is distributive across this.
             Self::Sum(ref mut children) => {
                 for node in &mut **children {
@@ -613,6 +681,12 @@ impl<L: CalcNodeLeaf> CalcNode<L> {
                 dividend.mul_by(scalar);
                 divisor.mul_by(scalar);
             },
+            // Not possible to handle negatives in this case, see: https://bugzil.la/1815448
+            Self::Hypot(ref mut children) => {
+                for node in &mut **children {
+                    node.mul_by(scalar);
+                }
+            },
         }
     }
 
@@ -652,7 +726,9 @@ impl<L: CalcNodeLeaf> CalcNode<L> {
                 dividend.visit_depth_first_internal(f);
                 divisor.visit_depth_first_internal(f);
             },
-            Self::Sum(ref mut children) | Self::MinMax(ref mut children, _) => {
+            Self::Sum(ref mut children) |
+            Self::MinMax(ref mut children, _) |
+            Self::Hypot(ref mut children) => {
                 for child in &mut **children {
                     child.visit_depth_first_internal(f);
                 }
@@ -962,6 +1038,30 @@ impl<L: CalcNodeLeaf> CalcNode<L> {
                     *children_slot = children.into_boxed_slice().into();
                 }
             },
+            Self::Hypot(ref children) => {
+                let mut result = match children[0].try_op(&children[0], Mul::mul) {
+                    Ok(res) => res,
+                    Err(..) => return,
+                };
+
+                for child in children.iter().skip(1) {
+                    let square = match child.try_op(&child, Mul::mul) {
+                        Ok(res) => res,
+                        Err(..) => return,
+                    };
+                    result = match result.try_op(&square, Add::add) {
+                        Ok(res) => res,
+                        Err(..) => return,
+                    }
+                }
+
+                result = match result.try_op(&result, |a, _| a.sqrt()) {
+                    Ok(res) => res,
+                    Err(..) => return,
+                };
+
+                replace_self_with!(&mut result);
+            },
             Self::Leaf(ref mut l) => {
                 l.simplify();
             },
@@ -1007,6 +1107,10 @@ impl<L: CalcNodeLeaf> CalcNode<L> {
 
                 true
             },
+            Self::Hypot(_) => {
+                dest.write_str("hypot(")?;
+                true
+            },
             _ => {
                 if is_outermost {
                     dest.write_str("calc(")?;
@@ -1016,7 +1120,7 @@ impl<L: CalcNodeLeaf> CalcNode<L> {
         };
 
         match *self {
-            Self::MinMax(ref children, _) => {
+            Self::MinMax(ref children, _) | Self::Hypot(ref children) => {
                 let mut first = true;
                 for child in &**children {
                     if !first {

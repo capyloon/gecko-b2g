@@ -77,6 +77,7 @@
 #include "mozilla/Preferences.h"
 #include "gfxTextRun.h"
 #include "nsFontFaceUtils.h"
+#include "mozilla/ContentBlockingAllowList.h"
 #include "mozilla/GlobalStyleSheetCache.h"
 #include "mozilla/ServoBindings.h"
 #include "mozilla/StaticPrefs_bidi.h"
@@ -86,6 +87,7 @@
 #include "mozilla/StyleSheet.h"
 #include "mozilla/StyleSheetInlines.h"
 #include "mozilla/Telemetry.h"
+#include "mozilla/TimelineManager.h"
 #include "mozilla/dom/Performance.h"
 #include "mozilla/dom/PerformanceTiming.h"
 #include "mozilla/dom/PerformancePaintTiming.h"
@@ -679,6 +681,7 @@ nsresult nsPresContext::Init(nsDeviceContext* aDeviceContext) {
   mEffectCompositor = new mozilla::EffectCompositor(this);
   mTransitionManager = MakeUnique<nsTransitionManager>(this);
   mAnimationManager = MakeUnique<nsAnimationManager>(this);
+  mTimelineManager = MakeUnique<mozilla::TimelineManager>(this);
 
   if (mDocument->GetDisplayDocument()) {
     NS_ASSERTION(mDocument->GetDisplayDocument()->GetPresContext(),
@@ -771,6 +774,12 @@ bool nsPresContext::UpdateFontVisibility() {
     level = std::max(std::min(level, priv), int32_t(FontVisibility::Base));
   }
 
+  // Determine if the user has exempted the domain from tracking protections,
+  // if so, use the standard value.
+  if (ContentBlockingAllowList::Check(mDocument->CookieJarSettings())) {
+    level = StaticPrefs::layout_css_font_visibility_standard();
+  }
+
   // Clamp result to the valid range of levels.
   level = std::max(std::min(level, int32_t(FontVisibility::User)),
                    int32_t(FontVisibility::Base));
@@ -821,7 +830,7 @@ already_AddRefed<nsFontMetrics> nsPresContext::GetMetricsFor(
   return mFontCache->GetMetricsFor(aFont, aParams);
 }
 
-nsresult nsPresContext::FlushFontCache(void) {
+nsresult nsPresContext::FlushFontCache() {
   if (mFontCache) {
     mFontCache->Flush();
   }
@@ -988,6 +997,10 @@ void nsPresContext::DetachPresShell() {
   if (mAnimationManager) {
     mAnimationManager->Disconnect();
     mAnimationManager = nullptr;
+  }
+  if (mTimelineManager) {
+    mTimelineManager->Disconnect();
+    mTimelineManager = nullptr;
   }
   if (mRestyleManager) {
     mRestyleManager->Disconnect();
@@ -2821,11 +2834,11 @@ uint64_t nsPresContext::GetUndisplayedRestyleGeneration() const {
   return mRestyleManager->GetUndisplayedRestyleGeneration();
 }
 
-mozilla::intl::Bidi& nsPresContext::GetBidiEngine() {
+mozilla::intl::Bidi& nsPresContext::BidiEngine() {
   MOZ_ASSERT(NS_IsMainThread());
 
   if (!mBidiEngine) {
-    mBidiEngine.reset(new mozilla::intl::Bidi());
+    mBidiEngine = MakeUnique<mozilla::intl::Bidi>();
   }
   return *mBidiEngine;
 }

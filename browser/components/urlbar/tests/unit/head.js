@@ -29,12 +29,12 @@ ChromeUtils.defineESModuleGetters(this, {
   UrlbarResult: "resource:///modules/UrlbarResult.sys.mjs",
   UrlbarTestUtils: "resource://testing-common/UrlbarTestUtils.sys.mjs",
   UrlbarTokenizer: "resource:///modules/UrlbarTokenizer.sys.mjs",
+  sinon: "resource://testing-common/Sinon.sys.mjs",
 });
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   AddonTestUtils: "resource://testing-common/AddonTestUtils.jsm",
   HttpServer: "resource://testing-common/httpd.js",
-  sinon: "resource://testing-common/Sinon.jsm",
 });
 
 XPCOMUtils.defineLazyGetter(this, "QuickSuggestTestUtils", () => {
@@ -736,6 +736,8 @@ function makeRemoteTabResult(
  *   The source of the search result. Defaults to UrlbarUtils.RESULT_SOURCE.SEARCH.
  * @param {boolean} [options.satisfiesAutofillThreshold]
  *   If this search should appear in the autofill section of the box
+ * @param {boolean} [options.trending]
+ *    If the search result is a trending result. `Defaults to false`.
  * @returns {UrlbarResult}
  */
 function makeSearchResult(
@@ -755,6 +757,7 @@ function makeSearchResult(
     inPrivateWindow,
     isPrivateEngine,
     heuristic = false,
+    trending = false,
     type = UrlbarUtils.RESULT_TYPE.SEARCH,
     source = UrlbarUtils.RESULT_SOURCE.SEARCH,
     satisfiesAutofillThreshold = false,
@@ -814,6 +817,7 @@ function makeSearchResult(
 
   if (typeof suggestion == "string") {
     result.payload.lowerCaseSuggestion = result.payload.suggestion.toLocaleLowerCase();
+    result.payload.trending = trending;
   }
 
   if (providerName) {

@@ -213,12 +213,17 @@
   call_instruction: true
   mir_op: true
 
-- name: NewBoundFunction
+- name: BindFunction
   result_type: WordSized
   operands:
     target: WordSized
   call_instruction: true
   num_temps: 2
+  mir_op: true
+
+- name: NewBoundFunction
+  result_type: WordSized
+  num_temps: 1
   mir_op: true
 
 - name: NewObject
@@ -290,6 +295,11 @@
   mir_op: true
 
 - name: WasmTrap
+  mir_op: true
+
+- name: WasmTrapIfNull
+  operands:
+    object: WordSized
   mir_op: true
 
 - name: WasmGcObjectIsSubtypeOf
@@ -2540,6 +2550,10 @@
 - name: GuardIsNativeObject
   operands:
     object: WordSized
+  num_temps: 1
+
+- name: GuardGlobalGeneration
+  mir_op: true
   num_temps: 1
 
 - name: GuardIsProxy

@@ -42,6 +42,10 @@ var { Weave } = ChromeUtils.importESModule(
   "resource://services-sync/main.sys.mjs"
 );
 
+var { FirefoxRelayTelemetry } = ChromeUtils.importESModule(
+  "resource://gre/modules/FirefoxRelayTelemetry.mjs"
+);
+
 var { FxAccounts, getFxAccountsSingleton } = ChromeUtils.importESModule(
   "resource://gre/modules/FxAccounts.sys.mjs"
 );
@@ -64,10 +68,22 @@ XPCOMUtils.defineLazyServiceGetters(this, {
   gMIMEService: ["@mozilla.org/mime;1", "nsIMIMEService"],
 });
 
+if (Cc["@mozilla.org/gio-service;1"]) {
+  XPCOMUtils.defineLazyServiceGetter(
+    this,
+    "gGIOService",
+    "@mozilla.org/gio-service;1",
+    "nsIGIOService"
+  );
+} else {
+  this.gGIOService = null;
+}
+
 ChromeUtils.defineESModuleGetters(this, {
   BrowserUtils: "resource://gre/modules/BrowserUtils.sys.mjs",
   ContextualIdentityService:
     "resource://gre/modules/ContextualIdentityService.sys.mjs",
+  FeatureGate: "resource://featuregates/FeatureGate.sys.mjs",
   FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
   OSKeyStore: "resource://gre/modules/OSKeyStore.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
@@ -82,12 +98,10 @@ ChromeUtils.defineESModuleGetters(this, {
 });
 
 XPCOMUtils.defineLazyModuleGetters(this, {
-  AMTelemetry: "resource://gre/modules/AddonManager.jsm",
   DownloadUtils: "resource://gre/modules/DownloadUtils.jsm",
   ExtensionPreferencesManager:
     "resource://gre/modules/ExtensionPreferencesManager.jsm",
   ExtensionSettingsStore: "resource://gre/modules/ExtensionSettingsStore.jsm",
-  FeatureGate: "resource://featuregates/FeatureGate.jsm",
   FirefoxRelay: "resource://gre/modules/FirefoxRelay.jsm",
   HomePage: "resource:///modules/HomePage.jsm",
   LangPackMatcher: "resource://gre/modules/LangPackMatcher.jsm",
@@ -268,10 +282,6 @@ function init_all() {
       }
       let mainWindow = window.browsingContext.topChromeWindow;
       mainWindow.BrowserOpenAddonsMgr();
-      AMTelemetry.recordLinkEvent({
-        object: "aboutPreferences",
-        value: "about:addons",
-      });
     });
 
     document.dispatchEvent(

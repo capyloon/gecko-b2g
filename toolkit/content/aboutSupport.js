@@ -741,6 +741,16 @@ var snapshotFormatters = {
       await addRowFromKey("features", feature);
     }
 
+    featureKeys = ["webgpuDefaultAdapter", "webgpuFallbackAdapter"];
+    for (let feature of featureKeys) {
+      const obj = data[feature];
+      if (obj) {
+        const str = JSON.stringify(obj, null, "  ");
+        await addRow("features", feature, [new Text(str)]);
+        delete data[feature];
+      }
+    }
+
     if ("directWriteEnabled" in data) {
       let message = data.directWriteEnabled;
       if ("directWriteVersion" in data) {
@@ -1017,8 +1027,8 @@ var snapshotFormatters = {
       let button = $("enumerate-database-button");
       if (button) {
         button.addEventListener("click", function(event) {
-          let { KeyValueService } = ChromeUtils.import(
-            "resource://gre/modules/kvstore.jsm"
+          let { KeyValueService } = ChromeUtils.importESModule(
+            "resource://gre/modules/kvstore.sys.mjs"
           );
           let currProfDir = Services.dirsvc.get("ProfD", Ci.nsIFile);
           currProfDir.append("mediacapabilities");
@@ -1602,9 +1612,17 @@ Serializer.prototype = {
           // queued up from querySelectorAll earlier.
           this._appendText(rowHeading + ": ");
         } else {
-          this._appendText(
-            rowHeading + ": " + this._nodeText(children[1]).trim()
-          );
+          this._appendText(rowHeading + ": ");
+          for (let k = 1; k < children.length; k++) {
+            let l = this._nodeText(children[k]).trim();
+            if (l == "") {
+              continue;
+            }
+            if (k < children.length - 1) {
+              l += ", ";
+            }
+            this._appendText(l);
+          }
         }
       }
       this._startNewLine();

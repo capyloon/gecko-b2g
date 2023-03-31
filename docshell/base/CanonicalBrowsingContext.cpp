@@ -312,6 +312,8 @@ void CanonicalBrowsingContext::ReplacedBy(
   // SetWithoutSyncing can be used if context hasn't been attached.
   Transaction txn;
   txn.SetBrowserId(GetBrowserId());
+  txn.SetIsAppTab(GetIsAppTab());
+  txn.SetHasSiblings(GetHasSiblings());
   txn.SetHistoryID(GetHistoryID());
   txn.SetExplicitActive(GetExplicitActive());
   txn.SetEmbedderColorSchemes(GetEmbedderColorSchemes());
@@ -567,7 +569,7 @@ CanonicalBrowsingContext::CreateLoadingSessionHistoryEntryForLoad(
   RefPtr<SessionHistoryEntry> entry;
   const LoadingSessionHistoryInfo* existingLoadingInfo =
       aLoadState->GetLoadingSessionHistoryInfo();
-  MOZ_ASSERT(!existingEntry == !existingLoadingInfo);
+  MOZ_ASSERT_IF(!existingLoadingInfo, !existingEntry);
   if (existingLoadingInfo) {
     if (existingEntry) {
       entry = existingEntry;
@@ -794,7 +796,7 @@ RefPtr<PrintPromise> CanonicalBrowsingContext::Print(
 
   layout::RemotePrintJobParent* remotePrintJob =
       new layout::RemotePrintJobParent(printSettings);
-  printData.remotePrintJobParent() =
+  printData.remotePrintJob() =
       browserParent->Manager()->SendPRemotePrintJobConstructor(remotePrintJob);
 
   if (listener) {
@@ -1018,7 +1020,7 @@ already_AddRefed<nsDocShellLoadState> CanonicalBrowsingContext::CreateLoadInfo(
 
 void CanonicalBrowsingContext::NotifyOnHistoryReload(
     bool aForceReload, bool& aCanReload,
-    Maybe<RefPtr<nsDocShellLoadState>>& aLoadState,
+    Maybe<NotNull<RefPtr<nsDocShellLoadState>>>& aLoadState,
     Maybe<bool>& aReloadActiveEntry) {
   MOZ_DIAGNOSTIC_ASSERT(!aLoadState);
 
@@ -1032,7 +1034,7 @@ void CanonicalBrowsingContext::NotifyOnHistoryReload(
   }
 
   if (mActiveEntry) {
-    aLoadState.emplace(CreateLoadInfo(mActiveEntry));
+    aLoadState.emplace(WrapMovingNotNull(RefPtr{CreateLoadInfo(mActiveEntry)}));
     aReloadActiveEntry.emplace(true);
     if (aForceReload) {
       shistory->RemoveFrameEntries(mActiveEntry);
@@ -1040,7 +1042,8 @@ void CanonicalBrowsingContext::NotifyOnHistoryReload(
   } else if (!mLoadingEntries.IsEmpty()) {
     const LoadingSessionHistoryEntry& loadingEntry =
         mLoadingEntries.LastElement();
-    aLoadState.emplace(CreateLoadInfo(loadingEntry.mEntry));
+    aLoadState.emplace(
+        WrapMovingNotNull(RefPtr{CreateLoadInfo(loadingEntry.mEntry)}));
     aReloadActiveEntry.emplace(false);
     if (aForceReload) {
       SessionHistoryEntry::LoadingEntry* entry =
@@ -2370,13 +2373,13 @@ void CanonicalBrowsingContext::SynchronizeLayoutHistoryState() {
       cp->SendGetLayoutHistoryState(this)->Then(
           GetCurrentSerialEventTarget(), __func__,
           [activeEntry = mActiveEntry](
-              const Tuple<RefPtr<nsILayoutHistoryState>, Maybe<Wireframe>>&
+              const std::tuple<RefPtr<nsILayoutHistoryState>, Maybe<Wireframe>>&
                   aResult) {
-            if (mozilla::Get<0>(aResult)) {
-              activeEntry->SetLayoutHistoryState(mozilla::Get<0>(aResult));
+            if (std::get<0>(aResult)) {
+              activeEntry->SetLayoutHistoryState(std::get<0>(aResult));
             }
-            if (mozilla::Get<1>(aResult)) {
-              activeEntry->SetWireframe(mozilla::Get<1>(aResult));
+            if (std::get<1>(aResult)) {
+              activeEntry->SetWireframe(std::get<1>(aResult));
             }
           },
           []() {});
@@ -2484,7 +2487,8 @@ void CanonicalBrowsingContext::RequestRestoreTabContent(
 
     if (data->CanRestoreInto(aWindow->GetDocumentURI())) {
       if (!aWindow->IsInProcess()) {
-        aWindow->SendRestoreTabContent(data, onTabRestoreComplete,
+        aWindow->SendRestoreTabContent(WrapNotNull(data.get()),
+                                       onTabRestoreComplete,
                                        onTabRestoreComplete);
         return;
       }

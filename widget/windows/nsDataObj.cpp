@@ -15,8 +15,9 @@
 #include "nsClipboard.h"
 #include "nsReadableUtils.h"
 #include "nsICookieJarSettings.h"
-#include "nsITransferable.h"
+#include "nsIHttpChannel.h"
 #include "nsISupportsPrimitives.h"
+#include "nsITransferable.h"
 #include "IEnumFE.h"
 #include "nsPrimitiveHelpers.h"
 #include "nsString.h"
@@ -78,7 +79,8 @@ nsDataObj::CStream::~CStream() {}
 nsresult nsDataObj::CStream::Init(nsIURI* pSourceURI,
                                   nsContentPolicyType aContentPolicyType,
                                   nsIPrincipal* aRequestingPrincipal,
-                                  nsICookieJarSettings* aCookieJarSettings) {
+                                  nsICookieJarSettings* aCookieJarSettings,
+                                  nsIReferrerInfo* aReferrerInfo) {
   // we can not create a channel without a requestingPrincipal
   if (!aRequestingPrincipal) {
     return NS_ERROR_FAILURE;
@@ -91,8 +93,13 @@ nsresult nsDataObj::CStream::Init(nsIURI* pSourceURI,
                      nullptr,  // loadGroup
                      nullptr,  // aCallbacks
                      nsIRequest::LOAD_FROM_CACHE);
-
   NS_ENSURE_SUCCESS(rv, rv);
+
+  if (nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(mChannel)) {
+    rv = httpChannel->SetReferrerInfo(aReferrerInfo);
+    Unused << NS_WARN_IF(NS_FAILED(rv));
+  }
+
   rv = mChannel->AsyncOpen(this);
   NS_ENSURE_SUCCESS(rv, rv);
   return NS_OK;
@@ -125,25 +132,49 @@ nsDataObj::CStream::OnDataAvailable(
     uint64_t aOffset,  // offset within the stream
     uint32_t aCount)   // bytes available on this call
 {
+  // If we've been asked to read zero bytes, call `Read` once, just to ensure
+  // any side-effects take place, and return immediately.
+  if (aCount == 0) {
+    char buffer[1] = {0};
+    uint32_t bytesReadByCall = 0;
+    nsresult rv = aInputStream->Read(buffer, 0, &bytesReadByCall);
+    MOZ_ASSERT(bytesReadByCall == 0);
+    return rv;
+  }
+
   // Extend the write buffer for the incoming data.
-  uint8_t* buffer = mChannelData.AppendElements(aCount, fallible);
+  size_t oldLength = mChannelData.Length();
+  char* buffer =
+      reinterpret_cast<char*>(mChannelData.AppendElements(aCount, fallible));
   if (!buffer) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
-  NS_ASSERTION((mChannelData.Length() == (aOffset + aCount)),
-               "stream length mismatch w/write buffer");
+  MOZ_ASSERT(mChannelData.Length() == (aOffset + aCount),
+             "stream length mismatch w/write buffer");
 
   // Read() may not return aCount on a single call, so loop until we've
   // accumulated all the data OnDataAvailable has promised.
-  nsresult rv;
-  uint32_t odaBytesReadTotal = 0;
-  do {
+  uint32_t bytesRead = 0;
+  while (bytesRead < aCount) {
     uint32_t bytesReadByCall = 0;
-    rv = aInputStream->Read((char*)(buffer + odaBytesReadTotal), aCount,
-                            &bytesReadByCall);
-    odaBytesReadTotal += bytesReadByCall;
-  } while (aCount < odaBytesReadTotal && NS_SUCCEEDED(rv));
-  return rv;
+    nsresult rv = aInputStream->Read(buffer + bytesRead, aCount - bytesRead,
+                                     &bytesReadByCall);
+    bytesRead += bytesReadByCall;
+
+    if (bytesReadByCall == 0) {
+      // A `bytesReadByCall` of zero indicates EOF without failure... but we
+      // were promised `aCount` elements and haven't gotten them. Return a
+      // generic failure.
+      rv = NS_ERROR_FAILURE;
+    }
+
+    if (NS_FAILED(rv)) {
+      // Drop any trailing uninitialized elements before erroring out.
+      mChannelData.RemoveElementsAt(oldLength + bytesRead, aCount - bytesRead);
+      return rv;
+    }
+  }
+  return NS_OK;
 }
 
 NS_IMETHODIMP nsDataObj::CStream::OnStartRequest(nsIRequest* aRequest) {
@@ -326,9 +357,12 @@ HRESULT nsDataObj::CreateStream(IStream** outStream) {
   nsCOMPtr<nsICookieJarSettings> cookieJarSettings =
       mTransferable->GetCookieJarSettings();
 
+  // The referrer is optional.
+  nsCOMPtr<nsIReferrerInfo> referrerInfo = mTransferable->GetReferrerInfo();
+
   nsContentPolicyType contentPolicyType = mTransferable->GetContentPolicyType();
   rv = pStream->Init(sourceURI, contentPolicyType, requestingPrincipal,
-                     cookieJarSettings);
+                     cookieJarSettings, referrerInfo);
   if (NS_FAILED(rv)) {
     pStream->Release();
     return E_FAIL;
@@ -1082,16 +1116,20 @@ nsDataObj ::GetFileContents(FORMATETC& aFE, STGMEDIUM& aSTG) {
 }  // GetFileContents
 
 // Ensure that the supplied name doesn't have invalid characters.
-static void ValidateFilename(nsString& aFilename) {
+static void ValidateFilename(nsString& aFilename, bool isShortcut) {
   nsCOMPtr<nsIMIMEService> mimeService = do_GetService("@mozilla.org/mime;1");
   if (NS_WARN_IF(!mimeService)) {
     aFilename.Truncate();
     return;
   }
 
+  uint32_t flags = nsIMIMEService::VALIDATE_SANITIZE_ONLY;
+  if (isShortcut) {
+    flags |= nsIMIMEService::VALIDATE_ALLOW_INVALID_FILENAMES;
+  }
+
   nsAutoString outFilename;
-  mimeService->ValidateFileNameForSaving(aFilename, EmptyCString(),
-                                         nsIMIMEService::VALIDATE_SANITIZE_ONLY,
+  mimeService->ValidateFileNameForSaving(aFilename, EmptyCString(), flags,
                                          outFilename);
   aFilename = outFilename;
 }
@@ -1108,7 +1146,7 @@ static bool CreateURLFilenameFromTextA(nsAutoString& aText, char* aFilename) {
     return false;
   }
   aText.AppendLiteral(".url");
-  ValidateFilename(aText);
+  ValidateFilename(aText, true);
   if (aText.IsEmpty()) {
     return false;
   }
@@ -1130,7 +1168,7 @@ static bool CreateURLFilenameFromTextW(nsAutoString& aText,
     return false;
   }
   aText.AppendLiteral(".url");
-  ValidateFilename(aText);
+  ValidateFilename(aText, true);
   if (aText.IsEmpty() || aText.Length() >= MAX_PATH) {
     return false;
   }
@@ -2144,7 +2182,7 @@ HRESULT nsDataObj::GetDownloadDetails(nsIURI** aSourceURI,
   }
 
   // make the name safe for the filesystem
-  ValidateFilename(srcFileName);
+  ValidateFilename(srcFileName, false);
   if (srcFileName.IsEmpty()) return E_FAIL;
 
   sourceURI.swap(*aSourceURI);

@@ -656,6 +656,12 @@ class GMut {
                                 (kPageSize - 1));
     }
 
+    // The internal fragmentation for this allocation.
+    size_t FragmentationBytes() const {
+      MOZ_ASSERT(kPageSize >= UsableSize());
+      return mState == AllocPageState::InUse ? kPageSize - UsableSize() : 0;
+    }
+
     // The allocation stack.
     // - NeverAllocated: Nothing.
     // - InUse | Freed: Some.
@@ -699,6 +705,12 @@ class GMut {
     return page.mState != AllocPageState::InUse && aNow >= page.mReuseTime;
   }
 
+  // Get the address of the allocation page referred to via an index. Used
+  // when checking pointers against page boundaries.
+  uint8_t* AllocPageBaseAddr(GMutLock, uintptr_t aIndex) {
+    return mAllocPages[aIndex].mBaseAddr;
+  }
+
   Maybe<arena_id_t> PageArena(GMutLock aLock, uintptr_t aIndex) {
     const AllocPageInfo& page = mAllocPages[aIndex];
     AssertAllocPageInUse(aLock, page);
@@ -711,6 +723,15 @@ class GMut {
     AssertAllocPageInUse(aLock, page);
 
     return page.UsableSize();
+  }
+
+  // The total fragmentation in PHC
+  size_t FragmentationBytes() const {
+    size_t sum = 0;
+    for (auto page : mAllocPages) {
+      sum += page.FragmentationBytes();
+    }
+    return sum;
   }
 
   void SetPageInUse(GMutLock aLock, uintptr_t aIndex,
@@ -1367,15 +1388,25 @@ static size_t replace_malloc_usable_size(usable_ptr_t aPtr) {
     GMut::CrashOnGuardPage(const_cast<void*>(aPtr));
   }
 
-  // At this point we know we have an allocation page.
+  // At this point we know aPtr lands within an allocation page, due to the
+  // math done in the PtrKind constructor. But if aPtr points to memory
+  // before the base address of the allocation, we return 0.
   uintptr_t index = pk.AllocPageIndex();
 
   MutexAutoLock lock(GMut::sMutex);
 
-  // Check for malloc_usable_size() of a freed block.
-  gMut->EnsureValidAndInUse(lock, const_cast<void*>(aPtr), index);
+  void* pageBaseAddr = gMut->AllocPageBaseAddr(lock, index);
+
+  if (MOZ_UNLIKELY(aPtr < pageBaseAddr)) {
+    return 0;
+  }
 
   return gMut->PageUsableSize(lock, index);
+}
+
+static size_t metadata_size() {
+  return sMallocTable.malloc_usable_size(gConst) +
+         sMallocTable.malloc_usable_size(gMut);
 }
 
 void replace_jemalloc_stats(jemalloc_stats_t* aStats,
@@ -1399,17 +1430,20 @@ void replace_jemalloc_stats(jemalloc_stats_t* aStats,
   }
   aStats->allocated += allocated;
 
-  // Waste is the gap between `allocated` and `mapped`.
-  size_t waste = mapped - allocated;
-  aStats->waste += waste;
+  // guards is the gap between `allocated` and `mapped`. In some ways this
+  // almost fits into aStats->wasted since it feels like wasted memory. However
+  // wasted should only include committed memory and these guard pages are
+  // uncommitted. Therefore we don't include it anywhere.
+  // size_t guards = mapped - allocated;
 
   // aStats.page_cache and aStats.bin_unused are left unchanged because PHC
   // doesn't have anything corresponding to those.
 
-  // gConst and gMut are normal heap allocations, so they're measured by
+  // The metadata is stored in normal heap allocations, so they're measured by
   // mozjemalloc as `allocated`. Move them into `bookkeeping`.
-  size_t bookkeeping = sMallocTable.malloc_usable_size(gConst) +
-                       sMallocTable.malloc_usable_size(gMut);
+  // They're also reported under explicit/heap-overhead/phc/fragmentation in
+  // about:memory.
+  size_t bookkeeping = metadata_size();
   aStats->allocated -= bookkeeping;
   aStats->bookkeeping += bookkeeping;
 }
@@ -1540,6 +1574,17 @@ class PHCBridge : public ReplaceMallocBridge {
     bool enabled = !GTls::IsDisabledOnCurrentThread();
     LOG("IsPHCEnabledOnCurrentThread: %zu\n", size_t(enabled));
     return enabled;
+  }
+
+  virtual void PHCMemoryUsage(
+      mozilla::phc::MemoryUsage& aMemoryUsage) override {
+    aMemoryUsage.mMetadataBytes = metadata_size();
+    if (gMut) {
+      MutexAutoLock lock(GMut::sMutex);
+      aMemoryUsage.mFragmentationBytes = gMut->FragmentationBytes();
+    } else {
+      aMemoryUsage.mFragmentationBytes = 0;
+    }
   }
 };
 

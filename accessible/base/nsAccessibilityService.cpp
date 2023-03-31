@@ -216,7 +216,13 @@ static bool MustBeGenericAccessible(nsIContent* aContent,
 static bool MustBeAccessible(nsIContent* aContent, DocAccessible* aDocument) {
   nsIFrame* frame = aContent->GetPrimaryFrame();
   MOZ_ASSERT(frame);
-  if (frame->IsFocusable()) {
+  // This document might be invisible when it first loads. Therefore, we must
+  // check focusability irrespective of visibility here. Otherwise, we might not
+  // create Accessibles for some focusable elements; e.g. a span with only a
+  // tabindex. Elements that are invisible within this document are excluded
+  // earlier in CreateAccessible.
+  if (frame->IsFocusable(/* aWithMouse */ false,
+                         /* aCheckVisibility */ false)) {
     return true;
   }
 
@@ -1311,8 +1317,7 @@ LocalAccessible* nsAccessibilityService::CreateAccessible(
         content->GetParent() == aContext->GetContent()) {
       LayoutFrameType frameType = frame->Type();
       // FIXME(emilio): Why only these frame types?
-      if (frameType == LayoutFrameType::Box ||
-          frameType == LayoutFrameType::FlexContainer ||
+      if (frameType == LayoutFrameType::FlexContainer ||
           frameType == LayoutFrameType::Scroll) {
         newAcc = new XULTabpanelAccessible(content, document);
       }
@@ -1321,7 +1326,7 @@ LocalAccessible* nsAccessibilityService::CreateAccessible(
 
   if (!newAcc) {
     if (content->IsSVGElement()) {
-      if (content->IsNodeOfType(nsINode::eSHAPE) ||
+      if (content->IsSVGGeometryElement() ||
           content->IsSVGElement(nsGkAtoms::image)) {
         // Shape elements: rect, circle, ellipse, line, path, polygon,
         // and polyline. 'use' and 'text' graphic elements require

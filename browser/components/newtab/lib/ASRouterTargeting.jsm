@@ -1,4 +1,4 @@
-/* This Source Code Form is subject to the terms of the Mozilla Public
+/* This Source Code Form is subject to the terms of the Mozilla PublicddonMa
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -26,6 +26,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   BuiltInThemes: "resource:///modules/BuiltInThemes.sys.mjs",
   ProfileAge: "resource://gre/modules/ProfileAge.sys.mjs",
   Region: "resource://gre/modules/Region.sys.mjs",
+  TargetingContext: "resource://messaging-system/targeting/Targeting.sys.mjs",
   TelemetryEnvironment: "resource://gre/modules/TelemetryEnvironment.sys.mjs",
   TelemetrySession: "resource://gre/modules/TelemetrySession.sys.mjs",
 });
@@ -34,7 +35,6 @@ XPCOMUtils.defineLazyModuleGetters(lazy, {
   ASRouterPreferences: "resource://activity-stream/lib/ASRouterPreferences.jsm",
   AddonManager: "resource://gre/modules/AddonManager.jsm",
   ClientEnvironment: "resource://normandy/lib/ClientEnvironment.jsm",
-  TargetingContext: "resource://messaging-system/targeting/Targeting.jsm",
   HomePage: "resource:///modules/HomePage.jsm",
   AboutNewTab: "resource:///modules/AboutNewTab.jsm",
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.jsm",
@@ -289,6 +289,24 @@ const QueryCache = {
       ["theme"],
       FRECENT_SITES_UPDATE_INTERVAL,
       lazy.AddonManager // eslint-disable-line mozilla/valid-lazy
+    ),
+    isDefaultHTMLHandler: new CachedTargetingGetter(
+      "isDefaultHandlerFor",
+      [".html"],
+      FRECENT_SITES_UPDATE_INTERVAL,
+      ShellService
+    ),
+    isDefaultPDFHandler: new CachedTargetingGetter(
+      "isDefaultHandlerFor",
+      [".pdf"],
+      FRECENT_SITES_UPDATE_INTERVAL,
+      ShellService
+    ),
+    defaultPDFHandler: new CachedTargetingGetter(
+      "getDefaultPDFHandler",
+      null,
+      FRECENT_SITES_UPDATE_INTERVAL,
+      ShellService
     ),
   },
 };
@@ -817,6 +835,49 @@ const TargetingGetters = {
     let button = lazy.CustomizableUI.getWidget("firefox-view-button");
     return button.areaType;
   },
+
+  isDefaultHandler: {
+    get html() {
+      return QueryCache.getters.isDefaultHTMLHandler.get();
+    },
+    get pdf() {
+      return QueryCache.getters.isDefaultPDFHandler.get();
+    },
+  },
+
+  get defaultPDFHandler() {
+    return QueryCache.getters.defaultPDFHandler.get();
+  },
+
+  get creditCardsSaved() {
+    return (
+      Services.wm
+        .getMostRecentBrowserWindow()
+        ?.gBrowser?.selectedBrowser?.browsingContext.currentWindowGlobal.getActor(
+          "FormAutofill"
+        )
+        ?.receiveMessage({
+          name: "FormAutofill:GetRecords",
+          data: { collectionName: "creditCards" },
+        })
+        .then(cards => cards?.length ?? 0) ?? 0
+    );
+  },
+
+  get addressesSaved() {
+    return (
+      Services.wm
+        .getMostRecentBrowserWindow()
+        ?.gBrowser?.selectedBrowser?.browsingContext.currentWindowGlobal.getActor(
+          "FormAutofill"
+        )
+        ?.receiveMessage({
+          name: "FormAutofill:GetRecords",
+          data: { collectionName: "addresses" },
+        })
+        .then(addresses => addresses?.length ?? 0) ?? 0
+    );
+  },
 };
 
 const ASRouterTargeting = {
@@ -833,25 +894,42 @@ const ASRouterTargeting = {
    * integer.
    */
   async getEnvironmentSnapshot(target = ASRouterTargeting.Environment) {
-    // One promise for each named property.  Label promises with property name.
-    let promises = Object.keys(target).map(async name => {
-      // Each promise needs to check if we're shutting down when it is evaluated.
-      if (Services.startup.shuttingDown) {
-        throw new Error("shutting down, so not querying targeting environment");
-      }
-      return [name, await target[name]];
-    });
+    async function resolveRecursive(object) {
+      // One promise for each named property. Label promises with property name.
+      const promises = Object.keys(object).map(async key => {
+        // Each promise needs to check if we're shutting down when it is evaluated.
+        if (Services.startup.shuttingDown) {
+          throw new Error(
+            "shutting down, so not querying targeting environment"
+          );
+        }
 
-    // Ignore properties that are rejected.
-    let results = await Promise.allSettled(promises);
+        let value = await object[key];
 
-    let environment = {};
-    for (let result of results) {
-      if (result.status === "fulfilled") {
-        let [name, value] = result.value;
-        environment[name] = value;
+        if (
+          typeof value === "object" &&
+          value !== null &&
+          !(value instanceof Date)
+        ) {
+          value = await resolveRecursive(value);
+        }
+
+        return [key, value];
+      });
+
+      const resolved = {};
+      for (const result of await Promise.allSettled(promises)) {
+        // Ignore properties that are rejected.
+        if (result.status === "fulfilled") {
+          const [key, value] = result.value;
+          resolved[key] = value;
+        }
       }
+
+      return resolved;
     }
+
+    const environment = await resolveRecursive(target);
 
     // Should we need to migrate in the future.
     const snapshot = { environment, version: 1 };

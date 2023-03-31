@@ -3,6 +3,9 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 import os
+import pathlib
+import shutil
+import tempfile
 from unittest import mock
 
 import mozunit
@@ -10,6 +13,7 @@ import pytest
 from tryselect.selectors.perf import (
     Apps,
     InvalidCategoryException,
+    InvalidRegressionDetectorQuery,
     PerfParser,
     Platforms,
     Suites,
@@ -748,6 +752,17 @@ def test_category_expansion(
             ),
         ),
         (
+            {"query": "'Pageload 'linux 'firefox"},
+            [8, 2, 2, 5],
+            2,
+            (
+                "\n!!!NOTE!!!\n You'll be able to find a performance comparison "
+                "here once the tests are complete (ensure you select the right framework): "
+                "https://treeherder.mozilla.org/perfherder/compare?originalProject=try&original"
+                "Revision=revision&newProject=try&newRevision=revision\n"
+            ),
+        ),
+        (
             {"dry_run": True},
             [8, 1, 1, 5],
             2,
@@ -770,12 +785,34 @@ def test_category_expansion(
             ),
         ),
         (
+            {"show_all": True, "query": "'shippable !32 speedometer 'firefox"},
+            [1, 2, 2, 3],
+            0,
+            (
+                "\n!!!NOTE!!!\n You'll be able to find a performance comparison "
+                "here once the tests are complete (ensure you select the right framework): "
+                "https://treeherder.mozilla.org/perfherder/compare?originalProject=try&original"
+                "Revision=revision&newProject=try&newRevision=revision\n"
+            ),
+        ),
+        (
             {"single_run": True},
             [8, 1, 1, 4],
             2,
             (
                 "If you need any help, you can find us in the #perf-help Matrix channel:\n"
                 "https://matrix.to/#/#perf-help:mozilla.org\n"
+            ),
+        ),
+        (
+            {"detect_changes": True},
+            [9, 2, 2, 5],
+            2,
+            (
+                "\n!!!NOTE!!!\n You'll be able to find a performance comparison "
+                "here once the tests are complete (ensure you select the right framework): "
+                "https://treeherder.mozilla.org/perfherder/compare?originalProject=try&original"
+                "Revision=revision&newProject=try&newRevision=revision\n"
             ),
         ),
     ],
@@ -802,9 +839,66 @@ def test_full_run(options, call_counts, log_ind, expected_log_message):
             ["", TASKS],
             ["", TASKS],
             ["", TASKS],
+            ["", ["Perftest Change Detector"]],
         ]
 
         run(**options)
+
+        assert fzf.call_count == call_counts[0]
+        assert ptt.call_count == call_counts[1]
+        assert logger.call_count == call_counts[2]
+        assert perf_print.call_count == call_counts[3]
+        assert perf_print.call_args_list[log_ind][0][0] == expected_log_message
+
+
+@pytest.mark.parametrize(
+    "options, call_counts, log_ind, expected_log_message, expected_failure",
+    [
+        (
+            {"detect_changes": True},
+            [9, 0, 0, 2],
+            1,
+            (
+                "Executing raptor queries: 'browsertime 'benchmark, !clang 'linux "
+                "'shippable, !bytecode, !live, !profil, !chrom, !safari"
+            ),
+            InvalidRegressionDetectorQuery,
+        ),
+    ],
+)
+@pytest.mark.skipif(os.name == "nt", reason="fzf not installed on host")
+def test_change_detection_task_injection_failure(
+    options,
+    call_counts,
+    log_ind,
+    expected_log_message,
+    expected_failure,
+):
+    with mock.patch("tryselect.selectors.perf.push_to_try") as ptt, mock.patch(
+        "tryselect.selectors.perf.run_fzf"
+    ) as fzf, mock.patch(
+        "tryselect.selectors.perf.get_repository_object", new=mock.MagicMock()
+    ), mock.patch(
+        "tryselect.selectors.perf.LogProcessor.revision",
+        new_callable=mock.PropertyMock,
+        return_value="revision",
+    ) as logger, mock.patch(
+        "tryselect.selectors.perf.print",
+    ) as perf_print:
+        fzf.side_effect = [
+            ["", ["Benchmarks linux"]],
+            ["", TASKS],
+            ["", TASKS],
+            ["", TASKS],
+            ["", TASKS],
+            ["", TASKS],
+            ["", TASKS],
+            ["", TASKS],
+            ["", TASKS],
+        ]
+
+        with pytest.raises(expected_failure):
+            run(**options)
 
         assert fzf.call_count == call_counts[0]
         assert ptt.call_count == call_counts[1]
@@ -848,6 +942,41 @@ def test_category_rules(query, should_fail):
             PerfParser.run_category_checks()
     else:
         assert PerfParser.run_category_checks()
+
+
+@pytest.mark.parametrize(
+    "apk_name, apk_content, should_fail, failure_message",
+    [
+        (
+            "real-file",
+            "file-content",
+            False,
+            None,
+        ),
+        ("bad-file", None, True, "Path does not exist:"),
+    ],
+)
+def test_apk_upload(apk_name, apk_content, should_fail, failure_message):
+    with mock.patch("tryselect.selectors.perf.subprocess") as _, mock.patch(
+        "tryselect.selectors.perf.shutil"
+    ) as _:
+        temp_dir = None
+        try:
+            temp_dir = tempfile.mkdtemp()
+            sample_apk = pathlib.Path(temp_dir, apk_name)
+            if apk_content is not None:
+                with sample_apk.open("w") as f:
+                    f.write(apk_content)
+
+            if should_fail:
+                with pytest.raises(Exception) as exc_info:
+                    PerfParser.setup_apk_upload("browsertime", str(sample_apk))
+                assert failure_message in str(exc_info)
+            else:
+                PerfParser.setup_apk_upload("browsertime", str(sample_apk))
+        finally:
+            if temp_dir is not None:
+                shutil.rmtree(temp_dir)
 
 
 if __name__ == "__main__":

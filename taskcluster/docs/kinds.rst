@@ -236,6 +236,10 @@ beetmover-geckoview
 -------------------
 Beetmover-geckoview publishes the Android library called "geckoview".
 
+beetmover-apt
+-------------------
+Beetmover-apt publishes Linux .deb packages from the Mozilla archive to our APT repositories.
+
 condprof
 --------
 condprof creates and updates realistic profiles.
@@ -528,6 +532,10 @@ repackage-deb
 ----------------
 These repackage tasks take signed Firefox Linux binaries and puts them in Debian packages.
 
+repackage-deb-l10n
+------------------
+These repackage tasks take the signed langpacks (.xpi) binaries and puts them in Debian packages.
+
 repackage-signing
 -----------------
 Repackage-signing take the repackaged installers (windows) and signs them.
@@ -742,3 +750,11 @@ monitors this task to watch for regressions in Firefox startup performance.
 are-we-esmified-yet
 ---------------------
 Collects data about the transition to ECMAScript Modules from JSMs.
+
+attribution
+-----------
+Injects attribution information into en-US installers.
+
+attribution-l10n
+----------------
+Injects attribution information into localized installers.

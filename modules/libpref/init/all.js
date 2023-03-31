@@ -37,19 +37,6 @@ pref("security.remember_cert_checkbox_default_setting", true);
 // x_11_x: COSE is required, PKCS#7 disabled (fail when present)
 pref("security.signed_app_signatures.policy", 2);
 
-// Only one of ["enable_softtoken", "enable_usbtoken",
-// "webauthn_enable_android_fido2"] should be true at a time, as the
-// softtoken will override the other two. Note android's pref is set in
-// mobile.js / geckoview-prefs.js
-pref("security.webauth.webauthn_enable_softtoken", false);
-
-#ifdef MOZ_WIDGET_ANDROID
-  // the Rust usbtoken support does not function on Android
-  pref("security.webauth.webauthn_enable_usbtoken", false);
-#else
-  pref("security.webauth.webauthn_enable_usbtoken", true);
-#endif
-
 pref("security.xfocsp.errorReporting.enabled", true);
 pref("security.xfocsp.errorReporting.automatic", false);
 
@@ -452,8 +439,6 @@ pref("formhelper.autozoom.force-disable.test-only", false);
   pref("gfx.hidpi.enabled", 2);
 #endif
 
-pref("gfx.color_management.display_profile", "");
-
 pref("gfx.downloadable_fonts.enabled", true);
 pref("gfx.downloadable_fonts.fallback_delay", 3000);
 pref("gfx.downloadable_fonts.fallback_delay_short", 100);
@@ -478,7 +463,7 @@ pref("gfx.downloadable_fonts.disable_cache", false);
 pref("gfx.content.azure.backends", "skia");
 
 #ifdef XP_WIN
-  pref("gfx.webrender.flip-sequential", false);
+  // pref("gfx.webrender.flip-sequential", false);  // no default
   pref("gfx.webrender.dcomp-win.enabled", true);
   pref("gfx.webrender.triple-buffering.enabled", true);
 #endif
@@ -929,6 +914,10 @@ pref("privacy.popups.disable_from_plugins", 3);
 // If enabled by privacy.resistFingerprinting.testGranularityMask, list of
 // domains exempted from RFP.
 pref("privacy.resistFingerprinting.exemptedDomains", "*.example.invalid");
+
+// If privacy.resistFingerprintingLite is enabled, this pref can be used to add
+// or remove features from its effects
+pref("privacy.resistFingerprintingLite.overrides", "");
 
 // Fix cookie blocking breakage by providing ephemeral Paritioned LocalStorage
 // for a list of hosts when detected as trackers.
@@ -3629,9 +3618,6 @@ pref("browser.safebrowsing.provider.mozilla.lists.content", "moz-full");
 // The table and global pref for blocking plugin content
 pref("urlclassifier.blockedTable", "moztest-block-simple,mozplugin-block-digest256");
 
-// Turn off Spatial navigation by default.
-pref("snav.enabled", false);
-
 // Wakelock is disabled by default.
 pref("dom.wakelock.enabled", false);
 
@@ -3801,8 +3787,18 @@ pref("browser.sanitizer.loglevel", "Warn");
 // [1]: https://browser.mt/
 // [2]: https://github.com/mozilla/firefox-translations
 pref("browser.translations.enable", false);
-// Set to "All" to see all logs, which are useful for debugging.
+// Set to "All" to see all logs, which are useful for debugging. Set to "Info" to see
+// the application logic logs, and not all of the translated messages, which can be
+// slow and overwhelming.
 pref("browser.translations.logLevel", "Error");
+// By default the translations engine on about:translations uses text for translation,
+// and the full page translations uses HTML. Set this pref to true to use the HTML
+// translation behavior on about:translations. Requires a page refresh.
+pref("browser.translations.useHTML", false);
+// Normally there is a UI to ask the user to translate a page, this pref makes it
+// so that the page automatically performs a translation if one is detected as being
+// required.
+pref("browser.translations.autoTranslate", false);
 
 // When a user cancels this number of authentication dialogs coming from
 // a single web page in a row, all following authentication dialogs will
@@ -4135,6 +4131,8 @@ pref("extensions.formautofill.available", "detect");
 pref("extensions.formautofill.addresses.supported", "detect");
 pref("extensions.formautofill.addresses.enabled", true);
 pref("extensions.formautofill.addresses.capture.enabled", false);
+// This preference should be removed entirely once address capture v2 developing is finished
+pref("extensions.formautofill.addresses.capture.v2.enabled", false);
 pref("extensions.formautofill.addresses.ignoreAutocompleteOff", true);
 // Supported countries need to follow ISO 3166-1 to align with "browser.search.region"
 pref("extensions.formautofill.addresses.supportedCountries", "US,CA");
@@ -4185,7 +4183,7 @@ pref("cookiebanners.listService.testSkipRemoteSettings", false);
 
 // The domains we will block from installing SitePermsAddons. Comma-separated
 // full domains: any subdomains of the domains listed will also be allowed.
-pref("dom.sitepermsaddon-provider.separatedBlocklistedDomains", "shopee.co.th,alipay.com,miravia.es");
+pref("dom.sitepermsaddon-provider.separatedBlocklistedDomains", "shopee.co.th,shopee.tw,shopee.co.id,shopee.com.my,shopee.vn,shopee.ph,shopee.sg,shopee.com.br,shopee.com,shopee.cn,shopee.io,shopee.pl,shopee.com.mx,shopee.com.co,shopee.cl,shopee.kr,shopee.es,shopee.in,alipay.com,miravia.es");
 
 // Log level for logger in URLQueryStrippingListService
 pref("privacy.query_stripping.listService.logLevel", "Error");

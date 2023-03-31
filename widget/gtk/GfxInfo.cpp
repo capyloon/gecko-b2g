@@ -689,7 +689,7 @@ const nsTArray<GfxDriverInfo>& GfxInfo::GetGfxDriverInfo() {
         OperatingSystem::Linux, ScreenSizeStatus::All, BatteryStatus::All,
         WindowProtocol::All, DriverVendor::MesaAll, DeviceFamily::AmdR600,
         nsIGfxInfo::FEATURE_WEBRENDER, nsIGfxInfo::FEATURE_BLOCKED_DEVICE,
-        DRIVER_COMPARISON_IGNORED, V(0, 0, 0, 0),
+        DRIVER_LESS_THAN, V(22, 2, 0, 0),
         "FEATURE_FAILURE_WEBRENDER_BUG_1673939",
         "https://gitlab.freedesktop.org/mesa/mesa/-/issues/3720");
 
@@ -729,21 +729,12 @@ const nsTArray<GfxDriverInfo>& GfxInfo::GetGfxDriverInfo() {
         DRIVER_LESS_THAN, V(18, 2, 0, 0), "FEATURE_X11_EGL_OLD_MESA_NOUVEAU",
         "Mesa 18.2.0.0");
 
-#ifdef EARLY_BETA_OR_EARLIER
-    APPEND_TO_DRIVER_BLOCKLIST_EXT(
-        OperatingSystem::Linux, ScreenSizeStatus::All, BatteryStatus::All,
-        WindowProtocol::All, DriverVendor::NonMesaAll, DeviceFamily::NvidiaAll,
-        nsIGfxInfo::FEATURE_X11_EGL, nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION,
-        DRIVER_LESS_THAN, V(340, 108, 0, 0),
-        "FEATURE_ROLLOUT_X11_EGL_NVIDIA_BINARY_EARLY_BETA", "340.108.0");
-#else
     APPEND_TO_DRIVER_BLOCKLIST_EXT(
         OperatingSystem::Linux, ScreenSizeStatus::All, BatteryStatus::All,
         WindowProtocol::All, DriverVendor::NonMesaAll, DeviceFamily::NvidiaAll,
         nsIGfxInfo::FEATURE_X11_EGL, nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION,
         DRIVER_LESS_THAN, V(470, 82, 0, 0),
-        "FEATURE_ROLLOUT_X11_EGL_NVIDIA_BINARY_RELEASE", "470.82.0");
-#endif
+        "FEATURE_ROLLOUT_X11_EGL_NVIDIA_BINARY", "470.82.0");
 
     // Disable on all AMD devices not using Mesa.
     APPEND_TO_DRIVER_BLOCKLIST_EXT(
@@ -755,20 +746,13 @@ const nsTArray<GfxDriverInfo>& GfxInfo::GetGfxDriverInfo() {
 
     ////////////////////////////////////
     // FEATURE_DMABUF
+    // Disabled due to high volume crash tracked in bug 1788573.
     APPEND_TO_DRIVER_BLOCKLIST_EXT(
         OperatingSystem::Linux, ScreenSizeStatus::All, BatteryStatus::All,
         WindowProtocol::All, DriverVendor::NonMesaAll, DeviceFamily::NvidiaAll,
-        nsIGfxInfo::FEATURE_DMABUF, nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION,
-        DRIVER_LESS_THAN, V(495, 44, 0, 0), "FEATURE_FAILURE_NO_GBM",
-        "495.44.0");
-
-    // Disabled due to high volume crash tracked in bug 1788573.
-    APPEND_TO_DRIVER_BLOCKLIST_RANGE_EXT(
-        OperatingSystem::Linux, ScreenSizeStatus::All, BatteryStatus::All,
-        WindowProtocol::All, DriverVendor::NonMesaAll, DeviceFamily::NvidiaAll,
-        nsIGfxInfo::FEATURE_DMABUF, nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION,
-        DRIVER_BETWEEN_INCLUSIVE_START, V(495, 44, 0, 0), V(530, 0, 0, 0),
-        "FEATURE_FAILURE_BUG_1788573", ">= 530.0.0");
+        nsIGfxInfo::FEATURE_DMABUF, nsIGfxInfo::FEATURE_BLOCKED_DEVICE,
+        DRIVER_COMPARISON_IGNORED, V(0, 0, 0, 0), "FEATURE_FAILURE_BUG_1788573",
+        "");
 
     ////////////////////////////////////
     // FEATURE_DMABUF_SURFACE_EXPORT
@@ -826,6 +810,14 @@ const nsTArray<GfxDriverInfo>& GfxInfo::GetGfxDriverInfo() {
         nsIGfxInfo::FEATURE_BLOCKED_DEVICE, DRIVER_COMPARISON_IGNORED,
         V(0, 0, 0, 0), "FEATURE_HARDWARE_VIDEO_DECODING_NO_LINUX_AMD", "");
 
+    // Disable on r600 driver due to decoding artifacts (Bug 1824307)
+    APPEND_TO_DRIVER_BLOCKLIST_EXT(
+        OperatingSystem::Linux, ScreenSizeStatus::All, BatteryStatus::All,
+        WindowProtocol::All, DriverVendor::MesaR600, DeviceFamily::All,
+        nsIGfxInfo::FEATURE_HARDWARE_VIDEO_DECODING,
+        nsIGfxInfo::FEATURE_BLOCKED_DEVICE, DRIVER_COMPARISON_IGNORED,
+        V(0, 0, 0, 0), "FEATURE_HARDWARE_VIDEO_DECODING_NO_R600", "");
+
     // Disable on Release/late Beta
 #if !defined(EARLY_BETA_OR_EARLIER)
     APPEND_TO_DRIVER_BLOCKLIST(OperatingSystem::Linux, DeviceFamily::All,
@@ -834,6 +826,22 @@ const nsTArray<GfxDriverInfo>& GfxInfo::GetGfxDriverInfo() {
                                DRIVER_COMPARISON_IGNORED, V(0, 0, 0, 0),
                                "FEATURE_HARDWARE_VIDEO_DECODING_DISABLE", "");
 #endif
+    ////////////////////////////////////
+    // FEATURE_HW_DECODED_VIDEO_ZERO_COPY - ALLOWLIST
+    APPEND_TO_DRIVER_BLOCKLIST2(OperatingSystem::Linux, DeviceFamily::All,
+                                nsIGfxInfo::FEATURE_HW_DECODED_VIDEO_ZERO_COPY,
+                                nsIGfxInfo::FEATURE_ALLOW_ALWAYS,
+                                DRIVER_COMPARISON_IGNORED, V(0, 0, 0, 0),
+                                "FEATURE_ROLLOUT_ALL");
+
+    // Disable on all AMD devices using Mesa (Bug 1802844).
+    APPEND_TO_DRIVER_BLOCKLIST_EXT(
+        OperatingSystem::Linux, ScreenSizeStatus::All, BatteryStatus::All,
+        WindowProtocol::All, DriverVendor::MesaAll, DeviceFamily::AtiAll,
+        nsIGfxInfo::FEATURE_HW_DECODED_VIDEO_ZERO_COPY,
+        nsIGfxInfo::FEATURE_BLOCKED_DEVICE, DRIVER_COMPARISON_IGNORED,
+        V(0, 0, 0, 0), "FEATURE_HARDWARE_VIDEO_ZERO_COPY_LINUX_AMD_DISABLE",
+        "");
 
     ////////////////////////////////////
     // FEATURE_WEBRENDER_PARTIAL_PRESENT
@@ -851,15 +859,15 @@ const nsTArray<GfxDriverInfo>& GfxInfo::GetGfxDriverInfo() {
         WindowProtocol::All, DriverVendor::MesaNouveau, DeviceFamily::All,
         nsIGfxInfo::FEATURE_THREADSAFE_GL, nsIGfxInfo::FEATURE_BLOCKED_DEVICE,
         DRIVER_COMPARISON_IGNORED, V(0, 0, 0, 0),
-        "FEATURE_FAILURE_THREADSAFE_GL", "");
+        "FEATURE_FAILURE_THREADSAFE_GL_NOUVEAU", "");
 
     // Disabled due to high volume crash tracked in bug 1788573.
     APPEND_TO_DRIVER_BLOCKLIST_EXT(
         OperatingSystem::Linux, ScreenSizeStatus::All, BatteryStatus::All,
         WindowProtocol::All, DriverVendor::NonMesaAll, DeviceFamily::NvidiaAll,
-        nsIGfxInfo::FEATURE_THREADSAFE_GL,
-        nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION, DRIVER_LESS_THAN,
-        V(530, 0, 0, 0), "FEATURE_FAILURE_BUG_1788573", ">= 530.0.0");
+        nsIGfxInfo::FEATURE_THREADSAFE_GL, nsIGfxInfo::FEATURE_BLOCKED_DEVICE,
+        DRIVER_COMPARISON_IGNORED, V(0, 0, 0, 0), "FEATURE_FAILURE_BUG_1788573",
+        "");
   }
   return *sDriverInfo;
 }

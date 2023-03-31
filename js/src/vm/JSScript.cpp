@@ -2775,7 +2775,7 @@ void js::maybeUpdateWarmUpCount(JSScript* script) {
     ScriptFinalWarmUpCountMap::Ptr p = map->lookup(script);
     MOZ_ASSERT(p);
 
-    mozilla::Get<0>(p->value()) += script->jitScript()->warmUpCount();
+    std::get<0>(p->value()) += script->jitScript()->warmUpCount();
   }
 }
 
@@ -2789,8 +2789,8 @@ void js::maybeSpewScriptFinalWarmUpCount(JSScript* script) {
     ScriptFinalWarmUpCountMap::Ptr p = map->lookup(script);
     MOZ_ASSERT(p);
     auto& tuple = p->value();
-    uint32_t warmUpCount = mozilla::Get<0>(tuple);
-    SharedImmutableString& scriptName = mozilla::Get<1>(tuple);
+    uint32_t warmUpCount = std::get<0>(tuple);
+    SharedImmutableString& scriptName = std::get<1>(tuple);
 
     JSContext* cx = TlsContext.get();
     cx->spewer().enableSpewing();
@@ -2876,8 +2876,8 @@ void CopySpan(const SourceSpan& source, TargetSpan target) {
 js::UniquePtr<ImmutableScriptData> ImmutableScriptData::new_(
     FrontendContext* fc, uint32_t mainOffset, uint32_t nfixed, uint32_t nslots,
     GCThingIndex bodyScopeIndex, uint32_t numICEntries, bool isFunction,
-    uint16_t funLength, mozilla::Span<const jsbytecode> code,
-    mozilla::Span<const SrcNote> notes,
+    uint16_t funLength, uint16_t propertyCountEstimate,
+    mozilla::Span<const jsbytecode> code, mozilla::Span<const SrcNote> notes,
     mozilla::Span<const uint32_t> resumeOffsets,
     mozilla::Span<const ScopeNote> scopeNotes,
     mozilla::Span<const TryNote> tryNotes) {
@@ -2906,6 +2906,7 @@ js::UniquePtr<ImmutableScriptData> ImmutableScriptData::new_(
   data->nslots = nslots;
   data->bodyScopeIndex = bodyScopeIndex;
   data->numICEntries = numICEntries;
+  data->propertyCountEstimate = propertyCountEstimate;
 
   if (isFunction) {
     data->funLength = funLength;
@@ -3214,7 +3215,7 @@ bool JSScript::hasLoops() {
 }
 
 bool JSScript::mayReadFrameArgsDirectly() {
-  return needsArgsObj() || hasRest();
+  return needsArgsObj() || usesArgumentsIntrinsics() || hasRest();
 }
 
 void JSScript::resetWarmUpCounterToDelayIonCompilation() {

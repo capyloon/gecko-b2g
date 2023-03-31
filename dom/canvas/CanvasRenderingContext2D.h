@@ -24,6 +24,7 @@
 #include "FilterDescription.h"
 #include "gfx2DGlue.h"
 #include "gfxFontConstants.h"
+#include "gfxUtils.h"
 #include "nsICanvasRenderingContextInternal.h"
 #include "nsColor.h"
 #include "nsIFrame.h"
@@ -106,6 +107,13 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
 
   void Save() override;
   void Restore() override;
+
+  void Reset() {
+    // reset the rendering context to its default state
+    // Userland polyfill is `c2d.width = c2d.width;`
+    SetDimensions(GetWidth(), GetHeight());
+  }
+
   void Scale(double aX, double aY, mozilla::ErrorResult& aError) override;
   void Rotate(double aAngle, mozilla::ErrorResult& aError) override;
   void Translate(double aX, double aY, mozilla::ErrorResult& aError) override;
@@ -132,6 +140,10 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
       CurrentState().globalAlpha = ToFloat(aGlobalAlpha);
     }
   }
+
+  enum class ResolveCurrentColor : bool { No, Yes };
+  Maybe<nscolor> ParseColor(const nsACString&,
+                            ResolveCurrentColor = ResolveCurrentColor::Yes);
 
   void GetGlobalCompositeOperation(nsAString& aOp,
                                    mozilla::ErrorResult& aError) override;
@@ -386,13 +398,6 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
   void SetLineDashOffset(double aOffset) override;
   double LineDashOffset() const override;
 
-  void GetMozTextStyle(nsACString& aMozTextStyle) { GetFont(aMozTextStyle); }
-
-  void SetMozTextStyle(const nsACString& aMozTextStyle,
-                       mozilla::ErrorResult& aError) {
-    SetFont(aMozTextStyle, aError);
-  }
-
   bool ImageSmoothingEnabled() override {
     return CurrentState().imageSmoothingEnabled;
   }
@@ -511,7 +516,8 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
     }
   }
 
-  virtual UniquePtr<uint8_t[]> GetImageBuffer(int32_t* aFormat) override;
+  virtual UniquePtr<uint8_t[]> GetImageBuffer(
+      int32_t* out_format, gfx::IntSize* out_imageSize) override;
 
   virtual void OnShutdown();
 
@@ -571,9 +577,6 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
 
   void GetStyleAsUnion(OwningUTF8StringOrCanvasGradientOrCanvasPattern& aValue,
                        Style aWhichStyle);
-
-  // Returns whether a color was successfully parsed.
-  bool ParseColor(const nsACString& aString, nscolor* aColor);
 
   static void StyleColorToString(const nscolor& aColor, nsACString& aStr);
 
@@ -942,7 +945,7 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
       return std::min(SIGMA_MAX, shadowBlur / 2.0f);
     }
 
-    nsTArray<ClipState> clipsAndTransforms;
+    ElementOrArray<ClipState> clipsAndTransforms;
 
     RefPtr<gfxFontGroup> fontGroup;
     RefPtr<nsAtom> fontLanguage;
@@ -1010,34 +1013,53 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
     return mStyleStack[mStyleStack.Length() - 1];
   }
 
-  struct CacheKey {
-    CacheKey() : mFont(), mGeneration(0) {}
-    CacheKey(const nsACString& aFont, uint64_t aGeneration)
+  struct FontStyleCacheKey {
+    FontStyleCacheKey() = default;
+    FontStyleCacheKey(const nsACString& aFont, uint64_t aGeneration)
         : mFont(aFont), mGeneration(aGeneration) {}
     nsCString mFont;
-    uint64_t mGeneration;
+    uint64_t mGeneration = 0;
   };
 
   struct FontStyleData {
-    CacheKey mKey;
+    FontStyleCacheKey mKey;
     nsCString mUsedFont;
     RefPtr<const ComputedStyle> mStyle;
   };
 
   class FontStyleCache
-      : public MruCache<CacheKey, FontStyleData, FontStyleCache> {
+      : public MruCache<FontStyleCacheKey, FontStyleData, FontStyleCache> {
    public:
-    static HashNumber Hash(const CacheKey& aKey) {
+    static HashNumber Hash(const FontStyleCacheKey& aKey) {
       HashNumber hash = HashString(aKey.mFont);
       return AddToHash(hash, aKey.mGeneration);
     }
-    static bool Match(const CacheKey& aKey, const FontStyleData& aVal) {
+    static bool Match(const FontStyleCacheKey& aKey,
+                      const FontStyleData& aVal) {
       return aVal.mKey.mGeneration == aKey.mGeneration &&
              aVal.mKey.mFont == aKey.mFont;
     }
   };
 
   FontStyleCache mFontStyleCache;
+
+  struct ColorStyleCacheEntry {
+    nsCString mKey;
+    Maybe<nscolor> mColor;
+    bool mWasCurrentColor = false;
+  };
+  class ColorStyleCache
+      : public MruCache<nsACString, ColorStyleCacheEntry, ColorStyleCache> {
+   public:
+    static HashNumber Hash(const nsACString& aKey) { return HashString(aKey); }
+    static bool Match(const nsACString& aKey,
+                      const ColorStyleCacheEntry& aVal) {
+      return aVal.mKey == aKey;
+    }
+  };
+  ColorStyleCache mColorStyleCache;
+
+  ColorStyleCacheEntry ParseColorSlow(const nsACString&);
 
   friend class CanvasGeneralPattern;
   friend class AdjustedTarget;

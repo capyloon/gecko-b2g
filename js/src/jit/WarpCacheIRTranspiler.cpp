@@ -853,7 +853,6 @@ bool WarpCacheIRTranspiler::emitGuardFixedSlotValue(ObjOperandId objId,
 
   size_t offset = int32StubField(offsetOffset);
   Value val = valueStubField(valOffset);
-  MOZ_ASSERT(val.isPrivateGCThing());
 
   uint32_t slotIndex = NativeObject::getFixedSlotIndexFromOffset(offset);
 
@@ -5195,7 +5194,7 @@ bool WarpCacheIRTranspiler::emitBindFunctionResult(
 
   MOZ_ASSERT(callInfo_->argc() == argc);
 
-  auto* bound = MNewBoundFunction::New(alloc(), target, argc, templateObj);
+  auto* bound = MBindFunction::New(alloc(), target, argc, templateObj);
   if (!bound) {
     return false;
   }
@@ -5207,6 +5206,41 @@ bool WarpCacheIRTranspiler::emitBindFunctionResult(
 
   pushResult(bound);
   return resumeAfter(bound);
+}
+
+bool WarpCacheIRTranspiler::emitSpecializedBindFunctionResult(
+    ObjOperandId targetId, uint32_t argc, uint32_t templateObjectOffset) {
+  MDefinition* target = getOperand(targetId);
+  JSObject* templateObj = tenuredObjectStubField(templateObjectOffset);
+
+  MOZ_ASSERT(callInfo_->argc() == argc);
+
+  auto* bound = MNewBoundFunction::New(alloc(), templateObj);
+  add(bound);
+
+  size_t numBoundArgs = argc > 0 ? argc - 1 : 0;
+  MOZ_ASSERT(numBoundArgs <= BoundFunctionObject::MaxInlineBoundArgs);
+
+  auto initSlot = [&](size_t slot, MDefinition* value) {
+#ifdef DEBUG
+    // Assert we can elide the post write barrier. See also the comment in
+    // WarpBuilder::buildNamedLambdaEnv.
+    add(MAssertCanElidePostWriteBarrier::New(alloc(), bound, value));
+#endif
+    addUnchecked(MStoreFixedSlot::NewUnbarriered(alloc(), bound, slot, value));
+  };
+
+  initSlot(BoundFunctionObject::targetSlot(), target);
+  if (argc > 0) {
+    initSlot(BoundFunctionObject::boundThisSlot(), callInfo_->getArg(0));
+  }
+  for (size_t i = 0; i < numBoundArgs; i++) {
+    size_t slot = BoundFunctionObject::firstInlineBoundArgSlot() + i;
+    initSlot(slot, callInfo_->getArg(1 + i));
+  }
+
+  pushResult(bound);
+  return true;
 }
 
 bool WarpCacheIRTranspiler::emitCallWasmFunction(
@@ -5528,6 +5562,13 @@ bool WarpCacheIRTranspiler::emitBailout() {
   return true;
 }
 
+bool WarpCacheIRTranspiler::emitAssertPropertyLookup(ObjOperandId objId,
+                                                     uint32_t idOffset,
+                                                     uint32_t slotOffset) {
+  // We currently only emit checks in baseline.
+  return true;
+}
+
 bool WarpCacheIRTranspiler::emitAssertRecoveredOnBailoutResult(
     ValOperandId valId, bool mustBeRecovered) {
   MDefinition* val = getOperand(valId);
@@ -5661,6 +5702,17 @@ bool WarpCacheIRTranspiler::emitCloseIterScriptedResult(ObjOperandId iterId,
   MCheckIsObj* check = MCheckIsObj::New(
       alloc(), call, uint8_t(CheckIsObjectKind::IteratorReturn));
   add(check);
+
+  return true;
+}
+
+bool WarpCacheIRTranspiler::emitGuardGlobalGeneration(
+    uint32_t expectedOffset, uint32_t generationAddrOffset) {
+  uint32_t expected = uint32StubField(expectedOffset);
+  const void* generationAddr = rawPointerField(generationAddrOffset);
+
+  auto guard = MGuardGlobalGeneration::New(alloc(), expected, generationAddr);
+  add(guard);
 
   return true;
 }

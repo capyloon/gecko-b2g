@@ -17,6 +17,7 @@
 #include "mozilla/dom/CharacterData.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/HTMLInputElement.h"
+#include "mozilla/PresShell.h"
 #include "mozilla/intl/Segmenter.h"
 #include "mozilla/intl/WordBreaker.h"
 #include "mozilla/StaticPrefs_layout.h"
@@ -442,7 +443,7 @@ class BlockRule : public PivotRule {
  public:
   virtual uint16_t Match(Accessible* aAcc) override {
     if (RefPtr<nsAtom>(aAcc->DisplayStyle()) == nsGkAtoms::block ||
-        aAcc->IsHTMLListItem()) {
+        aAcc->IsHTMLListItem() || aAcc->IsTableRow() || aAcc->IsTableCell()) {
       return nsIAccessibleTraversalRule::FILTER_MATCH;
     }
     return nsIAccessibleTraversalRule::FILTER_IGNORE;
@@ -479,8 +480,8 @@ static nsTArray<nsRange*> FindDOMSpellingErrors(LocalAccessible* aAcc,
           ? dom::CharacterData::FromNode(node)->TextLength()
           : RenderedToContentOffset(aAcc, aRenderedEnd);
   nsTArray<nsRange*> domRanges;
-  domSel->GetRangesForIntervalArray(node, contentStart, node, contentEnd,
-                                    aAllowAdjacent, &domRanges);
+  domSel->GetDynamicRangesForIntervalArray(node, contentStart, node, contentEnd,
+                                           aAllowAdjacent, &domRanges);
   return domRanges;
 }
 
@@ -565,7 +566,6 @@ MOZ_CAN_RUN_SCRIPT static std::pair<nsIContent*, int32_t> DOMPointForSelection(
       }
     }
 
-    MOZ_ASSERT(aPoint.mAcc->IsDoc() || content->HasFlag(NODE_IS_EDITABLE));
     return {content, 0};
   }
 
@@ -1462,6 +1462,55 @@ TextLeafPoint TextLeafPoint::NeighborLeafPoint(
                : 0);
 }
 
+LayoutDeviceIntRect TextLeafPoint::ComputeBoundsFromFrame() const {
+  LocalAccessible* local = mAcc->AsLocal();
+  MOZ_ASSERT(local, "Can't compute bounds in frame from non-local acc");
+  nsIFrame* frame = local->GetFrame();
+  MOZ_ASSERT(frame, "No frame found for acc!");
+
+  if (!frame->IsTextFrame()) {
+    return local->Bounds();
+  }
+
+  // Substring must be entirely within the same text node.
+  MOZ_ASSERT(frame->IsPrimaryFrame(),
+             "Cannot compute content offset on non-primary frame");
+  nsIFrame::RenderedText text = frame->GetRenderedText(
+      mOffset, mOffset + 1, nsIFrame::TextOffsetType::OffsetsInRenderedText,
+      nsIFrame::TrailingWhitespace::DontTrim);
+  int32_t contentOffset = text.mOffsetWithinNodeText;
+  int32_t contentOffsetInFrame;
+  // Get the right frame continuation -- not really a child, but a sibling of
+  // the primary frame passed in
+  nsresult rv = frame->GetChildFrameContainingOffset(
+      contentOffset, true, &contentOffsetInFrame, &frame);
+  NS_ENSURE_SUCCESS(rv, LayoutDeviceIntRect());
+
+  // Start with this frame's screen rect, which we will shrink based on
+  // the char we care about within it.
+  nsRect frameScreenRect = frame->GetScreenRectInAppUnits();
+
+  // Add the point where the char starts to the frameScreenRect
+  nsPoint frameTextStartPoint;
+  rv = frame->GetPointFromOffset(contentOffset, &frameTextStartPoint);
+  NS_ENSURE_SUCCESS(rv, LayoutDeviceIntRect());
+
+  // Use the next offset to calculate the width
+  // XXX(morgan) does this work for vertical text?
+  nsPoint frameTextEndPoint;
+  rv = frame->GetPointFromOffset(contentOffset + 1, &frameTextEndPoint);
+  NS_ENSURE_SUCCESS(rv, LayoutDeviceIntRect());
+
+  frameScreenRect.SetRectX(
+      frameScreenRect.X() +
+          std::min(frameTextStartPoint.x, frameTextEndPoint.x),
+      mozilla::Abs(frameTextStartPoint.x - frameTextEndPoint.x));
+
+  nsPresContext* presContext = local->Document()->PresContext();
+  return LayoutDeviceIntRect::FromAppUnitsToNearest(
+      frameScreenRect, presContext->AppUnitsPerDevPixel());
+}
+
 /* static */
 nsTArray<int32_t> TextLeafPoint::GetSpellingErrorOffsets(
     LocalAccessible* aAcc) {
@@ -1660,11 +1709,38 @@ LayoutDeviceIntRect TextLeafPoint::CharBounds() {
   }
 
   if (LocalAccessible* local = mAcc->AsLocal()) {
-    HyperTextAccessible* ht = HyperTextFor(local);
-    MOZ_ASSERT(ht, "Could not find hypertext for text acc?");
-    return ht->CharBounds(
-        static_cast<int32_t>(ht->TransformOffset(local, mOffset, true)),
-        nsIAccessibleCoordinateType::COORDTYPE_SCREEN_RELATIVE);
+    if (!local->IsTextLeaf() || nsAccUtils::TextLength(local) == 0) {
+      // Empty content, use our own bounds to at least get x,y coordinates
+      return local->Bounds();
+    }
+
+    if (mOffset >= 0 &&
+        static_cast<uint32_t>(mOffset) >= nsAccUtils::TextLength(local)) {
+      // It's valid for a caller to query the length because the caret might be
+      // at the end of editable text. In that case, we should just silently
+      // return. However, we assert that the offset isn't greater than the
+      // length.
+      NS_ASSERTION(
+          static_cast<uint32_t>(mOffset) <= nsAccUtils::TextLength(local),
+          "Wrong in offset");
+      return LayoutDeviceIntRect();
+    }
+
+    LayoutDeviceIntRect bounds = ComputeBoundsFromFrame();
+
+    // This document may have a resolution set, we will need to multiply
+    // the document-relative coordinates by that value and re-apply the doc's
+    // screen coordinates.
+    nsPresContext* presContext = local->Document()->PresContext();
+    nsIFrame* rootFrame = presContext->PresShell()->GetRootFrame();
+    LayoutDeviceIntRect orgRectPixels =
+        LayoutDeviceIntRect::FromAppUnitsToNearest(
+            rootFrame->GetScreenRectInAppUnits(),
+            presContext->AppUnitsPerDevPixel());
+    bounds.MoveBy(-orgRectPixels.X(), -orgRectPixels.Y());
+    bounds.ScaleRoundOut(presContext->PresShell()->GetResolution());
+    bounds.MoveBy(orgRectPixels.X(), orgRectPixels.Y());
+    return bounds;
   }
 
   RemoteAccessible* remote = mAcc->AsRemote();
@@ -1706,7 +1782,9 @@ LayoutDeviceIntRect TextLeafRange::Bounds() const {
         nsIAccessibleText::BOUNDARY_LINE_START, eDirNext);
     TextLeafPoint lastPointInLine = lineStartPoint.FindBoundary(
         nsIAccessibleText::BOUNDARY_CHAR, eDirPrevious);
-    if (mEnd <= lastPointInLine) {
+    // If currPoint is the end of the document, lineStartPoint will be equal
+    // to currPoint and we would be in an endless loop.
+    if (lineStartPoint == currPoint || mEnd <= lastPointInLine) {
       lastPointInLine = mEnd;
       locatedFinalLine = true;
     }

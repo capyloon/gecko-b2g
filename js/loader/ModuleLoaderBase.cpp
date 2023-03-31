@@ -206,8 +206,8 @@ JSString* ModuleLoaderBase::ImportMetaResolveImpl(
     auto result = loader->ResolveModuleSpecifier(script, specifier);
     if (result.isErr()) {
       JS::Rooted<JS::Value> error(aCx);
-      nsresult rv = HandleResolveFailure(aCx, script, specifier,
-                                         result.unwrapErr(), 0, 0, &error);
+      nsresult rv = loader->HandleResolveFailure(
+          aCx, script, specifier, result.unwrapErr(), 0, 0, &error);
       if (NS_FAILED(rv)) {
         JS_ReportOutOfMemory(aCx);
         return nullptr;
@@ -301,8 +301,8 @@ bool ModuleLoaderBase::HostImportModuleDynamically(
   auto result = loader->ResolveModuleSpecifier(script, specifier);
   if (result.isErr()) {
     JS::Rooted<JS::Value> error(aCx);
-    nsresult rv = HandleResolveFailure(aCx, script, specifier,
-                                       result.unwrapErr(), 0, 0, &error);
+    nsresult rv = loader->HandleResolveFailure(
+        aCx, script, specifier, result.unwrapErr(), 0, 0, &error);
     if (NS_FAILED(rv)) {
       JS_ReportOutOfMemory(aCx);
       return false;
@@ -318,7 +318,10 @@ bool ModuleLoaderBase::HostImportModuleDynamically(
       aCx, uri, script, aReferencingPrivate, specifierString, aPromise);
 
   if (!request) {
-    JS_ReportErrorASCII(aCx, "Dynamic import not supported in this context");
+    // Throws TypeError if CreateDynamicImport returns nullptr.
+    JS_ReportErrorNumberASCII(aCx, js::GetErrorMessage, nullptr,
+                              JSMSG_DYNAMIC_IMPORT_NOT_SUPPORTED);
+
     return false;
   }
 
@@ -633,6 +636,10 @@ nsresult ModuleLoaderBase::CreateModuleScript(ModuleLoadRequest* aRequest) {
     // the same as a parse error.
     rv = ResolveRequestedModules(aRequest, nullptr);
     if (NS_FAILED(rv)) {
+      if (!aRequest->IsErrored()) {
+        aRequest->mModuleScript = nullptr;
+        return rv;
+      }
       aRequest->ModuleErrored();
       return NS_OK;
     }
@@ -642,6 +649,19 @@ nsresult ModuleLoaderBase::CreateModuleScript(ModuleLoadRequest* aRequest) {
        aRequest->mModuleScript.get()));
 
   return rv;
+}
+
+nsresult ModuleLoaderBase::GetResolveFailureMessage(ResolveError aError,
+                                                    const nsAString& aSpecifier,
+                                                    nsAString& aResult) {
+  AutoTArray<nsString, 1> errorParams;
+  errorParams.AppendElement(aSpecifier);
+
+  nsresult rv = nsContentUtils::FormatLocalizedString(
+      nsContentUtils::eDOM_PROPERTIES, ResolveErrorInfo::GetString(aError),
+      errorParams, aResult);
+  NS_ENSURE_SUCCESS(rv, rv);
+  return NS_OK;
 }
 
 nsresult ModuleLoaderBase::HandleResolveFailure(
@@ -661,13 +681,8 @@ nsresult ModuleLoaderBase::HandleResolveFailure(
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
-  AutoTArray<nsString, 1> errorParams;
-  errorParams.AppendElement(aSpecifier);
-
   nsAutoString errorText;
-  nsresult rv = nsContentUtils::FormatLocalizedString(
-      nsContentUtils::eDOM_PROPERTIES, ResolveErrorInfo::GetString(aError),
-      errorParams, errorText);
+  nsresult rv = GetResolveFailureMessage(aError, aSpecifier, errorText);
   NS_ENSURE_SUCCESS(rv, rv);
 
   JS::Rooted<JSString*> string(aCx, JS_NewUCStringCopyZ(aCx, errorText.get()));
@@ -732,7 +747,7 @@ ResolveResult ModuleLoaderBase::ResolveModuleSpecifier(
   if (aScript) {
     baseURL = aScript->BaseURL();
   } else {
-    baseURL = mLoader->GetBaseURI();
+    baseURL = GetBaseURI();
   }
 
   rv = NS_NewURI(getter_AddRefs(uri), aSpecifier, nullptr, baseURL);
@@ -777,8 +792,9 @@ nsresult ModuleLoaderBase::ResolveRequestedModules(
                                       &columnNumber);
 
       JS::Rooted<JS::Value> error(cx);
-      nsresult rv = HandleResolveFailure(cx, ms, specifier, result.unwrapErr(),
-                                         lineNumber, columnNumber, &error);
+      nsresult rv =
+          loader->HandleResolveFailure(cx, ms, specifier, result.unwrapErr(),
+                                       lineNumber, columnNumber, &error);
       NS_ENSURE_SUCCESS(rv, rv);
 
       ms->SetParseError(error);
@@ -980,7 +996,13 @@ ModuleLoaderBase::~ModuleLoaderBase() {
 }
 
 void ModuleLoaderBase::Shutdown() {
-  MOZ_ASSERT(mFetchingModules.IsEmpty());
+  CancelAndClearDynamicImports();
+
+  for (const auto& entry : mFetchingModules) {
+    if (entry.GetData()) {
+      entry.GetData()->Reject(NS_ERROR_FAILURE, __func__);
+    }
+  }
 
   for (const auto& entry : mFetchedModules) {
     if (entry.GetData()) {
@@ -988,6 +1010,7 @@ void ModuleLoaderBase::Shutdown() {
     }
   }
 
+  mFetchingModules.Clear();
   mFetchedModules.Clear();
   mGlobalObject = nullptr;
   mEventTarget = nullptr;
@@ -1213,16 +1236,11 @@ nsresult ModuleLoaderBase::EvaluateModuleInContext(
   // unless the user cancels execution.
   MOZ_ASSERT_IF(ok, !JS_IsExceptionPending(aCx));
 
-  // For long running scripts, the request may be cancelled abruptly. This
-  // may also happen if the loader is collected before we get here.
-  if (request->IsCanceled() || !mLoader) {
-    return NS_ERROR_ABORT;
-  }
-
-  if (!ok) {
+  if (!ok || IsModuleEvaluationAborted(request)) {
     LOG(("ScriptLoadRequest (%p):   evaluation failed", aRequest));
     // For a dynamic import, the promise is rejected. Otherwise an error is
     // reported by AutoEntryScript.
+    rv = NS_ERROR_ABORT;
   }
 
   // ModuleEvaluate returns a promise unless the user cancels the execution in
@@ -1234,7 +1252,11 @@ nsresult ModuleLoaderBase::EvaluateModuleInContext(
   }
 
   if (request->IsDynamicImport()) {
-    FinishDynamicImport(aCx, request, NS_OK, evaluationPromise);
+    if (NS_FAILED(rv)) {
+      FinishDynamicImportAndReject(request, rv);
+    } else {
+      FinishDynamicImport(aCx, request, NS_OK, evaluationPromise);
+    }
   } else {
     // If this is not a dynamic import, and if the promise is rejected,
     // the value is unwrapped from the promise value.

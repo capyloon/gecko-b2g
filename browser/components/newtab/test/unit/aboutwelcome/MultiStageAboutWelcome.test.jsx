@@ -17,7 +17,7 @@ describe("MultiStageAboutWelcome module", () => {
   let sandbox;
 
   const DEFAULT_PROPS = {
-    screens: AboutWelcomeDefaults.getDefaults().screens,
+    defaultScreens: AboutWelcomeDefaults.getDefaults().screens,
     metricsFlowUri: "http://localhost/",
     message_id: "DEFAULT_ABOUTWELCOME",
     utm_term: "default",
@@ -66,8 +66,31 @@ describe("MultiStageAboutWelcome module", () => {
     });
 
     it("should handle primary Action", () => {
+      const screens = [
+        {
+          content: {
+            title: "test title",
+            subtitle: "test subtitle",
+            primary_button: {
+              label: "Test button",
+              action: {
+                navigate: true,
+              },
+            },
+          },
+        },
+      ];
+
+      const PRIMARY_ACTION_PROPS = {
+        defaultScreens: screens,
+        metricsFlowUri: "http://localhost/",
+        message_id: "DEFAULT_ABOUTWELCOME",
+        utm_term: "default",
+        startScreen: 0,
+      };
+
       const stub = sinon.stub(AboutWelcomeUtils, "sendActionTelemetry");
-      let wrapper = mount(<MultiStageAboutWelcome {...DEFAULT_PROPS} />);
+      let wrapper = mount(<MultiStageAboutWelcome {...PRIMARY_ACTION_PROPS} />);
       wrapper.update();
 
       let welcomeScreenWrapper = wrapper.find(WelcomeScreen);
@@ -100,7 +123,7 @@ describe("MultiStageAboutWelcome module", () => {
         },
       ];
       const AUTO_ADVANCE_PROPS = {
-        screens,
+        defaultScreens: screens,
         metricsFlowUri: "http://localhost/",
         message_id: "DEFAULT_ABOUTWELCOME",
         utm_term: "default",
@@ -148,7 +171,7 @@ describe("MultiStageAboutWelcome module", () => {
         },
       ];
       const EASY_SETUP_PROPS = {
-        screens,
+        defaultScreens: screens,
         message_id: "DEFAULT_ABOUTWELCOME",
         startScreen: 0,
       };

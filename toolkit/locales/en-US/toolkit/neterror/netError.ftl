@@ -26,6 +26,7 @@ neterror-try-again-button = Try Again
 neterror-add-exception-button = Always continue for this site
 neterror-settings-button = Change DNS settings
 neterror-view-certificate-link = View Certificate
+neterror-trr-continue-this-time = Continue this time
 neterror-disable-native-feedback-warning = Always continue
 
 ##
@@ -72,7 +73,7 @@ neterror-dns-not-found-trr-unknown-problem = Unexpected problem.
 
 neterror-dns-not-found-native-fallback-reason = { -brand-short-name } can’t protect your request for this site’s address through our trusted DNS resolver. Here’s why:
 neterror-dns-not-found-native-fallback-heuristic = DNS over HTTPS has been disabled on your network.
-neterror-dns-not-found-native-fallback-not-confirmed = The connection to { $trrDomain } isn’t ready yet.
+neterror-dns-not-found-native-fallback-not-confirmed2 = { -brand-short-name } wasn’t able to connect to { $trrDomain }.
 
 ##
 

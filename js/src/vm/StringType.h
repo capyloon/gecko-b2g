@@ -464,10 +464,6 @@ class JSString : public js::gc::CellWithLengthAndFlags {
 
   inline JSLinearString* ensureLinear(JSContext* cx);
 
-  static bool ensureLinear(JSContext* cx, JSString* str) {
-    return str->ensureLinear(cx) != nullptr;
-  }
-
   /* Type query and debug-checked casts */
 
   MOZ_ALWAYS_INLINE
@@ -613,7 +609,7 @@ class JSString : public js::gc::CellWithLengthAndFlags {
    *
    * Returns mozilla::Nothing on OOM.
    */
-  mozilla::Maybe<mozilla::Tuple<size_t, size_t>> encodeUTF8Partial(
+  mozilla::Maybe<std::tuple<size_t, size_t>> encodeUTF8Partial(
       const JS::AutoRequireNoGC& nogc, mozilla::Span<char> buffer) const;
 
  private:

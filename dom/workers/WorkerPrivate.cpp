@@ -47,6 +47,7 @@
 #include "mozilla/dom/Performance.h"
 #include "mozilla/dom/PerformanceStorageWorker.h"
 #include "mozilla/dom/PromiseDebugging.h"
+#include "mozilla/dom/ReferrerInfo.h"
 #include "mozilla/dom/RemoteWorkerChild.h"
 #include "mozilla/dom/RemoteWorkerService.h"
 #include "mozilla/dom/RootedDictionary.h"
@@ -1475,6 +1476,15 @@ nsresult WorkerPrivate::SetCSPFromHeaderValues(
     addonPolicy = basePrin->AddonPolicy();
   }
 
+  // Set the default Tile CSP if it's a tile:// url.
+  nsAutoCString scheme;
+  selfURI->GetScheme(scheme);
+  if (scheme.EqualsLiteral("tile")) {
+    nsAutoString tileCsp;
+    Preferences::GetString("network.protocol-handler.tile.csp", tileCsp);
+    csp->AppendPolicy(tileCsp, false, false);
+  }
+
   // For extension workers there aren't any csp header values,
   // instead it will inherit the Extension CSP.
   if (addonPolicy) {
@@ -1741,6 +1751,8 @@ bool WorkerPrivate::Start() {
 // aCx is null when called from the finalizer
 bool WorkerPrivate::Notify(WorkerStatus aStatus) {
   AssertIsOnParentThread();
+  // This method is only called for Canceling or later.
+  MOZ_DIAGNOSTIC_ASSERT(aStatus >= Canceling);
 
   bool pending;
   {
@@ -1752,6 +1764,11 @@ bool WorkerPrivate::Notify(WorkerStatus aStatus) {
 
     pending = mParentStatus == Pending;
     mParentStatus = aStatus;
+  }
+
+  if (mCancellationCallback) {
+    mCancellationCallback(!pending);
+    mCancellationCallback = nullptr;
   }
 
   if (pending) {
@@ -2308,7 +2325,9 @@ WorkerPrivate::WorkerPrivate(
     enum WorkerType aWorkerType, const nsAString& aWorkerName,
     const nsACString& aServiceWorkerScope, WorkerLoadInfo& aLoadInfo,
     nsString&& aId, const nsID& aAgentClusterId,
-    const nsILoadInfo::CrossOriginOpenerPolicy aAgentClusterOpenerPolicy)
+    const nsILoadInfo::CrossOriginOpenerPolicy aAgentClusterOpenerPolicy,
+    CancellationCallback&& aCancellationCallback,
+    TerminationCallback&& aTerminationCallback)
     : mMutex("WorkerPrivate Mutex"),
       mCondVar(mMutex, "WorkerPrivate CondVar"),
       mParent(aParent),
@@ -2317,6 +2336,8 @@ WorkerPrivate::WorkerPrivate(
       mCredentialsMode(aRequestCredentials),
       mWorkerType(aWorkerType),  // If the worker runs as a script or a module
       mWorkerKind(aWorkerKind),
+      mCancellationCallback(std::move(aCancellationCallback)),
+      mTerminationCallback(std::move(aTerminationCallback)),
       mLoadInfo(std::move(aLoadInfo)),
       mDebugger(nullptr),
       mJSContext(nullptr),
@@ -2551,24 +2572,15 @@ WorkerPrivate::ComputeAgentClusterIdAndCoop(WorkerPrivate* aParent,
   return {nsID::GenerateUUID(), agentClusterCoop};
 }
 
-already_AddRefed<WorkerPrivate> WorkerPrivate::Constructor(
-    JSContext* aCx, const nsAString& aScriptURL, bool aIsChromeWorker,
-    WorkerKind aWorkerKind, const nsAString& aWorkerName,
-    const nsACString& aServiceWorkerScope, WorkerLoadInfo* aLoadInfo,
-    ErrorResult& aRv, nsString aId) {
-  return WorkerPrivate::Constructor(
-      aCx, aScriptURL, aIsChromeWorker, aWorkerKind, RequestCredentials::Omit,
-      WorkerType::Classic, aWorkerName, aServiceWorkerScope, aLoadInfo, aRv,
-      std::move(aId));
-}
-
 // static
 already_AddRefed<WorkerPrivate> WorkerPrivate::Constructor(
     JSContext* aCx, const nsAString& aScriptURL, bool aIsChromeWorker,
     WorkerKind aWorkerKind, RequestCredentials aRequestCredentials,
     enum WorkerType aWorkerType, const nsAString& aWorkerName,
     const nsACString& aServiceWorkerScope, WorkerLoadInfo* aLoadInfo,
-    ErrorResult& aRv, nsString aId) {
+    ErrorResult& aRv, nsString aId,
+    CancellationCallback&& aCancellationCallback,
+    TerminationCallback&& aTerminationCallback) {
   WorkerPrivate* parent =
       NS_IsMainThread() ? nullptr : GetCurrentThreadWorkerPrivate();
 
@@ -2632,7 +2644,8 @@ already_AddRefed<WorkerPrivate> WorkerPrivate::Constructor(
   RefPtr<WorkerPrivate> worker = new WorkerPrivate(
       parent, aScriptURL, aIsChromeWorker, aWorkerKind, aRequestCredentials,
       aWorkerType, aWorkerName, aServiceWorkerScope, *aLoadInfo, std::move(aId),
-      idAndCoop.mId, idAndCoop.mCoop);
+      idAndCoop.mId, idAndCoop.mCoop, std::move(aCancellationCallback),
+      std::move(aTerminationCallback));
 
   // Gecko contexts always have an explicitly-set default locale (set by
   // XPJSRuntime::Initialize for the main thread, set by
@@ -3902,6 +3915,23 @@ WorkerPrivate::ProcessAllControlRunnablesLocked() {
   return result;
 }
 
+void WorkerPrivate::ShutdownModuleLoader() {
+  AssertIsOnWorkerThread();
+
+  WorkerGlobalScope* globalScope = GlobalScope();
+  if (globalScope) {
+    if (globalScope->GetModuleLoader(nullptr)) {
+      globalScope->GetModuleLoader(nullptr)->Shutdown();
+    }
+  }
+  WorkerDebuggerGlobalScope* debugGlobalScope = DebuggerGlobalScope();
+  if (debugGlobalScope) {
+    if (debugGlobalScope->GetModuleLoader(nullptr)) {
+      debugGlobalScope->GetModuleLoader(nullptr)->Shutdown();
+    }
+  }
+}
+
 void WorkerPrivate::ClearMainEventQueue(WorkerRanOrNot aRanOrNot) {
   AssertIsOnWorkerThread();
 
@@ -4192,6 +4222,7 @@ void WorkerPrivate::RunShutdownTasks() {
   for (auto& task : shutdownTasks) {
     task->TargetShutdown();
   }
+  mWorkerHybridEventTarget->ForgetWorkerPrivate(this);
 }
 
 void WorkerPrivate::CancelAllTimeouts() {
@@ -4770,26 +4801,6 @@ bool WorkerPrivate::NotifyInternal(WorkerStatus aStatus) {
         } else {
           data->mScope->NoteShuttingDown();
         }
-      }
-    }
-
-    // Make sure the hybrid event target stops dispatching runnables
-    // once we reaching the killing state.
-    if (aStatus == Killing) {
-      // To avoid deadlock we always acquire the event target mutex before the
-      // worker private mutex.  (We do it in this order because this is what
-      // workers best for event dispatching.)  To enforce that order here we
-      // need to unlock the worker private mutex before we lock the event target
-      // mutex in ForgetWorkerPrivate.
-      {
-        MutexAutoUnlock unlock(mMutex);
-        mWorkerHybridEventTarget->ForgetWorkerPrivate(this);
-      }
-
-      // Check the status code again in case another NotifyInternal came in
-      // while we were unlocked above.
-      if (mStatus >= aStatus) {
-        return true;
       }
     }
 
@@ -5689,26 +5700,11 @@ RemoteWorkerChild* WorkerPrivate::GetRemoteWorkerController() {
   return mRemoteWorkerController;
 }
 
-void WorkerPrivate::SetRemoteWorkerControllerWeakRef(
-    ThreadSafeWeakPtr<RemoteWorkerChild> aWeakRef) {
-  MOZ_ASSERT(!aWeakRef.IsNull());
-  MOZ_ASSERT(mRemoteWorkerControllerWeakRef.IsNull());
-  MOZ_ASSERT(IsServiceWorker());
-
-  mRemoteWorkerControllerWeakRef = std::move(aWeakRef);
-}
-
-ThreadSafeWeakPtr<RemoteWorkerChild>
-WorkerPrivate::GetRemoteWorkerControllerWeakRef() {
-  MOZ_ASSERT(IsServiceWorker());
-  return mRemoteWorkerControllerWeakRef;
-}
-
 RefPtr<GenericPromise> WorkerPrivate::SetServiceWorkerSkipWaitingFlag() {
   AssertIsOnWorkerThread();
   MOZ_ASSERT(IsServiceWorker());
 
-  RefPtr<RemoteWorkerChild> rwc(mRemoteWorkerControllerWeakRef);
+  RefPtr<RemoteWorkerChild> rwc = mRemoteWorkerController;
 
   if (!rwc) {
     return GenericPromise::CreateAndReject(NS_ERROR_DOM_ABORT_ERR, __func__);
@@ -5716,9 +5712,6 @@ RefPtr<GenericPromise> WorkerPrivate::SetServiceWorkerSkipWaitingFlag() {
 
   RefPtr<GenericPromise> promise =
       rwc->MaybeSendSetServiceWorkerSkipWaitingFlag();
-
-  NS_ProxyRelease("WorkerPrivate::mRemoteWorkerControllerWeakRef",
-                  RemoteWorkerService::Thread(), rwc.forget());
 
   return promise;
 }

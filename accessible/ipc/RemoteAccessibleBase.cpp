@@ -243,7 +243,7 @@ void RemoteAccessibleBase<Derived>::Value(nsString& aValue) const {
 
     if (HasNumericValue()) {
       double checkValue = CurValue();
-      if (!IsNaN(checkValue)) {
+      if (!std::isnan(checkValue)) {
         aValue.AppendFloat(checkValue);
       }
       return;
@@ -330,12 +330,77 @@ double RemoteAccessibleBase<Derived>::Step() const {
 }
 
 template <class Derived>
+bool RemoteAccessibleBase<Derived>::ContainsPoint(int32_t aX, int32_t aY) {
+  if (!BoundsWithOffset(Nothing(), true).Contains(aX, aY)) {
+    return false;
+  }
+  if (!IsTextLeaf()) {
+    return true;
+  }
+  // This is a text leaf. The text might wrap across lines, which means our
+  // rect might cover a wider area than the actual text. For example, if the
+  // text begins in the middle of the first line and wraps on to the second,
+  // the rect will cover the start of the first line and the end of the second.
+  auto lines = GetCachedTextLines();
+  if (!lines) {
+    // This means the text is empty or occupies a single line (but does not
+    // begin the line). In that case, the Bounds check above is sufficient,
+    // since there's only one rect.
+    return true;
+  }
+  uint32_t length = lines->Length();
+  MOZ_ASSERT(length > 0,
+             "Line starts shouldn't be in cache if there aren't any");
+  if (length == 0 || (length == 1 && (*lines)[0] == 0)) {
+    // This means the text begins and occupies a single line. Again, the Bounds
+    // check above is sufficient.
+    return true;
+  }
+  // Walk the lines of the text. Even if this text doesn't start at the
+  // beginning of a line (i.e. lines[0] > 0), we always want to consider its
+  // first line.
+  int32_t lineStart = 0;
+  for (uint32_t index = 0; index <= length; ++index) {
+    int32_t lineEnd;
+    if (index < length) {
+      int32_t nextLineStart = (*lines)[index];
+      if (nextLineStart == 0) {
+        // This Accessible starts at the beginning of a line. Here, we always
+        // treat 0 as the first line start anyway.
+        MOZ_ASSERT(index == 0);
+        continue;
+      }
+      lineEnd = nextLineStart - 1;
+    } else {
+      // This is the last line.
+      lineEnd = static_cast<int32_t>(nsAccUtils::TextLength(this)) - 1;
+    }
+    MOZ_ASSERT(lineEnd >= lineStart);
+    nsRect lineRect = GetCachedCharRect(lineStart);
+    if (lineEnd > lineStart) {
+      lineRect.UnionRect(lineRect, GetCachedCharRect(lineEnd));
+    }
+    if (BoundsWithOffset(Some(lineRect), true).Contains(aX, aY)) {
+      return true;
+    }
+    lineStart = lineEnd + 1;
+  }
+  return false;
+}
+
+template <class Derived>
 Accessible* RemoteAccessibleBase<Derived>::ChildAtPoint(
     int32_t aX, int32_t aY, LocalAccessible::EWhichChildAtPoint aWhichChild) {
+  // Elements that are partially on-screen should have their bounds masked by
+  // their containing scroll area so hittesting yields results that are
+  // consistent with the content's visual representation. Pass this value to
+  // bounds calculation functions to indicate that we're hittesting.
+  const bool hitTesting = true;
+
   if (IsOuterDoc() && aWhichChild == EWhichChildAtPoint::DirectChild) {
     // This is an iframe, which is as deep as the viewport cache goes. The
     // caller wants a direct child, which can only be the embedded document.
-    if (Bounds().Contains(aX, aY)) {
+    if (BoundsWithOffset(Nothing(), hitTesting).Contains(aX, aY)) {
       return RemoteFirstChild();
     }
     return nullptr;
@@ -370,7 +435,7 @@ Accessible* RemoteAccessibleBase<Derived>::ChildAtPoint(
 
         if (acc->IsOuterDoc() &&
             aWhichChild == EWhichChildAtPoint::DeepestChild &&
-            acc->Bounds().Contains(aX, aY)) {
+            acc->BoundsWithOffset(Nothing(), hitTesting).Contains(aX, aY)) {
           // acc is an iframe, which is as deep as the viewport cache goes. This
           // iframe contains the requested point.
           RemoteAccessible* innerDoc = acc->RemoteFirstChild();
@@ -399,7 +464,7 @@ Accessible* RemoteAccessibleBase<Derived>::ChildAtPoint(
           break;
         }
 
-        if (acc->Bounds().Contains(aX, aY)) {
+        if (acc->ContainsPoint(aX, aY)) {
           // Because our rects are in hittesting order, the
           // first match we encounter is guaranteed to be the
           // deepest match.
@@ -433,7 +498,7 @@ Accessible* RemoteAccessibleBase<Derived>::ChildAtPoint(
     lastMatch = nullptr;
   }
 
-  if (!lastMatch && Bounds().Contains(aX, aY)) {
+  if (!lastMatch && BoundsWithOffset(Nothing(), hitTesting).Contains(aX, aY)) {
     // Even though the hit target isn't inside `this`, the point is still
     // within our bounds, so fall back to `this`.
     return this;
@@ -513,12 +578,12 @@ bool RemoteAccessibleBase<Derived>::ApplyTransform(
 }
 
 template <class Derived>
-void RemoteAccessibleBase<Derived>::ApplyScrollOffset(nsRect& aBounds) const {
+bool RemoteAccessibleBase<Derived>::ApplyScrollOffset(nsRect& aBounds) const {
   Maybe<const nsTArray<int32_t>&> maybeScrollPosition =
       mCachedFields->GetAttribute<nsTArray<int32_t>>(nsGkAtoms::scrollPosition);
 
   if (!maybeScrollPosition || maybeScrollPosition->Length() != 2) {
-    return;
+    return false;
   }
   // Our retrieved value is in app units, so we don't need to do any
   // unit conversion here.
@@ -530,6 +595,11 @@ void RemoteAccessibleBase<Derived>::ApplyScrollOffset(nsRect& aBounds) const {
   nsPoint scrollOffset(-scrollPosition[0], -scrollPosition[1]);
 
   aBounds.MoveBy(scrollOffset.x, scrollOffset.y);
+
+  // Return true here even if the scroll offset was 0,0 because the RV is used
+  // as a scroll container indicator. Non-scroll containers won't have cached
+  // scroll position.
+  return true;
 }
 
 template <class Derived>
@@ -561,7 +631,7 @@ bool RemoteAccessibleBase<Derived>::IsFixedPos() const {
 
 template <class Derived>
 LayoutDeviceIntRect RemoteAccessibleBase<Derived>::BoundsWithOffset(
-    Maybe<nsRect> aOffset) const {
+    Maybe<nsRect> aOffset, bool aBoundsAreForHittesting) const {
   Maybe<nsRect> maybeBounds = RetrieveCachedBounds();
   if (maybeBounds) {
     nsRect bounds = *maybeBounds;
@@ -588,6 +658,12 @@ LayoutDeviceIntRect RemoteAccessibleBase<Derived>::BoundsWithOffset(
     const Accessible* acc = Parent();
     bool encounteredFixedContainer = IsFixedPos();
     while (acc && acc->IsRemote()) {
+      // Return early if we're hit testing and our cumulative bounds are empty,
+      // since walking the ancestor chain won't produce any hits.
+      if (aBoundsAreForHittesting && bounds.IsEmpty()) {
+        return LayoutDeviceIntRect{};
+      }
+
       RemoteAccessible* remoteAcc = const_cast<Accessible*>(acc)->AsRemote();
 
       if (Maybe<nsRect> maybeRemoteBounds = remoteAcc->RetrieveCachedBounds()) {
@@ -623,7 +699,18 @@ LayoutDeviceIntRect RemoteAccessibleBase<Derived>::BoundsWithOffset(
           // happens in this loop instead of both inside and outside of
           // the loop (like ApplyTransform).
           // Never apply scroll offsets past a fixed container.
-          remoteAcc->ApplyScrollOffset(remoteBounds);
+          const bool hasScrollArea = remoteAcc->ApplyScrollOffset(bounds);
+
+          // If we are hit testing and the Accessible has a scroll area, ensure
+          // that the bounds we've calculated so far are constrained to the
+          // bounds of the scroll area. Without this, we'll "hit" the off-screen
+          // portions of accs that are are partially (but not fully) within the
+          // scroll area.
+          if (aBoundsAreForHittesting && hasScrollArea) {
+            nsRect selfRelativeScrollBounds(0, 0, remoteBounds.width,
+                                            remoteBounds.height);
+            bounds = bounds.SafeIntersect(selfRelativeScrollBounds);
+          }
         }
         if (remoteAcc->IsDoc()) {
           // Fixed elements are document relative, so if we've hit a

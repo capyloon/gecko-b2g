@@ -576,7 +576,7 @@ bool WebRenderBridgeParent::UpdateResources(
       case OpUpdateResource::TOpPushExternalImageForTexture: {
         const auto& op = cmd.get_OpPushExternalImageForTexture();
         CompositableTextureHostRef texture;
-        texture = TextureHost::AsTextureHost(op.textureParent());
+        texture = TextureHost::AsTextureHost(op.texture().AsParent());
         // gfxCriticalNote is called on error
         if (!PushExternalImageForTexture(op.externalImageId(), op.key(),
                                          texture, op.isUpdate(), aUpdates)) {
@@ -964,14 +964,9 @@ void WebRenderBridgeParent::BeginRecording(const TimeStamp& aRecordingStart) {
   mApi->BeginRecording(aRecordingStart, mPipelineId);
 }
 
-RefPtr<wr::WebRenderAPI::WriteCollectedFramesPromise>
-WebRenderBridgeParent::WriteCollectedFrames() {
-  return mApi->WriteCollectedFrames();
-}
-
-RefPtr<wr::WebRenderAPI::GetCollectedFramesPromise>
-WebRenderBridgeParent::GetCollectedFrames() {
-  return mApi->GetCollectedFrames();
+RefPtr<wr::WebRenderAPI::EndRecordingPromise>
+WebRenderBridgeParent::EndRecording() {
+  return mApi->EndRecording();
 }
 
 void WebRenderBridgeParent::AddPendingScrollPayload(
@@ -1696,7 +1691,7 @@ void WebRenderBridgeParent::MaybeCaptureScreenPixels() {
 #endif
 
 mozilla::ipc::IPCResult WebRenderBridgeParent::RecvGetSnapshot(
-    PTextureParent* aTexture, bool* aNeedsYFlip) {
+    NotNull<PTextureParent*> aTexture, bool* aNeedsYFlip) {
   *aNeedsYFlip = false;
   CompositorBridgeParent* cbp = GetRootCompositorBridgeParent();
   if (mDestroyed || !cbp || cbp->IsPaused()) {

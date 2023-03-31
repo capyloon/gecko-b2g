@@ -39,12 +39,12 @@
     BrowserUtils: "resource://gre/modules/BrowserUtils.sys.mjs",
     Finder: "resource://gre/modules/Finder.sys.mjs",
     FinderParent: "resource://gre/modules/FinderParent.sys.mjs",
+    PopupBlocker: "resource://gre/actors/PopupBlockingParent.sys.mjs",
+    SelectParentHelper: "resource://gre/actors/SelectParent.sys.mjs",
+    RemoteWebNavigation: "resource://gre/modules/RemoteWebNavigation.sys.mjs",
   });
 
   XPCOMUtils.defineLazyModuleGetters(lazy, {
-    PopupBlocker: "resource://gre/actors/PopupBlockingParent.jsm",
-    RemoteWebNavigation: "resource://gre/modules/RemoteWebNavigation.jsm",
-    SelectParentHelper: "resource://gre/actors/SelectParent.jsm",
     NetUtil: "resource://gre/modules/NetUtil.jsm",
   });
 
@@ -130,7 +130,7 @@
       this._inPermitUnload = new WeakSet();
 
       this._originalURI = null;
-      this._showingSearchTerms = false;
+      this._searchTerms = "";
       // When we open a prompt in reaction to a 401, if this 401 comes from
       // a different base domain, the url of that site will be stored here
       // and will be used for auth prompt spoofing protections.
@@ -266,7 +266,7 @@
 
       this._currentAuthPromptURI = null;
 
-      this._showingSearchTerms = false;
+      this._searchTerms = "";
 
       this._documentContentType = null;
 
@@ -787,12 +787,12 @@
       return this._originalURI;
     }
 
-    set showingSearchTerms(val) {
-      this._showingSearchTerms = !!val;
+    set searchTerms(val) {
+      this._searchTerms = val;
     }
 
-    get showingSearchTerms() {
-      return this._showingSearchTerms;
+    get searchTerms() {
+      return this._searchTerms;
     }
 
     set currentAuthPromptURI(aURI) {

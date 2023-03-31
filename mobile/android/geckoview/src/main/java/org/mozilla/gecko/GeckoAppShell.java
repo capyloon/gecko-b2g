@@ -40,6 +40,7 @@ import android.net.Network;
 import android.net.NetworkInfo;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Debug;
 import android.os.LocaleList;
 import android.os.Looper;
 import android.os.PowerManager;
@@ -354,11 +355,9 @@ public class GeckoAppShell {
       return false;
     }
 
-    if (!locationHighAccuracyEnabled) {
-      final Location lastKnownLocation = getLastKnownLocation(lm);
-      if (lastKnownLocation != null) {
-        sAndroidListeners.onLocationChanged(lastKnownLocation);
-      }
+    final Location lastKnownLocation = getLastKnownLocation(lm);
+    if (lastKnownLocation != null) {
+      sAndroidListeners.onLocationChanged(lastKnownLocation);
     }
 
     final Criteria criteria = new Criteria();
@@ -1593,6 +1592,26 @@ public class GeckoAppShell {
     final ApplicationInfo info = context.getApplicationInfo();
     final int id = info.labelRes;
     return id == 0 ? info.nonLocalizedLabel.toString() : context.getString(id);
+  }
+
+  @WrapForJNI(calledFrom = "gecko")
+  private static int getMemoryUsage(final String stateName) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+      // No API to get Java heap usages.
+      return -1;
+    }
+
+    final Debug.MemoryInfo memInfo = new Debug.MemoryInfo();
+    Debug.getMemoryInfo(memInfo);
+    final String usage = memInfo.getMemoryStat(stateName);
+    if (usage == null) {
+      return -1;
+    }
+    try {
+      return Integer.parseInt(usage);
+    } catch (final NumberFormatException e) {
+      return -1;
+    }
   }
 
   @WrapForJNI

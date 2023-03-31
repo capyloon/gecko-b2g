@@ -116,7 +116,7 @@ export function showSource(cx, sourceId) {
 
     dispatch(setPrimaryPaneTab("sources"));
 
-    dispatch(selectSource(cx, source.id));
+    dispatch(selectSource(cx, source));
   };
 }
 
@@ -223,6 +223,10 @@ export function updateCursorPosition(cursorPosition) {
 
 export function setOrientation(orientation) {
   return { type: "SET_ORIENTATION", orientation };
+}
+
+export function setSearchOptions(searchKey, searchOptions) {
+  return { type: "SET_SEARCH_OPTIONS", searchKey, searchOptions };
 }
 
 export function copyToClipboard(location) {

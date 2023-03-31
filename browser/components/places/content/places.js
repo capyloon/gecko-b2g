@@ -183,6 +183,8 @@ var PlacesOrganizer = {
         this._places.selectNode(historyNode.getChild(0));
       }
       Services.telemetry.keyedScalarAdd("library.opened", "history", 1);
+    } else {
+      Services.telemetry.keyedScalarAdd("library.opened", "bookmarks", 1);
     }
 
     // clear the back-stack
@@ -416,12 +418,7 @@ var PlacesOrganizer = {
         // The command execution function will take care of seeing if the
         // selection is a folder or a different container type, and will
         // load its contents in tabs.
-        PlacesUIUtils.openMultipleLinksInTabs(
-          node,
-          aEvent,
-          this._places,
-          PlacesSearchBox.updateHistorySearchTelemetry
-        );
+        PlacesUIUtils.openMultipleLinksInTabs(node, aEvent, this._places);
       }
     }
   },
@@ -830,13 +827,8 @@ var PlacesSearchBox = {
     return document.getElementById("searchFilter");
   },
 
-  _cumulativeLibraryHistorySearchCount: 0,
-  get cumulativeSearchCount() {
-    return this._cumulativeLibraryHistorySearchCount;
-  },
-  set cumulativeSearchCount(cumulativeSearches) {
-    this._cumulativeLibraryHistorySearchCount = cumulativeSearches;
-  },
+  cumulativeHistorySearches: 0,
+  cumulativeBookmarkSearches: 0,
 
   /**
    * Folders to include when searching.
@@ -878,6 +870,8 @@ var PlacesSearchBox = {
     switch (PlacesSearchBox.filterCollection) {
       case "bookmarks":
         currentView.applyFilter(filterString, this.folders);
+        Services.telemetry.keyedScalarAdd("library.search", "bookmarks", 1);
+        this.cumulativeBookmarkSearches++;
         break;
       case "history": {
         let currentOptions = PO.getCurrentOptions();
@@ -898,7 +892,7 @@ var PlacesSearchBox = {
           currentView.applyFilter(filterString, null, true);
           TelemetryStopwatch.finish(HISTORY_LIBRARY_SEARCH_TELEMETRY);
           Services.telemetry.keyedScalarAdd("library.search", "history", 1);
-          this._cumulativeLibraryHistorySearchCount++;
+          this.cumulativeHistorySearches++;
         }
         break;
       }
@@ -996,28 +990,44 @@ var PlacesSearchBox = {
   set value(value) {
     this.searchFilter.value = value;
   },
-
-  updateHistorySearchTelemetry(urlsOpened) {
-    let historyLinks = urlsOpened.filter(link => !link.isBookmark);
-
-    if (historyLinks.length) {
-      // Record cumulative search count before selecting History link from Library
-      let searchesHistogram = Services.telemetry.getHistogramById(
-        "PLACES_LIBRARY_CUMULATIVE_HISTORY_SEARCHES"
-      );
-      searchesHistogram.add(PlacesSearchBox.cumulativeSearchCount);
-
-      // Clear cumulative search counter
-      PlacesSearchBox.cumulativeSearchCount = 0;
-
-      Services.telemetry.keyedScalarAdd(
-        "library.link",
-        "history",
-        historyLinks.length
-      );
-    }
-  },
 };
+
+function updateTelemetry(urlsOpened) {
+  let historyLinks = urlsOpened.filter(
+    link => !link.isBookmark && !PlacesUtils.nodeIsBookmark(link)
+  );
+  if (!historyLinks.length) {
+    let searchesHistogram = Services.telemetry.getHistogramById(
+      "PLACES_LIBRARY_CUMULATIVE_BOOKMARK_SEARCHES"
+    );
+    searchesHistogram.add(PlacesSearchBox.cumulativeBookmarkSearches);
+
+    // Clear cumulative search counter
+    PlacesSearchBox.cumulativeBookmarkSearches = 0;
+
+    Services.telemetry.keyedScalarAdd(
+      "library.link",
+      "bookmarks",
+      urlsOpened.length
+    );
+    return;
+  }
+
+  // Record cumulative search count before selecting History link from Library
+  let searchesHistogram = Services.telemetry.getHistogramById(
+    "PLACES_LIBRARY_CUMULATIVE_HISTORY_SEARCHES"
+  );
+  searchesHistogram.add(PlacesSearchBox.cumulativeHistorySearches);
+
+  // Clear cumulative search counter
+  PlacesSearchBox.cumulativeHistorySearches = 0;
+
+  Services.telemetry.keyedScalarAdd(
+    "library.link",
+    "history",
+    historyLinks.length
+  );
+}
 
 /**
  * Functions and data for advanced query builder
@@ -1519,20 +1529,11 @@ var ContentTree = {
       if (PlacesUtils.nodeIsURI(node) && (doubleClick || middleClick)) {
         // Open associated uri in the browser.
         this.openSelectedNode(aEvent);
-
-        if (!PlacesUtils.nodeIsBookmark(node)) {
-          PlacesSearchBox.updateHistorySearchTelemetry([node]);
-        }
       } else if (middleClick && PlacesUtils.nodeIsContainer(node)) {
         // The command execution function will take care of seeing if the
         // selection is a folder or a different container type, and will
         // load its contents in tabs.
-        PlacesUIUtils.openMultipleLinksInTabs(
-          node,
-          aEvent,
-          this.view,
-          PlacesSearchBox.updateHistorySearchTelemetry
-        );
+        PlacesUIUtils.openMultipleLinksInTabs(node, aEvent, this.view);
       }
     }
   },
@@ -1540,13 +1541,6 @@ var ContentTree = {
   onKeyPress: function CT_onKeyPress(aEvent) {
     if (aEvent.keyCode == KeyEvent.DOM_VK_RETURN) {
       this.openSelectedNode(aEvent);
-
-      let node = this.view.selectedNode;
-      if (node) {
-        if (!PlacesUtils.nodeIsBookmark(node)) {
-          PlacesSearchBox.updateHistorySearchTelemetry([node]);
-        }
-      }
     }
   },
 };

@@ -31,6 +31,7 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   EventDispatcher: "resource://gre/modules/Messaging.sys.mjs",
+  GeckoViewTabBridge: "resource://gre/modules/GeckoViewTab.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
 });
 
@@ -39,7 +40,6 @@ XPCOMUtils.defineLazyModuleGetters(lazy, {
   Extension: "resource://gre/modules/Extension.jsm",
   ExtensionData: "resource://gre/modules/Extension.jsm",
   ExtensionPermissions: "resource://gre/modules/ExtensionPermissions.jsm",
-  GeckoViewTabBridge: "resource://gre/modules/GeckoViewTab.jsm",
   Management: "resource://gre/modules/Extension.jsm",
 });
 
@@ -562,8 +562,8 @@ class MobileWindowTracker extends EventEmitter {
   }
 
   setTabActive(aWindow, aActive) {
-    const { browser, tab, docShell } = aWindow;
-    tab.active = aActive;
+    const { browser, tab: nativeTab, docShell } = aWindow;
+    nativeTab.active = aActive;
 
     if (aActive) {
       this._topWindow = Cu.getWeakReference(aWindow);
@@ -573,8 +573,9 @@ class MobileWindowTracker extends EventEmitter {
       }
       this.emit("tab-activated", {
         windowId: docShell.outerWindowID,
-        tabId: tab.id,
+        tabId: nativeTab.id,
         isPrivate,
+        nativeTab,
       });
     }
   }

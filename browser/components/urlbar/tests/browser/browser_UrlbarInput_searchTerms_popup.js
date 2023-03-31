@@ -43,29 +43,6 @@ add_setup(async function() {
   });
 });
 
-function assertSearchStringIsInUrlbar(searchString) {
-  Assert.equal(
-    gURLBar.value,
-    searchString,
-    `Search string ${searchString} should be in the url bar`
-  );
-  Assert.equal(
-    gBrowser.userTypedValue,
-    searchString,
-    `${searchString} should be the userTypedValue`
-  );
-  Assert.equal(
-    gURLBar.getAttribute("pageproxystate"),
-    "invalid",
-    "Pageproxystate should be invalid."
-  );
-  Assert.equal(
-    gBrowser.selectedBrowser.showingSearchTerms,
-    true,
-    "showingSearchTerms should be true."
-  );
-}
-
 async function searchWithTab(
   searchString,
   tab = null,
@@ -121,6 +98,48 @@ add_task(async function generic_popup_when_persist_is_enabled() {
 
   BrowserTestUtils.removeTab(tab);
   await SpecialPowers.popPrefEnv();
+});
+
+// Ensure the urlbar is not being reverted when a user
+// has written something.
+add_task(async function generic_popup_no_revert_when_persist_is_disabled() {
+  let { tab } = await searchWithTab(
+    SEARCH_TERM,
+    null,
+    defaultTestEngine,
+    false
+  );
+
+  let userTypedValue = "chocolate cake recipe";
+  // Have a user typed value in the urlbar to make
+  // pageproxystate invalid.
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({
+    window,
+    value: userTypedValue,
+    waitForFocus,
+    fireInputEvent: true,
+  });
+  gURLBar.blur();
+
+  await waitForPopupNotification();
+
+  // Wait a brief amount of time between when the popup is shown
+  // and when the event handler should fire if it's enabled.
+  await TestUtils.waitForTick();
+
+  Assert.equal(
+    gURLBar.getAttribute("pageproxystate"),
+    "invalid",
+    "Urlbar should not be reverted."
+  );
+
+  Assert.equal(
+    gURLBar.value,
+    userTypedValue,
+    "User typed value should remain in urlbar."
+  );
+
+  BrowserTestUtils.removeTab(tab);
 });
 
 // Ensure the urlbar is not being reverted when a prompt is shown

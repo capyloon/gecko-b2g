@@ -36,6 +36,7 @@ categories = [
 ]
 license = "Apache-2.0/MIT"
 repository = "https://github.com/projectfluent/fluent-rs"
+resolver = "1"
 
 [dependencies.async-trait]
 version = "0.1"

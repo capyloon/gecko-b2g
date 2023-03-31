@@ -463,7 +463,7 @@ static float ParsePrefFloat(const nsCString& aString, nsresult* aError) {
   // Defensively avoid potential breakage caused by returning NaN into
   // unsuspecting code. AFAIK this should never happen as PR_strtod cannot
   // return NaN as currently configured.
-  if (mozilla::IsNaN(result)) {
+  if (std::isnan(result)) {
     MOZ_ASSERT_UNREACHABLE("PR_strtod shouldn't return NaN");
     *aError = NS_ERROR_ILLEGAL_VALUE;
     return 0.f;
@@ -6029,8 +6029,15 @@ struct PrefListEntry {
   size_t mLen;
 };
 
-// These prefs are not useful in child processes - do not send them
-static const PrefListEntry sParentOnlyPrefBranchList[] = {
+// A preference is 'sanitized' (i.e. not sent to web content processes) if
+// one of two criteria are met:
+//   1. The pref name matches one of the prefixes in the following list
+//   2. The pref is dynamically named (i.e. not specified in all.js or
+//      StaticPrefList.yml), a string pref, and it is NOT exempted in
+//      sDynamicPrefOverrideList
+//
+// This behavior is codified in ShouldSanitizePreference() below
+static const PrefListEntry sRestrictFromWebContentProcesses[] = {
     // Remove prefs with user data
     PREF_LIST_ENTRY("datareporting.policy."),
     PREF_LIST_ENTRY("browser.download.lastDir"),
@@ -6082,9 +6089,11 @@ static const PrefListEntry sParentOnlyPrefBranchList[] = {
 // StaticPrefList) and would normally by blocklisted but we allow them through
 // anyway, so this override list acts as an allowlist
 static const PrefListEntry sDynamicPrefOverrideList[]{
+    PREF_LIST_ENTRY("app.update.channel"),
     PREF_LIST_ENTRY("apz.subtest"),
     PREF_LIST_ENTRY("autoadmin.global_config_url"),  // Bug 1780575
     PREF_LIST_ENTRY("browser.contentblocking.category"),
+    PREF_LIST_ENTRY("browser.dom.window.dump.file"),
     PREF_LIST_ENTRY("browser.search.region"),
     PREF_LIST_ENTRY(
         "browser.tabs.remote.testOnly.failPBrowserCreation.browsingContext"),
@@ -6114,7 +6123,6 @@ static const PrefListEntry sDynamicPrefOverrideList[]{
     PREF_LIST_ENTRY("intl.date_time.pattern_override."),
     PREF_LIST_ENTRY("intl.hyphenation-alias."),
     PREF_LIST_ENTRY("logging.config.LOG_FILE"),
-    PREF_LIST_ENTRY("marionette.log.level"),
     PREF_LIST_ENTRY("media.audio_loopback_dev"),
     PREF_LIST_ENTRY("media.decoder-doctor."),
     PREF_LIST_ENTRY("media.cubeb.output_device"),
@@ -6127,12 +6135,14 @@ static const PrefListEntry sDynamicPrefOverrideList[]{
     PREF_LIST_ENTRY("media.video_loopback_dev"),
     PREF_LIST_ENTRY("media.webspeech.service.endpoint"),
     PREF_LIST_ENTRY("network.gio.supported-protocols"),
+    PREF_LIST_ENTRY("network.protocol-handler.external."),
     PREF_LIST_ENTRY("network.security.ports.banned"),
     PREF_LIST_ENTRY("nimbus.syncdatastore."),
     PREF_LIST_ENTRY("pdfjs."),
     PREF_LIST_ENTRY("print.printer_"),
     PREF_LIST_ENTRY("print_printer"),
     PREF_LIST_ENTRY("places.interactions.customBlocklist"),
+    PREF_LIST_ENTRY("remote.log.level"),
     PREF_LIST_ENTRY(
         "services.settings.preview_enabled"),  // This is really a boolean
                                                // dynamic pref, but one Nightly
@@ -6168,7 +6178,7 @@ static bool ShouldSanitizePreference(const Pref* const aPref) {
   // The services pref is an annoying one - it's much easier to blocklist
   // the whole branch and then add this one check to let this one annoying
   // pref through.
-  for (const auto& entry : sParentOnlyPrefBranchList) {
+  for (const auto& entry : sRestrictFromWebContentProcesses) {
     if (strncmp(entry.mPrefBranch, prefName, entry.mLen) == 0) {
       const auto* p = prefName;  // This avoids clang-format doing ugly things.
       return !(strncmp("services.settings.clock_skew_seconds", p, 36) == 0 ||

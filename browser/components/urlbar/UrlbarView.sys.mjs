@@ -40,8 +40,8 @@ const ZERO_PREFIX_SCALAR_ENGAGEMENT = "urlbar.zeroprefix.engagement";
 const ZERO_PREFIX_SCALAR_EXPOSURE = "urlbar.zeroprefix.exposure";
 
 const RESULT_MENU_COMMANDS = {
-  BLOCK: "block",
-  LEARN_MORE: "learn-more",
+  DISMISS: "dismiss",
+  HELP: "help",
 };
 
 const getBoundsWithoutFlushing = element =>
@@ -258,7 +258,9 @@ export class UrlbarView {
    *   The result of the element's row.
    */
   getResultFromElement(element) {
-    return this.#getRowFromElement(element)?.result;
+    return element?.classList.contains("urlbarView-result-menuitem")
+      ? this.#resultMenuResult
+      : this.#getRowFromElement(element)?.result;
   }
 
   /**
@@ -444,12 +446,17 @@ export class UrlbarView {
       return;
     }
 
+    this.#inputWidthOnLastClose = getBoundsWithoutFlushing(
+      this.input.textbox
+    ).width;
+
     // We exit search mode preview on close since the result previewing it is
     // implicitly unselected.
     if (this.input.searchMode?.isPreview) {
       this.input.searchMode = null;
     }
 
+    this.resultMenu.hidePopup();
     this.removeAccessibleFocus();
     this.input.inputField.setAttribute("aria-expanded", "false");
     this.#openPanelInstance = null;
@@ -539,14 +546,25 @@ export class UrlbarView {
       return false;
     }
 
+    // We can reuse the current rows as they are if the input value and width
+    // haven't changed since the view was closed. The width check is related to
+    // row overflow: If we reuse the current rows, overflow and underflow events
+    // won't fire even if the view's width has changed and there are rows that
+    // do actually overflow or underflow. That means previously overflowed rows
+    // may unnecessarily show the overflow gradient, for example.
     if (
       this.#rows.firstElementChild &&
-      this.#queryContext.searchString == this.input.value
+      this.#queryContext.searchString == this.input.value &&
+      this.#inputWidthOnLastClose ==
+        getBoundsWithoutFlushing(this.input.textbox).width
     ) {
-      // We can reuse the current results.
+      // We can reuse the current rows.
       queryOptions.allowAutofill = this.#queryContext.allowAutofill;
     } else {
-      // To reduce results flickering, try to reuse a cached UrlbarQueryContext.
+      // To reduce flickering, try to reuse a cached UrlbarQueryContext. The
+      // overflow problem is addressed in this case because `onQueryResults()`
+      // starts the regular view-update process, during which the overflow state
+      // is reset on all rows.
       let cachedQueryContext = this.queryContextCache.get(this.input.value);
       if (cachedQueryContext) {
         this.onQueryResults(cachedQueryContext);
@@ -783,9 +801,9 @@ export class UrlbarView {
     this.resultMenu.openPopup(anchor, "bottomright topright");
     anchor.toggleAttribute("open", true);
     this.resultMenu.addEventListener(
-      "popuphiding",
+      "popuphidden",
       () => {
-        anchor.toggleAttribute("open", false);
+        anchor.removeAttribute("open");
       },
       { once: true }
     );
@@ -904,6 +922,7 @@ export class UrlbarView {
 
   // Private properties and methods below.
   #announceTabToSearchOnSelection;
+  #inputWidthOnLastClose = 0;
   #l10nCache;
   #mainContainer;
   #mousedownSelectedElement;
@@ -937,7 +956,7 @@ export class UrlbarView {
     this.input.inputField.setAttribute("aria-expanded", "true");
 
     this.input.toggleAttribute("suppress-focus-border", true);
-    this.input.setAttribute("open", "true");
+    this.input.toggleAttribute("open", true);
     this.input.startLayoutExtend();
 
     this.window.addEventListener("resize", this);
@@ -1708,6 +1727,9 @@ export class UrlbarView {
         lazy.UrlbarUtils.ICON.HISTORY) ||
       iconUrlOverride ||
       result.payload.icon ||
+      (result.type == lazy.UrlbarUtils.RESULT_TYPE.SEARCH &&
+        result.payload.trending &&
+        lazy.UrlbarUtils.ICON.TRENDING) ||
       ((result.type == lazy.UrlbarUtils.RESULT_TYPE.SEARCH ||
         result.type == lazy.UrlbarUtils.RESULT_TYPE.KEYWORD) &&
         lazy.UrlbarUtils.ICON.SEARCH_GLASS) ||
@@ -2658,20 +2680,20 @@ export class UrlbarView {
       result.source == lazy.UrlbarUtils.RESULT_SOURCE.HISTORY &&
       !result.autofill
     ) {
-      commands.set(RESULT_MENU_COMMANDS.BLOCK, {
+      commands.set(RESULT_MENU_COMMANDS.DISMISS, {
         l10n: { id: "urlbar-result-menu-remove-from-history" },
       });
-      commands.set(RESULT_MENU_COMMANDS.LEARN_MORE, {
+      commands.set(RESULT_MENU_COMMANDS.HELP, {
         l10n: { id: "urlbar-result-menu-learn-more" },
       });
     }
     if (result.payload.isBlockable) {
-      commands.set(RESULT_MENU_COMMANDS.BLOCK, {
+      commands.set(RESULT_MENU_COMMANDS.DISMISS, {
         l10n: result.payload.blockL10n,
       });
     }
     if (result.payload.helpUrl) {
-      commands.set(RESULT_MENU_COMMANDS.LEARN_MORE, {
+      commands.set(RESULT_MENU_COMMANDS.HELP, {
         l10n: result.payload.helpL10n,
       });
     }
@@ -2690,6 +2712,7 @@ export class UrlbarView {
         "menuitem"
       );
       menuitem.dataset.command = command;
+      menuitem.classList.add("urlbarView-result-menuitem");
       this.#setElementL10n(menuitem, data.l10n);
       this.resultMenu.appendChild(menuitem);
     }
@@ -2967,18 +2990,14 @@ export class UrlbarView {
       this.#resultMenuResult = null;
       let menuitem = event.target;
       switch (menuitem.dataset.command) {
-        case RESULT_MENU_COMMANDS.BLOCK:
-          this.controller.handleDeleteEntry(null, result);
-          break;
-        case RESULT_MENU_COMMANDS.LEARN_MORE:
-          this.window.openTrustedLinkIn(
+        case RESULT_MENU_COMMANDS.HELP:
+          menuitem.dataset.url =
             result.payload.helpUrl ||
-              Services.urlFormatter.formatURLPref("app.support.baseURL") +
-                "awesome-bar-result-menu",
-            "tab"
-          );
+            Services.urlFormatter.formatURLPref("app.support.baseURL") +
+              "awesome-bar-result-menu";
           break;
       }
+      this.input.pickResult(result, event, menuitem);
     }
   }
 

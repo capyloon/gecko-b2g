@@ -66,6 +66,12 @@ export class NetworkResponseListener {
    */
   #decodedCertificateCache;
   /**
+   * Is the channel from a service worker
+   *
+   * @type {boolean}
+   */
+  #fromServiceWorker;
+  /**
    * See constructor argument of the same name.
    *
    * @type {Object}
@@ -129,9 +135,10 @@ export class NetworkResponseListener {
    */
   #wrappedNotificationCallbacks;
 
-  constructor(httpActivity, decodedCertificateCache) {
+  constructor(httpActivity, decodedCertificateCache, fromServiceWorker) {
     this.#httpActivity = httpActivity;
     this.#decodedCertificateCache = decodedCertificateCache;
+    this.#fromServiceWorker = fromServiceWorker;
 
     // Note that this is really only needed for the non-e10s case.
     // See bug 1309523.
@@ -298,7 +305,7 @@ export class NetworkResponseListener {
     // do that for Service workers as they are run in the child
     // process.
     if (
-      !this.#httpActivity.fromServiceWorker &&
+      !this.#fromServiceWorker &&
       channel instanceof Ci.nsIEncodedChannel &&
       channel.contentEncodings &&
       !channel.applyConversion
@@ -434,7 +441,14 @@ export class NetworkResponseListener {
     // Remove our listener from the request input stream.
     this.setAsyncListener(this.#sink.inputStream, null);
 
-    if (this.#request.fromCache || this.#httpActivity.responseStatus == 304) {
+    let responseStatus;
+    try {
+      responseStatus = this.#httpActivity.channel.responseStatus;
+    } catch (e) {
+      // Will throw NS_ERROR_NOT_AVAILABLE if the response has not been received
+      // yet.
+    }
+    if (this.#request.fromCache || responseStatus == 304) {
       this.#fetchCacheInformation();
     }
 
@@ -442,7 +456,7 @@ export class NetworkResponseListener {
       this.#onComplete(this.#receivedData);
     } else if (
       !this.#httpActivity.discardResponseBody &&
-      this.#httpActivity.responseStatus == 304
+      responseStatus == 304
     ) {
       // Response is cached, so we load it from cache.
       let charset;

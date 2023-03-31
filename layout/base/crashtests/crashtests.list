@@ -497,6 +497,7 @@ load 1463940.html
 HTTP load 1464641.html
 load 1464737.html
 load 1466638.html
+pref(layout.css.motion-path-ray.enabled,true) asserts(1-1) load 1467519.html # bogus size
 load 1467688.html
 load 1467964.html
 load 1469354.html
@@ -567,3 +568,5 @@ load 1771503.html
 load 1789934.html
 load 1791883.html
 load 1797995.html
+pref(layout.accessiblecaret.enabled,true) load 1818036.html
+load 1821469.html

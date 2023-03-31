@@ -31,14 +31,24 @@ export class MigrationWizardChild extends JSWindowActorChild {
    */
   async handleEvent(event) {
     switch (event.type) {
-      case "MigrationWizard:Init": {
+      case "MigrationWizard:RequestState": {
         this.#wizardEl = event.target;
-        let migrators = await this.sendQuery("GetAvailableMigrators");
         this.setComponentState({
-          migrators,
-          page: MigrationWizardConstants.PAGES.SELECTION,
-          showImportAll: lazy.SHOW_IMPORT_ALL_PREF,
+          page: MigrationWizardConstants.PAGES.LOADING,
         });
+
+        let migrators = await this.sendQuery("GetAvailableMigrators");
+        if (!migrators.length) {
+          this.setComponentState({
+            page: MigrationWizardConstants.PAGES.NO_BROWSERS_FOUND,
+          });
+        } else {
+          this.setComponentState({
+            migrators,
+            page: MigrationWizardConstants.PAGES.SELECTION,
+            showImportAll: lazy.SHOW_IMPORT_ALL_PREF,
+          });
+        }
 
         this.#wizardEl.dispatchEvent(
           new this.contentWindow.CustomEvent("MigrationWizard:Ready", {
@@ -49,15 +59,55 @@ export class MigrationWizardChild extends JSWindowActorChild {
       }
 
       case "MigrationWizard:BeginMigration": {
-        await this.sendQuery("Migrate", event.detail);
-        this.#wizardEl.dispatchEvent(
-          new this.contentWindow.CustomEvent("MigrationWizard:DoneMigration", {
-            bubbles: true,
-          })
-        );
+        let hasPermissions = await this.sendQuery("CheckPermissions", {
+          key: event.detail.key,
+        });
+        if (!hasPermissions) {
+          if (event.detail.key == "safari") {
+            this.setComponentState({
+              page: MigrationWizardConstants.PAGES.SAFARI_PERMISSION,
+            });
+          } else {
+            console.error(
+              `A migrator with key ${event.detail.key} needs permissions, ` +
+                "and no UI exists for that right now."
+            );
+          }
+          return;
+        }
+
+        await this.beginMigration(event.detail);
+        break;
+      }
+
+      case "MigrationWizard:RequestSafariPermissions": {
+        let success = await this.sendQuery("RequestSafariPermissions");
+        if (success) {
+          await this.beginMigration(event.detail);
+        }
         break;
       }
     }
+  }
+
+  /**
+   * Sends a message to the parent actor to attempt a migration.
+   *
+   * See migration-wizard.mjs for a definition of MigrationDetails.
+   *
+   * @param {object} migrationDetails
+   *   A MigrationDetails object.
+   * @returns {Promise<undefined>}
+   *   Returns a Promise that resolves after the parent responds to the migration
+   *   message.
+   */
+  async beginMigration(migrationDetails) {
+    await this.sendQuery("Migrate", migrationDetails);
+    this.#wizardEl.dispatchEvent(
+      new this.contentWindow.CustomEvent("MigrationWizard:DoneMigration", {
+        bubbles: true,
+      })
+    );
   }
 
   /**
@@ -69,10 +119,10 @@ export class MigrationWizardChild extends JSWindowActorChild {
    */
   receiveMessage(message) {
     if (message.name == "UpdateProgress") {
-      let progress = message.data;
       this.setComponentState({
         page: MigrationWizardConstants.PAGES.PROGRESS,
-        progress,
+        progress: message.data.progress,
+        key: message.data.key,
       });
     }
   }

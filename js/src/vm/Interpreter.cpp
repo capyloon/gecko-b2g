@@ -1740,7 +1740,7 @@ static MOZ_ALWAYS_INLINE bool LessThanImpl(JSContext* cx,
   double lhsNum = lhs.toNumber();
   double rhsNum = rhs.toNumber();
 
-  if (mozilla::IsNaN(lhsNum) || mozilla::IsNaN(rhsNum)) {
+  if (std::isnan(lhsNum) || std::isnan(rhsNum)) {
     res = mozilla::Maybe<bool>(mozilla::Nothing());
     return true;
   }
@@ -3789,6 +3789,19 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
       REGS.fp()->unaliasedLocal(i) = REGS.sp[-1];
     }
     END_CASE(SetLocal)
+
+    CASE(ArgumentsLength) {
+      MOZ_ASSERT(!script->needsArgsObj());
+      PUSH_INT32(REGS.fp()->numActualArgs());
+    }
+    END_CASE(ArgumentsLength)
+
+    CASE(GetActualArg) {
+      MOZ_ASSERT(!script->needsArgsObj());
+      uint32_t index = REGS.sp[-1].toInt32();
+      REGS.sp[-1] = REGS.fp()->unaliasedActual(index);
+    }
+    END_CASE(GetActualArg)
 
     CASE(GlobalOrEvalDeclInstantiation) {
       GCThingIndex lastFun = GET_GCTHING_INDEX(REGS.pc);

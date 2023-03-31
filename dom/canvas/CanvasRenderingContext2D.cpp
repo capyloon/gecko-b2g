@@ -839,20 +839,20 @@ void CanvasGradient::AddColorStop(float aOffset, const nsACString& aColorstr,
     return aRv.ThrowIndexSizeError("Offset out of 0-1.0 range");
   }
 
-  PresShell* presShell = mContext ? mContext->GetPresShell() : nullptr;
-  ServoStyleSet* styleSet = presShell ? presShell->StyleSet() : nullptr;
+  if (!mContext) {
+    return aRv.ThrowSyntaxError("No canvas context");
+  }
 
-  nscolor color;
-  bool ok = ServoCSSParser::ComputeColor(styleSet, NS_RGB(0, 0, 0), aColorstr,
-                                         &color);
-  if (!ok) {
+  auto color = mContext->ParseColor(
+      aColorstr, CanvasRenderingContext2D::ResolveCurrentColor::No);
+  if (!color) {
     return aRv.ThrowSyntaxError("Invalid color");
   }
 
   GradientStop newStop;
 
   newStop.offset = aOffset;
-  newStop.color = ToDeviceColor(color);
+  newStop.color = ToDeviceColor(*color);
 
   mRawStops.AppendElement(newStop);
 }
@@ -1083,32 +1083,44 @@ JSObject* CanvasRenderingContext2D::WrapObject(
   return CanvasRenderingContext2D_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-bool CanvasRenderingContext2D::ParseColor(const nsACString& aString,
-                                          nscolor* aColor) {
+CanvasRenderingContext2D::ColorStyleCacheEntry
+CanvasRenderingContext2D::ParseColorSlow(const nsACString& aString) {
+  ColorStyleCacheEntry result{nsCString(aString)};
   Document* document = mCanvasElement ? mCanvasElement->OwnerDoc() : nullptr;
   css::Loader* loader = document ? document->CSSLoader() : nullptr;
 
   PresShell* presShell = GetPresShell();
   ServoStyleSet* set = presShell ? presShell->StyleSet() : nullptr;
-
-  // First, try computing the color without handling currentcolor.
   bool wasCurrentColor = false;
-  if (!ServoCSSParser::ComputeColor(set, NS_RGB(0, 0, 0), aString, aColor,
-                                    &wasCurrentColor, loader)) {
-    return false;
+  nscolor color;
+  if (ServoCSSParser::ComputeColor(set, NS_RGB(0, 0, 0), aString, &color,
+                                   &wasCurrentColor, loader)) {
+    result.mWasCurrentColor = wasCurrentColor;
+    result.mColor.emplace(color);
   }
 
-  if (wasCurrentColor && mCanvasElement) {
-    // Otherwise, get the value of the color property, flushing style
-    // if necessary.
+  return result;
+}
+
+Maybe<nscolor> CanvasRenderingContext2D::ParseColor(
+    const nsACString& aString, ResolveCurrentColor aResolveCurrentColor) {
+  auto entry = mColorStyleCache.Lookup(aString);
+  if (!entry) {
+    entry.Set(ParseColorSlow(aString));
+  }
+
+  const auto& data = entry.Data();
+  if (data.mWasCurrentColor && mCanvasElement &&
+      aResolveCurrentColor == ResolveCurrentColor::Yes) {
+    // If it was currentColor, get the value of the color property, flushing
+    // style if necessary.
     RefPtr<const ComputedStyle> canvasStyle =
         nsComputedDOMStyle::GetComputedStyle(mCanvasElement);
     if (canvasStyle) {
-      *aColor = canvasStyle->StyleText()->mColor.ToColor();
+      return Some(canvasStyle->StyleText()->mColor.ToColor());
     }
-    // Beware that the presShell could be gone here.
   }
-  return true;
+  return data.mColor;
 }
 
 void CanvasRenderingContext2D::ResetBitmap(bool aFreeBuffer) {
@@ -1171,12 +1183,12 @@ void CanvasRenderingContext2D::SetStyleFromString(const nsACString& aStr,
                                                   Style aWhichStyle) {
   MOZ_ASSERT(!aStr.IsVoid());
 
-  nscolor color;
-  if (!ParseColor(aStr, &color)) {
+  Maybe<nscolor> color = ParseColor(aStr);
+  if (!color) {
     return;
   }
 
-  CurrentState().SetColorStyle(aWhichStyle, color);
+  CurrentState().SetColorStyle(aWhichStyle, *color);
 }
 
 void CanvasRenderingContext2D::GetStyleAsUnion(
@@ -1321,19 +1333,18 @@ void CanvasRenderingContext2D::RestoreClipsAndTransformToTarget() {
   }
 
   for (auto& style : mStyleStack) {
-    for (auto clipOrTransform = style.clipsAndTransforms.begin();
-         clipOrTransform != style.clipsAndTransforms.end(); clipOrTransform++) {
-      if (clipOrTransform->IsClip()) {
+    for (auto& clipOrTransform : style.clipsAndTransforms) {
+      if (clipOrTransform.IsClip()) {
         if (mClipsNeedConverting) {
           // We have possibly changed backends, so we need to convert the clips
           // in case they are no longer compatible with mTarget.
           RefPtr<PathBuilder> pathBuilder = mTarget->CreatePathBuilder();
-          clipOrTransform->clip->StreamToSink(pathBuilder);
-          clipOrTransform->clip = pathBuilder->Finish();
+          clipOrTransform.clip->StreamToSink(pathBuilder);
+          clipOrTransform.clip = pathBuilder->Finish();
         }
-        mTarget->PushClip(clipOrTransform->clip);
+        mTarget->PushClip(clipOrTransform.clip);
       } else {
-        mTarget->SetTransform(clipOrTransform->transform);
+        mTarget->SetTransform(clipOrTransform.transform);
       }
     }
   }
@@ -1834,10 +1845,11 @@ CanvasRenderingContext2D::SetContextOptions(JSContext* aCx,
 }
 
 UniquePtr<uint8_t[]> CanvasRenderingContext2D::GetImageBuffer(
-    int32_t* aFormat) {
+    int32_t* out_format, gfx::IntSize* out_imageSize) {
   UniquePtr<uint8_t[]> ret;
 
-  *aFormat = 0;
+  *out_format = 0;
+  *out_imageSize = {};
 
   if (!GetBufferProvider() && !EnsureTarget()) {
     return nullptr;
@@ -1847,7 +1859,8 @@ UniquePtr<uint8_t[]> CanvasRenderingContext2D::GetImageBuffer(
   if (snapshot) {
     RefPtr<DataSourceSurface> data = snapshot->GetDataSurface();
     if (data && data->GetSize() == GetSize()) {
-      *aFormat = imgIEncoder::INPUT_FORMAT_HOSTARGB;
+      *out_format = imgIEncoder::INPUT_FORMAT_HOSTARGB;
+      *out_imageSize = data->GetSize();
       ret = SurfaceToPackedBGRA(data);
     }
   }
@@ -1869,14 +1882,15 @@ CanvasRenderingContext2D::GetInputStream(const char* aMimeType,
   }
 
   int32_t format = 0;
-  UniquePtr<uint8_t[]> imageBuffer = GetImageBuffer(&format);
+  gfx::IntSize imageSize = {};
+  UniquePtr<uint8_t[]> imageBuffer = GetImageBuffer(&format, &imageSize);
   if (!imageBuffer) {
     return NS_ERROR_FAILURE;
   }
 
-  return ImageEncoder::GetInputStream(mWidth, mHeight, imageBuffer.get(),
-                                      format, encoder, aEncoderOptions,
-                                      aStream);
+  return ImageEncoder::GetInputStream(imageSize.width, imageSize.height,
+                                      imageBuffer.get(), format, encoder,
+                                      aEncoderOptions, aStream);
 }
 
 already_AddRefed<mozilla::gfx::SourceSurface>
@@ -2325,12 +2339,12 @@ already_AddRefed<CanvasPattern> CanvasRenderingContext2D::CreatePattern(
 // shadows
 //
 void CanvasRenderingContext2D::SetShadowColor(const nsACString& aShadowColor) {
-  nscolor color;
-  if (!ParseColor(aShadowColor, &color)) {
+  Maybe<nscolor> color = ParseColor(aShadowColor);
+  if (!color) {
     return;
   }
 
-  CurrentState().shadowColor = color;
+  CurrentState().shadowColor = *color;
 }
 
 //
@@ -3194,7 +3208,8 @@ static void RoundRectImpl(
         aRadii,
     ErrorResult& aError) {
   // Step 1. If any of x, y, w, or h are infinite or NaN, then return.
-  if (!IsFinite(aX) || !IsFinite(aY) || !IsFinite(aW) || !IsFinite(aH)) {
+  if (!std::isfinite(aX) || !std::isfinite(aY) || !std::isfinite(aW) ||
+      !std::isfinite(aH)) {
     return;
   }
 
@@ -3226,7 +3241,7 @@ static void RoundRectImpl(
       const DOMPointInit& point = radius.GetAsDOMPointInit();
       // Step 5.1.1. If radius["x"] or radius["y"] is infinite or NaN, then
       // return.
-      if (!IsFinite(point.mX) || !IsFinite(point.mY)) {
+      if (!std::isfinite(point.mX) || !std::isfinite(point.mY)) {
         return;
       }
 
@@ -3247,7 +3262,7 @@ static void RoundRectImpl(
     // Step 5.2. If radius is a unrestricted double:
     double r = radius.GetAsUnrestrictedDouble();
     // Step 5.2.1. If radius is infinite or NaN, then return.
-    if (!IsFinite(r)) {
+    if (!std::isfinite(r)) {
       return;
     }
 
@@ -3514,7 +3529,7 @@ bool CanvasRenderingContext2D::SetFontInternal(const nsACString& aFont,
   }
 
   nsPresContext* c = presShell->GetPresContext();
-  CacheKey key{aFont, c->RestyleManager()->GetRestyleGeneration()};
+  FontStyleCacheKey key{aFont, c->RestyleManager()->GetRestyleGeneration()};
   auto entry = mFontStyleCache.Lookup(key);
   if (!entry) {
     FontStyleData newData;
@@ -3833,10 +3848,13 @@ void CanvasRenderingContext2D::GetFontKerning(nsAString& aFontKerning) {
  * with U+0020 SPACE. The whitespace characters are defined as U+0020 SPACE,
  * U+0009 CHARACTER TABULATION (tab), U+000A LINE FEED (LF), U+000B LINE
  * TABULATION, U+000C FORM FEED (FF), and U+000D CARRIAGE RETURN (CR).
+ * We also replace characters with Bidi type Segment Separator or Block
+ * Separator.
  * @param str The string whose whitespace characters to replace.
  */
 static inline void TextReplaceWhitespaceCharacters(nsAutoString& aStr) {
-  aStr.ReplaceChar(u"\x09\x0A\x0B\x0C\x0D", char16_t(' '));
+  aStr.ReplaceChar(u"\x09\x0A\x0B\x0C\x0D\x1C\x1D\x1E\x1F\x85\x2029",
+                   char16_t(' '));
 }
 
 void CanvasRenderingContext2D::FillText(const nsAString& aText, double aX,
@@ -3998,7 +4016,7 @@ struct MOZ_STACK_CLASS CanvasBidiProcessor final
     return pattern.forget();
   }
 
-  void DrawText(nscoord aXOffset, nscoord aWidth) override {
+  void DrawText(nscoord aXOffset) override {
     gfx::Point point = mPt;
     bool rtl = mTextRun->IsRightToLeft();
     bool verticalRun = mTextRun->IsVertical();
@@ -4178,7 +4196,7 @@ TextMetrics* CanvasRenderingContext2D::DrawOrMeasureText(
   // According to spec, the API should return an empty array if maxWidth was
   // provided but is less than or equal to zero or equal to NaN.
   if (aMaxWidth.WasPassed() &&
-      (aMaxWidth.Value() <= 0 || IsNaN(aMaxWidth.Value()))) {
+      (aMaxWidth.Value() <= 0 || std::isnan(aMaxWidth.Value()))) {
     textToDraw.Truncate();
   }
 
@@ -4240,7 +4258,7 @@ TextMetrics* CanvasRenderingContext2D::DrawOrMeasureText(
     return nullptr;
   }
 
-  if (!IsFinite(aX) || !IsFinite(aY)) {
+  if (!std::isfinite(aX) || !std::isfinite(aY)) {
     aError = NS_OK;
     // This may not be correct - what should TextMetrics contain in the case of
     // infinite width or height?
@@ -4293,7 +4311,7 @@ TextMetrics* CanvasRenderingContext2D::DrawOrMeasureText(
       textToDraw.get(), textToDraw.Length(),
       isRTL ? intl::BidiEmbeddingLevel::RTL() : intl::BidiEmbeddingLevel::LTR(),
       presContext, processor, nsBidiPresUtils::MODE_MEASURE, nullptr, 0,
-      &totalWidthCoord, &mBidiEngine);
+      &totalWidthCoord, mBidiEngine);
   if (aError.Failed()) {
     return nullptr;
   }
@@ -4435,7 +4453,7 @@ TextMetrics* CanvasRenderingContext2D::DrawOrMeasureText(
       textToDraw.get(), textToDraw.Length(),
       isRTL ? intl::BidiEmbeddingLevel::RTL() : intl::BidiEmbeddingLevel::LTR(),
       presContext, processor, nsBidiPresUtils::MODE_DRAW, nullptr, 0, nullptr,
-      &mBidiEngine);
+      mBidiEngine);
 
   if (aError.Failed()) {
     return nullptr;
@@ -5372,8 +5390,8 @@ void CanvasRenderingContext2D::DrawWindow(nsGlobalWindowInner& aWindow,
     return;
   }
 
-  nscolor backgroundColor;
-  if (!ParseColor(aBgColor, &backgroundColor)) {
+  Maybe<nscolor> backgroundColor = ParseColor(aBgColor);
+  if (!backgroundColor) {
     aError.Throw(NS_ERROR_FAILURE);
     return;
   }
@@ -5459,7 +5477,7 @@ void CanvasRenderingContext2D::DrawWindow(nsGlobalWindowInner& aWindow,
 
   RefPtr<PresShell> presShell = presContext->PresShell();
 
-  Unused << presShell->RenderDocument(r, renderDocFlags, backgroundColor,
+  Unused << presShell->RenderDocument(r, renderDocFlags, *backgroundColor,
                                       &thebes.ref());
   // If this canvas was contained in the drawn window, the pre-transaction
   // callback may have returned its DT. If so, we must reacquire it here.

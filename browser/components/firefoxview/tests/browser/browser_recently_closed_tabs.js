@@ -6,10 +6,8 @@
 /**
  * The recently closed tab list is populated on a per-window basis.
  *
- * By default, the withFirefoxView helper opens a new window.
- * When using this helper for the tests in this file, we pass a
- * { win: window } option to skip that step and open fx view in
- * the current window. This ensures that the add_new_tab, close_tab,
+ * By default, the withFirefoxView helper opens fx view in the current window.
+ * This ensures that the add_new_tab, close_tab,
  * and open_then_close functions are creating sessionstore entries
  * associated with the correct window where the tests are run.
  */
@@ -52,10 +50,17 @@ async function dismiss_tab(tab, content) {
   await closedObjectsChanged();
 }
 
+add_setup(async function setup() {
+  // set updateTimeMs to 0 to prevent unexpected/unrelated DOM mutations during testing
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.tabs.firefox-view.updateTimeMs", 100000]],
+  });
+});
+
 add_task(async function test_empty_list() {
   clearHistory();
 
-  await withFirefoxView({ win: window }, async browser => {
+  await withFirefoxView({}, async browser => {
     const { document } = browser.contentWindow;
     let container = document.querySelector("#collapsible-tabs-container");
     ok(
@@ -133,7 +138,7 @@ add_task(async function test_list_ordering() {
   await close_tab(tab1);
   await closedObjectsChanged();
 
-  await withFirefoxView({ win: window }, async browser => {
+  await withFirefoxView({}, async browser => {
     const { document } = browser.contentWindow;
     const tabsList = document.querySelector("ol.closed-tabs-list");
     await BrowserTestUtils.waitForMutationCondition(
@@ -236,7 +241,7 @@ add_task(async function test_max_list_items() {
   // above.
   let mockMaxTabsLength = 3;
 
-  await withFirefoxView({ win: window }, async browser => {
+  await withFirefoxView({}, async browser => {
     const { document } = browser.contentWindow;
 
     // override this value for testing purposes
@@ -332,43 +337,38 @@ add_task(async function test_time_updates_correctly() {
     "Closed tab count after setting browser state"
   );
 
-  await withFirefoxView(
-    {
-      win: window,
-    },
-    async browser => {
-      const { document } = browser.contentWindow;
-      const numOfListItems = document.querySelector("ol.closed-tabs-list")
-        .children.length;
-      const lastListItem = document.querySelector("ol.closed-tabs-list")
-        .children[numOfListItems - 1];
-      const timeLabel = lastListItem.querySelector("span.closed-tab-li-time");
-      let initialTimeText = timeLabel.textContent;
-      Assert.stringContains(
-        initialTimeText,
-        "Just now",
-        "recently-closed-tabs list item time is 'Just now'"
-      );
+  await withFirefoxView({}, async browser => {
+    const { document } = browser.contentWindow;
 
-      await SpecialPowers.pushPrefEnv({
-        set: [["browser.tabs.firefox-view.updateTimeMs", TAB_UPDATE_TIME_MS]],
-      });
+    const tabsList = document.querySelector("ol.closed-tabs-list");
+    const numOfListItems = tabsList.children.length;
+    const lastListItem = tabsList.children[numOfListItems - 1];
+    const timeLabel = lastListItem.querySelector("span.closed-tab-li-time");
+    let initialTimeText = timeLabel.textContent;
+    Assert.stringContains(
+      initialTimeText,
+      "Just now",
+      "recently-closed-tabs list item time is 'Just now'"
+    );
 
-      await BrowserTestUtils.waitForMutationCondition(
-        timeLabel,
-        { childList: true },
-        () => !timeLabel.textContent.includes("now")
-      );
+    await SpecialPowers.pushPrefEnv({
+      set: [["browser.tabs.firefox-view.updateTimeMs", TAB_UPDATE_TIME_MS]],
+    });
 
-      isnot(
-        timeLabel.textContent,
-        initialTimeText,
-        "recently-closed-tabs list item time has updated"
-      );
+    await BrowserTestUtils.waitForMutationCondition(
+      timeLabel,
+      { childList: true },
+      () => !timeLabel.textContent.includes("now")
+    );
 
-      await SpecialPowers.popPrefEnv();
-    }
-  );
+    isnot(
+      timeLabel.textContent,
+      initialTimeText,
+      "recently-closed-tabs list item time has updated"
+    );
+
+    await SpecialPowers.popPrefEnv();
+  });
   // Cleanup recently closed tab data.
   clearHistory();
 });
@@ -393,7 +393,7 @@ add_task(async function test_list_maintains_focus_when_restoring_tab() {
   await open_then_close(URLs[1]);
   await open_then_close(URLs[2]);
 
-  await withFirefoxView({ win: window }, async browser => {
+  await withFirefoxView({}, async browser => {
     let gBrowser = browser.getTabBrowser();
     const { document } = browser.contentWindow;
     const list = document.querySelectorAll(".closed-tab-li");
@@ -414,7 +414,7 @@ add_task(async function test_list_maintains_focus_when_restoring_tab() {
 
   clearHistory();
   await open_then_close(URLs[2]);
-  await withFirefoxView({ win: window }, async browser => {
+  await withFirefoxView({}, async browser => {
     let gBrowser = browser.getTabBrowser();
     const { document } = browser.contentWindow;
     let expectedFocusedElement = document.getElementById(
@@ -443,7 +443,7 @@ add_task(async function test_switch_before_closing() {
 
   const INITIAL_URL = "https://example.org/iwilldisappear";
   const FINAL_URL = "https://example.com/ishouldappear";
-  await withFirefoxView({ win: window }, async function(browser) {
+  await withFirefoxView({}, async function(browser) {
     let gBrowser = browser.getTabBrowser();
     let newTab = await BrowserTestUtils.openNewForegroundTab(
       gBrowser,
@@ -496,7 +496,7 @@ add_task(async function test_alt_click_no_launch() {
 
   await open_then_close(URLs[0]);
 
-  await withFirefoxView({ win: window }, async browser => {
+  await withFirefoxView({}, async browser => {
     let gBrowser = browser.getTabBrowser();
     let originalTabsLength = gBrowser.tabs.length;
     await BrowserTestUtils.synthesizeMouseAtCenter(
@@ -654,6 +654,7 @@ add_task(async function test_reopen_recently_closed_tabs() {
  * dismissed by clicking on their respective dismiss buttons.
  */
 add_task(async function test_dismiss_tab() {
+  const TAB_UPDATE_TIME_MS = 5;
   Services.obs.notifyObservers(null, "browser:purge-session-history");
   Assert.equal(
     SessionStore.getClosedTabCount(window),
@@ -662,7 +663,7 @@ add_task(async function test_dismiss_tab() {
   );
   await clearAllParentTelemetryEvents();
 
-  await withFirefoxView({ win: window }, async browser => {
+  await withFirefoxView({}, async browser => {
     const { document } = browser.contentWindow;
 
     const closedObjectsChanged = () =>
@@ -681,9 +682,34 @@ add_task(async function test_dismiss_tab() {
     await close_tab(tab1);
     await closedObjectsChanged();
 
-    const tabsList = document.querySelector("ol.closed-tabs-list");
-
     await clearAllParentTelemetryEvents();
+
+    const tabsList = document.querySelector("ol.closed-tabs-list");
+    const numOfListItems = tabsList.children.length;
+    const lastListItem = tabsList.children[numOfListItems - 1];
+    const timeLabel = lastListItem.querySelector("span.closed-tab-li-time");
+    let initialTimeText = timeLabel.textContent;
+    Assert.stringContains(
+      initialTimeText,
+      "Just now",
+      "recently-closed-tabs list item time is 'Just now'"
+    );
+
+    await SpecialPowers.pushPrefEnv({
+      set: [["browser.tabs.firefox-view.updateTimeMs", TAB_UPDATE_TIME_MS]],
+    });
+
+    await BrowserTestUtils.waitForMutationCondition(
+      timeLabel,
+      { childList: true },
+      () => !timeLabel.textContent.includes("Just now")
+    );
+
+    isnot(
+      timeLabel.textContent,
+      initialTimeText,
+      "recently-closed-tabs list item time has updated"
+    );
 
     await dismiss_tab(tabsList.children[0], content);
 
@@ -785,5 +811,44 @@ add_task(async function test_dismiss_tab() {
       !document.querySelector("ol.closed-tabs-list"),
       "The recently closed tabs list is not displayed."
     );
+
+    await SpecialPowers.popPrefEnv();
+  });
+});
+
+/**
+ * Asserts that the actionable part of each list item is role="button".
+ * Discussion on why we want a button role can be seen here:
+ * https://bugzilla.mozilla.org/show_bug.cgi?id=1789875#c1
+ */
+add_task(async function test_button_role() {
+  Services.obs.notifyObservers(null, "browser:purge-session-history");
+  Assert.equal(
+    SessionStore.getClosedTabCount(window),
+    0,
+    "Closed tab count after purging session history"
+  );
+
+  await withFirefoxView({}, async browser => {
+    const { document } = browser.contentWindow;
+
+    clearHistory();
+
+    await open_then_close(URLs[0]);
+    await open_then_close(URLs[1]);
+    await open_then_close(URLs[2]);
+
+    await EventUtils.synthesizeMouseAtCenter(
+      gBrowser.ownerDocument.getElementById("firefox-view-button"),
+      { type: "mousedown" },
+      window
+    );
+
+    const tabsList = document.querySelector("ol.closed-tabs-list");
+
+    Array.from(tabsList.children).forEach(tabItem => {
+      let actionableElement = tabItem.querySelector(".closed-tab-li-main");
+      Assert.ok(actionableElement.getAttribute("role"), "button");
+    });
   });
 });

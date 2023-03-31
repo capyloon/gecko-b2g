@@ -70,6 +70,8 @@ bool CurrentThreadIsIonCompiling();
 
 namespace jit {
 
+class CallInfo;
+
 #ifdef JS_JITSPEW
 // Helper for debug printing.  Avoids creating a MIR.h <--> MIRGraph.h cycle.
 // Implementation of this needs to see inside `MBasicBlock`; that is possible
@@ -415,10 +417,13 @@ class AliasSet {
     // The malloc'd block that WasmArrayObject::data_ points at
     WasmArrayDataArea = 1 << 25,
 
-    Last = WasmArrayDataArea,
+    // The generation counter associated with the global object
+    GlobalGenerationCounter = 1 << 26,
+
+    Last = GlobalGenerationCounter,
 
     Any = Last | (Last - 1),
-    NumCategories = 26,
+    NumCategories = 27,
 
     // Indicates load or store.
     Store_ = 1 << 31
@@ -822,13 +827,6 @@ class MDefinition : public MNode {
   // instruction, but keep the current instruction for resume point and
   // instruction which are recovered on bailouts.
   void replaceAllLiveUsesWith(MDefinition* dom);
-
-  // Mark this instruction as having replaced all uses of ins, as during GVN,
-  // returning false if the replacement should not be performed. For use when
-  // GVN eliminates instructions which are not equivalent to one another.
-  [[nodiscard]] virtual bool updateForReplacement(MDefinition* ins) {
-    return true;
-  }
 
   void setVirtualRegister(uint32_t vreg) {
     virtualRegister_ = vreg;
@@ -1369,19 +1367,6 @@ class MConstant : public MNullaryInstruction {
   bool congruentTo(const MDefinition* ins) const override;
 
   AliasSet getAliasSet() const override { return AliasSet::None(); }
-
-  [[nodiscard]] bool updateForReplacement(MDefinition* def) override {
-    MConstant* c = def->toConstant();
-    // During constant folding, we don't want to replace a float32
-    // value by a double value.
-    if (type() == MIRType::Float32) {
-      return c->type() == MIRType::Float32;
-    }
-    if (type() == MIRType::Double) {
-      return c->type() != MIRType::Float32;
-    }
-    return true;
-  }
 
   void computeRange(TempAllocator& alloc) override;
   bool canTruncate() const override;
@@ -3209,6 +3194,8 @@ class MGetInlinedArgument
   INSTRUCTION_HEADER(GetInlinedArgument)
   static MGetInlinedArgument* New(TempAllocator& alloc, MDefinition* index,
                                   MCreateInlinedArgumentsObject* args);
+  static MGetInlinedArgument* New(TempAllocator& alloc, MDefinition* index,
+                                  const CallInfo& callInfo);
   NAMED_OPERANDS((0, index))
 
   MDefinition* getArg(uint32_t idx) const {
@@ -3294,12 +3281,12 @@ class MInlineArgumentsSlice
 // Allocates a new BoundFunctionObject and calls
 // BoundFunctionObject::functionBindImpl. This instruction can have arbitrary
 // side-effects because the GetProperty calls for length/name can call into JS.
-class MNewBoundFunction
+class MBindFunction
     : public MVariadicInstruction,
       public MixPolicy<ObjectPolicy<0>, NoFloatPolicyAfter<1>>::Data {
   CompilerGCPointer<JSObject*> templateObj_;
 
-  explicit MNewBoundFunction(JSObject* templateObj)
+  explicit MBindFunction(JSObject* templateObj)
       : MVariadicInstruction(classOpcode), templateObj_(templateObj) {
     setResultType(MIRType::Object);
   }
@@ -3308,9 +3295,9 @@ class MNewBoundFunction
   static const size_t NumNonArgumentOperands = 1;
 
  public:
-  INSTRUCTION_HEADER(NewBoundFunction)
-  static MNewBoundFunction* New(TempAllocator& alloc, MDefinition* target,
-                                uint32_t argc, JSObject* templateObj);
+  INSTRUCTION_HEADER(BindFunction)
+  static MBindFunction* New(TempAllocator& alloc, MDefinition* target,
+                            uint32_t argc, JSObject* templateObj);
   NAMED_OPERANDS((0, target))
 
   JSObject* templateObject() const { return templateObj_; }
@@ -5193,8 +5180,6 @@ class MMul : public MBinaryArithInstruction {
     canBeNegativeZero_ = negativeZero;
   }
 
-  [[nodiscard]] bool updateForReplacement(MDefinition* ins) override;
-
   bool fallible() const { return canBeNegativeZero_ || canOverflow(); }
 
   bool isFloat32Commutative() const override { return true; }
@@ -6146,7 +6131,10 @@ class MPhi final : public MDefinition,
   MDefinition* foldsTernary(TempAllocator& alloc);
 
   bool congruentTo(const MDefinition* ins) const override;
-  bool updateForReplacement(MDefinition* def) override;
+
+  // Mark this phi-node as having replaced all uses of |other|, as during GVN.
+  // For use when GVN eliminates phis which are not equivalent to one another.
+  void updateForReplacement(MPhi* other);
 
   bool isIterator() const { return isIterator_; }
   void setIterator() { isIterator_ = true; }
@@ -7668,9 +7656,6 @@ class MGuardValue : public MUnaryInstruction, public BoxInputsPolicy::Data {
 
   MGuardValue(MDefinition* val, const Value& expected)
       : MUnaryInstruction(classOpcode, val), expected_(expected) {
-    MOZ_ASSERT(expected.isNullOrUndefined() || expected.isMagic() ||
-               expected.isPrivateGCThing());
-
     setGuard();
     setMovable();
     setResultType(MIRType::Value);

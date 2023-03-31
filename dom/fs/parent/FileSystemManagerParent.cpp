@@ -216,7 +216,8 @@ mozilla::ipc::IPCResult FileSystemManagerParent::RecvGetWritable(
   }
 
   auto writableFileStreamParent =
-      MakeRefPtr<FileSystemWritableFileStreamParent>(this, aRequest.entryId());
+      MakeNotNull<RefPtr<FileSystemWritableFileStreamParent>>(
+          this, aRequest.entryId());
 
   QM_TRY_UNWRAP(
       nsCOMPtr<nsIRandomAccessStream> stream,
@@ -242,8 +243,8 @@ mozilla::ipc::IPCResult FileSystemManagerParent::RecvGetWritable(
     return IPC_OK();
   }
 
-  aResolver(FileSystemWritableFileStreamProperties(
-      std::move(streamParams), writableFileStreamParent, nullptr));
+  aResolver(FileSystemWritableFileStreamProperties(std::move(streamParams),
+                                                   writableFileStreamParent));
 
   return IPC_OK();
 }
@@ -446,15 +447,6 @@ IPCResult FileSystemManagerParent::RecvRenameEntry(
 
   fs::FileSystemMoveEntryResponse response(moved ? NS_OK : NS_ERROR_FAILURE);
   aResolver(response);
-  return IPC_OK();
-}
-
-IPCResult FileSystemManagerParent::RecvNeedQuota(
-    FileSystemQuotaRequest&& aRequest, NeedQuotaResolver&& aResolver) {
-  AssertIsOnIOTarget();
-
-  aResolver(0u);
-
   return IPC_OK();
 }
 

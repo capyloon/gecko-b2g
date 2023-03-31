@@ -8,7 +8,7 @@
 # documentation and how to modify this file.
 repo: mozilla-central
 created_at: '2021-10-14T12:50:40.073465'
-updated_at: '2023-02-07T17:52:24.212324'
+updated_at: '2023-03-29T09:29:53.741754'
 export:
   path: ./docs/mots/index.rst
   format: rst
@@ -73,7 +73,7 @@ people:
     nick: aosmond
   - &aplacitelli
     bmo_id: 579791
-    name: ''
+    name: Alessio Placitelli
     nick: aplacitelli
   - &arai
     bmo_id: 310076
@@ -188,6 +188,10 @@ people:
   - bmo_id: 129968
     name: Justin Wood
     nick: Callek
+  - &calu
+    bmo_id: 693351
+    name: Cathy Lu
+    nick: calu
   - &canova
     bmo_id: 525693
     name: Nazım Can Altınova
@@ -216,6 +220,10 @@ people:
     bmo_id: 430528
     name: Chris Peterson
     nick: cpeterson
+  - &daisuke
+    bmo_id: 439222
+    name: Daisuke Akatsuka
+    nick: daisuke
   - &daleharvey
     bmo_id: 389449
     name: Dale Harvey
@@ -292,6 +300,10 @@ people:
     bmo_id: 455480
     name: Edgar Chen
     nick: edgar
+  - &edgul
+    bmo_id: 701256
+    name: Ed Guloien
+    nick: edgul
   - &eeejay
     bmo_id: 291675
     name: Eitan Isaacson
@@ -493,6 +505,10 @@ people:
     bmo_id: 522029
     name: Johann Hofmann
     nick: johannh
+  - &jonalmeida
+    bmo_id: 541581
+    name: Jonathan Almeida
+    nick: jonalmeida
   - &jonco
     bmo_id: 443194
     name: Jon Coppeard
@@ -632,10 +648,6 @@ people:
     bmo_id: 305228
     name: Matthew N
     nick: MattN
-  - &mayhemer
-    bmo_id: 269762
-    name: Honza Bambas
-    nick: mayhemer
   - &mccr8
     bmo_id: 406194
     name: Andrew McCreight
@@ -660,9 +672,6 @@ people:
     bmo_id: 585815
     name: Micah Tigley
     nick: micah
-  - bmo_id: 268625
-    name: Michal Novotny
-    nick: michal
   - &mikokm
     bmo_id: 547538
     name: Miko Mynttinen
@@ -739,6 +748,10 @@ people:
     bmo_id: 283262
     name: Alexandre Poirot
     nick: ochameau
+  - &ohall
+    bmo_id: 694341
+    name: Olivia Hall
+    nick: ohall
   - &owlish
     bmo_id: 579431
     name: ''
@@ -917,6 +930,10 @@ people:
     bmo_id: 628857
     name: Travis Long
     nick: travis_
+  - &tschuster
+    bmo_id: 703078
+    name: Tom Schuster
+    nick: tschuster
   - &TYLin
     bmo_id: 503090
     name: Ting-Yu Lin
@@ -1260,6 +1277,7 @@ modules:
     meta:
       owners_emeritus:
         - Monica Chew
+        - Andrea Marchesini
       peers_emeritus:
         - Josh Matthews
         - Mike Connor
@@ -1267,13 +1285,18 @@ modules:
         - Christian Biesinger
         - Shawn Wilsher
         - Ehsan Akhgari
+        - Honza Bambas
       group: dev-platform
       components:
         - 'Core::Networking: Cookies'
     owners:
-      - *baku
+      - *dveditz
+      - *timhuang
+      - *valentin
     peers:
-      - *mayhemer
+      - *edgul
+      - *pbz
+      - *tschuster
     machine_name: core_cookies
 
   - name: 'Core: Crash reporting'
@@ -1473,16 +1496,18 @@ modules:
       - dom/streams/**/*
     excludes: []
     owners:
-      - *mgaudet
+      - *saschanaz
     peers:
       - *smaug
       - *evilpie
-      - *saschanaz
+      - *mgaudet
     meta:
       url: http://developer.mozilla.org/en/docs/DOM
       group: dev-platform
       components:
         - 'Core::DOM: Streams'
+      owners_emeritus:
+        - *mgaudet
   - name: 'Core: Editor'
     description: ''
     includes:
@@ -1573,6 +1598,7 @@ modules:
     meta:
       owners_emeritus:
         - James Willcox
+        - Agi Sferro
       peers_emeritus:
         - Dylan Roeh
         - Eugen Sawin
@@ -1583,10 +1609,12 @@ modules:
       components:
         - GeckoView::General
     owners:
-      - *agi
-    peers:
-      - *mkato
       - *owlish
+    peers:
+      - *calu
+      - *jonalmeida
+      - *mkato
+      - *ohall
     machine_name: core_geckoview
 
   - name: 'Core: Global Key Bindings'
@@ -2514,6 +2542,8 @@ modules:
       url: http://developer.mozilla.org/en/docs/Storage
       components:
         - Toolkit::Storage, Core::SQL
+      owners_emeritus:
+        - Shawn Wilsher
     owners:
       - *mak
     peers:
@@ -3122,12 +3152,20 @@ modules:
         includes:
           - browser/components/places/**/*
           - toolkit/components/places/**/*
-        meta: {}
+        meta:
+          owners_emeritus:
+            - Dietrich Ayala
+          peers_emeritus:
+            - Asaf Romano
+            - David Dahl
+            - Shawn Wilsher
         owners:
           - *mak
         peers:
-          - *standard8
           - *adw
+          - *daisuke
+          - *lina
+          - *standard8
         machine_name: bookmarks_history
 
       - name: Desktop Theme
@@ -3168,6 +3206,9 @@ modules:
           - toolkit/mozapps/downloads/**/*
           - uriloader/exthandler/**/*
         meta:
+          owners_emeritus:
+            - Paolo Amadini
+            - Shawn Wilsher
         owners:
           - *mak
         peers:
@@ -3467,9 +3508,13 @@ modules:
         meta:
           components:
             - Firefox::Tabbed Browser
+          peers_emeritus:
+            - Jared Wein
+            - Matthew N
         owners:
           - *dao
-        peers: []
+        peers:
+          - *mak
         machine_name: tabbed_browser
 
       - name: Windows Installer
@@ -4033,5 +4078,5 @@ modules:
         - Ryan Tilder
       group: dev-platform
 hashes:
-  config: eb1c7127cab45ded7b82c157fa2557b252fc7c0e
-  export: 281744e23b0aa4732edddeca7f4cf915269664b1
+  config: 4fa77257b438fffbab9ffce4e8f73bb23a5650d0
+  export: 7d55d5457734f1fd0242112af7318a52330a37fb

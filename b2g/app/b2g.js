@@ -1313,3 +1313,8 @@ pref("pdfjs.handleOctetStream", true);
 pref("network.url.useDefaultURI", true);
 
 pref("layout.css.constructable-stylesheets.enabled", true);
+
+// Default CSP for document served with the tile:// protocol.
+// See https://hackmd.io/@browsers-n-platforms/HykU2_jws
+pref("security.csp.enableNavigateTo", true);
+pref("network.protocol-handler.tile.csp", "default-src 'self' ipfs: ipns: http://*.localhost:* ws://localhost:*; style-src 'self' 'unsafe-inline' ipfs: ipns: http://*.localhost:*; script-src 'self' 'unsafe-inline' ipfs: ipns: 'wasm-unsafe-eval' http://*.localhost:* http://127.0.0.1:*; img-src 'self' ipfs: ipns: blob:; media-src 'self' ipfs: ipns: blob:;  navigate-to 'self' ipfs: ipns:");

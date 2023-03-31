@@ -2199,10 +2199,9 @@ bool gfxFont::DrawMissingGlyph(const TextRunDrawParams& aRunParams,
       aRunParams.context->SetMatrix(mat);
     }
 
-    gfxFontMissingGlyphs::DrawMissingGlyph(aDetails->mGlyphID, glyphRect,
-                                           *aRunParams.dt,
-                                           PatternFromState(aRunParams.context),
-                                           1.0 / aRunParams.devPerApp, matPtr);
+    gfxFontMissingGlyphs::DrawMissingGlyph(
+        aDetails->mGlyphID, glyphRect, *aRunParams.dt,
+        PatternFromState(aRunParams.context), matPtr);
   }
   return true;
 }
@@ -4485,7 +4484,7 @@ gfxFontStyle::gfxFontStyle(FontSlantStyle aStyle, FontWeight aWeight,
       allowSyntheticStyle(aAllowStyleSynthesis),
       allowSyntheticSmallCaps(aAllowSmallCapsSynthesis),
       noFallbackVariantFeatures(true) {
-  MOZ_ASSERT(!mozilla::IsNaN(size));
+  MOZ_ASSERT(!std::isnan(size));
 
   switch (aSizeAdjust.tag) {
     case FontSizeAdjust::Tag::None:
@@ -4507,7 +4506,7 @@ gfxFontStyle::gfxFontStyle(FontSlantStyle aStyle, FontWeight aWeight,
       sizeAdjust = aSizeAdjust.AsIcHeight();
       break;
   }
-  MOZ_ASSERT(!mozilla::IsNaN(sizeAdjust));
+  MOZ_ASSERT(!std::isnan(sizeAdjust));
 
   sizeAdjustBasis = uint8_t(aSizeAdjust.tag);
   // sizeAdjustBasis is currently a small bitfield, so let's assert that the

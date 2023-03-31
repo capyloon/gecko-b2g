@@ -1712,10 +1712,10 @@ Maybe<uint64_t> nsFocusManager::SetFocusInner(Element* aNewContent,
 
   // Exit fullscreen if a website focuses another window
   if (StaticPrefs::full_screen_api_exit_on_windowRaise() &&
-      !isElementInActiveWindow && (aFlags & FLAG_RAISE) &&
-      (aFlags & FLAG_NONSYSTEMCALLER)) {
+      !isElementInActiveWindow && (aFlags & FLAG_RAISE)) {
     if (XRE_IsParentProcess()) {
       if (Document* doc = mActiveWindow ? mActiveWindow->GetDoc() : nullptr) {
+        Document::ClearPendingFullscreenRequests(doc);
         if (doc->GetFullscreenElement()) {
           LogWarningFullscreenWindowRaise(mFocusedElement);
           Document::AsyncExitFullscreen(doc);
@@ -1726,9 +1726,11 @@ Maybe<uint64_t> nsFocusManager::SetFocusInner(Element* aNewContent,
       if (activeBrowsingContext) {
         nsIDocShell* shell = activeBrowsingContext->GetDocShell();
         if (shell) {
-          Document* doc = shell->GetDocument();
-          if (doc && doc->GetFullscreenElement()) {
-            Document::AsyncExitFullscreen(doc);
+          if (Document* doc = shell->GetDocument()) {
+            Document::ClearPendingFullscreenRequests(doc);
+            if (doc->GetFullscreenElement()) {
+              Document::AsyncExitFullscreen(doc);
+            }
           }
         } else {
           mozilla::dom::ContentChild* contentChild =
@@ -3180,7 +3182,7 @@ void nsFocusManager::MoveCaretToFocus(PresShell* aPresShell,
         newRange->SelectNodeContents(*aContent, IgnoreErrors());
 
         if (!aContent->GetFirstChild() ||
-            aContent->IsNodeOfType(nsINode::eHTML_FORM_CONTROL)) {
+            aContent->IsHTMLFormControlElement()) {
           // If current focus node is a leaf, set range to before the
           // node by using the parent as a container.
           // This prevents it from appearing as selected.
@@ -3310,10 +3312,8 @@ nsresult nsFocusManager::GetSelectionLocation(Document* aDocument,
         nsAutoString nodeValue;
         startContent->GetAsText()->AppendTextTo(nodeValue);
 
-        bool isFormControl =
-            startContent->IsNodeOfType(nsINode::eHTML_FORM_CONTROL);
-
-        if (nodeValue.Length() == startOffset && !isFormControl &&
+        if (nodeValue.Length() == startOffset &&
+            !startContent->IsHTMLFormControlElement() &&
             startContent != aDocument->GetRootElement()) {
           // Yes, indeed we were at the end of the last node
           nsCOMPtr<nsIFrameEnumerator> frameTraversal;
@@ -5401,7 +5401,7 @@ void nsFocusManager::MarkUncollectableForCCGeneration(uint32_t aGeneration) {
 }
 
 bool nsFocusManager::CanSkipFocus(nsIContent* aContent) {
-  if (!aContent || nsContentUtils::IsChromeDoc(aContent->OwnerDoc())) {
+  if (!aContent) {
     return false;
   }
 

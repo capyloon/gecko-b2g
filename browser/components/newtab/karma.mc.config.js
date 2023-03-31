@@ -104,7 +104,7 @@ module.exports = function(config) {
               statements: 99,
               lines: 99,
               functions: 100,
-              branches: 96,
+              branches: 95,
             },
             "lib/ASRouterParentProcessMessageHandler.jsm": {
               statements: 98,
@@ -285,7 +285,7 @@ module.exports = function(config) {
           },
           {
             test: /\.js$/,
-            exclude: [/node_modules\/(?!(fluent|fluent-react)\/).*/, /test/],
+            exclude: [/node_modules\/(?!@fluent\/).*/, /test/],
             loader: "babel-loader",
             options: {
               // This is a workaround for bug 1787278. It can be removed once

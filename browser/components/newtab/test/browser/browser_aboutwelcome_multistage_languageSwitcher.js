@@ -4,6 +4,10 @@ const { getAddonAndLocalAPIsMocker } = ChromeUtils.import(
   "resource://testing-common/LangPackMatcherTestUtils.jsm"
 );
 
+const { AWScreenUtils } = ChromeUtils.import(
+  "resource://activity-stream/lib/AWScreenUtils.jsm"
+);
+
 const sandbox = sinon.createSandbox();
 const mockAddonAndLocaleAPIs = getAddonAndLocalAPIsMocker(this, sandbox);
 add_task(function initSandbox() {
@@ -52,6 +56,14 @@ async function openAboutWelcome() {
     "resource:///modules/ShellService.jsm"
   );
   sandbox.stub(ShellService, "doesAppNeedPin").returns(false);
+
+  sandbox
+    .stub(AWScreenUtils, "evaluateScreenTargeting")
+    .resolves(true)
+    .withArgs(
+      "os.windowsBuildNumber >= 15063 && !isDefaultBrowser && !doesAppNeedPin"
+    )
+    .resolves(false);
 
   info("Opening about:welcome");
   let tab = await BrowserTestUtils.openNewForegroundTab(
@@ -221,6 +233,7 @@ add_task(async function test_aboutwelcome_languageSwitcher_accept() {
   );
 
   info("Clicking the primary button to view language switching page.");
+
   await clickVisibleButton(browser, "button.primary");
 
   await testScreenContent(

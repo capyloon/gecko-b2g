@@ -71,9 +71,6 @@ interface BrowsingContext {
 
   sequence<BrowsingContext> getAllBrowsingContextsInSubtree();
 
-  BrowsingContext? findChildWithName(DOMString name, BrowsingContext accessor);
-  BrowsingContext? findWithName(DOMString name);
-
   readonly attribute DOMString name;
 
   readonly attribute BrowsingContext? parent;
@@ -130,6 +127,19 @@ interface BrowsingContext {
   [SetterThrows] attribute unsigned long sandboxFlags;
 
   [SetterThrows] attribute boolean isActive;
+
+  /**
+   * Sets whether this is an app tab. Non-same-origin link navigations from app
+   * tabs may be forced to open in new contexts, rather than in the same context.
+   */
+  [SetterThrows] attribute boolean isAppTab;
+
+  /**
+   * Sets whether this is BC has siblings **at the toplevel** (e.g. in a tabbed
+   * browser environment). Used to determine if web content can resize the top
+   * window. Never set correctly for non-top BCs.
+   */
+  [SetterThrows] attribute boolean hasSiblings;
 
   // The inRDMPane flag indicates whether or not Responsive Design Mode is
   // active for the browsing context.

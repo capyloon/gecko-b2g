@@ -2261,30 +2261,24 @@ void MacroAssembler::emitExtractValueFromMegamorphicCacheEntry(
   branchSub32(Assembler::NonZero, Imm32(1), scratch2, &protoLoopHead);
   bind(&protoLoopTail);
 
-  // scratch1 = outputScratch->numFixedSlots()
-  loadPtr(Address(outputScratch, JSObject::offsetOfShape()), scratch1);
-  load32(Address(scratch1, Shape::offsetOfImmutableFlags()), scratch1);
-  and32(Imm32(NativeShape::fixedSlotsMask()), scratch1);
-  rshift32(Imm32(NativeShape::fixedSlotsShift()), scratch1);
+  // scratch1 = entry->slotOffset()
+  load32(Address(entry, MegamorphicCacheEntry::offsetOfSlotOffset()), scratch1);
 
-  // scratch2 = entry->slot()
-  load16ZeroExtend(Address(entry, MegamorphicCache::Entry::offsetOfSlot()),
-                   scratch2);
-  // if (scratch2 >= scratch1) goto dynamicSlot
-  branch32(Assembler::GreaterThanOrEqual, scratch2, scratch1, &dynamicSlot);
+  // scratch2 = slotOffset.offset()
+  move32(scratch1, scratch2);
+  rshift32(Imm32(TaggedSlotOffset::OffsetShift), scratch2);
 
-  static_assert(sizeof(HeapSlot) == 8);
-  // output = outputScratch->fixedSlots()[scratch2]
-  loadValue(BaseValueIndex(outputScratch, scratch2, sizeof(NativeObject)),
-            output);
+  // if (!slotOffset.isFixedSlot()) goto dynamicSlot
+  branchTest32(Assembler::Zero, scratch1,
+               Imm32(TaggedSlotOffset::IsFixedSlotFlag), &dynamicSlot);
+  // output = outputScratch[scratch2]
+  loadValue(BaseIndex(outputScratch, scratch2, TimesOne), output);
   jump(cacheHit);
 
   bind(&dynamicSlot);
-  // scratch2 -= scratch1
-  sub32(scratch1, scratch2);
   // output = outputScratch->slots_[scratch2]
   loadPtr(Address(outputScratch, NativeObject::offsetOfSlots()), outputScratch);
-  loadValue(BaseValueIndex(outputScratch, scratch2, 0), output);
+  loadValue(BaseIndex(outputScratch, scratch2, TimesOne), output);
   jump(cacheHit);
 
   bind(&isMissing);
@@ -2592,39 +2586,33 @@ void MacroAssembler::emitMegamorphicCachedSetSlot(
   // if (scratch3->generation_ != scratch2) goto cacheMiss
   branch32(Assembler::NotEqual, scratch1, scratch2, &cacheMiss);
 
-  // scratch2 = obj->numFixedSlots()
-  loadPtr(Address(obj, JSObject::offsetOfShape()), scratch2);
-  load32(Address(scratch2, Shape::offsetOfImmutableFlags()), scratch2);
-  and32(Imm32(NativeShape::fixedSlotsMask()), scratch2);
-  rshift32(Imm32(NativeShape::fixedSlotsShift()), scratch2);
+  // scratch2 = entry->slotOffset()
+  load32(
+      Address(scratch3, MegamorphicSetPropCache::Entry::offsetOfSlotOffset()),
+      scratch2);
 
-  // scratch1 = scratch3->slot()
-  load16ZeroExtend(
-      Address(scratch3, MegamorphicSetPropCache::Entry::offsetOfSlot()),
-      scratch1);
+  // scratch1 = slotOffset.offset()
+  move32(scratch2, scratch1);
+  rshift32(Imm32(TaggedSlotOffset::OffsetShift), scratch1);
 
   // scratch3 = scratch3->afterShape()
   loadPtr(
       Address(scratch3, MegamorphicSetPropCache::Entry::offsetOfAfterShape()),
       scratch3);
 
-  // if (scratch1 >= scratch2) goto dynamicSlot
-  branch32(Assembler::AboveOrEqual, scratch1, scratch2, &dynamicSlot);
+  // Calculate slot address in scratch1. Jump to doSet if scratch3 == nullptr,
+  // else jump (or fall-through) to doAdd.
 
-  static_assert(sizeof(HeapSlot) == 8);
-  // output = obj->fixedSlots()[scratch1]
-
-  computeEffectiveAddress(BaseValueIndex(obj, scratch1, sizeof(NativeObject)),
-                          scratch1);
+  // if (!slotOffset.isFixedSlot()) goto dynamicSlot
+  branchTest32(Assembler::Zero, scratch2,
+               Imm32(TaggedSlotOffset::IsFixedSlotFlag), &dynamicSlot);
+  addPtr(obj, scratch1);
   branchTestPtr(Assembler::Zero, scratch3, scratch3, &doSet);
   jump(&doAdd);
 
   bind(&dynamicSlot);
-  // scratch1 -= scratch2
-  sub32(scratch2, scratch1);
-  // output = outputScratch->slots_[scratch1]
-  loadPtr(Address(obj, NativeObject::offsetOfSlots()), scratch2);
-  computeEffectiveAddress(BaseValueIndex(scratch2, scratch1, 0), scratch1);
+  addPtr(Address(obj, NativeObject::offsetOfSlots()), scratch1);
+
   branchTestPtr(Assembler::Zero, scratch3, scratch3, &doSet);
 
   Address slotAddr(scratch1, 0);

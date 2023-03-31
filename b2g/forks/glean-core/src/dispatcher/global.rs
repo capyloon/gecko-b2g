@@ -63,7 +63,7 @@ pub fn launch(_task: impl FnOnce() + Send + 'static) {
     //     }
     // }
 
-    // // In test mode wait for the execution, unless we're still queueing tasks.
+    // In test mode wait for the execution, unless we're still queueing tasks.
     // let is_queueing = QUEUE_TASKS.load(Ordering::SeqCst);
     // let is_test = TESTING_MODE.load(Ordering::SeqCst);
     // if !is_queueing && is_test {

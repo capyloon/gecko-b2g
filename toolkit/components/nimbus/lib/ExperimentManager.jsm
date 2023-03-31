@@ -14,6 +14,7 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   FirstStartup: "resource://gre/modules/FirstStartup.sys.mjs",
+  Sampling: "resource://gre/modules/components-utils/Sampling.sys.mjs",
   TelemetryEnvironment: "resource://gre/modules/TelemetryEnvironment.sys.mjs",
 });
 
@@ -22,14 +23,13 @@ XPCOMUtils.defineLazyModuleGetters(lazy, {
   ExperimentStore: "resource://nimbus/lib/ExperimentStore.jsm",
   NimbusFeatures: "resource://nimbus/ExperimentAPI.jsm",
   NormandyUtils: "resource://normandy/lib/NormandyUtils.jsm",
-  Sampling: "resource://gre/modules/components-utils/Sampling.jsm",
   TelemetryEvents: "resource://normandy/lib/TelemetryEvents.jsm",
   PrefUtils: "resource://normandy/lib/PrefUtils.jsm",
 });
 
 XPCOMUtils.defineLazyGetter(lazy, "log", () => {
-  const { Logger } = ChromeUtils.import(
-    "resource://messaging-system/lib/Logger.jsm"
+  const { Logger } = ChromeUtils.importESModule(
+    "resource://messaging-system/lib/Logger.sys.mjs"
   );
   return new Logger("ExperimentManager");
 });
@@ -452,7 +452,7 @@ class _ExperimentManager {
       { force: true }
     );
 
-    Services.obs.notifyObservers(null, "nimbus:force-enroll", slug);
+    Services.obs.notifyObservers(null, "nimbus:enrollments-updated", slug);
 
     return enrollment;
   }
@@ -461,6 +461,7 @@ class _ExperimentManager {
    * Update an enrollment that was already set
    *
    * @param {RecipeArgs} recipe
+   * @returns {boolean} whether the enrollment is still active
    */
   updateEnrollment(recipe) {
     /** @type Enrollment */
@@ -480,6 +481,7 @@ class _ExperimentManager {
     if (!branch) {
       // Our branch has been removed. Unenroll.
       this.unenroll(recipe.slug, "branch-removed");
+      return false;
     }
 
     return true;

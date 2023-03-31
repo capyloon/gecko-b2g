@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* eslint-env worker */
+/* eslint-env mozilla/chrome-worker */
+"use strict";
 
 /**
  * @typedef {import("../translations").Bergamot} Bergamot
@@ -13,12 +14,22 @@
 importScripts("chrome://global/content/translations/bergamot-translator.js");
 
 // Respect the preference "browser.translations.logLevel".
-let _isLoggingEnabled = false;
+let _loggingLevel = "Error";
 function log(...args) {
-  if (_isLoggingEnabled) {
+  if (_loggingLevel !== "Error" && _loggingLevel !== "Warn") {
     console.log("Translations:", ...args);
   }
 }
+function trace(...args) {
+  if (_loggingLevel === "Trace" || _loggingLevel === "All") {
+    console.log("Translations:", ...args);
+  }
+}
+
+// Throw Promise rejection errors so that they are visible in the console.
+self.addEventListener("unhandledrejection", event => {
+  throw event.reason;
+});
 
 /**
  * The alignment for each file type, file type strings should be same as in the
@@ -41,6 +52,7 @@ const MODEL_FILE_ALIGNMENTS = {
 addEventListener("message", handleInitializationMessage);
 
 async function handleInitializationMessage({ data }) {
+  const startTime = performance.now();
   if (data.type !== "initialize") {
     console.error(
       "The TranslationEngine worker received a message before it was initialized."
@@ -49,7 +61,13 @@ async function handleInitializationMessage({ data }) {
   }
 
   try {
-    const { fromLanguage, toLanguage, enginePayload, isLoggingEnabled } = data;
+    const {
+      fromLanguage,
+      toLanguage,
+      enginePayload,
+      logLevel,
+      innerWindowId,
+    } = data;
 
     if (!fromLanguage) {
       throw new Error('Worker initialization missing "fromLanguage"');
@@ -58,9 +76,9 @@ async function handleInitializationMessage({ data }) {
       throw new Error('Worker initialization missing "toLanguage"');
     }
 
-    if (isLoggingEnabled) {
+    if (logLevel) {
       // Respect the "browser.translations.logLevel" preference.
-      _isLoggingEnabled = true;
+      _loggingLevel = logLevel;
     }
 
     let engine;
@@ -80,10 +98,15 @@ async function handleInitializationMessage({ data }) {
       engine = new MockedEngine(fromLanguage, toLanguage);
     }
 
+    ChromeUtils.addProfilerMarker(
+      "TranslationsWorker",
+      { startTime, innerWindowId },
+      "Translations engine loaded."
+    );
+
     handleMessages(engine);
     postMessage({ type: "initialization-success" });
   } catch (error) {
-    // TODO (Bug 1813781) - Handle this error in the UI.
     console.error(error);
     postMessage({ type: "initialization-error", error: error?.message });
   }
@@ -97,7 +120,8 @@ async function handleInitializationMessage({ data }) {
  * @param {Engine | MockedEngine} engine
  */
 function handleMessages(engine) {
-  addEventListener("message", ({ data }) => {
+  let discardPromise;
+  addEventListener("message", async ({ data }) => {
     try {
       if (data.type === "initialize") {
         throw new Error("The Translations engine must not be re-initialized.");
@@ -106,9 +130,32 @@ function handleMessages(engine) {
 
       switch (data.type) {
         case "translation-request": {
-          const { messageBatch, messageId } = data;
+          const { messageBatch, messageId, isHTML, innerWindowId } = data;
+          if (discardPromise) {
+            // Wait for messages to be discarded if there are any.
+            await discardPromise;
+          }
           try {
-            const translations = engine.translate(messageBatch);
+            // Add translations to the work queue, and when they return, post the message
+            // back. The translation may never return if the translations are discarded
+            // before they have time to be run. In this case this await is just never
+            // resolved, and the postMessage is never run.
+            const translations = await engine.translate(
+              messageBatch,
+              isHTML,
+              innerWindowId
+            );
+
+            // This logging level can be very verbose and slow, so only do it under the
+            // "Trace" level, which is the most verbose. Set the logging level to "Info" to avoid
+            // these, and get all of the other logs.
+            trace("Translation complete", {
+              messageBatch,
+              translations,
+              isHTML,
+              innerWindowId,
+            });
+
             postMessage({
               type: "translation-response",
               translations,
@@ -116,11 +163,38 @@ function handleMessages(engine) {
             });
           } catch (error) {
             console.error(error);
+            let message = "An error occurred in the engine worker.";
+            if (typeof error?.message === "string") {
+              message = error.message;
+            }
+            let stack = "(no stack)";
+            if (typeof error?.stack === "string") {
+              stack = error.stack;
+            }
             postMessage({
               type: "translation-error",
+              error: { message, stack },
               messageId,
+              innerWindowId,
             });
           }
+          break;
+        }
+        case "discard-translation-queue": {
+          ChromeUtils.addProfilerMarker(
+            "TranslationsWorker",
+            { innerWindowId: data.innerWindowId },
+            "Translations discard requested"
+          );
+
+          discardPromise = engine.discardTranslations();
+          await discardPromise;
+          discardPromise = null;
+
+          // Signal to the "message" listeners in the main thread to stop listening.
+          postMessage({
+            type: "translations-discarded",
+          });
           break;
         }
         default:
@@ -180,17 +254,94 @@ class Engine {
   }
 
   /**
-   * Run the translation models to perform a batch of message translations.
+   * Run the translation models to perform a batch of message translations. The
+   * promise is rejected when the sync version of this function throws an error.
+   * This function creates an async interface over the synchronous translation
+   * mechanism. This allows other microtasks such as message handling to still work
+   * even though the translations are CPU-intensive.
    *
    * @param {string[]} messageBatch
+   * @param {boolean} isHTML
+   * @param {number} innerWindowId - This is required
+   *
+   * @param {boolean} withQualityEstimation
+   * @returns {Promise<string[]>}
+   */
+  translate(
+    messageBatch,
+    isHTML,
+    innerWindowId,
+    withQualityEstimation = false
+  ) {
+    return this.#getWorkQueue(innerWindowId).runTask(() =>
+      this.#syncTranslate(
+        messageBatch,
+        isHTML,
+        innerWindowId,
+        withQualityEstimation
+      )
+    );
+  }
+
+  /**
+   * Map each innerWindowId to its own WorkQueue. This makes it easy to shut down
+   * an entire queue of work when the page is unloaded.
+   *
+   * @type {Map<number, WorkQueue>}
+   */
+  #workQueues = new Map();
+
+  /**
+   * Get or create a `WorkQueue` that is unique to an `innerWindowId`.
+   *
+   * @param {number} innerWindowId
+   * @returns {WorkQueue}
+   */
+  #getWorkQueue(innerWindowId) {
+    let workQueue = this.#workQueues.get(innerWindowId);
+    if (workQueue) {
+      return workQueue;
+    }
+    workQueue = new WorkQueue(innerWindowId);
+    this.#workQueues.set(innerWindowId, workQueue);
+    return workQueue;
+  }
+
+  /**
+   * Cancels any in-progress translations by removing the work queue.
+   *
+   * @param {number} innerWindowId
+   */
+  discardTranslations(innerWindowId) {
+    let workQueue = this.#workQueues.get(innerWindowId);
+    if (workQueue) {
+      workQueue.cancelWork();
+      this.#workQueues.delete(innerWindowId);
+    }
+  }
+
+  /**
+   * Run the translation models to perform a batch of message translations. This
+   * blocks the worker thread until it is completed.
+   *
+   * @param {string[]} messageBatch
+   * @param {boolean} isHTML
+   * @param {number} innerWindowId
    * @param {boolean} withQualityEstimation
    * @returns {string[]}
    */
-  translate(messageBatch, withQualityEstimation = false) {
+  #syncTranslate(
+    messageBatch,
+    isHTML,
+    innerWindowId,
+    withQualityEstimation = false
+  ) {
+    const startTime = performance.now();
     let response;
     const { messages, options } = BergamotUtils.getTranslationArgs(
       this.bergamot,
       messageBatch,
+      isHTML,
       withQualityEstimation
     );
     try {
@@ -221,9 +372,22 @@ class Engine {
       }
 
       // Extract JavaScript values out of the vector.
-      return BergamotUtils.mapVector(responses, response =>
+      const translations = BergamotUtils.mapVector(responses, response =>
         response.getTranslatedText()
       );
+
+      // Report on the time it took to do these translations.
+      let length = 0;
+      for (const message of messageBatch) {
+        length += message.length;
+      }
+      ChromeUtils.addProfilerMarker(
+        "TranslationsWorker",
+        { startTime, innerWindowId },
+        `Translated ${length} code units.`
+      );
+
+      return translations;
     } finally {
       // Free up any memory that was allocated. This will always run.
       messages?.delete();
@@ -370,6 +534,8 @@ class BergamotUtils {
 
       /** @type {Bergamot} */
       const bergamot = loadBergamot({
+        // This is the amount of memory that a simple run of Bergamot uses, in byte.
+        INITIAL_MEMORY: 459_276_288,
         preRun: [],
         onAbort() {
           reject(new Error("Error loading Bergamot wasm module."));
@@ -431,23 +597,35 @@ class BergamotUtils {
    * @param {boolean} withQualityEstimation
    * @returns {{ messages: Bergamot["VectorString"], options: Bergamot["VectorResponseOptions"] }}
    */
-  static getTranslationArgs(bergamot, messageBatch, withQualityEstimation) {
+  static getTranslationArgs(
+    bergamot,
+    messageBatch,
+    isHTML,
+    withQualityEstimation
+  ) {
     const messages = new bergamot.VectorString();
     const options = new bergamot.VectorResponseOptions();
-    for (const message of messageBatch) {
+    for (let message of messageBatch) {
+      message = message.trim();
       // Empty paragraphs break the translation.
-      if (message.trim() === "") {
+      if (message === "") {
         continue;
       }
 
-      // TODO (Bug 1813782) - Consider porting the original HTML message escaping behavior.
-      // https://github.com/mozilla/firefox-translations/blob/431e0d21f22694c1cbc0ff965820d9780cdaeea8/extension/controller/translation/translationWorker.js#L146-L158
+      if (withQualityEstimation && !isHTML) {
+        // Bergamot only supports quality estimates with HTML. Purely text content can
+        // be translated by escaping it as HTML. See:
+        // https://github.com/mozilla/firefox-translations/blob/431e0d21f22694c1cbc0ff965820d9780cdaeea8/extension/controller/translation/translationWorker.js#L146-L158
+        throw new Error(
+          "Quality estimates on non-hTML is not curently supported."
+        );
+      }
 
       messages.push_back(message);
       options.push_back({
         qualityScores: withQualityEstimation,
         alignment: true,
-        html: false,
+        html: isHTML,
       });
     }
     return { messages, options };
@@ -475,12 +653,132 @@ class MockedEngine {
    * Create a fake translation of the text.
    *
    * @param {string[]} messageBatch
+   * @param {bool} isHTML
    * @returns {string}
    */
-  translate(messageBatch) {
-    return messageBatch.map(
-      message =>
-        `${message.toUpperCase()} [${this.fromLanguage} to ${this.toLanguage}]`
-    );
+  translate(messageBatch, isHTML) {
+    return messageBatch.map(message => {
+      // Note when an HTML translations is requested.
+      let html = isHTML ? ", html" : "";
+      message = message.toUpperCase();
+
+      return `${message} [${this.fromLanguage} to ${this.toLanguage}${html}]`;
+    });
+  }
+}
+
+/**
+ * This class takes tasks that may block the thread's event loop, and has them yield
+ * after a time budget via setTimeout calls to allow other code to execute.
+ */
+class WorkQueue {
+  #TIME_BUDGET = 100; // ms
+  #RUN_IMMEDIATELY_COUNT = 20;
+
+  /** @type {Array<{task: Function, resolve: Function}>} */
+  #tasks = [];
+  #isRunning = false;
+  #isWorkCancelled = false;
+  #runImmediately = this.#RUN_IMMEDIATELY_COUNT;
+
+  /**
+   * @param {number} innerWindowId
+   */
+  constructor(innerWindowId) {
+    this.innerWindowId = innerWindowId;
+  }
+
+  /**
+   * Run the task and return the result.
+   *
+   * @template {T}
+   * @param {() => T} task
+   * @returns {Promise<T>}
+   */
+  runTask(task) {
+    if (this.#runImmediately > 0) {
+      // Run the first N translations immediately, most likely these are the user-visible
+      // translations on the page, as they are sent in first. The setTimeout of 0 can
+      // still delay the translations noticeably.
+      this.#runImmediately--;
+      return Promise.resolve(task());
+    }
+    return new Promise((resolve, reject) => {
+      this.#tasks.push({ task, resolve, reject });
+      this.#run().catch(error => console.error(error));
+    });
+  }
+
+  /**
+   * The internal run function.
+   */
+  async #run() {
+    if (this.#isRunning) {
+      // The work queue is already running.
+      return;
+    }
+
+    this.#isRunning = true;
+
+    // Measure the timeout
+    let lastTimeout = null;
+
+    let tasksInBatch = 0;
+    const addProfilerMarker = () => {
+      ChromeUtils.addProfilerMarker(
+        "TranslationsWorker WorkQueue",
+        { startTime: lastTimeout, innerWindowId: this.innerWindowId },
+        `WorkQueue processed ${tasksInBatch} tasks`
+      );
+    };
+
+    while (this.#tasks.length !== 0) {
+      if (this.#isWorkCancelled) {
+        // The work was already cancelled.
+        break;
+      }
+      const now = performance.now();
+
+      if (lastTimeout === null) {
+        lastTimeout = now;
+        // Allow other work to get on the queue.
+        await new Promise(resolve => setTimeout(resolve, 0));
+      } else if (now - lastTimeout > this.#TIME_BUDGET) {
+        // Perform a timeout with no effective wait. This clears the current
+        // promise queue from the event loop.
+        await new Promise(resolve => setTimeout(resolve, 0));
+        addProfilerMarker();
+        lastTimeout = performance.now();
+      }
+
+      // Check this between every `await`.
+      if (this.#isWorkCancelled) {
+        break;
+      }
+
+      tasksInBatch++;
+      const { task, resolve, reject } = this.#tasks.shift();
+      try {
+        const result = await task();
+
+        // Check this between every `await`.
+        if (this.#isWorkCancelled) {
+          break;
+        }
+        // The work is done, resolve the original task.
+        resolve(result);
+      } catch (error) {
+        reject(error);
+      }
+    }
+    addProfilerMarker();
+    this.isRunning = false;
+  }
+
+  async cancelWork() {
+    this.#isWorkCancelled = true;
+    this.#tasks = [];
+    await new Promise(resolve => setTimeout(resolve, 0));
+    this.#isWorkCancelled = false;
   }
 }

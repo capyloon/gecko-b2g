@@ -34,11 +34,24 @@ XPCOMUtils.defineLazyGetter(lazy, "console", () => {
   });
 });
 
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "translationsEnabledPref",
+  "browser.translations.enable"
+);
+
+// Do the slow/safe thing of always verifying the signature when the data is
+// loaded from the file system. This restriction could be eased in the future if it
+// proves to be a performance problem, and the security risk is acceptable.
+const VERIFY_SIGNATURES_FROM_FS = true;
+
 /**
  * @typedef {import("../translations").TranslationModelRecord} TranslationModelRecord
  * @typedef {import("../translations").RemoteSettingsClient} RemoteSettingsClient
+ * @typedef {import("../translations").LanguageIdEngineMockedPayload} LanguageIdEngineMockedPayload
  * @typedef {import("../translations").LanguageTranslationModelFiles} LanguageTranslationModelFiles
  * @typedef {import("../translations").WasmRecord} WasmRecord
+ * @typedef {import("../translations").LangTags} LangTags
  */
 
 /**
@@ -57,7 +70,7 @@ export class TranslationsParent extends JSWindowActorParent {
 
   /**
    * A map of the TranslationModelRecord["id"] to the record of the model in Remote Settings.
-   * Used to coordinate the downloads. See `getLanguagePair`
+   * Used to coordinate the downloads.
    *
    * @type {Map<string, TranslationModelRecord>}
    */
@@ -69,6 +82,18 @@ export class TranslationsParent extends JSWindowActorParent {
   /** @type {RemoteSettingsClient | null} */
   #translationsWasmRemoteClient = null;
 
+  /** @type {LangTags | null} */
+  #langTags = null;
+
+  /**
+   * Have translations been turned on for the page? This means a `TranslationsDocument`
+   * will have been created for the page, and it will determine how to actively translate
+   * the document.
+   *
+   * @type {boolean}
+   */
+  #translationsActive = false;
+
   /**
    * The translation engine can be mocked for testing.
    *
@@ -76,11 +101,21 @@ export class TranslationsParent extends JSWindowActorParent {
    */
   static #mockedLanguagePairs = null;
 
-  actorCreated() {
-    if (TranslationsParent.#mockedLanguagePairs) {
-      this.sendAsyncMessage("Translations:IsMocked", true);
-    }
-  }
+  /**
+   * The language identification engine can be mocked for testing
+   * by pre-defining this value.
+   *
+   * @type {string | null}
+   */
+  static #mockedLanguageLabel = null;
+
+  /**
+   * The language identification engine can be mocked for testing
+   * by pre-defining this value.
+   *
+   * @type {number | null}
+   */
+  static #mockedLanguageIdConfidence = null;
 
   async receiveMessage({ name, data }) {
     switch (name) {
@@ -92,6 +127,12 @@ export class TranslationsParent extends JSWindowActorParent {
       }
       case "Translations:GetLanguageIdWasmArrayBuffer": {
         return this.#getLanguageIdWasmArrayBuffer();
+      }
+      case "Translations:GetLanguageIdEngineMockedPayload": {
+        return this.#getLanguageIdEngineMockedPayload();
+      }
+      case "Translations:GetIsTranslationsEngineMocked": {
+        return Boolean(TranslationsParent.#mockedLanguagePairs);
       }
       case "Translations:GetLanguageTranslationModelFiles": {
         const { fromLanguage, toLanguage } = data;
@@ -118,6 +159,12 @@ export class TranslationsParent extends JSWindowActorParent {
       case "Translations:GetSupportedLanguages": {
         return this.#getSupportedLanguages();
       }
+      case "Translations:ReportLangTags": {
+        const { langTags } = data;
+        this.#langTags = langTags;
+        this.updateUrlBarButton();
+        return undefined;
+      }
     }
     return undefined;
   }
@@ -136,9 +183,7 @@ export class TranslationsParent extends JSWindowActorParent {
     const modelRecords = await client.get({
       // Pull the records from the network so that we never get an empty list.
       syncIfEmpty: true,
-      // TODO (Bug 1813779) - We should consider the verification process. For now do the
-      // slow/safe thing of always verifying the signature.
-      verifySignature: true,
+      verifySignature: VERIFY_SIGNATURES_FROM_FS,
     });
 
     if (modelRecords.length === 0) {
@@ -199,9 +244,7 @@ export class TranslationsParent extends JSWindowActorParent {
     const wasmRecords = await client.get({
       // Pull the records from the network so that we never get an empty list.
       syncIfEmpty: true,
-      // TODO (Bug 1813779) - We should consider the verification process. For now do the
-      // slow/safe thing of always verifying the signature.
-      verifySignature: true,
+      verifySignature: VERIFY_SIGNATURES_FROM_FS,
       // Only get the fasttext-wasm record.
       filters: { name: "fasttext-wasm" },
     });
@@ -235,6 +278,25 @@ export class TranslationsParent extends JSWindowActorParent {
     );
 
     return buffer;
+  }
+
+  /**
+   * For testing purposes, the LanguageIdEngine can be mocked to always return
+   * a pre-determined language label and confidence value.
+   *
+   * @returns {LanguageIdEngineMockedPayload | null}
+   */
+  #getLanguageIdEngineMockedPayload() {
+    if (
+      !TranslationsParent.#mockedLanguageLabel ||
+      !TranslationsParent.#mockedLanguageIdConfidence
+    ) {
+      return null;
+    }
+    return {
+      languageLabel: TranslationsParent.#mockedLanguageLabel,
+      confidence: TranslationsParent.#mockedLanguageIdConfidence,
+    };
   }
 
   /**
@@ -335,9 +397,7 @@ export class TranslationsParent extends JSWindowActorParent {
     const translationModelRecords = await client.get({
       // Pull the records from the network so that we never get an empty list.
       syncIfEmpty: true,
-      // TODO (Bug 1813779) - We should consider the verification process. For now do the
-      // slow/safe thing of always verifying the signature.
-      verifySignature: true,
+      verifySignature: VERIFY_SIGNATURES_FROM_FS,
     });
 
     for (const record of translationModelRecords) {
@@ -411,9 +471,7 @@ export class TranslationsParent extends JSWindowActorParent {
     const wasmRecords = await client.get({
       // Pull the records from the network so that we never get an empty list.
       syncIfEmpty: true,
-      // TODO (Bug 1813779) - We should consider the verification process. For now do the
-      // slow/safe thing of always verifying the signature.
-      verifySignature: true,
+      verifySignature: VERIFY_SIGNATURES_FROM_FS,
       // Only get the bergamot-translator record.
       filters: { name: "bergamot-translator" },
     });
@@ -568,12 +626,102 @@ export class TranslationsParent extends JSWindowActorParent {
    *
    * @param {null | Array<{ fromLang: string, toLang: string }>} languagePairs
    */
-  static mock(languagePairs) {
+  static mockLanguagePairs(languagePairs) {
     TranslationsParent.#mockedLanguagePairs = languagePairs;
     if (languagePairs) {
       lazy.console.log("Mocking language pairs", languagePairs);
     } else {
       lazy.console.log("Removing language pair mocks");
+    }
+  }
+
+  /**
+   * For testing purposes, allow the LanguageIdEngine to be mocked. If called
+   * with `null` in each argument, the mock is removed.
+   *
+   * @param {string} languageLabel - The two-character language label.
+   * @param {number} confidence  - The confidence score of the detected language.
+   */
+  static mockLanguageIdentification(languageLabel, confidence) {
+    TranslationsParent.#mockedLanguageLabel = languageLabel;
+    TranslationsParent.#mockedLanguageIdConfidence = confidence;
+    if (languageLabel) {
+      lazy.console.log("Mocking detected language label", languageLabel);
+    } else {
+      lazy.console.log("Removing detected-language label mock");
+    }
+    if (languageLabel) {
+      lazy.console.log("Mocking detected language confidence", confidence);
+    } else {
+      lazy.console.log("Removing detected-language confidence mock");
+    }
+  }
+
+  static urlBarButtonClick(event) {
+    let win = event.target.ownerGlobal;
+    if (win.gBrowser) {
+      let browser = win.gBrowser.selectedBrowser;
+      let windowGlobal = browser.browsingContext.currentWindowGlobal;
+
+      /** @type {TranslationsParent} */
+      let actor = windowGlobal.getActor("Translations");
+
+      if (actor) {
+        actor.toggleTranslation();
+      }
+    }
+  }
+
+  /**
+   * Either send a message to the child to translate, or revert a translation by
+   * refreshing the page.
+   */
+  toggleTranslation() {
+    if (!this.#langTags) {
+      return;
+    }
+    if (this.#translationsActive) {
+      const browser = this.browsingContext.embedderElement;
+      browser.reload();
+    } else {
+      this.sendAsyncMessage("Translations:TranslatePage");
+    }
+    this.#translationsActive = !this.#translationsActive;
+    this.updateUrlBarButton();
+  }
+
+  static updateButtonFromLocationChange(browser) {
+    if (!lazy.translationsEnabledPref) {
+      // The pref isn't enabled, so don't attempt to get the actor.
+      return;
+    }
+    let windowGlobal = browser.browsingContext.currentWindowGlobal;
+    let actor = windowGlobal.getActor("Translations");
+    actor.updateUrlBarButton(browser);
+  }
+
+  /**
+   * Set the state of the translations button in the URL bar.
+   */
+  updateUrlBarButton(browser = this.browsingContext.embedderElement) {
+    if (!browser) {
+      return;
+    }
+
+    let doc = browser.ownerGlobal.document;
+    let button = doc.getElementById("translations-button");
+    if (!button) {
+      return;
+    }
+
+    if (this.#langTags) {
+      button.hidden = false;
+      if (this.#translationsActive) {
+        button.setAttribute("translationsactive", true);
+      }
+    } else {
+      button.removeAttribute("translationsactive");
+      button.hidden = true;
     }
   }
 }

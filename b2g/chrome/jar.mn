@@ -22,15 +22,9 @@ chrome.jar:
   content/devtools/adb.js               (content/devtools/adb.js)
 #endif
   content/devtools/RemoteDebugger.js    (content/devtools/RemoteDebugger.js)
-  content/devtools/marionette.js        (content/devtools/marionette.js)
+  content/devtools/marionette.sys.mjs        (content/devtools/marionette.sys.mjs)
   content/content.css                   (content/content.css)
-  content/touchcontrols.css             (content/touchcontrols.css)
-  content/videocontrols.dtd             (content/videocontrols.dtd)
-  content/TopLevelVideoDocument.css     (content/TopLevelVideoDocument.css)
 
-% override chrome://global/locale/videocontrols.dtd chrome://b2g/content/videocontrols.dtd
-% override chrome://global/skin/media/videocontrols.css chrome://b2g/content/touchcontrols.css
-% override chrome://global/skin/media/TopLevelVideoDocument.css chrome://b2g/content/TopLevelVideoDocument.css
 % override chrome://global/content/aboutCertError.xhtml chrome://b2g/content/aboutCertError.xhtml
 % override chrome://global/skin/netError.css chrome://b2g/content/netError.css
 

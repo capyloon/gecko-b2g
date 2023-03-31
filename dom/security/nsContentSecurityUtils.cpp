@@ -1032,6 +1032,17 @@ nsresult CheckCSPFrameAncestorPolicy(nsIChannel* aChannel,
     return rv;
   }
 
+  // Set the default Tile CSP if it's a tile:// url.
+  nsCOMPtr<nsIURI> uri;
+  aChannel->GetOriginalURI(getter_AddRefs(uri));
+  nsAutoCString scheme;
+  uri->GetScheme(scheme);
+  if (scheme.EqualsLiteral("tile")) {
+    nsAutoString tileCsp;
+    Preferences::GetString("network.protocol-handler.tile.csp", tileCsp);
+    csp->AppendPolicy(tileCsp, false, false);
+  }
+
   if (addonPolicy) {
     csp->AppendPolicy(addonPolicy->BaseCSP(), false, false);
     csp->AppendPolicy(addonPolicy->ExtensionPageCSP(), false, false);

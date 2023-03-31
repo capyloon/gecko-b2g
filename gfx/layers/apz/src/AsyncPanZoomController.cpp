@@ -935,7 +935,7 @@ PointerEventsConsumableFlags AsyncPanZoomController::ArePointerEventsConsumable(
 
 nsEventStatus AsyncPanZoomController::HandleDragEvent(
     const MouseInput& aEvent, const AsyncDragMetrics& aDragMetrics,
-    CSSCoord aInitialThumbPos) {
+    OuterCSSCoord aInitialThumbPos) {
   // RDM is a special case where touch events will be synthesized in response
   // to mouse events, and APZ will receive both even though RDM prevent-defaults
   // the mouse events. This is because mouse events don't opt into APZ waiting
@@ -1017,7 +1017,7 @@ nsEventStatus AsyncPanZoomController::HandleDragEvent(
   }
 
   RecursiveMutexAutoLock lock(mRecursiveMutex);
-  CSSCoord thumbPosition;
+  OuterCSSCoord thumbPosition;
   if (isMouseAwayFromThumb) {
     thumbPosition = aInitialThumbPos;
   } else {
@@ -1025,7 +1025,7 @@ nsEventStatus AsyncPanZoomController::HandleDragEvent(
                     aDragMetrics.mScrollbarDragOffset;
   }
 
-  CSSCoord maxThumbPos = scrollbarData.mScrollTrackLength;
+  OuterCSSCoord maxThumbPos = scrollbarData.mScrollTrackLength;
   maxThumbPos -= scrollbarData.mThumbLength;
 
   float scrollPercent =
@@ -1916,7 +1916,7 @@ Maybe<LayoutDevicePoint> AsyncPanZoomController::ConvertToGecko(
   return Nothing();
 }
 
-CSSCoord AsyncPanZoomController::ConvertScrollbarPoint(
+OuterCSSCoord AsyncPanZoomController::ConvertScrollbarPoint(
     const ParentLayerPoint& aScrollbarPoint,
     const ScrollbarData& aThumbData) const {
   RecursiveMutexAutoLock lock(mRecursiveMutex);
@@ -1929,12 +1929,13 @@ CSSCoord AsyncPanZoomController::ConvertScrollbarPoint(
 
   // The scrollbar can be transformed with the frame but the pres shell
   // resolution is only applied to the scroll frame.
-  scrollbarPoint = scrollbarPoint * Metrics().GetPresShellResolution();
+  OuterCSSPoint outerScrollbarPoint =
+      scrollbarPoint * Metrics().GetCSSToOuterCSSScale();
 
   // Now, get it to be relative to the beginning of the scroll track.
-  CSSRect cssCompositionBound =
-      Metrics().CalculateCompositionBoundsInCssPixelsOfSurroundingContent();
-  return GetAxisStart(*aThumbData.mDirection, scrollbarPoint) -
+  OuterCSSRect cssCompositionBound =
+      Metrics().CalculateCompositionBoundsInOuterCssPixels();
+  return GetAxisStart(*aThumbData.mDirection, outerScrollbarPoint) -
          GetAxisStart(*aThumbData.mDirection, cssCompositionBound) -
          aThumbData.mScrollTrackStart;
 }
@@ -2888,7 +2889,8 @@ nsEventStatus AsyncPanZoomController::OnPanEnd(const PanGestureInput& aEvent) {
   // This can happen if the OS sends a second pan-end event after
   // the first one has already started an overscroll animation.
   // This has been observed on some Wayland versions.
-  if (mState == OVERSCROLL_ANIMATION || mState == NOTHING) {
+  PanZoomState currentState = GetState();
+  if (currentState == OVERSCROLL_ANIMATION || currentState == NOTHING) {
     return nsEventStatus_eIgnore;
   }
 
@@ -2921,7 +2923,8 @@ nsEventStatus AsyncPanZoomController::OnPanEnd(const PanGestureInput& aEvent) {
   // triggers an overscroll animation. When we're finished with the overscroll
   // animation, the state will be reset and a TransformEnd will be sent to the
   // main thread.
-  if (mState != OVERSCROLL_ANIMATION) {
+  currentState = GetState();
+  if (currentState != OVERSCROLL_ANIMATION) {
     // Do not send a state change notification to the content controller here.
     // Instead queue a delayed task to dispatch the notification if no
     // momentum pan or scroll snap follows the pan-end.
@@ -2933,7 +2936,7 @@ nsEventStatus AsyncPanZoomController::OnPanEnd(const PanGestureInput& aEvent) {
               "layers::AsyncPanZoomController::"
               "DoDelayedTransformEndNotification",
               this, &AsyncPanZoomController::DoDelayedTransformEndNotification,
-              mState),
+              currentState),
           StaticPrefs::apz_scrollend_event_content_delay_ms());
       SetStateNoContentControllerDispatch(NOTHING);
     } else {
@@ -6185,6 +6188,11 @@ void AsyncPanZoomController::SetState(PanZoomState aNewState) {
   DispatchStateChangeNotification(oldState, aNewState);
 }
 
+auto AsyncPanZoomController::GetState() const -> PanZoomState {
+  RecursiveMutexAutoLock lock(mRecursiveMutex);
+  return mState;
+}
+
 void AsyncPanZoomController::DispatchStateChangeNotification(
     PanZoomState aOldState, PanZoomState aNewState) {
   {  // scope the lock
@@ -6249,8 +6257,8 @@ void AsyncPanZoomController::UpdateZoomConstraints(
              aConstraints.mMinZoom.scale, aConstraints.mMaxZoom.scale);
   }
 
-  if (IsNaN(aConstraints.mMinZoom.scale) ||
-      IsNaN(aConstraints.mMaxZoom.scale)) {
+  if (std::isnan(aConstraints.mMinZoom.scale) ||
+      std::isnan(aConstraints.mMaxZoom.scale)) {
     NS_WARNING("APZC received zoom constraints with NaN values; dropping...");
     return;
   }

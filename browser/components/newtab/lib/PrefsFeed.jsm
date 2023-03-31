@@ -89,15 +89,21 @@ class PrefsFeed {
    */
   onPocketExperimentUpdated(event, reason) {
     const value = lazy.NimbusFeatures.pocketNewtab.getAllVariables() || {};
-    this.store.dispatch(
-      ac.BroadcastToContent({
-        type: at.PREF_CHANGED,
-        data: {
-          name: "pocketConfig",
-          value,
-        },
-      })
-    );
+    // Loaded experiments are set up inside init()
+    if (
+      reason !== "feature-experiment-loaded" &&
+      reason !== "feature-rollout-loaded"
+    ) {
+      this.store.dispatch(
+        ac.BroadcastToContent({
+          type: at.PREF_CHANGED,
+          data: {
+            name: "pocketConfig",
+            value,
+          },
+        })
+      );
+    }
   }
 
   init() {
@@ -220,8 +226,8 @@ class PrefsFeed {
 
   removeListeners() {
     this._prefs.ignoreBranch(this);
-    lazy.NimbusFeatures.newtab.off(this.onExperimentUpdated);
-    lazy.NimbusFeatures.pocketNewtab.off(this.onPocketExperimentUpdated);
+    lazy.NimbusFeatures.newtab.offUpdate(this.onExperimentUpdated);
+    lazy.NimbusFeatures.pocketNewtab.offUpdate(this.onPocketExperimentUpdated);
     if (this.geo === "") {
       Services.obs.removeObserver(this, lazy.Region.REGION_TOPIC);
     }

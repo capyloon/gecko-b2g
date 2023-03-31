@@ -116,8 +116,8 @@
 #include "nsCSSProps.h"
 #include "nsCSSPseudoElements.h"
 #include "nsCSSRendering.h"
-#include "nsTHashMap.h"
 #include "nsDisplayList.h"
+#include "nsFieldSetFrame.h"
 #include "nsFlexContainerFrame.h"
 #include "nsFontInflationData.h"
 #include "nsFontMetrics.h"
@@ -150,6 +150,7 @@
 #include "nsTArray.h"
 #include "nsTextFragment.h"
 #include "nsTextFrame.h"
+#include "nsTHashMap.h"
 #include "nsTransitionManager.h"
 #include "nsView.h"
 #include "nsViewManager.h"
@@ -1511,7 +1512,7 @@ nsRect nsLayoutUtils::GetScrolledRect(nsIFrame* aScrolledFrame,
                                       StyleDirection aDirection) {
   WritingMode wm = aScrolledFrame->GetWritingMode();
   // Potentially override the frame's direction to use the direction found
-  // by ScrollFrameHelper::GetScrolledFrameDir()
+  // by nsHTMLScrollFrame::GetScrolledFrameDir()
   wm.SetDirectionFromBidiLevel(aDirection == StyleDirection::Rtl
                                    ? mozilla::intl::BidiEmbeddingLevel::RTL()
                                    : mozilla::intl::BidiEmbeddingLevel::LTR());
@@ -3058,6 +3059,12 @@ void nsLayoutUtils::PaintFrame(gfxContext* aRenderingContext, nsIFrame* aFrame,
                                PaintFrameFlags aFlags) {
   AUTO_PROFILER_LABEL("nsLayoutUtils::PaintFrame", GRAPHICS);
 
+  // Create a static storage counter that is incremented on eacy entry to
+  // PaintFrame and decremented on exit. We can use this later to determine if
+  // this is a top-level paint.
+  static uint32_t paintFrameDepth = 0;
+  ++paintFrameDepth;
+
 #ifdef MOZ_DUMP_PAINTING
   if (!gPaintCountStack) {
     gPaintCountStack = new nsTArray<int>();
@@ -3147,6 +3154,13 @@ void nsLayoutUtils::PaintFrame(gfxContext* aRenderingContext, nsIFrame* aFrame,
   metrics->StartBuild();
 
   builder->BeginFrame();
+
+  MOZ_ASSERT(paintFrameDepth >= 1);
+  // If this is a top-level paint, increment the paint sequence number.
+  if (paintFrameDepth == 1) {
+    // Increment the paint sequence number for the display list builder.
+    nsDisplayListBuilder::IncrementPaintSequenceNumber();
+  }
 
   if (aFlags & PaintFrameFlags::InTransform) {
     builder->SetInTransform(true);
@@ -3491,6 +3505,7 @@ void nsLayoutUtils::PaintFrame(gfxContext* aRenderingContext, nsIFrame* aFrame,
     }
   }
 
+  --paintFrameDepth;
 #if 0
   if (XRE_IsParentProcess()) {
     if (metrics->mPartialUpdateResult == PartialUpdateResult::Failed) {
@@ -4084,10 +4099,10 @@ already_AddRefed<nsFontMetrics> nsLayoutUtils::GetFontMetricsForComputedStyle(
   }
 
   nsFont font = styleFont->mFont;
-  MOZ_ASSERT(!IsNaN(float(font.size.ToCSSPixels())),
+  MOZ_ASSERT(!std::isnan(float(font.size.ToCSSPixels())),
              "Style font should never be NaN");
   font.size.ScaleBy(aInflation);
-  if (MOZ_UNLIKELY(IsNaN(float(font.size.ToCSSPixels())))) {
+  if (MOZ_UNLIKELY(std::isnan(float(font.size.ToCSSPixels())))) {
     font.size = {0};
   }
   font.variantWidth = aVariantWidth;
@@ -5288,7 +5303,7 @@ nscoord nsLayoutUtils::ComputeBSizeDependentValue(
   // the unit conditions.
   // XXXldb Many callers pass a non-'auto' containing block height when
   // according to CSS2.1 they should be passing 'auto'.
-  MOZ_ASSERT(
+  NS_ASSERTION(
       NS_UNCONSTRAINEDSIZE != aContainingBlockBSize || !aCoord.HasPercent(),
       "unexpected containing block block-size");
 
@@ -5508,32 +5523,6 @@ static bool ShouldDarkenColors(nsIFrame* aFrame) {
 
 nscolor nsLayoutUtils::DarkenColorIfNeeded(nsIFrame* aFrame, nscolor aColor) {
   return ShouldDarkenColors(aFrame) ? DarkenColor(aColor) : aColor;
-}
-
-gfxFloat nsLayoutUtils::GetSnappedBaselineY(nsIFrame* aFrame,
-                                            gfxContext* aContext, nscoord aY,
-                                            nscoord aAscent) {
-  gfxFloat appUnitsPerDevUnit = aFrame->PresContext()->AppUnitsPerDevPixel();
-  gfxFloat baseline = gfxFloat(aY) + aAscent;
-  gfxRect putativeRect(0, baseline / appUnitsPerDevUnit, 1, 1);
-  if (!aContext->UserToDevicePixelSnapped(
-          putativeRect, gfxContext::SnapOption::IgnoreScale)) {
-    return baseline;
-  }
-  return aContext->DeviceToUser(putativeRect.TopLeft()).y * appUnitsPerDevUnit;
-}
-
-gfxFloat nsLayoutUtils::GetSnappedBaselineX(nsIFrame* aFrame,
-                                            gfxContext* aContext, nscoord aX,
-                                            nscoord aAscent) {
-  gfxFloat appUnitsPerDevUnit = aFrame->PresContext()->AppUnitsPerDevPixel();
-  gfxFloat baseline = gfxFloat(aX) + aAscent;
-  gfxRect putativeRect(baseline / appUnitsPerDevUnit, 0, 1, 1);
-  if (!aContext->UserToDevicePixelSnapped(
-          putativeRect, gfxContext::SnapOption::IgnoreScale)) {
-    return baseline;
-  }
-  return aContext->DeviceToUser(putativeRect.TopLeft()).x * appUnitsPerDevUnit;
 }
 
 // Hard limit substring lengths to 8000 characters ... this lets us statically
@@ -5870,17 +5859,39 @@ bool nsLayoutUtils::GetFirstLinePosition(WritingMode aWM,
       return false;
     }
 
-    if (fType == LayoutFrameType::FieldSet ||
-        fType == LayoutFrameType::ColumnSet) {
+    if (fType == LayoutFrameType::FieldSet) {
       LinePosition kidPosition;
-      nsIFrame* kid = aFrame->PrincipalChildList().FirstChild();
-      // If aFrame is fieldset, kid might be a legend frame here, but that's ok.
+      // Get the first baseline from the fieldset content, not from the legend.
+      nsIFrame* kid = static_cast<const nsFieldSetFrame*>(aFrame)->GetInner();
       if (kid && GetFirstLinePosition(aWM, kid, &kidPosition)) {
         *aResult = kidPosition +
                    kid->GetLogicalNormalPosition(aWM, aFrame->GetSize()).B(aWM);
         return true;
       }
       return false;
+    }
+
+    if (fType == LayoutFrameType::ColumnSet) {
+      // Note(dshin): This is basically the same as
+      // `nsColumnSetFrame::GetNaturalBaselineBOffset`, but with line start and
+      // end, all stored in `LinePosition`. Field value apart from baseline is
+      // used in one other place
+      // (`nsBlockFrame`) - if that goes away, this becomes a duplication that
+      // should be removed.
+      LinePosition kidPosition;
+      for (const auto* kid : aFrame->PrincipalChildList()) {
+        LinePosition position;
+        if (!GetFirstLinePosition(aWM, kid, &position)) {
+          continue;
+        }
+        if (position.mBaseline < kidPosition.mBaseline) {
+          kidPosition = position;
+        }
+      }
+      if (kidPosition.mBaseline != nscoord_MAX) {
+        *aResult = kidPosition;
+        return true;
+      }
     }
 
     // No baseline.
@@ -5936,6 +5947,21 @@ bool nsLayoutUtils::GetLastLineBaseline(WritingMode aWM, const nsIFrame* aFrame,
       const auto maxBaseline = aFrame->GetLogicalSize(aWM).BSize(aWM);
       // Clamp the last baseline to border (See bug 1791069).
       *aResult = std::clamp(*aResult, 0, maxBaseline);
+      return true;
+    }
+
+    // No need to duplicate the baseline logic (Unlike `GetFirstLinePosition`,
+    // we don't need to return any other value apart from baseline), just defer
+    // to `GetNaturalBaselineBOffset`. Technically, we could do this at
+    // `ColumnSetWrapperFrame` level, but this keeps it symmetric to
+    // `GetFirstLinePosition`.
+    if (aFrame->IsColumnSetFrame()) {
+      const auto baseline =
+          aFrame->GetNaturalBaselineBOffset(aWM, BaselineSharingGroup::Last);
+      if (!baseline) {
+        return false;
+      }
+      *aResult = aFrame->BSize(aWM) - *baseline;
       return true;
     }
     // No baseline.
@@ -7599,21 +7625,21 @@ static void AddFontsFromTextRun(gfxTextRun* aTextRun, nsTextFrame* aFrame,
                                 nsLayoutUtils::UsedFontFaceList& aResult,
                                 nsLayoutUtils::UsedFontFaceTable& aFontFaces,
                                 uint32_t aMaxRanges) {
-  gfxTextRun::GlyphRunIterator glyphRuns(aTextRun, aRange);
   nsIContent* content = aFrame->GetContent();
   int32_t contentLimit =
       aFrame->GetContentOffset() + aFrame->GetInFlowContentLength();
-  while (glyphRuns.NextRun()) {
-    gfxFontEntry* fe = glyphRuns.GetGlyphRun()->mFont->GetFontEntry();
+  for (gfxTextRun::GlyphRunIterator glyphRuns(aTextRun, aRange);
+       !glyphRuns.AtEnd(); glyphRuns.NextRun()) {
+    gfxFontEntry* fe = glyphRuns.GlyphRun()->mFont->GetFontEntry();
     // if we have already listed this face, just make sure the match type is
     // recorded
     InspectorFontFace* fontFace = aFontFaces.Get(fe);
     if (fontFace) {
-      fontFace->AddMatchType(glyphRuns.GetGlyphRun()->mMatchType);
+      fontFace->AddMatchType(glyphRuns.GlyphRun()->mMatchType);
     } else {
       // A new font entry we haven't seen before
       fontFace = new InspectorFontFace(fe, aTextRun->GetFontGroup(),
-                                       glyphRuns.GetGlyphRun()->mMatchType);
+                                       glyphRuns.GlyphRun()->mMatchType);
       aFontFaces.InsertOrUpdate(fe, fontFace);
       aResult.AppendElement(fontFace);
     }
@@ -7622,9 +7648,8 @@ static void AddFontsFromTextRun(gfxTextRun* aTextRun, nsTextFrame* aFrame,
     // already collected as many as wanted.
     if (fontFace->RangeCount() < aMaxRanges) {
       int32_t start =
-          aSkipIter.ConvertSkippedToOriginal(glyphRuns.GetStringStart());
-      int32_t end =
-          aSkipIter.ConvertSkippedToOriginal(glyphRuns.GetStringEnd());
+          aSkipIter.ConvertSkippedToOriginal(glyphRuns.StringStart());
+      int32_t end = aSkipIter.ConvertSkippedToOriginal(glyphRuns.StringEnd());
 
       // Mapping back from textrun offsets ("skipped" offsets that reflect the
       // text after whitespace collapsing, etc) to DOM content offsets in the
@@ -8572,8 +8597,10 @@ void nsLayoutUtils::SetBSizeFromFontMetrics(const nsIFrame* aFrame,
     // The height of our box is the sum of our font size plus the top
     // and bottom border and padding. The height of children do not
     // affect our height.
-    aMetrics.SetBlockStartAscent(aLineWM.IsLineInverted() ? fm->MaxDescent()
-                                                          : fm->MaxAscent());
+    aMetrics.SetBlockStartAscent(
+        aLineWM.IsAlphabeticalBaseline()
+            ? aLineWM.IsLineInverted() ? fm->MaxDescent() : fm->MaxAscent()
+            : fm->MaxHeight() / 2);
     aMetrics.BSize(aLineWM) = fm->MaxHeight();
   } else {
     NS_WARNING("Cannot get font metrics - defaulting sizes to 0");
@@ -9077,16 +9104,6 @@ void nsLayoutUtils::TransformToAncestorAndCombineRegions(
       *aPreciseTargetDest = nsRegion();
     }
   }
-}
-
-/* static */
-bool nsLayoutUtils::ShouldUseNoScriptSheet(Document* aDocument) {
-  // also handle the case where print is done from print preview
-  // see bug #342439 for more details
-  if (aDocument->IsStaticDocument()) {
-    aDocument = aDocument->GetOriginalDocument();
-  }
-  return aDocument->IsScriptEnabled();
 }
 
 /* static */
@@ -9716,7 +9733,8 @@ bool nsLayoutUtils::ShouldHandleMetaViewport(const Document* aDocument) {
 }
 
 /* static */
-ComputedStyle* nsLayoutUtils::StyleForScrollbar(nsIFrame* aScrollbarPart) {
+ComputedStyle* nsLayoutUtils::StyleForScrollbar(
+    const nsIFrame* aScrollbarPart) {
   // Get the closest content node which is not an anonymous scrollbar
   // part. It should be the originating element of the scrollbar part.
   nsIContent* content = aScrollbarPart->GetContent();

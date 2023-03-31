@@ -54,13 +54,13 @@ ObliviousHttpChannel::SetTopLevelContentWindowId(uint64_t aWindowId) {
 }
 
 NS_IMETHODIMP
-ObliviousHttpChannel::GetTopBrowsingContextId(uint64_t* aWindowId) {
-  return mInnerChannel->GetTopBrowsingContextId(aWindowId);
+ObliviousHttpChannel::GetBrowserId(uint64_t* aWindowId) {
+  return mInnerChannel->GetBrowserId(aWindowId);
 }
 
 NS_IMETHODIMP
-ObliviousHttpChannel::SetTopBrowsingContextId(uint64_t aId) {
-  return mInnerChannel->SetTopBrowsingContextId(aId);
+ObliviousHttpChannel::SetBrowserId(uint64_t aId) {
+  return mInnerChannel->SetBrowserId(aId);
 }
 
 NS_IMETHODIMP
@@ -492,7 +492,8 @@ ObliviousHttpChannel::GetContentType(nsACString& aContentType) {
 
 NS_IMETHODIMP
 ObliviousHttpChannel::SetContentType(const nsACString& aContentType) {
-  return mInnerChannel->SetContentType(aContentType);
+  mContentType = aContentType;
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -558,6 +559,10 @@ ObliviousHttpChannel::AsyncOpen(nsIStreamListener* aListener) {
   for (auto iter = mHeaders.ConstIter(); !iter.Done(); iter.Next()) {
     headerNames.AppendElement(iter.Key());
     headerValues.AppendElement(iter.Data());
+  }
+  if (!mContentType.IsEmpty() && !headerNames.Contains("Content-Type")) {
+    headerNames.AppendElement("Content-Type"_ns);
+    headerValues.AppendElement(mContentType);
   }
   nsCOMPtr<nsIBinaryHttp> bhttp(
       do_GetService("@mozilla.org/network/binary-http;1"));
@@ -815,6 +820,7 @@ NS_IMETHODIMP ObliviousHttpChannel::ExplicitSetUploadStream(
   if (written != available) {
     return NS_ERROR_FAILURE;
   }
+  mContentType = aContentType;
   return NS_OK;
 }
 
@@ -828,6 +834,26 @@ NS_IMETHODIMP ObliviousHttpChannel::CloneUploadStream(
     int64_t* aContentLength, nsIInputStream** _retval) {
   LOG(("ObliviousHttpChannel::CloneUploadStream NOT IMPLEMENTED [this=%p]",
        this));
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP ObliviousHttpChannel::SetClassicScriptHintCharset(
+    const nsAString& aClassicScriptHintCharset) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP ObliviousHttpChannel::GetClassicScriptHintCharset(
+    nsAString& aClassicScriptHintCharset) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP ObliviousHttpChannel::SetDocumentCharacterSet(
+    const nsAString& aDocumentCharacterSet) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP ObliviousHttpChannel::GetDocumentCharacterSet(
+    nsAString& aDocumenharacterSet) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 

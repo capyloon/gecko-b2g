@@ -132,6 +132,22 @@
             "id": {
               "type": "string",
               "enum": [
+                "formAutofill"
+              ]
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "additionalProperties": false,
+          "description": "Happens when the user saves, updates, or uses a credit card or address for form autofill"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "enum": [
                 "contentBlocking"
               ]
             },
@@ -266,6 +282,18 @@
           "additionalProperties": false,
           "required": ["id"],
           "description": "Happens when Firefox detects a cookie consent banner that could otherwise be handled by Cookie Banner Handling"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "enum": ["messagesLoaded"]
+            }
+          },
+          "additionalProperties": false,
+          "required": ["id"],
+          "description": "Happens as soon as a message is loaded"
         }
       ]
     }

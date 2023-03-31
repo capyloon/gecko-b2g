@@ -7,10 +7,6 @@
 // This is a UA widget. It runs in per-origin UA widget scope,
 // to be loaded by UAWidgetsChild.jsm.
 
-// Respect to UX spec, the video/audio height should be `138` in pixels
-// and automatically resize width to fit content.
-const CONTROL_PANEL_HEIGHT = 138;
-
 /*
  * This is the class of entry. It will construct the actual implementation
  * according to the value of the "controls" property.
@@ -23,7 +19,7 @@ this.VideoControlsWidget = class {
     this.document = this.element.ownerDocument;
     this.window = this.document.defaultView;
 
-    this.isMobile = this.window.navigator.appVersion.includes("Android");
+    this.isMobile = this.window.navigator.userAgent.includes("Mobile");
   }
 
   /*
@@ -318,8 +314,11 @@ this.VideoControlsImplWidget = class {
           return;
         }
         if (this._isAudioOnly) {
-          this.video.style.height = `${CONTROL_PANEL_HEIGHT}px`;
-          this.video.style.width = "100%";
+          this.video.style.height = this.controlBarMinHeight + "px";
+          this.video.style.width = "66%";
+        } else {
+          this.video.style.removeProperty("height");
+          this.video.style.removeProperty("width");
         }
       },
 
@@ -431,6 +430,10 @@ this.VideoControlsImplWidget = class {
         // apply any styles for the DOM fullscreen case.
         if (this.document.fullscreenElement) {
           this.videocontrols.setAttribute("inDOMFullscreen", true);
+        }
+
+        if (this.isAudioOnly) {
+          this.startFadeOut(this.clickToPlay, true);
         }
 
         // If the first frame hasn't loaded, kick off a throbber fade-in.
@@ -705,23 +708,11 @@ this.VideoControlsImplWidget = class {
         }
       },
 
-      autoDisappearPanel() {
-        this.startFadeIn(this.controlBar);
-        this.window.clearTimeout(this._hideControlsTimeout);
-        this._hideControlsTimeout = this.window.setTimeout(
-          () => this._hideControlsFn(),
-          this.HIDE_CONTROLS_TIMEOUT_MS
-        );
-      },
-
       handleVideoEvent(aEvent) {
         switch (aEvent.type) {
           case "play":
             this.setPlayButtonState(false);
             this.setupStatusFader();
-            if (!this.isAudioOnly) {
-              this.autoDisappearPanel();
-            }
             if (
               !this._triggeredByControls &&
               this.dynamicControls &&
@@ -735,15 +726,12 @@ this.VideoControlsImplWidget = class {
             this._triggeredByControls = false;
             break;
           case "pause":
-            this.setupStatusFader();
-            if (!this.isAudioOnly) {
-              this.autoDisappearPanel();
-            }
             // Little white lie: if we've internally paused the video
             // while dragging the scrubber, don't change the button state.
             if (!this.scrubber.isDragging) {
               this.setPlayButtonState(true);
             }
+            this.setupStatusFader();
             break;
           case "ended":
             this.setPlayButtonState(true);
@@ -762,7 +750,12 @@ this.VideoControlsImplWidget = class {
             // but only if the click-to-play overlay has already
             // been hidden (we don't hide controls when the overlay is visible).
             if (this.clickToPlay.hidden && !this.isAudioOnly) {
-              this.autoDisappearPanel();
+              this.startFadeIn(this.controlBar);
+              this.window.clearTimeout(this._hideControlsTimeout);
+              this._hideControlsTimeout = this.window.setTimeout(
+                () => this._hideControlsFn(),
+                this.HIDE_CONTROLS_TIMEOUT_MS
+              );
             }
             break;
           case "loadedmetadata":
@@ -1369,9 +1362,7 @@ this.VideoControlsImplWidget = class {
           this._controlsHiddenByTimeout = true;
         }
       },
-
-      // Video controller should auto disappear after 5sec timeout(refer to v2.5)
-      HIDE_CONTROLS_TIMEOUT_MS: 5000,
+      HIDE_CONTROLS_TIMEOUT_MS: 2000,
 
       // By "Video" we actually mean the video controls container,
       // because we don't want to consider the padding of <video> added
@@ -1400,15 +1391,6 @@ this.VideoControlsImplWidget = class {
       },
 
       onMouseMove(event) {
-        // Always show video controller when playing audio file
-        if (
-          (!this.isAudioOnly && !this.video.mozHasAudio) ||
-          this.isAudioOnly ||
-          !this.video.mozHasAudio
-        ) {
-          return;
-        }
-
         // If the controls are static, don't change anything.
         if (!this.dynamicControls) {
           return;
@@ -1713,22 +1695,12 @@ this.VideoControlsImplWidget = class {
       },
 
       setFullscreenButtonState() {
-        if (this.isAudioOnly) {
-          this.fullscreenButton.setAttribute("masking", true);
-          this.controlBar.removeAttribute("fullscreen-unavailable");
-          this.adjustControlSize();
-          return;
-        }
-
-        if (!this.document.fullscreenEnabled) {
+        if (this.isAudioOnly || !this.document.fullscreenEnabled) {
           this.controlBar.setAttribute("fullscreen-unavailable", true);
-          this.fullscreenButton.removeAttribute("masking");
           this.adjustControlSize();
           return;
         }
-
         this.controlBar.removeAttribute("fullscreen-unavailable");
-        this.fullscreenButton.removeAttribute("masking");
         this.adjustControlSize();
 
         var id = this.isVideoInFullScreen
@@ -1862,38 +1834,12 @@ this.VideoControlsImplWidget = class {
       },
 
       keyboardVolumeDecrease() {
-        const controlOverride = this.prefs[
-          "media.videocontrols.volume-control-override"
-        ];
-        if (controlOverride) {
-          this.window.dispatchEvent(
-            new this.window.CustomEvent("audiovolumecontroloverride", {
-              detail: "AudioVolumeDown",
-            })
-          );
-          return;
-        }
-        // otherwise fallback to default control.
-
         const oldval = this.video.volume;
         this.video.volume = oldval < 0.1 ? 0 : oldval - 0.1;
         this.video.muted = false;
       },
 
       keyboardVolumeIncrease() {
-        const controlOverride = this.prefs[
-          "media.videocontrols.volume-control-override"
-        ];
-        if (controlOverride) {
-          this.window.dispatchEvent(
-            new this.window.CustomEvent("audiovolumecontroloverride", {
-              detail: "AudioVolumeUp",
-            })
-          );
-          return;
-        }
-        // otherwise fallback to default control.
-
         const oldval = this.video.volume;
         this.video.volume = oldval > 0.9 ? 1 : oldval + 0.1;
         this.video.muted = false;
@@ -1970,15 +1916,7 @@ this.VideoControlsImplWidget = class {
           const allTabbable = this.prefs[
             "media.videocontrols.keyboard-tab-to-all-controls"
           ];
-          const enterToTogglePause = this.prefs[
-            "media.videocontrols.keyboard-enter-to-toggle-pause"
-          ];
           switch (keystroke) {
-            case "Enter":
-              if (!enterToTogglePause) {
-                break;
-              }
-            // fallthrough
             case "Space" /* Play */:
               if (target.localName === "button" && !target.disabled) {
                 break;
@@ -2446,8 +2384,10 @@ this.VideoControlsImplWidget = class {
           (this.isAudioOnly
             ? this.reflowedDimensions.videocontrolsWidth
             : this.reflowedDimensions.videoWidth) || minRequiredWidth;
+        let videoHeight = this.isAudioOnly
+          ? this.controlBarMinHeight
+          : givenHeight;
         let videocontrolsWidth = this.reflowedDimensions.videocontrolsWidth;
-        let videoHeight = this.isAudioOnly ? CONTROL_PANEL_HEIGHT : givenHeight;
 
         let widthUsed = minControlBarPaddingWidth;
         let preventAppendControl = false;
@@ -2489,8 +2429,13 @@ this.VideoControlsImplWidget = class {
         // should fix the dimensions in order not to recursively trigger reflow afterwards.
         if (this.isAudioTag) {
           if (givenHeight) {
-            this.controlBar.style.height = `${videoHeight}px`;
-            return;
+            // The height of controlBar should be capped with the bounds between controlBarMinHeight
+            // and controlBarMinVisibleHeight.
+            let controlBarHeight = Math.max(
+              Math.min(givenHeight, this.controlBarMinHeight),
+              this.controlBarMinVisibleHeight
+            );
+            this.controlBar.style.height = `${controlBarHeight}px`;
           }
           // Bug 1367875: Set minimum required width to controlBar if the given size is smaller than padding.
           // This can help us expand the control and restore to the default size the next time we need
@@ -2500,6 +2445,7 @@ this.VideoControlsImplWidget = class {
           } else {
             this.controlBar.style.width = `${videoWidth}px`;
           }
+          return;
         }
 
         if (
@@ -2610,7 +2556,7 @@ this.VideoControlsImplWidget = class {
           "pictureInPictureToggle"
         );
 
-        let isMobile = this.window.navigator.appVersion.includes("Android");
+        let isMobile = this.window.navigator.userAgent.includes("Mobile");
         if (isMobile) {
           this.controlsContainer.classList.add("mobile");
         }
@@ -2622,7 +2568,7 @@ this.VideoControlsImplWidget = class {
         }
 
         // XXX: Calling getComputedStyle() here by itself doesn't cause any reflow,
-        // but there is no guard preventing accessing any properties and methods
+        // but there is no guard proventing accessing any properties and methods
         // of this saved CSSStyleDeclaration instance that could trigger reflow.
         this.controlBarComputedStyles = this.window.getComputedStyle(
           this.controlBar
@@ -2879,6 +2825,7 @@ this.VideoControlsImplWidget = class {
     let parserDoc = parser.parseFromString(
       `<div class="videocontrols" xmlns="http://www.w3.org/1999/xhtml" role="none">
         <link rel="stylesheet" href="chrome://global/skin/media/videocontrols.css" />
+        <link rel="stylesheet" href="chrome://global/skin/media/pipToggle.css" />
 
         <div id="controlsContainer" class="controlsContainer" role="none">
           <div id="statusOverlay" class="statusOverlay stackItem" hidden="true">
@@ -3027,6 +2974,7 @@ this.NoControlsMobileImplWidget = class {
     this.element = shadowRoot.host;
     this.document = this.element.ownerDocument;
     this.window = this.document.defaultView;
+    this.window.console.log(`isMobile NoControlsMobileImplWidget`);
   }
 
   onsetup(direction) {
@@ -3117,7 +3065,7 @@ this.NoControlsMobileImplWidget = class {
           "controlsContainer"
         );
 
-        let isMobile = this.window.navigator.appVersion.includes("Android");
+        let isMobile = this.window.navigator.userAgent.includes("Mobile");
         if (isMobile) {
           this.controlsContainer.classList.add("mobile");
         }
@@ -3394,6 +3342,7 @@ this.NoControlsDesktopImplWidget = class {
     let parserDoc = parser.parseFromString(
       `<div class="videocontrols" xmlns="http://www.w3.org/1999/xhtml" role="none">
         <link rel="stylesheet" href="chrome://global/skin/media/videocontrols.css" />
+        <link rel="stylesheet" href="chrome://global/skin/media/pipToggle.css" />
 
         <div id="controlsContainer" class="controlsContainer" role="none">
           <div class="controlsOverlay stackItem">

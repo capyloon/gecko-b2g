@@ -1,6 +1,168 @@
 {
   "data": [
     {
+      "schema": 1679518190665,
+      "derHash": "uLGLq6y2qU6r5pKMa6z09qLYQjXX+GZIa194RHO+cIw=",
+      "subject": "CN=CATrust ECC DV SSL CA,O=Zhejiang Xinya Network Technology Co.\\, Ltd.,C=CN",
+      "subjectDN": "MGMxCzAJBgNVBAYTAkNOMTQwMgYDVQQKEytaaGVqaWFuZyBYaW55YSBOZXR3b3JrIFRlY2hub2xvZ3kgQ28uLCBMdGQuMR4wHAYDVQQDExVDQVRydXN0IEVDQyBEViBTU0wgQ0E=",
+      "whitelist": false,
+      "attachment": {
+        "hash": "2ab6599fd3c8df213b615d6d3adaac51b5dd5ab735e95d8920d82f75d82bafc7",
+        "size": 1268,
+        "filename": "3UyXjiYjrNvUOYfp8OLu2PTkIolV-fC0_CEKjYqPo8U=.pem",
+        "location": "security-state-staging/intermediates/42de34a5-6028-49ac-ad65-66dd57d6e252.pem",
+        "mimetype": "application/x-pem-file"
+      },
+      "pubKeyHash": "3UyXjiYjrNvUOYfp8OLu2PTkIolV+fC0/CEKjYqPo8U=",
+      "crlite_enrolled": false,
+      "id": "f446d9cb-98b5-4366-981c-641d30e22c9d",
+      "last_modified": 1679518623586
+    },
+    {
+      "schema": 1679518189726,
+      "derHash": "aZeihYStCsZhkTbivB+pxjHKMCS4KEKU4m/OM2vlQcM=",
+      "subject": "CN=CATrust RSA OV SSL CA,O=Zhejiang Xinya Network Technology Co.\\, Ltd.,C=CN",
+      "subjectDN": "MGMxCzAJBgNVBAYTAkNOMTQwMgYDVQQKEytaaGVqaWFuZyBYaW55YSBOZXR3b3JrIFRlY2hub2xvZ3kgQ28uLCBMdGQuMR4wHAYDVQQDExVDQVRydXN0IFJTQSBPViBTU0wgQ0E=",
+      "whitelist": false,
+      "attachment": {
+        "hash": "c50626a2bf256c4f795c7546f7c51cc388150ec1253e5b17c5822c4e348a36d8",
+        "size": 2284,
+        "filename": "v6XOiEkxQzkn7SEb0Q2LQaZ0gtWNS8AnXawpcfDPS60=.pem",
+        "location": "security-state-staging/intermediates/95162acb-3cc8-4551-883d-e2e3116b7a77.pem",
+        "mimetype": "application/x-pem-file"
+      },
+      "pubKeyHash": "v6XOiEkxQzkn7SEb0Q2LQaZ0gtWNS8AnXawpcfDPS60=",
+      "crlite_enrolled": false,
+      "id": "6a472d8a-b1a2-4dea-a336-15de8f5e3e00",
+      "last_modified": 1679518623577
+    },
+    {
+      "schema": 1679518188768,
+      "derHash": "JuHhe1efUd4DIEUhttZzI8l7DzUemSPFqo5/Mz+atI4=",
+      "subject": "CN=CATrust RSA EV SSL CA,O=Zhejiang Xinya Network Technology Co.\\, Ltd.,C=CN",
+      "subjectDN": "MGMxCzAJBgNVBAYTAkNOMTQwMgYDVQQKEytaaGVqaWFuZyBYaW55YSBOZXR3b3JrIFRlY2hub2xvZ3kgQ28uLCBMdGQuMR4wHAYDVQQDExVDQVRydXN0IFJTQSBFViBTU0wgQ0E=",
+      "whitelist": false,
+      "attachment": {
+        "hash": "e0b60ed6235c7c1b2e6a29c91630c277016d26759c1fac2990ec71ed1f76c672",
+        "size": 2272,
+        "filename": "BtUPHcjEELm-QnFyE15TdkdlQOavUDnjajRQcWpYsl0=.pem",
+        "location": "security-state-staging/intermediates/27cd65f3-81c0-4ac3-a394-2ba20dda0ca1.pem",
+        "mimetype": "application/x-pem-file"
+      },
+      "pubKeyHash": "BtUPHcjEELm+QnFyE15TdkdlQOavUDnjajRQcWpYsl0=",
+      "crlite_enrolled": false,
+      "id": "e33f5591-6c13-4223-a468-b530f7cd851e",
+      "last_modified": 1679518623567
+    },
+    {
+      "schema": 1679518187835,
+      "derHash": "iYxEvueLFjTI1YBwCjgUa59YCeswcDQivLNfQE5qEOw=",
+      "subject": "CN=CATrust ECC EV SSL CA,O=Zhejiang Xinya Network Technology Co.\\, Ltd.,C=CN",
+      "subjectDN": "MGMxCzAJBgNVBAYTAkNOMTQwMgYDVQQKEytaaGVqaWFuZyBYaW55YSBOZXR3b3JrIFRlY2hub2xvZ3kgQ28uLCBMdGQuMR4wHAYDVQQDExVDQVRydXN0IEVDQyBFViBTU0wgQ0E=",
+      "whitelist": false,
+      "attachment": {
+        "hash": "da5540304b11677882ea6ae0ec717e4b5e57af19c621241695957f1a715d3cfd",
+        "size": 1260,
+        "filename": "hIyspf1ZWyfmS7ZOEhBNhGHOU6RFe3xq6HrgMqSZ30U=.pem",
+        "location": "security-state-staging/intermediates/716326ca-2ca9-412a-a186-4908fab9e555.pem",
+        "mimetype": "application/x-pem-file"
+      },
+      "pubKeyHash": "hIyspf1ZWyfmS7ZOEhBNhGHOU6RFe3xq6HrgMqSZ30U=",
+      "crlite_enrolled": false,
+      "id": "198baa50-bb6f-4745-b605-6b4e0d4d3282",
+      "last_modified": 1679518623557
+    },
+    {
+      "schema": 1679518186919,
+      "derHash": "wfeN/0sT1kyxCe6yrfxLFkAM9Y6MCF+pVHLKUWVZBNw=",
+      "subject": "CN=CATrust ECC OV SSL CA,O=Zhejiang Xinya Network Technology Co.\\, Ltd.,C=CN",
+      "subjectDN": "MGMxCzAJBgNVBAYTAkNOMTQwMgYDVQQKEytaaGVqaWFuZyBYaW55YSBOZXR3b3JrIFRlY2hub2xvZ3kgQ28uLCBMdGQuMR4wHAYDVQQDExVDQVRydXN0IEVDQyBPViBTU0wgQ0E=",
+      "whitelist": false,
+      "attachment": {
+        "hash": "3bece7a6b82fa63353dc9b8f92d4246e6b4aa212220b446d2f0e1600baf82e04",
+        "size": 1268,
+        "filename": "dTVBbobQ2Ok-sZMKOKt0n9iYoBl2bqIUEkZMIKpowiU=.pem",
+        "location": "security-state-staging/intermediates/a0db7a14-88b2-49fb-8ce0-fad4acb30896.pem",
+        "mimetype": "application/x-pem-file"
+      },
+      "pubKeyHash": "dTVBbobQ2Ok+sZMKOKt0n9iYoBl2bqIUEkZMIKpowiU=",
+      "crlite_enrolled": false,
+      "id": "2fd47a56-dee1-4852-bb55-c48b9c9dca1a",
+      "last_modified": 1679518623547
+    },
+    {
+      "schema": 1679518185972,
+      "derHash": "KSX5m593b4QdC0wJoH8KNsEH8JN2Eeg+AHpxLkt+xzU=",
+      "subject": "CN=GZCA ECC DV SSL CA,O=Guizhou Electronic Certification Technology Co.\\, Ltd.,C=CN",
+      "subjectDN": "MGoxCzAJBgNVBAYTAkNOMT4wPAYDVQQKEzVHdWl6aG91IEVsZWN0cm9uaWMgQ2VydGlmaWNhdGlvbiBUZWNobm9sb2d5IENvLiwgTHRkLjEbMBkGA1UEAxMSR1pDQSBFQ0MgRFYgU1NMIENB",
+      "whitelist": false,
+      "attachment": {
+        "hash": "20ba25c049bb6275e2df1411c3b57caf370ace54bbb113a9009b68ce9c14fa39",
+        "size": 1276,
+        "filename": "b_IMNNNv_FTbv-C7MMHsmjCkXCfwDWOhmqEFl5il9W0=.pem",
+        "location": "security-state-staging/intermediates/8d552c15-b5f4-449d-b02a-a6b7154bb03c.pem",
+        "mimetype": "application/x-pem-file"
+      },
+      "pubKeyHash": "b/IMNNNv/FTbv+C7MMHsmjCkXCfwDWOhmqEFl5il9W0=",
+      "crlite_enrolled": false,
+      "id": "40c3d218-9465-4338-9925-2c0c2b467776",
+      "last_modified": 1679518623537
+    },
+    {
+      "schema": 1679518185013,
+      "derHash": "UPFoRh2Kvz0E5Uvs0AlkXQtxxJ/fVh4NjUOtkAXH+MQ=",
+      "subject": "CN=CATrust RSA DV SSL CA,O=Zhejiang Xinya Network Technology Co.\\, Ltd.,C=CN",
+      "subjectDN": "MGMxCzAJBgNVBAYTAkNOMTQwMgYDVQQKEytaaGVqaWFuZyBYaW55YSBOZXR3b3JrIFRlY2hub2xvZ3kgQ28uLCBMdGQuMR4wHAYDVQQDExVDQVRydXN0IFJTQSBEViBTU0wgQ0E=",
+      "whitelist": false,
+      "attachment": {
+        "hash": "acd1f4f34a78e8e0484ee2f961ef7598795e43a6bfe7c316a4a21d194123ad17",
+        "size": 2280,
+        "filename": "N7vnsahv1k49T5Q2aUOGwPQQO7vC3fd1R6bOSKLtzco=.pem",
+        "location": "security-state-staging/intermediates/9c173173-2fdc-4b67-b5c8-1b8d4afbcc07.pem",
+        "mimetype": "application/x-pem-file"
+      },
+      "pubKeyHash": "N7vnsahv1k49T5Q2aUOGwPQQO7vC3fd1R6bOSKLtzco=",
+      "crlite_enrolled": false,
+      "id": "2014a9a5-bf50-429b-92e1-751d01acc3e9",
+      "last_modified": 1679518623527
+    },
+    {
+      "schema": 1679496492018,
+      "derHash": "LhmMIn+T+c+W97ihmG9llzVQLJVkB9s28NSj1gH0JHI=",
+      "subject": "CN=cyber_Folks,O=cyber_Folks S.A.,C=PL",
+      "subjectDN": "MD4xCzAJBgNVBAYTAlBMMRkwFwYDVQQKDBBjeWJlcl9Gb2xrcyBTLkEuMRQwEgYDVQQDDAtjeWJlcl9Gb2xrcw==",
+      "whitelist": false,
+      "attachment": {
+        "hash": "af7452cf60f895407cabded55c5f101c501466461b80c9552ae1d72d1ca49017",
+        "size": 1703,
+        "filename": "shhKME0KxqZQ2wHqxgxToMHmEKhynXo_W0VCw1DIHRU=.pem",
+        "location": "security-state-staging/intermediates/9eb81bcd-faf9-49a0-910e-d37386c11aec.pem",
+        "mimetype": "application/x-pem-file"
+      },
+      "pubKeyHash": "shhKME0KxqZQ2wHqxgxToMHmEKhynXo/W0VCw1DIHRU=",
+      "crlite_enrolled": false,
+      "id": "2da2da44-5d5f-4bbe-9515-f533a291ad43",
+      "last_modified": 1679497023553
+    },
+    {
+      "schema": 1679348884403,
+      "derHash": "/jy+2DjTC6uQAYTB8hpLJ9MhHLXJJX1+mFwq5DrGqJ8=",
+      "subject": "CN=DigiCert QuoVadis G3 Qualified TLS RSA4096 SHA256 2023 CA1,O=QuoVadis Trustlink B.V.,C=NL",
+      "subjectDN": "MIGNMQswCQYDVQQGEwJOTDEgMB4GA1UECgwXUXVvVmFkaXMgVHJ1c3RsaW5rIEIuVi4xFzAVBgNVBGEMDk5UUk5MLTMwMjM3NDU5MUMwQQYDVQQDDDpEaWdpQ2VydCBRdW9WYWRpcyBHMyBRdWFsaWZpZWQgVExTIFJTQTQwOTYgU0hBMjU2IDIwMjMgQ0Ex",
+      "whitelist": false,
+      "attachment": {
+        "hash": "86aebbb76a7e4b04ea41677c2df013545eb98d7452e87bb68bcb48b1c1fbf0a1",
+        "size": 2548,
+        "filename": "YubuyclU_SovUNMJEaROc1k7BuMker87y_5vmVN7WpI=.pem",
+        "location": "security-state-staging/intermediates/acc32d68-3a01-4913-aebb-4ab3cd246e71.pem",
+        "mimetype": "application/x-pem-file"
+      },
+      "pubKeyHash": "YubuyclU/SovUNMJEaROc1k7BuMker87y/5vmVN7WpI=",
+      "crlite_enrolled": false,
+      "id": "c0049371-5f14-47b1-8279-402e553cb17c",
+      "last_modified": 1679349423384
+    },
+    {
       "schema": 1677228491917,
       "derHash": "KuBib5pD7bKwoi1BDrBsSC75glY6cXokcofFBNeb+YA=",
       "subject": "CN=Vitalwerks Internet Solutions\\, No-IP TLS ICA,O=Vitalwerks Internet Solutions\\, LLC,C=US",
@@ -3781,78 +3943,6 @@
       "last_modified": 1666727873549
     },
     {
-      "schema": 1666727352149,
-      "derHash": "znrcGXdXpS5pogFMzgPZgGMlAnZHQsKSPXOAVo4hAKY=",
-      "subject": "CN=E-Tugra Extended Validated CA,OU=E-Tuğra Sertifikasyon Merkezi,O=E-Tuğra EBG Bilişim Teknolojileri ve Hizmetleri A.Ş.,L=Ankara,C=TR",
-      "subjectDN": "MIGxMQswCQYDVQQGEwJUUjEPMA0GA1UEBwwGQW5rYXJhMUAwPgYDVQQKDDdFLVR1xJ9yYSBFQkcgQmlsacWfaW0gVGVrbm9sb2ppbGVyaSB2ZSBIaXptZXRsZXJpIEEuxZ4uMScwJQYDVQQLDB5FLVR1xJ9yYSBTZXJ0aWZpa2FzeW9uIE1lcmtlemkxJjAkBgNVBAMMHUUtVHVncmEgRXh0ZW5kZWQgVmFsaWRhdGVkIENB",
-      "whitelist": false,
-      "attachment": {
-        "hash": "12ff7eb3fc7ad0d030464cfca8808d4239fab2f60c03f47a3f76ec1c962d10f8",
-        "size": 2296,
-        "filename": "CbsSUO015uoyaPW3UoozNFDyIZuKJooRSCguLZLEHjg=.pem",
-        "location": "security-state-staging/intermediates/b4924736-081c-4006-83d9-18747abe70b7.pem",
-        "mimetype": "application/x-pem-file"
-      },
-      "pubKeyHash": "CbsSUO015uoyaPW3UoozNFDyIZuKJooRSCguLZLEHjg=",
-      "crlite_enrolled": false,
-      "id": "7c935540-4c03-4352-b768-16756b45aed8",
-      "last_modified": 1666727873533
-    },
-    {
-      "schema": 1666727403051,
-      "derHash": "y2/O5BxV4kd03wK+Nd5tQY6U71gR99sTc6+ICc9wfyo=",
-      "subject": "CN=E-Tugra Domain Validated CA,OU=E-Tuğra Sertifikasyon Merkezi,O=E-Tuğra EBG Bilişim Teknolojileri ve Hizmetleri A.Ş.,L=Ankara,C=TR",
-      "subjectDN": "MIGvMQswCQYDVQQGEwJUUjEPMA0GA1UEBwwGQW5rYXJhMUAwPgYDVQQKDDdFLVR1xJ9yYSBFQkcgQmlsacWfaW0gVGVrbm9sb2ppbGVyaSB2ZSBIaXptZXRsZXJpIEEuxZ4uMScwJQYDVQQLDB5FLVR1xJ9yYSBTZXJ0aWZpa2FzeW9uIE1lcmtlemkxJDAiBgNVBAMMG0UtVHVncmEgRG9tYWluIFZhbGlkYXRlZCBDQQ==",
-      "whitelist": false,
-      "attachment": {
-        "hash": "c6b2887b29d06c3a32442bacd3087e92f206a5fa698d64deded68c4d8bb5d347",
-        "size": 2296,
-        "filename": "DReMCzHTvlRp8z0vjOXH2lx0lpHIz5iXick53RZbRT8=.pem",
-        "location": "security-state-staging/intermediates/570f1b75-429e-4c79-b0e9-d7653e227ce7.pem",
-        "mimetype": "application/x-pem-file"
-      },
-      "pubKeyHash": "DReMCzHTvlRp8z0vjOXH2lx0lpHIz5iXick53RZbRT8=",
-      "crlite_enrolled": false,
-      "id": "feefbefd-6161-49d5-84fd-5b09c850c80c",
-      "last_modified": 1666727873519
-    },
-    {
-      "schema": 1666727403562,
-      "derHash": "EUdT6I0ADnWZYVqZB+Jrc7bYUTF/8rJ6yp24/FBWkqc=",
-      "subject": "CN=E-Tugra Organization Validated CA,OU=E-Tuğra Sertifikasyon Merkezi,O=E-Tuğra EBG Bilişim Teknolojileri ve Hizmetleri A.Ş.,L=Ankara,C=TR",
-      "subjectDN": "MIG1MQswCQYDVQQGEwJUUjEPMA0GA1UEBwwGQW5rYXJhMUAwPgYDVQQKDDdFLVR1xJ9yYSBFQkcgQmlsacWfaW0gVGVrbm9sb2ppbGVyaSB2ZSBIaXptZXRsZXJpIEEuxZ4uMScwJQYDVQQLDB5FLVR1xJ9yYSBTZXJ0aWZpa2FzeW9uIE1lcmtlemkxKjAoBgNVBAMMIUUtVHVncmEgT3JnYW5pemF0aW9uIFZhbGlkYXRlZCBDQQ==",
-      "whitelist": false,
-      "attachment": {
-        "hash": "c20540a909d14bde73c51dde53da2ff3fea4d75a0c875924065198ab7de00da3",
-        "size": 2304,
-        "filename": "2C9V2-VZ5v93wYg0HupOPel5wBqM8YEDtTLQWSkHjis=.pem",
-        "location": "security-state-staging/intermediates/375b6c2a-70ea-49da-8638-9e7de1fc7e9b.pem",
-        "mimetype": "application/x-pem-file"
-      },
-      "pubKeyHash": "2C9V2+VZ5v93wYg0HupOPel5wBqM8YEDtTLQWSkHjis=",
-      "crlite_enrolled": false,
-      "id": "14fdc6a9-ae04-401c-9371-d01b4bbb58b9",
-      "last_modified": 1666727873505
-    },
-    {
-      "schema": 1666727362047,
-      "derHash": "PtCuZ6FDLIPYIQHeabLuXn8gMCcJ2VeQc6MC2pD0hTM=",
-      "subject": "CN=TrustSafe Domain Validated CA,OU=SSL Department,O=Isimtescil Bilisim Anonim Sirketi,L=Istanbul,C=TR",
-      "subjectDN": "MIGNMQswCQYDVQQGEwJUUjERMA8GA1UEBwwISXN0YW5idWwxKjAoBgNVBAoMIUlzaW10ZXNjaWwgQmlsaXNpbSBBbm9uaW0gU2lya2V0aTEXMBUGA1UECwwOU1NMIERlcGFydG1lbnQxJjAkBgNVBAMMHVRydXN0U2FmZSBEb21haW4gVmFsaWRhdGVkIENB",
-      "whitelist": false,
-      "attachment": {
-        "hash": "748834790eb69db784c3f00d7f2ef2b64cf353435e5de3e69ac4ca2c81299276",
-        "size": 2247,
-        "filename": "90w8QxLDw7OA3WHogRdF8WutmwS2zB2cr21T0-Sun5o=.pem",
-        "location": "security-state-staging/intermediates/32d1002c-6eee-400e-a7ec-8b0235165445.pem",
-        "mimetype": "application/x-pem-file"
-      },
-      "pubKeyHash": "90w8QxLDw7OA3WHogRdF8WutmwS2zB2cr21T0+Sun5o=",
-      "crlite_enrolled": false,
-      "id": "29a0cb2e-7719-4c2f-9360-00c82a4a3c72",
-      "last_modified": 1666727873491
-    },
-    {
       "schema": 1666727435278,
       "derHash": "YoSgO6+uhhow46JaAwQoMG9+tSvQuld6HZYqgJqDDJ4=",
       "subject": "CN=NetLock Minősített Eat. (Class Q Legal) Tanúsítványkiadó,OU=Tanúsítványkiadók (Certification Services),O=NetLock Kft.,L=Budapest,C=HU",
@@ -5219,24 +5309,6 @@
       "crlite_enrolled": false,
       "id": "1944c7f1-bf0e-4729-a9ec-68ff7ce41381",
       "last_modified": 1666727872407
-    },
-    {
-      "schema": 1666727433888,
-      "derHash": "iegKPtct9z5Y2yN0Tiyj7LwiX3UKYda+JoEk98leRls=",
-      "subject": "CN=TrustSafe Organization Validated CA,OU=SSL Department,O=Isimtescil Bilisim Anonim Sirketi,L=Istanbul,C=TR",
-      "subjectDN": "MIGTMQswCQYDVQQGEwJUUjERMA8GA1UEBwwISXN0YW5idWwxKjAoBgNVBAoMIUlzaW10ZXNjaWwgQmlsaXNpbSBBbm9uaW0gU2lya2V0aTEXMBUGA1UECwwOU1NMIERlcGFydG1lbnQxLDAqBgNVBAMMI1RydXN0U2FmZSBPcmdhbml6YXRpb24gVmFsaWRhdGVkIENB",
-      "whitelist": false,
-      "attachment": {
-        "hash": "741eb73cef38e441d495e385775b23b7e66578c11dcfd91591514ce55e8d824d",
-        "size": 2255,
-        "filename": "F8P6yRGn6PHOPi3LHmd5_Awd3GeSxMlyfUhUwxtVaoU=.pem",
-        "location": "security-state-staging/intermediates/28295eb2-0fa4-40e0-b2af-e05ece3ff066.pem",
-        "mimetype": "application/x-pem-file"
-      },
-      "pubKeyHash": "F8P6yRGn6PHOPi3LHmd5/Awd3GeSxMlyfUhUwxtVaoU=",
-      "crlite_enrolled": false,
-      "id": "80b7ece4-c29e-4494-ad88-0dd9d4fd72bc",
-      "last_modified": 1666727872394
     },
     {
       "schema": 1666727374976,
@@ -12817,24 +12889,6 @@
       "last_modified": 1666727866353
     },
     {
-      "schema": 1666727422744,
-      "derHash": "FUxDPEkZKcXvaG6DjjI2ZKAOag2CLMyVj7TasD5JoI8=",
-      "subject": "CN=DigiCert SHA2 Secure Server CA,O=DigiCert Inc,C=US",
-      "subjectDN": "ME0xCzAJBgNVBAYTAlVTMRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxJzAlBgNVBAMTHkRpZ2lDZXJ0IFNIQTIgU2VjdXJlIFNlcnZlciBDQQ==",
-      "whitelist": false,
-      "attachment": {
-        "hash": "2243aecd6936cfcb0b2508e8f42b06f31a4950982b0c91e3d4965cdd8da03fb4",
-        "size": 1646,
-        "filename": "5kJvNEMw0KjrCAu7eXY5HZdvyCS13BbA0VJG1RSP91w=.pem",
-        "location": "security-state-staging/intermediates/17691b06-48fb-4385-a9ab-05f0ad126518.pem",
-        "mimetype": "application/x-pem-file"
-      },
-      "pubKeyHash": "5kJvNEMw0KjrCAu7eXY5HZdvyCS13BbA0VJG1RSP91w=",
-      "crlite_enrolled": false,
-      "id": "987746d9-41a0-4c53-a6d5-6d8cab9cb559",
-      "last_modified": 1666727866339
-    },
-    {
       "schema": 1666727330386,
       "derHash": "l6BzlXxYEnJXV2cvIiaQZVoUB9cQEe38iy+txRKJEdo=",
       "subject": "CN=DigiCert G5 TLS ECC SHA384 2021 CA1,O=DigiCert\\, Inc.,C=US",
@@ -13643,24 +13697,6 @@
       "crlite_enrolled": false,
       "id": "f1968ec8-bf26-495e-99a2-2fa3c73f81e6",
       "last_modified": 1666727865652
-    },
-    {
-      "schema": 1666727424777,
-      "derHash": "RYRGunXZMukU8jwrV7fRku3bwhgdlY4Rga1SUXR6Hug=",
-      "subject": "CN=DigiCert ECC Secure Server CA,O=DigiCert Inc,C=US",
-      "subjectDN": "MEwxCzAJBgNVBAYTAlVTMRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxJjAkBgNVBAMTHURpZ2lDZXJ0IEVDQyBTZWN1cmUgU2VydmVyIENB",
-      "whitelist": false,
-      "attachment": {
-        "hash": "a08faded51b3b3920af25497e34885fc9fd376487470bebe6e0fd0db256b786a",
-        "size": 1333,
-        "filename": "PZXN3lRAy-8tBKk2Ox6F7jIlnzr2Yzmwqc3JnyfXoCw=.pem",
-        "location": "security-state-staging/intermediates/7f8f54d6-880c-4f5e-90c5-43950f09297f.pem",
-        "mimetype": "application/x-pem-file"
-      },
-      "pubKeyHash": "PZXN3lRAy+8tBKk2Ox6F7jIlnzr2Yzmwqc3JnyfXoCw=",
-      "crlite_enrolled": false,
-      "id": "bb0f20bc-ccc7-4c44-bd16-0b2a94e64928",
-      "last_modified": 1666727865640
     },
     {
       "schema": 1666727432527,
@@ -16073,24 +16109,6 @@
       "crlite_enrolled": false,
       "id": "e5406e58-cea2-4e83-bf5b-5707b41137af",
       "last_modified": 1664326624918
-    },
-    {
-      "schema": 1664326193930,
-      "derHash": "lNTs4u2aVFe5aaE7JgSJ6aX+R5CgQfJ6PrQSbIRBjvk=",
-      "subject": "CN=DigiCert Secure Server CA,O=DigiCert Inc,C=US",
-      "subjectDN": "MEgxCzAJBgNVBAYTAlVTMRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxIjAgBgNVBAMTGURpZ2lDZXJ0IFNlY3VyZSBTZXJ2ZXIgQ0E=",
-      "whitelist": false,
-      "attachment": {
-        "hash": "bec9cb08be3aa288fb4998e6e9c6dc9b1663aa11bdbb71f81585d4a5a2b0b828",
-        "size": 1642,
-        "filename": "v2OX1FzmsvhGRs3vKv7P5R4N-Aly9A_qKXxfEauTwao=.pem",
-        "location": "security-state-staging/intermediates/bf9b04aa-1962-494b-b2f3-412c59ec9e7d.pem",
-        "mimetype": "application/x-pem-file"
-      },
-      "pubKeyHash": "v2OX1FzmsvhGRs3vKv7P5R4N+Aly9A/qKXxfEauTwao=",
-      "crlite_enrolled": false,
-      "id": "9d6a47bb-9ab0-4f77-b52f-493e7af27c1e",
-      "last_modified": 1664326624895
     },
     {
       "schema": 1664326193057,
@@ -27451,5 +27469,5 @@
       "last_modified": 1559865863642
     }
   ],
-  "timestamp": 1677229023629
+  "timestamp": 1679518623586
 }

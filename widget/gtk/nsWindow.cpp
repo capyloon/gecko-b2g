@@ -2401,13 +2401,15 @@ nsWindow::WaylandPopupGetPositionFromLayout() {
 
   const bool isTopContextMenu = mPopupContextMenu && !mPopupAnchored;
   const bool isRTL = IsPopupDirectionRTL();
-  int8_t popupAlign(popupFrame->GetPopupAlignment());
-  int8_t anchorAlign(popupFrame->GetPopupAnchor());
-  if (isTopContextMenu) {
-    anchorAlign = POPUPALIGNMENT_BOTTOMRIGHT;
-    popupAlign = POPUPALIGNMENT_TOPLEFT;
+  const bool anchored = popupFrame->IsAnchored();
+  int8_t popupAlign = POPUPALIGNMENT_TOPLEFT;
+  int8_t anchorAlign = POPUPALIGNMENT_BOTTOMRIGHT;
+  if (anchored) {
+    // See nsMenuPopupFrame::AdjustPositionForAnchorAlign.
+    popupAlign = popupFrame->GetPopupAlignment();
+    anchorAlign = popupFrame->GetPopupAnchor();
   }
-  if (isRTL) {
+  if (isRTL && (anchored || isTopContextMenu)) {
     popupAlign = -popupAlign;
     anchorAlign = -anchorAlign;
   }
@@ -3378,17 +3380,6 @@ void* nsWindow::GetNativeData(uint32_t aDataType) {
       return mGdkWindow;
     }
 
-    case NS_NATIVE_DISPLAY: {
-#ifdef MOZ_X11
-      GdkDisplay* gdkDisplay = gdk_display_get_default();
-      if (GdkIsX11Display(gdkDisplay)) {
-        return GDK_DISPLAY_XDISPLAY(gdkDisplay);
-      }
-#endif /* MOZ_X11 */
-      // Don't bother to return native display on Wayland as it's for
-      // X11 only NPAPI plugins.
-      return nullptr;
-    }
     case NS_NATIVE_SHELLWIDGET:
       return GetToplevelWidget();
 
@@ -3719,18 +3710,15 @@ void nsWindow::CreateCompositorVsyncDispatcher() {
     nsBaseWidget::CreateCompositorVsyncDispatcher();
     return;
   }
-
-  if (XRE_IsParentProcess()) {
-    if (!mCompositorVsyncDispatcherLock) {
-      mCompositorVsyncDispatcherLock =
-          MakeUnique<Mutex>("mCompositorVsyncDispatcherLock");
-    }
-    MutexAutoLock lock(*mCompositorVsyncDispatcherLock);
-    if (!mCompositorVsyncDispatcher) {
-      LOG_VSYNC("  create CompositorVsyncDispatcher()");
-      mCompositorVsyncDispatcher =
-          new CompositorVsyncDispatcher(mWaylandVsyncDispatcher);
-    }
+  if (!mCompositorVsyncDispatcherLock) {
+    mCompositorVsyncDispatcherLock =
+        MakeUnique<Mutex>("mCompositorVsyncDispatcherLock");
+  }
+  MutexAutoLock lock(*mCompositorVsyncDispatcherLock);
+  if (!mCompositorVsyncDispatcher) {
+    LOG_VSYNC("  create CompositorVsyncDispatcher()");
+    mCompositorVsyncDispatcher =
+        new CompositorVsyncDispatcher(mWaylandVsyncDispatcher);
   }
 }
 #endif
@@ -4210,6 +4198,11 @@ void nsWindow::OnEnterNotifyEvent(GdkEventCrossing* aEvent) {
     return;
   }
 
+  if (aEvent->mode == GDK_CROSSING_GRAB ||
+      aEvent->mode == GDK_CROSSING_UNGRAB) {
+    return;
+  }
+
   // Check before checking for ungrab as the button state may have
   // changed while a non-Gecko ancestor window had a pointer grab.
   DispatchMissedButtonReleases(aEvent);
@@ -4241,6 +4234,7 @@ static bool IsBogusLeaveNotifyEvent(GdkWindow* aWindow,
     const auto& desktopEnv = GetDesktopEnvironmentIdentifier();
     return desktopEnv.EqualsLiteral("fluxbox") ||   // Bug 1805939 comment 0.
            desktopEnv.EqualsLiteral("blackbox") ||  // Bug 1805939 comment 32.
+           desktopEnv.EqualsLiteral("lg3d") ||      // Bug 1820405.
            StringBeginsWith(desktopEnv, "fvwm"_ns);
   }();
 
@@ -4287,6 +4281,11 @@ void nsWindow::OnLeaveNotifyEvent(GdkEventCrossing* aEvent) {
     return;
   }
 
+  if (aEvent->mode == GDK_CROSSING_GRAB ||
+      aEvent->mode == GDK_CROSSING_UNGRAB) {
+    return;
+  }
+
   // The filter out for subwindows should make sure that this is targeted to
   // this nsWindow.
   const bool leavingTopLevel =
@@ -4321,15 +4320,19 @@ Maybe<GdkWindowEdge> nsWindow::CheckResizerEdge(
       // we still want the resizers there, even when tiled.
       return true;
     }
-    if (mDrawInTitlebar) {
-      // If we show top resizers on a (non-PIP) tiled window on GNOME, it
-      // doesn't really work, since the window is "stuck" to the top and
-      // bottom, so don't show them in that case.
-      return !mIsTiled;
+    if (!mDrawInTitlebar) {
+      return false;
     }
-    // If we're not a PIP window nor drawing to the titlebar, we don't need to
-    // add resizers.
-    return false;
+    // On KDE, allow for 1 extra pixel at the top of regular windows when
+    // drawing to the titlebar. This matches the native titlebar behavior on
+    // that environment. See bug 1813554.
+    //
+    // Don't do that on GNOME (see bug 1822764). If we wanted to do this on
+    // GNOME we'd need an extra check for mIsTiled, since the window is "stuck"
+    // to the top and bottom.
+    //
+    // Other DEs are untested.
+    return mDrawInTitlebar && IsKdeDesktopEnvironment();
   }();
 
   if (!canResize) {
@@ -5977,8 +5980,10 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
         size.height);
     gtk_window_resize(GTK_WINDOW(mShell), size.width, size.height);
   }
-
-  if (mWindowType == WindowType::Dialog) {
+  if (mIsPIPWindow) {
+    LOG("    Is PIP Window\n");
+    gtk_window_set_type_hint(GTK_WINDOW(mShell), GDK_WINDOW_TYPE_HINT_UTILITY);
+  } else if (mWindowType == WindowType::Dialog) {
     mGtkWindowRoleName = "Dialog";
 
     SetDefaultIcon();
@@ -6077,12 +6082,6 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
     SetDefaultIcon();
 
     LOG("nsWindow::Create() Toplevel\n");
-
-    if (mIsPIPWindow) {
-      LOG("    Is PIP Window\n");
-      gtk_window_set_type_hint(GTK_WINDOW(mShell),
-                               GDK_WINDOW_TYPE_HINT_UTILITY);
-    }
 
     // each toplevel window gets its own window group
     GtkWindowGroup* group = gtk_window_group_new();
@@ -6290,8 +6289,7 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
       mWindowType == WindowType::TopLevel) {
     mWaylandVsyncSource = new WaylandVsyncSource(this);
     mWaylandVsyncDispatcher = new VsyncDispatcher(mWaylandVsyncSource);
-    LOG_VSYNC("  created WaylandVsyncSource)");
-    MOZ_RELEASE_ASSERT(mWaylandVsyncSource);
+    LOG_VSYNC("  created WaylandVsyncSource");
   }
 #endif
 
@@ -8754,6 +8752,8 @@ bool nsWindow::IsAlwaysUndecoratedWindow() const {
     return true;
   }
   if (mWindowType == WindowType::Dialog &&
+      mBorderStyle != BorderStyle::Default &&
+      mBorderStyle != BorderStyle::All &&
       !(mBorderStyle & BorderStyle::Title) &&
       !(mBorderStyle & BorderStyle::ResizeH)) {
     return true;

@@ -582,12 +582,6 @@ export class SearchEngine {
   #cachedSearchForm = null;
   // Whether or not to send an attribution request to the server.
   _sendAttributionRequest = false;
-  // The number of days between update checks for new versions
-  _updateInterval = null;
-  // The url to check at for a new update
-  _updateURL = null;
-  // The url to check for a new icon
-  _iconUpdateURL = null;
   // The extension ID if added by an extension.
   _extensionID = null;
   // The locale, or "DEFAULT", if required.
@@ -1118,9 +1112,6 @@ export class SearchEngine {
     this._queryCharset =
       json.queryCharset || lazy.SearchUtils.DEFAULT_QUERY_CHARSET;
     this.#cachedSearchForm = json.__searchForm;
-    this._updateInterval = json._updateInterval || null;
-    this._updateURL = json._updateURL || null;
-    this._iconUpdateURL = json._iconUpdateURL || null;
     this._iconURI = lazy.SearchUtils.makeURI(json._iconURL);
     this._iconMapObj = json._iconMapObj || null;
     this._metaData = json._metaData || {};
@@ -1165,9 +1156,6 @@ export class SearchEngine {
       "_urls",
       "_orderHint",
       "_telemetryId",
-      "_updateInterval",
-      "_updateURL",
-      "_iconUpdateURL",
       "_filePath",
       "_extensionID",
       "_locale",
@@ -1363,6 +1351,18 @@ export class SearchEngine {
     return this._name;
   }
 
+  /**
+   * The searchForm URL points to the engine's organic search page. This should
+   * not contain neither search term parameters nor partner codes, but may
+   * contain parameters which set the engine in the correct way.
+   *
+   * This URL is typically the prePath and filePath of the search submission URI,
+   * but may vary for different engines. For example, some engines may use a
+   * different domain, e.g. https://sub.example.com for the search URI but
+   * https://example.org/ for the organic search page.
+   *
+   * @returns {string}
+   */
   get searchForm() {
     // First look for a <Url rel="searchform">
     var searchFormURL = this._getURLOfType(

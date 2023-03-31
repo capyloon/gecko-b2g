@@ -403,14 +403,18 @@ Core: Cookies
 
     * - Owner(s)
       -
-        | `Andrea Marchesini (baku) <https://people.mozilla.org/s?query=baku>`__
+        | `Daniel Veditz (dveditz) <https://people.mozilla.org/s?query=dveditz>`__
+        | `Tim Huang (timhuang) <https://people.mozilla.org/s?query=timhuang>`__
+        | `Valentin Gosu (valentin) <https://people.mozilla.org/s?query=valentin>`__
     * - Peer(s)
       -
-        | `Honza Bambas (mayhemer) <https://people.mozilla.org/s?query=mayhemer>`__
+        | `Ed Guloien (edgul) <https://people.mozilla.org/s?query=edgul>`__
+        | `Paul Zühlcke (pbz) <https://people.mozilla.org/s?query=pbz>`__
+        | `Tom Schuster (tschuster) <https://people.mozilla.org/s?query=tschuster>`__
     * - Owner(s) Emeritus
-      - Monica Chew
+      - Monica Chew, Andrea Marchesini
     * - Peer(s) Emeritus
-      - Josh Matthews, Mike Connor, Dan Witte, Christian Biesinger, Shawn Wilsher, Ehsan Akhgari
+      - Josh Matthews, Mike Connor, Dan Witte, Christian Biesinger, Shawn Wilsher, Ehsan Akhgari, Honza Bambas
     * - Includes
       -
         | `netwerk/cookie/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=netwerk/cookie/\*\*/\*>`__
@@ -662,12 +666,14 @@ Streams Specification implementation
 
     * - Owner(s)
       -
-        | `Matthew Gaudet (mgaudet) <https://people.mozilla.org/s?query=mgaudet>`__
+        | `Kagami (saschanaz) <https://people.mozilla.org/s?query=saschanaz>`__
     * - Peer(s)
       -
         | `Olli Pettay (smaug) <https://people.mozilla.org/s?query=smaug>`__
         | `Tom S (evilpie) <https://people.mozilla.org/s?query=evilpie>`__
-        | `Kagami (saschanaz) <https://people.mozilla.org/s?query=saschanaz>`__
+        | `Matthew Gaudet (mgaudet) <https://people.mozilla.org/s?query=mgaudet>`__
+    * - Owner(s) Emeritus
+      - Matthew Gaudet
     * - Includes
       -
         | `dom/streams/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=dom/streams/\*\*/\*>`__
@@ -800,13 +806,15 @@ Framework for embedding Gecko into Android applications
 
     * - Owner(s)
       -
-        | `agi <https://people.mozilla.org/s?query=agi>`__
+        | `owlish <https://people.mozilla.org/s?query=owlish>`__
     * - Peer(s)
       -
+        | `Cathy Lu (calu) <https://people.mozilla.org/s?query=calu>`__
+        | `Jonathan Almeida (jonalmeida) <https://people.mozilla.org/s?query=jonalmeida>`__
         | `Makoto Kato (m_kato) <https://people.mozilla.org/s?query=m_kato>`__
-        | `owlish <https://people.mozilla.org/s?query=owlish>`__
+        | `Olivia Hall (ohall) <https://people.mozilla.org/s?query=ohall>`__
     * - Owner(s) Emeritus
-      - James Willcox
+      - James Willcox, Agi Sferro
     * - Peer(s) Emeritus
       - Dylan Roeh, Eugen Sawin, Aaron Klotz, Jim Chen, Randall E. Barker
     * - Includes
@@ -1977,6 +1985,8 @@ Storage APIs with a SQLite backend
       -
         | `Andrew Sutherland (asuth) <https://people.mozilla.org/s?query=asuth>`__
         | `Jan Varga (janv) <https://people.mozilla.org/s?query=janv>`__
+    * - Owner(s) Emeritus
+      - Shawn Wilsher
     * - Includes
       -
         | `third_party/sqlite3/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=third_party/sqlite3/\*\*/\*>`__
@@ -2801,8 +2811,14 @@ The bookmarks and history services (Places).
         | `Marco Bonardo (mak) <https://people.mozilla.org/s?query=mak>`__
     * - Peer(s)
       -
-        | `Mark Banner (standard8) <https://people.mozilla.org/s?query=standard8>`__
         | `Drew Willcoxon (adw) <https://people.mozilla.org/s?query=adw>`__
+        | `Daisuke Akatsuka (daisuke) <https://people.mozilla.org/s?query=daisuke>`__
+        | `Lina Butler (lina) <https://people.mozilla.org/s?query=lina>`__
+        | `Mark Banner (standard8) <https://people.mozilla.org/s?query=standard8>`__
+    * - Owner(s) Emeritus
+      - Dietrich Ayala
+    * - Peer(s) Emeritus
+      - Asaf Romano, David Dahl, Shawn Wilsher
     * - Includes
       -
         | `browser/components/places/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=browser/components/places/\*\*/\*>`__
@@ -2873,6 +2889,8 @@ The downloads UI and service.
       -
         | `Gijs <https://people.mozilla.org/s?query=Gijs>`__
         | `Micah Tigley (micah) <https://people.mozilla.org/s?query=micah>`__
+    * - Owner(s) Emeritus
+      - Paolo Amadini, Shawn Wilsher
     * - Includes
       -
         | `browser/components/downloads/\*\*/\* <https://searchfox.org/mozilla-central/search?q=&path=browser/components/downloads/\*\*/\*>`__
@@ -3327,10 +3345,9 @@ The UI component controlling browser tabs.
         | `Dão Gottwald (dao) <https://people.mozilla.org/s?query=dao>`__
     * - Peer(s)
       -
-        | `Dão Gottwald (dao) <https://people.mozilla.org/s?query=dao>`__
-        | `Jared Wein (jaws) <https://people.mozilla.org/s?query=jaws>`__
         | `Marco Bonardo (mak) <https://people.mozilla.org/s?query=mak>`__
-        | `Matthew N (MattN) <https://people.mozilla.org/s?query=MattN>`__
+    * - Peer(s) Emeritus
+      - Jared Wein, Matthew N
     * - Includes
       -
         | `browser/base/content/tabbrowser\* <https://searchfox.org/mozilla-central/search?q=&path=browser/base/content/tabbrowser\*>`__
@@ -3994,7 +4011,7 @@ other ping submissions, etc.).
         | `Chris H-C (chutten) <https://people.mozilla.org/s?query=chutten>`__
     * - Peer(s)
       -
-        | `aplacitelli <https://people.mozilla.org/s?query=aplacitelli>`__
+        | `Alessio Placitelli (aplacitelli) <https://people.mozilla.org/s?query=aplacitelli>`__
         | `Jan-Erik Rediger (janerik) <https://people.mozilla.org/s?query=janerik>`__
         | `Perry McManis (perry.mcmanis) <https://people.mozilla.org/s?query=perry.mcmanis>`__
         | `Travis Long (travis_) <https://people.mozilla.org/s?query=travis_>`__

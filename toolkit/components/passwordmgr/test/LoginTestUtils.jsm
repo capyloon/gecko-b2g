@@ -86,6 +86,15 @@ const LoginTestUtils = {
     return savedLogin;
   },
 
+  async modifyLogin(oldLogin, newLogin) {
+    const storageChangedPromise = TestUtils.topicObserved(
+      "passwordmgr-storage-changed",
+      (_, data) => data == "modifyLogin"
+    );
+    Services.logins.modifyLogin(oldLogin, newLogin);
+    await storageChangedPromise;
+  },
+
   resetGeneratedPasswordsCache() {
     let { LoginManagerParent } = ChromeUtils.import(
       "resource://gre/modules/LoginManagerParent.jsm"
@@ -569,7 +578,7 @@ LoginTestUtils.loginField = {
 
 LoginTestUtils.generation = {
   LENGTH: 15,
-  REGEX: /^[a-km-np-zA-HJ-NP-Z2-9]{15}$/,
+  REGEX: /^[a-km-np-zA-HJ-NP-Z2-9-~!@#$%^&*_+=)}:;"'>,.?\]]{15}$/,
 };
 
 LoginTestUtils.telemetry = {

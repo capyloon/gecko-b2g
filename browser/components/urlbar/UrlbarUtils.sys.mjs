@@ -24,6 +24,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
   UrlbarProviderInterventions:
     "resource:///modules/UrlbarProviderInterventions.sys.mjs",
   UrlbarProvidersManager: "resource:///modules/UrlbarProvidersManager.sys.mjs",
+  UrlbarProviderQuickSuggest:
+    "resource:///modules/UrlbarProviderQuickSuggest.sys.mjs",
   UrlbarProviderSearchTips:
     "resource:///modules/UrlbarProviderSearchTips.sys.mjs",
   UrlbarSearchUtils: "resource:///modules/UrlbarSearchUtils.sys.mjs",
@@ -126,6 +128,7 @@ export var UrlbarUtils = {
     EXTENSION: "chrome://mozapps/skin/extensions/extension.svg",
     HISTORY: "chrome://browser/skin/history.svg",
     SEARCH_GLASS: "chrome://global/skin/icons/search-glass.svg",
+    TRENDING: "chrome://global/skin/icons/trending.svg",
     TIP: "chrome://global/skin/icons/lightbulb.svg",
   },
 
@@ -1183,7 +1186,10 @@ export var UrlbarUtils = {
         if (result.providerName == "TabToSearch") {
           return "tabtosearch";
         }
-        return result.payload.suggestion ? "searchsuggestion" : "searchengine";
+        if (result.payload.suggestion) {
+          return result.payload.trending ? "trending" : "searchsuggestion";
+        }
+        return "searchengine";
       case UrlbarUtils.RESULT_TYPE.URL:
         if (result.autofill) {
           let { type } = result.autofill;
@@ -1204,7 +1210,14 @@ export var UrlbarUtils = {
           return "visiturl";
         }
         if (result.providerName == "UrlbarProviderQuickSuggest") {
-          return "quicksuggest";
+          // In legacy telemetry "quicksuggest" is used as the type for both
+          // sponsored and non-sponsored suggestions.
+          return result.payload.subtype ==
+            lazy.UrlbarProviderQuickSuggest.RESULT_SUBTYPE.SPONSORED ||
+            result.payload.subtype ==
+              lazy.UrlbarProviderQuickSuggest.RESULT_SUBTYPE.NONSPONSORED
+            ? "quicksuggest"
+            : result.payload.subtype;
         }
         return result.source == UrlbarUtils.RESULT_SOURCE.BOOKMARKS
           ? "bookmark"
@@ -1269,8 +1282,9 @@ export var UrlbarUtils = {
       case UrlbarUtils.RESULT_GROUP.FORM_HISTORY: {
         return "search_history";
       }
+      case UrlbarUtils.RESULT_GROUP.TAIL_SUGGESTION:
       case UrlbarUtils.RESULT_GROUP.REMOTE_SUGGESTION: {
-        return "search_suggest";
+        return result.payload.trending ? "trending_search" : "search_suggest";
       }
       case UrlbarUtils.RESULT_GROUP.REMOTE_TAB: {
         return "remote_tab";
@@ -1284,8 +1298,7 @@ export var UrlbarUtils = {
         return "general";
       }
       // Group of UrlbarProviderQuickSuggest is GENERAL_PARENT.
-      case UrlbarUtils.RESULT_GROUP.GENERAL_PARENT:
-      case UrlbarUtils.RESULT_GROUP.TAIL_SUGGESTION: {
+      case UrlbarUtils.RESULT_GROUP.GENERAL_PARENT: {
         return "suggest";
       }
       case UrlbarUtils.RESULT_GROUP.ABOUT_PAGES: {
@@ -1303,11 +1316,12 @@ export var UrlbarUtils = {
    * Extracts a type for search engagement telemetry from a result.
    *
    * @param {UrlbarResult} result The result to analyze.
+   * @param {string} selType An optional parameter for the selected type.
    * @returns {string} Type as string.
    */
-  searchEngagementTelemetryType(result) {
+  searchEngagementTelemetryType(result, selType = null) {
     if (!result) {
-      return "unknown";
+      return selType === "oneoff" ? "search_shortcut_button" : "input_field";
     }
 
     if (
@@ -1348,7 +1362,7 @@ export var UrlbarUtils = {
           return "search_history";
         }
         if (result.payload.suggestion) {
-          return "search_suggest";
+          return result.payload.trending ? "trending_search" : "search_suggest";
         }
         return "search_engine";
       case UrlbarUtils.RESULT_TYPE.TAB_SWITCH:
@@ -1392,9 +1406,7 @@ export var UrlbarUtils = {
           return `autofill_${result.autofill.type ?? "unknown"}`;
         }
         if (result.providerName === "UrlbarProviderQuickSuggest") {
-          return result.payload.isSponsored
-            ? "suggest_sponsor"
-            : "suggest_non_sponsor";
+          return result.payload.subtype;
         }
         if (result.providerName === "Weather") {
           return "weather";
@@ -1445,7 +1457,7 @@ XPCOMUtils.defineLazyGetter(UrlbarUtils, "strings", () => {
 
 /**
  * Payload JSON schemas for each result type.  Payloads are validated against
- * these schemas using JsonSchemaValidator.jsm.
+ * these schemas using JsonSchemaValidator.sys.mjs.
  */
 UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
   [UrlbarUtils.RESULT_TYPE.TAB_SWITCH]: {
@@ -1523,6 +1535,9 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
       title: {
         type: "string",
       },
+      trending: {
+        type: "boolean",
+      },
       url: {
         type: "string",
       },
@@ -1547,6 +1562,9 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
       },
       displayUrl: {
         type: "string",
+      },
+      dupedHeuristic: {
+        type: "boolean",
       },
       fallbackTitle: {
         type: "string",
@@ -1614,6 +1632,9 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
       },
       sponsoredTileId: {
         type: "number",
+      },
+      subtype: {
+        type: "string",
       },
       tags: {
         type: "array",

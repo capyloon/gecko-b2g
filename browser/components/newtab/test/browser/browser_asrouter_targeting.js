@@ -11,7 +11,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   NimbusFeatures: "resource://nimbus/ExperimentAPI.jsm",
   QueryCache: "resource://activity-stream/lib/ASRouterTargeting.jsm",
   ShellService: "resource:///modules/ShellService.jsm",
-  TargetingContext: "resource://messaging-system/targeting/Targeting.jsm",
 });
 ChromeUtils.defineESModuleGetters(this, {
   AppConstants: "resource://gre/modules/AppConstants.sys.mjs",
@@ -22,9 +21,44 @@ ChromeUtils.defineESModuleGetters(this, {
   PlacesTestUtils: "resource://testing-common/PlacesTestUtils.sys.mjs",
   ProfileAge: "resource://gre/modules/ProfileAge.sys.mjs",
   Region: "resource://gre/modules/Region.sys.mjs",
+  TargetingContext: "resource://messaging-system/targeting/Targeting.sys.mjs",
   TelemetryEnvironment: "resource://gre/modules/TelemetryEnvironment.sys.mjs",
   TelemetrySession: "resource://gre/modules/TelemetrySession.sys.mjs",
 });
+
+function sendFormAutofillMessage(name, data) {
+  let actor = gBrowser.selectedBrowser.browsingContext.currentWindowGlobal.getActor(
+    "FormAutofill"
+  );
+  return actor.receiveMessage({ name, data });
+}
+
+async function removeAutofillRecords() {
+  let addresses = await sendFormAutofillMessage("FormAutofill:GetRecords", {
+    collectionName: "addresses",
+  });
+  if (addresses.length) {
+    let observePromise = TestUtils.topicObserved(
+      "formautofill-storage-changed"
+    );
+    await sendFormAutofillMessage("FormAutofill:RemoveAddresses", {
+      guids: addresses.map(address => address.guid),
+    });
+    await observePromise;
+  }
+  let creditCards = await sendFormAutofillMessage("FormAutofill:GetRecords", {
+    collectionName: "creditCards",
+  });
+  if (creditCards.length) {
+    let observePromise = TestUtils.topicObserved(
+      "formautofill-storage-changed"
+    );
+    await sendFormAutofillMessage("FormAutofill:RemoveCreditCards", {
+      guids: creditCards.map(cc => cc.guid),
+    });
+    await observePromise;
+  }
+}
 
 // ASRouterTargeting.findMatchingMessage
 add_task(async function find_matching_message() {
@@ -1328,4 +1362,102 @@ add_task(async function test_fxViewButtonAreaType_removed() {
     "Should return null if button has been removed"
   );
   CustomizableUI.reset();
+});
+
+add_task(async function test_creditCardsSaved() {
+  is(
+    await ASRouterTargeting.Environment.creditCardsSaved,
+    0,
+    "Should return 0 when no credit cards are saved"
+  );
+
+  let creditcard = {
+    "cc-name": "Test User",
+    "cc-number": "5038146897157463",
+    "cc-exp-month": "11",
+    "cc-exp-year": "20",
+  };
+
+  // Intermittently fails on macOS, likely related to Bug 1714221. So, mock the
+  // autofill actor.
+  if (AppConstants.platform === "macosx") {
+    const sandbox = sinon.createSandbox();
+    registerCleanupFunction(async () => sandbox.restore());
+    let stub = sandbox
+      .stub(
+        gBrowser.selectedBrowser.browsingContext.currentWindowGlobal.getActor(
+          "FormAutofill"
+        ),
+        "receiveMessage"
+      )
+      .withArgs(
+        sandbox.match({
+          name: "FormAutofill:GetRecords",
+          data: { collectionName: "creditCards" },
+        })
+      )
+      .resolves([creditcard])
+      .callThrough();
+
+    is(
+      await ASRouterTargeting.Environment.creditCardsSaved,
+      1,
+      "Should return 1 when 1 credit card is saved"
+    );
+    ok(
+      stub.calledWithMatch({ name: "FormAutofill:GetRecords" }),
+      "Targeting called FormAutofill:GetRecords"
+    );
+
+    sandbox.restore();
+  } else {
+    let observePromise = TestUtils.topicObserved(
+      "formautofill-storage-changed"
+    );
+    await sendFormAutofillMessage("FormAutofill:SaveCreditCard", {
+      creditcard,
+    });
+    await observePromise;
+
+    is(
+      await ASRouterTargeting.Environment.creditCardsSaved,
+      1,
+      "Should return 1 when 1 credit card is saved"
+    );
+    await removeAutofillRecords();
+  }
+});
+
+add_task(async function test_addressesSaved() {
+  is(
+    await ASRouterTargeting.Environment.addressesSaved,
+    0,
+    "Should return 0 when no addresses are saved"
+  );
+
+  let observePromise = TestUtils.topicObserved("formautofill-storage-changed");
+  await sendFormAutofillMessage("FormAutofill:SaveAddress", {
+    address: {
+      "given-name": "John",
+      "additional-name": "R.",
+      "family-name": "Smith",
+      organization: "World Wide Web Consortium",
+      "street-address": "32 Vassar Street\nMIT Room 32-G524",
+      "address-level2": "Cambridge",
+      "address-level1": "MA",
+      "postal-code": "02139",
+      country: "US",
+      tel: "+16172535702",
+      email: "timbl@w3.org",
+    },
+  });
+  await observePromise;
+
+  is(
+    await ASRouterTargeting.Environment.addressesSaved,
+    1,
+    "Should return 1 when 1 address is saved"
+  );
+
+  await removeAutofillRecords();
 });

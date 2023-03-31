@@ -25,6 +25,7 @@ use xpcom::{
 enum Protocol {
     Ipfs,
     Ipns,
+    Tile,
 }
 
 impl Protocol {
@@ -32,6 +33,7 @@ impl Protocol {
         match &self {
             Protocol::Ipfs => nsCString::from("ipfs"),
             Protocol::Ipns => nsCString::from("ipns"),
+            Protocol::Tile => nsCString::from("tile"),
         }
     }
 }
@@ -151,27 +153,31 @@ impl IpfsHandler {
         // ipfs://bafybeiemxf5abjwjbikoz4mc3a3dla6ual3jsgpdr4cjr3oz3evfyavhwq/wiki/Vincent_van_Gogh.html ->
         // http+unix://<uds path>/ipfs/bafybeiemxf5abjwjbikoz4mc3a3dla6ual3jsgpdr4cjr3oz3evfyavhwq/wiki/Vincent_van_Gogh.html
 
-        let url_path = if self.protocol == Protocol::Ipfs {
-            // Special case when host is "localhost" and the method is POST: url_path is empty.
-            // TODO: figure out the method used, but it's not available from nsILoadInfo
-            // See: https://searchfox.org/mozilla-central/rev/aa329cf7506ddd966542e642ec00223fd7461599/dom/fetch/FetchDriver.cpp#706-709
-            if host == "localhost" {
-                String::new()
-            } else {
-                // Try to convert 'host' into a CIDv1
-                let cid = Cid::try_from(host.to_utf8().as_ref()).map_err(|_| NS_ERROR_FAILURE)?;
-                // Same as Cid::to_string_v1() which is unfortunately private.
-                multibase::encode(multibase::Base::Base32Lower, cid.to_bytes().as_slice())
+        let url_path = match self.protocol {
+            Protocol::Ipfs | Protocol::Tile => {
+                // Special case when host is "localhost" and the method is POST: url_path is empty.
+                // TODO: figure out the method used, but it's not available from nsILoadInfo
+                // See: https://searchfox.org/mozilla-central/rev/aa329cf7506ddd966542e642ec00223fd7461599/dom/fetch/FetchDriver.cpp#706-709
+                if host == "localhost" {
+                    String::new()
+                } else {
+                    // Try to convert 'host' into a CIDv1
+                    let cid =
+                        Cid::try_from(host.to_utf8().as_ref()).map_err(|_| NS_ERROR_FAILURE)?;
+                    // Same as Cid::to_string_v1() which is unfortunately private.
+                    multibase::encode(multibase::Base::Base32Lower, cid.to_bytes().as_slice())
+                }
             }
-        } else {
-            // For ipns://, just use the host.
-            host.to_string()
+            Protocol::Ipns => {
+                // For ipns://, just use the host.
+                host.to_string()
+            }
         };
 
         let uds_url = if url_path.is_empty() {
             format!("http+unix://{}/{}/", self.uds_path, scheme)
         } else {
-                format!(
+            format!(
                 "http+unix://{}/{}/{}{}",
                 self.uds_path, scheme, url_path, path_query
             )
@@ -207,6 +213,13 @@ pub unsafe extern "C" fn ipfs_construct(result: &mut *const nsIProtocolHandler) 
 #[no_mangle]
 pub unsafe extern "C" fn ipns_construct(result: &mut *const nsIProtocolHandler) {
     let inst = IpfsHandler::new(Protocol::Ipns);
+    *result = inst.coerce::<nsIProtocolHandler>();
+    std::mem::forget(inst);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tile_construct(result: &mut *const nsIProtocolHandler) {
+    let inst = IpfsHandler::new(Protocol::Tile);
     *result = inst.coerce::<nsIProtocolHandler>();
     std::mem::forget(inst);
 }

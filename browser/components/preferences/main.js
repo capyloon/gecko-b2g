@@ -8,8 +8,9 @@
 /* import-globals-from /browser/base/content/aboutDialog-appUpdater.js */
 /* global MozXULElement */
 
-XPCOMUtils.defineLazyModuleGetters(this, {
-  BackgroundUpdate: "resource://gre/modules/BackgroundUpdate.jsm",
+ChromeUtils.defineESModuleGetters(this, {
+  BackgroundUpdate: "resource://gre/modules/BackgroundUpdate.sys.mjs",
+  MigrationUtils: "resource:///modules/MigrationUtils.sys.mjs",
 });
 
 // Constants & Enumeration Values
@@ -471,6 +472,11 @@ var gMainPane = {
       "browserContainersSettings",
       "command",
       gMainPane.showContainerSettings
+    );
+    setEventListener(
+      "data-migration",
+      "command",
+      gMainPane.onMigrationButtonCommand
     );
 
     // For media control toggle button, we support it on Windows 8.1+ (NT6.3),
@@ -1056,7 +1062,7 @@ var gMainPane = {
     for (let i = 0; i < messages.length; i++) {
       let messageContainer = document.createXULElement("hbox");
       messageContainer.classList.add("message-bar-content");
-      messageContainer.setAttribute("flex", "1");
+      messageContainer.style.flex = "1 50%";
       messageContainer.setAttribute("align", "center");
 
       let description = document.createXULElement("description");
@@ -1269,7 +1275,9 @@ var gMainPane = {
     if (AppConstants.HAVE_SHELL_SERVICE) {
       let shellSvc = getShellService();
       let defaultBrowserBox = document.getElementById("defaultBrowserBox");
-      if (!shellSvc) {
+      let isInFlatpak = gGIOService?.isRunningUnderFlatpak;
+      // Flatpak does not support setting nor detection of default browser
+      if (!shellSvc || isInFlatpak) {
         defaultBrowserBox.hidden = true;
         return;
       }
@@ -1711,6 +1719,26 @@ var gMainPane = {
     })().catch(console.error);
   },
 
+  onMigrationButtonCommand(command) {
+    // When browser.migrate.content-modal.enabled is enabled by default,
+    // the event handler can just call showMigrationWizardDialog directly,
+    // but for now, we delegate to MigrationUtils to open the native modal
+    // in case that's the dialog we're still using.
+    //
+    // Enabling the pref by default will be part of bug 1822156.
+    const browser = window.docShell.chromeEventHandler;
+    const browserWindow = browser.ownerGlobal;
+
+    // showMigrationWizard blocks on some platforms. We'll dispatch the request
+    // to open to a runnable on the main thread so that we don't have to block
+    // this function call.
+    Services.tm.dispatchToMainThread(() => {
+      MigrationUtils.showMigrationWizard(browserWindow, {
+        entrypoint: MigrationUtils.MIGRATION_ENTRYPOINTS.PREFERENCES,
+      });
+    });
+  },
+
   /**
    * Displays the migration wizard dialog in an HTML dialog.
    */
@@ -1727,11 +1755,18 @@ var gMainPane = {
 
     // If we've been opened before, remove the old wizard and insert a
     // new one to put it back into its starting state.
-    migrationWizardDialog.firstElementChild?.remove();
-    let wizard = document.createElement("migration-wizard");
-    wizard.toggleAttribute("dialog-mode", true);
-    migrationWizardDialog.appendChild(wizard);
+    if (!migrationWizardDialog.firstElementChild) {
+      let wizard = document.createElement("migration-wizard");
+      wizard.toggleAttribute("dialog-mode", true);
 
+      let panelList = document.createElement("panel-list");
+      let panel = document.createXULElement("panel");
+      panel.appendChild(panelList);
+      wizard.appendChild(panel);
+
+      migrationWizardDialog.appendChild(wizard);
+    }
+    migrationWizardDialog.firstElementChild.requestState();
     migrationWizardDialog.showModal();
   },
 
@@ -2144,7 +2179,7 @@ var gMainPane = {
     if (enabledHandlers) {
       for (let ext of enabledHandlers.split(",")) {
         internalHandlers.push(
-          new ViewableInternallyHandlerInfoWrapper(ext.trim())
+          new ViewableInternallyHandlerInfoWrapper(null, ext.trim())
         );
       }
     }
@@ -2166,7 +2201,11 @@ var gMainPane = {
       if (type in this._handledTypes) {
         handlerInfoWrapper = this._handledTypes[type];
       } else {
-        handlerInfoWrapper = new HandlerInfoWrapper(type, wrappedHandlerInfo);
+        if (DownloadIntegration.shouldViewDownloadInternally(type)) {
+          handlerInfoWrapper = new ViewableInternallyHandlerInfoWrapper(type);
+        } else {
+          handlerInfoWrapper = new HandlerInfoWrapper(type, wrappedHandlerInfo);
+        }
         this._handledTypes[type] = handlerInfoWrapper;
       }
     }
@@ -2453,11 +2492,8 @@ var gMainPane = {
       possibleAppMenuItems.push(menuItem);
     }
     // Add gio handlers
-    if (Cc["@mozilla.org/gio-service;1"]) {
-      let gIOSvc = Cc["@mozilla.org/gio-service;1"].getService(
-        Ci.nsIGIOService
-      );
-      var gioApps = gIOSvc.getAppsForURIScheme(handlerInfo.type);
+    if (gGIOService) {
+      var gioApps = gGIOService.getAppsForURIScheme(handlerInfo.type);
       let possibleHandlers = handlerInfo.possibleApplicationHandlers;
       for (let handler of gioApps.enumerate(Ci.nsIHandlerApp)) {
         // OS handler share the same name, it's most likely the same app, skipping...
@@ -3644,10 +3680,6 @@ class PDFHandlerInfoWrapper extends InternalHandlerInfoWrapper {
 }
 
 class ViewableInternallyHandlerInfoWrapper extends InternalHandlerInfoWrapper {
-  constructor(extension) {
-    super(null, extension);
-  }
-
   get enabled() {
     return DownloadIntegration.shouldViewDownloadInternally(this.type);
   }

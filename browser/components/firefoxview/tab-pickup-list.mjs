@@ -192,6 +192,10 @@ class TabPickupList extends HTMLElement {
   }
 
   updateTime() {
+    // when pref is 0, avoid the update altogether (used for tests)
+    if (!lazy.timeMsPref) {
+      return;
+    }
     for (let timeEl of this.timeElements) {
       timeEl.textContent = convertTimestamp(
         parseInt(timeEl.getAttribute("data-timestamp")),
@@ -352,7 +356,7 @@ class TabPickupList extends HTMLElement {
     li.classList.add("synced-tab-li");
 
     const a = document.createElement("a");
-    a.classList.add("synced-tab-a", "tab-link");
+    a.classList.add("synced-tab-a");
     a.target = "_blank";
     if (index != 0) {
       a.setAttribute("tabindex", "-1");

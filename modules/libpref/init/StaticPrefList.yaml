@@ -243,13 +243,7 @@
 # the parent process.
 - name: accessibility.cache.enabled
   type: bool
-#if defined(ANDROID)
   value: true
-#elif defined(XP_WIN) || defined(XP_LINUX)
-  value: @IS_EARLY_BETA_OR_EARLIER@
-#else
-  value: @IS_NOT_RELEASE_OR_BETA@
-#endif
   mirror: once
 
 # Whether to avoid accessibility activation on Windows shortly after clipboard
@@ -684,9 +678,7 @@
 
 - name: apz.overscroll.enabled
   type: RelaxedAtomicBool
-#if defined(XP_MACOSX)
-  value: true
-#elif defined(XP_WIN) && defined(NIGHTLY_BUILD)
+#if defined(XP_MACOSX) || defined(XP_WIN)
   value: true
 #else
   value: false
@@ -1737,7 +1729,7 @@
 #if defined(ANDROID)
   value: false
 #else
-  value: @IS_NIGHTLY_BUILD@
+  value: @IS_EARLY_BETA_OR_EARLIER@
 #endif
   mirror: always
 
@@ -1745,7 +1737,7 @@
 # ORB.
 - name: browser.opaqueResponseBlocking.javascriptValidator
   type: bool
-  value: @IS_NIGHTLY_BUILD@
+  value: @IS_EARLY_BETA_OR_EARLIER@
   mirror: always
 
 # When this pref is enabled, <object> and <embed> elements will create
@@ -2193,8 +2185,8 @@
   value: false
   mirror: always
 
-# Whether CanvasRenderingContext2D.mozTextStyle is enabled.
-- name: dom.mozTextStyle.enabled
+# Whether CanvasRenderingContext2D.mozImageSmoothingEnabled is enabled.
+- name: dom.mozImageSmoothingEnabled.enabled
   type: bool
   value: false
   mirror: always
@@ -2394,6 +2386,12 @@
   value: false
   mirror: always
 
+# Compression Streams (CompressionStream/DecompressionStream)
+- name: dom.compression_streams.enabled
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
+
 - name: dom.crypto.randomUUID.enabled
   type: RelaxedAtomicBool
   value: true
@@ -2494,6 +2492,14 @@
   value: false
   mirror: always
 
+# Whether the popover attribute implementation is enabled,
+# see https://html.spec.whatwg.org/#the-popover-attribute
+- name: dom.element.popover.enabled
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+  rust: true
+
 # Controls whether the "focus fixup rule" is enabled. Subject to minor changes
 # based on https://github.com/whatwg/html/pull/8392 and
 # https://github.com/whatwg/html/issues/8225
@@ -2573,6 +2579,13 @@
 - name: dom.event.dragexit.enabled
   type: bool
   value: @IS_NOT_NIGHTLY_BUILD@
+  mirror: always
+
+# Whether wheel event target's should be grouped. When enabled, all wheel
+# events that occur in a given wheel transaction have the same event target.
+- name: dom.event.wheel-event-groups.enabled
+  type: bool
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
 
 # Whether WheelEvent should return pixels instead of lines for
@@ -3107,6 +3120,12 @@
   value: @IS_NIGHTLY_BUILD@
   mirror: always
 
+# Is support for key events and focus events on disabled elements enabled?
+- name: dom.forms.always_allow_key_and_focus_events.enabled
+  type: bool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+
 # Is support for HTMLInputElement.showPicker enabled?
 - name: dom.input.showPicker
   type: bool
@@ -3213,6 +3232,12 @@
 - name: dom.media.mediasession.enabled
   type: bool
   value: true
+  mirror: always
+
+# Whether HTMLMediaElement.mozPreservesPitch is enabled.
+- name: dom.media.mozPreservesPitch.enabled
+  type: bool
+  value: @IS_NOT_EARLY_BETA_OR_EARLIER@
   mirror: always
 
 # WebCodecs API
@@ -3575,7 +3600,7 @@
   value: false
   mirror: always
 
-#ifdef XP_WIN
+#if defined(XP_WIN)
   # Preference that is used to set nsILocalFileWin::useDOSDevicePathSyntax
   # attribute for all local file instances created by QuotaManager and its
   # clients. The value of this preference is cached so changing the preference
@@ -3588,8 +3613,15 @@
     do_not_use_directly: true
 
   # Preference that is used to enable the hack for overrriding xFullPathname in
-  # TelemetryVFS.
+  # QuotaVFS.
 -   name: dom.quotaManager.overrideXFullPathname
+    type: RelaxedAtomicBool
+    value: true
+    mirror: always
+#elif defined(XP_UNIX)
+  # Preference that is used to enable the overriding of Unix xFullPathname
+  # implementation in QuotaVFS.
+-   name: dom.quotaManager.overrideXFullPathnameUnix
     type: RelaxedAtomicBool
     value: true
     mirror: always
@@ -3616,11 +3648,11 @@
 # Use a Background Task to delete files at shutdown.
 - name: dom.quotaManager.backgroundTask.enabled
   type: bool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: never
 #endif
 
-# Use to control to dump CheckedUnsafePtr creation stack and assignment stacks. 
+# Use to control to dump CheckedUnsafePtr creation stack and assignment stacks.
 - name: dom.checkedUnsafePtr.dumpStacks.enabled
   type: RelaxedAtomicBool
   value: false
@@ -4101,6 +4133,11 @@
 - name: dom.workers.pFetch.enabled
   type: RelaxedAtomicBool
   value: true
+  mirror: always
+
+- name: dom.workers.importScripts.enforceStrictMimeType
+  type: RelaxedAtomicBool
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
 
 # Is support for modules (new Worker(..., {type: "module">)) enabled for workers?
@@ -4783,6 +4820,24 @@
   value: false
   mirror: always
 
+# Comma-separated list of wgpu backend names to permit in WebGPU adapters.
+#
+# If non-empty, this is parsed by `wgpu_core::instance::parse_backends_from_comma_list` to
+# produce a `wgpu_types::Backends` bitset used to create a `wgpu_core::hub::Global`. As of
+# 2023-3-22, recognized names are:
+#
+#     "vulkan" | "vk" => Backends::VULKAN,
+#     "dx12" | "d3d12" => Backends::DX12,
+#     "dx11" | "d3d11" => Backends::DX11,
+#     "metal" | "mtl" => Backends::METAL,
+#     "opengl" | "gles" | "gl" => Backends::GL,
+#     "webgpu" => Backends::BROWSER_WEBGPU,
+- name: dom.webgpu.wgpu-backend
+  type: DataMutexString
+  value: ""
+  mirror: always
+  rust: true
+
 # Is support for HTMLInputElement.webkitEntries enabled?
 - name: dom.webkitBlink.filesystem.enabled
   type: bool
@@ -5092,7 +5147,7 @@
 # true:  Right node will be created (at splitting) and deleted (at joinining)
 - name: editor.join_split_direction.compatible_with_the_other_browsers
   type: bool
-  value: false
+  value: @IS_EARLY_BETA_OR_EARLIER@
   mirror: always
 
 # Delay to mask last input character in password fields.
@@ -5390,7 +5445,7 @@
 # If true, crash when a blocklisted preference is accessed in a subprocess
 - name: fission.enforceBlocklistedPrefsInSubprocesses
   type: RelaxedAtomicBool
-  value: @IS_NIGHTLY_BUILD@
+  value: @IS_EARLY_BETA_OR_EARLIER@
   mirror: always
 
 #---------------------------------------------------------------------------
@@ -5863,7 +5918,7 @@
   type: bool
 #if defined(XP_MACOSX) || defined(XP_LINUX) && !defined(ANDROID)
   value: true
-#elif defined(MOZ_WIDGET_ANDROID) && defined(NIGHTLY_BUILD)
+#elif defined(MOZ_WIDGET_ANDROID)
   value: true
 #else
   value: false
@@ -5979,6 +6034,11 @@
 #endif
   mirror: always
 
+- name: gfx.color_management.display_profile
+  type: DataMutexString
+  value: ""
+  mirror: always # But be warned: We cache the result.
+
 - name: gfx.color_management.force_srgb
   type: RelaxedAtomicBool
   value: false
@@ -5986,7 +6046,7 @@
 
 - name: gfx.color_management.native_srgb
   type: RelaxedAtomicBool
-#if defined(XP_MACOSX)
+#if defined(XP_MACOSX) || defined(XP_WIN)
   value: true
 #else
   value: false
@@ -6009,6 +6069,16 @@
 - name: gfx.color_management.rendering_intent
   type: RelaxedAtomicInt32
   value: 0
+  mirror: always
+
+- name: gfx.color_management.rec709_gamma_as_srgb
+  type: RelaxedAtomicBool
+  value: true # Tragic backwards compat.
+  mirror: always
+
+- name: gfx.color_management.rec2020_gamma_as_rec709
+  type: RelaxedAtomicBool
+  value: true # Match naive behavior, but hopefully we can stop soon!
   mirror: always
 
 - name: gfx.compositor.clearstate
@@ -6418,7 +6488,7 @@
 # Use gfxPlatform::MaxAllocSize instead of the pref directly.
 - name: gfx.max-alloc-size
   type: int32_t
-  value: (int32_t)500000000
+  value: (int32_t)0x7FFFFFFF
   mirror: once
   do_not_use_directly: true
 
@@ -6778,7 +6848,7 @@
   # Whether to use a video overlay layers for sw decoded video with DirectComposition
 -   name: gfx.webrender.dcomp-video-sw-overlay-win
     type: bool
-    value: @IS_EARLY_BETA_OR_EARLIER@
+    value: true
     mirror: once
 -   name: gfx.webrender.dcomp-video-check-slow-present
     type: RelaxedAtomicBool
@@ -7013,12 +7083,9 @@
 #---------------------------------------------------------------------------
 
 # Turn HTML:inert on or off.
-#
-# Do not enable this by default until there's consensus in:
-# https://github.com/whatwg/html/issues/7796
 - name: html5.inert.enabled
   type: bool
-  value: @IS_EARLY_BETA_OR_EARLIER@
+  value: true
   mirror: always
 
 # Time in milliseconds between the time a network buffer is seen and the timer
@@ -7331,7 +7398,7 @@
 # Whether to allow decoding of animated AVIF sequences.
 - name: image.avif.sequence.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
 
 # Whether AVIF files containing sequences should be animated even when the
@@ -7890,7 +7957,7 @@
 #if defined(ENABLE_WASM_EXTENDED_CONST)
 -   name: javascript.options.wasm_extended_const
     type: bool
-    value: @IS_NIGHTLY_BUILD@
+    value: true
     mirror: always
 #endif  // defined(ENABLE_WASM_EXTENDED_CONST)
 
@@ -8443,6 +8510,13 @@
   mirror: always
   rust: true
 
+# Whether exponential functions are enabled in calc().
+- name: layout.css.exp.enabled
+  type: RelaxedAtomicBool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+  rust: true
+
 # Whether infinity / nan constants are enabled in calc().
 - name: layout.css.nan-inf.enabled
   type: RelaxedAtomicBool
@@ -8626,7 +8700,7 @@
 # Whether the `content-visibility` CSS property is enabled
 - name: layout.css.content-visibility.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
   rust: true
 
@@ -8668,12 +8742,6 @@
   value: @IS_NIGHTLY_BUILD@
   mirror: always
   rust: true
-
-# Is support for d property for SVG path element?
-- name: layout.css.d-property.enabled
-  type: bool
-  value: true
-  mirror: always
 
 # Is support for fit-content() enabled?
 - name: layout.css.fit-content-function.enabled
@@ -8819,7 +8887,7 @@
 # Before enabling everywhere, make sure blockers of bug 1808229 are fixed.
 - name: layout.css.nth-child-of.enabled
   type: RelaxedAtomicBool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
   rust: true
 
@@ -8863,6 +8931,13 @@
 
 # Is support for motion-path ray() enabled?
 - name: layout.css.motion-path-ray.enabled
+  type: RelaxedAtomicBool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+  rust: true
+
+# Is support for motion-path offset-position enabled?
+- name: layout.css.motion-path-offset-position.enabled
   type: RelaxedAtomicBool
   value: @IS_NIGHTLY_BUILD@
   mirror: always
@@ -8965,7 +9040,7 @@
 # Enables support for different CSS page sizes on each page when printing.
 - name: layout.css.allow-mixed-page-sizes
   type: RelaxedAtomicBool
-  value: false
+  value: @IS_EARLY_BETA_OR_EARLIER@
   mirror: always
 
 # Dictates whether or not the prefers contrast media query will be
@@ -8992,6 +9067,13 @@
 - name: layout.css.forced-colors.enabled
   type: RelaxedAtomicBool
   value: true
+  mirror: always
+  rust: true
+
+# Dictates whether or not the prefers-reduced-transparency media query is enabled.
+- name: layout.css.prefers-reduced-transparency.enabled
+  type: RelaxedAtomicBool
+  value: false
   mirror: always
   rust: true
 
@@ -9123,7 +9205,7 @@
 # Enable experimental enhanced color CSS color spaces. (lab(), lch(), oklab(), oklch(), color())
 - name: layout.css.more_color_4.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: true
   mirror: always
   rust: true
 
@@ -9269,6 +9351,14 @@
 - name: layout.extra-tick.minimum-ms
   type: int32_t
   value: 4
+  mirror: always
+
+# Whether to load the broken image icon eagerly. This is mostly needed for
+# reftests, since the broken image icon doesn't block the load event and thus
+# there's no easy way to guarantee it's loaded.
+- name: layout.image.eager_broken_image_icon
+  type: bool
+  value: false
   mirror: always
 
 # Enable/disable interruptible reflow, which allows reflows to stop
@@ -9697,26 +9787,8 @@
 - name: media.cubeb.sandbox
   type: bool
   mirror: always
-#if defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID)
+#if defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID) || defined(XP_WIN) || defined(XP_MACOSX)
   value: true
-#elif defined(XP_WIN) && !defined(_ARM64_)
-  value: true
-#elif defined(XP_MACOSX)
-  value: @IS_NIGHTLY_BUILD@
-#else
-  value: false
-#endif
-
-# Whether cubeb sandbox (AudioIPC) is v2
-- name: media.cubeb.sandbox_v2
-  type: bool
-  mirror: always
-#if defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID)
-  value: @IS_NIGHTLY_BUILD@
-#elif defined(XP_WIN) && !defined(_ARM64_)
-  value: true
-#elif defined(XP_MACOSX)
-  value: @IS_NIGHTLY_BUILD@
 #else
   value: false
 #endif
@@ -9984,11 +10056,7 @@
   # May a Clearkey GMP x64 process be executed on ARM builds.
 - name: media.gmp-gmpclearkey.allow-x64-plugin-on-arm64
   type: RelaxedAtomicBool
-#if defined(NIGHTLY_BUILD) || !defined(XP_WIN)
   value: false
-#else
-  value: true
-#endif
   mirror: always
 #endif
 
@@ -10303,9 +10371,12 @@
 
 # Force to copy dmabuf video frames
 # Used for debugging/troubleshooting only
-- name: media.ffmpeg.vaapi.force-surface-copy
-  type: bool
-  value: false
+# 0 - force disable
+# 1 - force enable
+# 2 - default
+- name: media.ffmpeg.vaapi.force-surface-zero-copy
+  type: uint32_t
+  value: 2
   mirror: once
 #endif # MOZ_WIDGET_GTK
 
@@ -10430,6 +10501,12 @@
 
 # Testing purpose, enable media engine on channel decoder as well.
 -   name: media.wmf.media-engine.channel-decoder.enabled
+    type: RelaxedAtomicBool
+    value: false
+    mirror: always
+
+# This allows playing DRM video via the media engine pipeline.
+-   name: media.wmf.media-engine.drm-playback
     type: RelaxedAtomicBool
     value: false
     mirror: always
@@ -10654,7 +10731,7 @@
 #elif defined(XP_MACOSX)
   value: true
 #elif defined(MOZ_WIDGET_ANDROID)
-  value: @IS_EARLY_BETA_OR_EARLIER@
+  value: true
 #elif defined(XP_UNIX)
   value: true
 #else
@@ -10736,7 +10813,7 @@
 
 - name: media.videocontrols.lock-video-orientation
   type: bool
-  value: @IS_ANDROID@
+  value: false
   mirror: always
 
 # Media Seamless Looping
@@ -12123,6 +12200,13 @@
   value: 30000
   mirror: always
 
+# Similar to network.http.http2.ping-timeout, but this is used when the
+# Http/2 connection is connected to the TRR server.
+- name: network.trr.ping_timeout
+  type: RelaxedAtomicUint32
+  value: 3000
+  mirror: always
+
 # The timeout of the TRR confirmation request
 - name: network.trr.confirmation_timeout_ms
   type: RelaxedAtomicUint32
@@ -12343,6 +12427,12 @@
 
 # URI from which to fetch the configuration for the Oblivious HTTP gateway for TRR requests.
 - name: network.trr.ohttp.config_uri
+  type: String
+  value: ""
+  mirror: never
+
+# The URI used for the target DoH server when network.trr.use_ohttp is true
+- name: network.trr.ohttp.uri
   type: String
   value: ""
   mirror: never
@@ -12667,6 +12757,13 @@
   value: false
   mirror: always
 
+# Whether to use HTTPS RR and ignore NS_HTTP_DISALLOW_HTTPS_RR
+# This pref is only set when running tests
+- name: network.dns.force_use_https_rr
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
 - name: network.cache.frecency_array_check_enabled
   type: RelaxedAtomicBool
   value: @IS_EARLY_BETA_OR_EARLIER@
@@ -12787,13 +12884,13 @@
 # WebTransport
 - name: network.webtransport.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
 
 # WebTransport Datagram support
 - name: network.webtransport.datagrams.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
 
 # WebTransport Datagram size
@@ -12980,7 +13077,7 @@
 # Whether we use the CSS @page size as the paper size in PDF output.
 - name: print.save_as_pdf.use_page_rule_size_as_paper_size.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: true
   mirror: always
 
 # The default DPI for printing.
@@ -13218,8 +13315,13 @@
 #
 # The variables will, however, be read often (specifically .microseconds on
 # each timer rounding) so performance is important.
-
 - name: privacy.resistFingerprinting
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+  do_not_use_directly: true
+
+- name: privacy.resistFingerprintingLite
   type: RelaxedAtomicBool
   value: false
   mirror: always
@@ -13250,7 +13352,7 @@
   value: true
   mirror: always
 
-# The log level for browser console messages logged in RFPHelper.jsm. Change to
+# The log level for browser console messages logged in RFPHelper.sys.mjs. Change to
 # 'All' and restart to see the messages.
 - name: privacy.resistFingerprinting.jsmloglevel
   type: String
@@ -13273,6 +13375,13 @@
 - name: privacy.resistFingerprinting.target_video_res
   type: uint32_t
   value: 480
+  mirror: always
+
+# Setting TZ=UTC ensures that even libc functions use the spoofed time zone.
+# We want to remove that override as soon as possible however.
+- name: privacy.resistFingerprinting.testing.setTZtoUTC
+  type: bool
+  value: false
   mirror: always
 
 # Bitfield for selectively disabling RFP
@@ -13728,6 +13837,16 @@
     value: false
     mirror: always
 
+  # Whether a Low Privilege AppContainer (LPAC) is enabled for the relevant
+  # process type.
+
+#if defined(MOZ_WMF_MEDIA_ENGINE)
+-   name: security.sandbox.utility-wmf-cdm.lpac.enabled
+    type: RelaxedAtomicBool
+    value: false
+    mirror: always
+#endif
+
   # Whether Arbitrary Code Guard is enabled for the RDD process.
 -   name: security.sandbox.rdd.acg.enabled
     type: RelaxedAtomicBool
@@ -13817,8 +13936,40 @@
 
 # WebAuthn CTAP2 support
 - name: security.webauthn.ctap2
-  type: bool
+  type: RelaxedAtomicBool
   value: true
+  mirror: always
+
+# Dispatch WebAuthn requests to the software CTAP1 token.
+# (mutually exclusive with webauthn_enable_android_fido2,
+# and webauthn_enable_usbtoken)
+- name: security.webauth.webauthn_enable_softtoken
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
+# Dispatch WebAuthn requests to the Android platform API
+- name: security.webauth.webauthn_enable_android_fido2
+  type: RelaxedAtomicBool
+  value: @IS_ANDROID@
+  mirror: always
+
+# Dispatch WebAuthn requests to authenticator-rs
+- name: security.webauth.webauthn_enable_usbtoken
+  type: RelaxedAtomicBool
+  value: @IS_NOT_ANDROID@
+  mirror: always
+
+# Skip direct attestation consent prompts (for tests).
+- name: security.webauth.webauthn_testing_allow_direct_attestation
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
+# Global counter for U2F soft token operations
+- name: security.webauth.softtoken_counter
+  type: RelaxedAtomicUint32
+  value: 0
   mirror: always
 
 # Block Worker/SharedWorker scripts with wrong MIME type.
@@ -14360,6 +14511,11 @@
   mirror: always
   rust: true
 
+- name: telemetry.fog.artifact_build
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
 #---------------------------------------------------------------------------
 # Prefs starting with "test."
 #---------------------------------------------------------------------------
@@ -14817,11 +14973,6 @@
 #else
   value: false
 #endif
-  mirror: always
-
-- name: webgl.all-angle-options
-  type: RelaxedAtomicBool
-  value: false
   mirror: always
 
 - name: webgl.angle.force-d3d11

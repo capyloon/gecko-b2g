@@ -397,6 +397,7 @@ void TypeUtils::ProcessURL(nsACString& aUrl, bool* aSchemeValidOut,
     *aSchemeValidOut =
         scheme.LowerCaseEqualsLiteral("http") ||
         scheme.LowerCaseEqualsLiteral("https") ||
+        scheme.LowerCaseEqualsLiteral("tile") ||
         (StaticPrefs::extensions_backgroundServiceWorker_enabled_AtStartup() &&
          scheme.LowerCaseEqualsLiteral("moz-extension"));
   }
@@ -497,8 +498,7 @@ void TypeUtils::SerializeCacheStream(nsIInputStream* aStream,
   aStreamOut->emplace(CacheReadStream());
   CacheReadStream& cacheStream = aStreamOut->ref();
 
-  cacheStream.controlChild() = nullptr;
-  cacheStream.controlParent() = nullptr;
+  cacheStream.control() = nullptr;
 
   MOZ_ALWAYS_TRUE(mozilla::ipc::SerializeIPCStream(do_AddRef(aStream),
                                                    cacheStream.stream(),

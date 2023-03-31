@@ -78,9 +78,6 @@ using mozilla::loader::PScriptCacheParent;
 namespace ipc {
 class CrashReporterHost;
 class TestShellParent;
-#ifdef FUZZING
-class ProtocolFuzzerHelper;
-#endif
 class SharedPreferenceSerializer;
 }  // namespace ipc
 
@@ -134,9 +131,6 @@ class ContentParent final : public PContentParent,
   friend class mozilla::PreallocatedProcessManagerImpl;
   friend class PContentParent;
   friend class mozilla::dom::RemoteWorkerManager;
-#ifdef FUZZING
-  friend class mozilla::ipc::ProtocolFuzzerHelper;
-#endif
 
  public:
   using LaunchError = mozilla::ipc::LaunchError;
@@ -1097,7 +1091,7 @@ class ContentParent final : public PContentParent,
       const IPCDataTransfer& aDataTransfer, const bool& aIsPrivateData,
       nsIPrincipal* aRequestingPrincipal,
       const nsContentPolicyType& aContentPolicyType,
-      const int32_t& aWhichClipboard);
+      nsIReferrerInfo* aReferrerInfo, const int32_t& aWhichClipboard);
 
   mozilla::ipc::IPCResult RecvGetClipboard(nsTArray<nsCString>&& aTypes,
                                            const int32_t& aWhichClipboard,
@@ -1619,17 +1613,6 @@ class ContentParent final : public PContentParent,
 
   void AssertAlive();
 
-  /**
-   * Called when a subprocess succesfully launches.
-   *
-   * May submit telemetry if the new number of content processes is greater
-   * than the previous maximum.
-   *
-   * This will submit telemetry about the time delta between this content
-   * process launch and the last content process launch.
-   */
-  static void DidLaunchSubprocess();
-
   void MarkAsUsed() { mIsUsed = true; }
 
  private:
@@ -1796,7 +1779,6 @@ class ContentParent final : public PContentParent,
 
   static uint32_t sMaxContentProcesses;
   static uint32_t sPageLoadEventCounter;
-  static Maybe<TimeStamp> sLastContentProcessLaunch;
 
   bool mIsSignaledImpendingShutdown = false;
   bool mIsNotifiedShutdownSuccess = false;

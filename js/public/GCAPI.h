@@ -261,11 +261,10 @@ typedef enum JSGCParamKey {
   JSGC_MIN_EMPTY_CHUNK_COUNT = 21,
 
   /**
-   * We never keep more than this many unused chunks in the free chunk
-   * pool.
+   * We never keep more than this many unused chunks in the free chunk pool.
    *
-   * Pref: javascript.options.mem.gc_min_empty_chunk_count
-   * Default: MinEmptyChunkCount
+   * Pref: javascript.options.mem.gc_max_empty_chunk_count
+   * Default: MaxEmptyChunkCount
    */
   JSGC_MAX_EMPTY_CHUNK_COUNT = 22,
 
@@ -610,7 +609,7 @@ namespace JS {
   D(FULL_CELL_PTR_STR_BUFFER, 28)                                      \
   D(TOO_MUCH_JIT_CODE, 29)                                             \
   D(FULL_CELL_PTR_BIGINT_BUFFER, 30)                                   \
-  D(UNUSED5, 31)                                                       \
+  D(NURSERY_TRAILERS, 31)                                              \
   D(NURSERY_MALLOC_BUFFERS, 32)                                        \
                                                                        \
   /*                                                                   \
@@ -1131,7 +1130,7 @@ class JS_PUBLIC_API AutoCheckCannotGC : public AutoRequireNoGC {
   explicit AutoCheckCannotGC(JSContext* cx = nullptr) {}
   AutoCheckCannotGC(const AutoCheckCannotGC& other) : AutoCheckCannotGC() {}
 #endif
-} JS_HAZ_GC_INVALIDATED;
+} JS_HAZ_GC_INVALIDATED JS_HAZ_GC_REF;
 
 extern JS_PUBLIC_API void SetLowMemoryState(JSContext* cx, bool newState);
 

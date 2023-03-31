@@ -1,6 +1,14 @@
 
 # cargo-vet audits file
 
+[[wildcard-audits.bhttp]]
+who = "Martin Thomson <mt@lowentropy.net>"
+criteria = "safe-to-deploy"
+user-id = 128763
+start = "2022-08-04"
+end = "2024-03-09"
+notes = "Though the code is safe to run and deploy, the code for processing HTTP/1.1 messages (the `read-http` feature, specifically) is not suited for deployment in real applications, either clients or servers.  Some features necessary for live deployment are not implemented, such as the proper handling of some types of response (e.g., a response to a HEAD request).  Software that processes HTTP/1.1 messages requires a large number of compatibility tweaks if it is to be deployed interoperably.  This feature only exists to support basic validation tools and is unlikely to be widely compatible."
+
 [[wildcard-audits.glean]]
 who = "Chris H-C <chutten@mozilla.com>"
 criteria = "safe-to-deploy"
@@ -16,6 +24,14 @@ user-id = 48
 start = "2019-09-24"
 end = "2024-02-24"
 notes = "The Glean SDKs are maintained by the Glean Team at Mozilla."
+
+[[wildcard-audits.ohttp]]
+who = "Martin Thomson <mt@lowentropy.net>"
+criteria = "safe-to-deploy"
+user-id = 128763
+start = "2022-08-04"
+end = "2024-03-09"
+notes = "This code contains two cryptographic back ends.  No unsafe code is contained if the Rust `hpke` crate is used (the `rust-hpke` feature).  Using NSS (the `nss` feature) involves extensive use of bindings to the native code provided by NSS.  This interface uses wrappers that attempt to add safety to a fundamentally very dangerous library, but those wrappers have only been validated for use following the needs of this crate."
 
 [[audits.aa-stroke]]
 who = "Lee Salzman <lsalzman@mozilla.com>"
@@ -202,7 +218,7 @@ delta = "0.1.8 -> 0.1.9"
 [[audits.authenticator]]
 who = "John M. Schanck <jschanck@mozilla.com>"
 criteria = "safe-to-deploy"
-version = "0.4.0-alpha.9"
+version = "0.4.0-alpha.10"
 notes = "Maintained by the CryptoEng team at Mozilla."
 
 [[audits.autocfg]]
@@ -215,12 +231,6 @@ notes = "All code written or reviewed by Josh Stone."
 who = "Mike Hommey <mh+mozilla@glandium.org>"
 criteria = "safe-to-deploy"
 delta = "0.13.0 -> 0.13.1"
-
-[[audits.bhttp]]
-who = "Dana Keeler <dkeeler@mozilla.com>"
-criteria = "safe-to-deploy"
-version = "0.2.3"
-notes = "Mozilla-developed package, no unsafe code or powerful imports."
 
 [[audits.bindgen]]
 who = "Emilio Cobos Álvarez <emilio@crisal.io>"
@@ -410,6 +420,11 @@ who = "Mike Hommey <mh+mozilla@glandium.org>"
 criteria = "safe-to-deploy"
 delta = "0.9.10 -> 0.9.13"
 
+[[audits.crossbeam-queue]]
+who = "Matthew Gregan <kinetik@flim.org>"
+criteria = "safe-to-deploy"
+version = "0.3.8"
+
 [[audits.crossbeam-utils]]
 who = "Mike Hommey <mh+mozilla@glandium.org>"
 criteria = "safe-to-deploy"
@@ -443,6 +458,12 @@ notes = """
 Trivial crate with a single proc macro to compute the max length of the inputs
 to a match expression.
 """
+
+[[audits.cssparser-macros]]
+who = "Tiaan Louw <tlouw@mozilla.com>"
+criteria = "safe-to-deploy"
+delta = "0.6.0 -> 0.6.0@git:45bc47e2bcb846f1efb5aea156be5fe7d18624bf"
+notes = "Latest version of changes to the cssparser pulled from master branch."
 
 [[audits.cssparser-macros]]
 who = "Tiaan Louw <tlouw@mozilla.com>"
@@ -1001,6 +1022,12 @@ who = "Mike Hommey <mh+mozilla@glandium.org>"
 criteria = "safe-to-deploy"
 delta = "0.3.0 -> 0.3.1"
 
+[[audits.glsl]]
+who = "Mike Hommey <mh+mozilla@glandium.org>"
+criteria = "safe-to-deploy"
+delta = "6.0.1 -> 6.0.2"
+notes = "I'm the author of the changes in this version of the crate."
+
 [[audits.goblin]]
 who = "Jan-Erik Rediger <jrediger@mozilla.com>"
 criteria = "safe-to-deploy"
@@ -1065,6 +1092,12 @@ who = "Mike Hommey <mh+mozilla@glandium.org>"
 criteria = "safe-to-run"
 delta = "0.3.7 -> 0.3.8"
 
+[[audits.headers-core]]
+who = "Bobby Holley <bobbyholley@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.2.0"
+notes = "Trivial crate, no unsafe code."
+
 [[audits.heck]]
 who = "Mike Hommey <mh+mozilla@glandium.org>"
 criteria = "safe-to-deploy"
@@ -1109,6 +1142,12 @@ delta = "0.14.22 -> 0.14.23"
 who = "Mike Hommey <mh+mozilla@glandium.org>"
 criteria = "safe-to-run"
 delta = "0.14.23 -> 0.14.24"
+
+[[audits.idna]]
+who = "Bobby Holley <bobbyholley@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.3.0 -> 0.2.3"
+notes = "Backwards diff with some algorithm changes, no unsafe code."
 
 [[audits.indexmap]]
 who = "Mike Hommey <mh+mozilla@glandium.org>"
@@ -1220,6 +1259,17 @@ version = "0.4.17"
 who = "Gabriele Svelto <gsvelto@mozilla.com>"
 criteria = "safe-to-deploy"
 version = "0.4.1"
+
+[[audits.malloc_buf]]
+who = "Bobby Holley <bobbyholley@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.0.6"
+notes = """
+Very small crate for managing malloc-ed buffers, primarily for use in the objc crate.
+There is an edge-case condition that passes slice::from_raw_parts(0x1, 0) which I'm
+not entirely certain is technically sound, but in either case I am reasonably confident
+it's not exploitable.
+"""
 
 [[audits.malloc_size_of_derive]]
 who = "Bobby Holley <bobbyholley@gmail.com>"
@@ -1505,21 +1555,6 @@ who = "Mike Hommey <mh+mozilla@glandium.org>"
 criteria = "safe-to-deploy"
 delta = "0.30.0 -> 0.30.3"
 
-[[audits.ohttp]]
-who = "Dana Keeler <dkeeler@mozilla.com>"
-criteria = "safe-to-deploy"
-version = "0.2.2"
-notes = """
-Developed and maintained  by Mozilla.
-When configured to use NSS (as we do), this crate uses unsafe blocks to call
-NSS functions. These calls have been audited.
-"""
-
-[[audits.ohttp]]
-who = "Mike Hommey <mh+mozilla@glandium.org>"
-criteria = "safe-to-deploy"
-delta = "0.2.2 -> 0.2.3"
-
 [[audits.once_cell]]
 who = "Mike Hommey <mh+mozilla@glandium.org>"
 criteria = "safe-to-deploy"
@@ -1586,6 +1621,12 @@ delta = "1.0.7 -> 1.0.8"
 who = "Mike Hommey <mh+mozilla@glandium.org>"
 criteria = "safe-to-deploy"
 delta = "1.0.8 -> 1.0.11"
+
+[[audits.peeking_take_while]]
+who = "Bobby Holley <bobbyholley@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "1.0.0 -> 0.1.2"
+notes = "Small refactor of some simple iterator logic, no unsafe code or capabilities."
 
 [[audits.pin-project]]
 who = "Mike Hommey <mh+mozilla@glandium.org>"
@@ -1943,6 +1984,12 @@ delta = "1.0.10 -> 1.0.11"
 who = "Mike Hommey <mh+mozilla@glandium.org>"
 criteria = "safe-to-deploy"
 delta = "1.0.11 -> 1.0.12"
+
+[[audits.safemem]]
+who = "Bobby Holley <bobbyholley@gmail.com>"
+criteria = "safe-to-run"
+version = "0.3.3"
+notes = "I didn't review the allocation code carefully but it's not malicious."
 
 [[audits.scoped-tls]]
 who = "Mike Hommey <mh+mozilla@glandium.org>"
@@ -2841,6 +2888,11 @@ criteria = "safe-to-deploy"
 delta = "0.15.0@git:581b22e6a026ac92589be2f36a30357600f9d02c -> 0.15.0@git:b33731c44c9dd3bfb79d889e7a699c26c3929cd3"
 
 [[audits.wgpu-core]]
+who = "Teodor Tanasoaia <ttanasoaia@mozilla.com>"
+criteria = "safe-to-deploy"
+delta = "0.15.0@git:74303308cd6030071889e865c40aa638214ed938 -> 0.15.0@git:73b4257b17cc62ecc8df6d6aa3730bd9c6cba4b9"
+
+[[audits.wgpu-core]]
 who = "Nicolas Silva <nical@fastmail.com>"
 criteria = "safe-to-deploy"
 delta = "0.15.0@git:b33731c44c9dd3bfb79d889e7a699c26c3929cd3 -> 0.15.0@git:74303308cd6030071889e865c40aa638214ed938"
@@ -2899,6 +2951,11 @@ criteria = "safe-to-deploy"
 delta = "0.15.1@git:581b22e6a026ac92589be2f36a30357600f9d02c -> 0.15.1@git:b33731c44c9dd3bfb79d889e7a699c26c3929cd3"
 
 [[audits.wgpu-hal]]
+who = "Teodor Tanasoaia <ttanasoaia@mozilla.com>"
+criteria = "safe-to-deploy"
+delta = "0.15.1@git:74303308cd6030071889e865c40aa638214ed938 -> 0.15.1@git:73b4257b17cc62ecc8df6d6aa3730bd9c6cba4b9"
+
+[[audits.wgpu-hal]]
 who = "Nicolas Silva <nical@fastmail.com>"
 criteria = "safe-to-deploy"
 delta = "0.15.1@git:b33731c44c9dd3bfb79d889e7a699c26c3929cd3 -> 0.15.1@git:74303308cd6030071889e865c40aa638214ed938"
@@ -2955,6 +3012,11 @@ delta = "0.15.0@git:48d8666de002c7bfddbe85a2596f7748b4cc18b4 -> 0.15.0@git:41de7
 who = "Nicolas Silva <nical@fastmail.com>"
 criteria = "safe-to-deploy"
 delta = "0.15.0@git:581b22e6a026ac92589be2f36a30357600f9d02c -> 0.15.0@git:b33731c44c9dd3bfb79d889e7a699c26c3929cd3"
+
+[[audits.wgpu-types]]
+who = "Teodor Tanasoaia <ttanasoaia@mozilla.com>"
+criteria = "safe-to-deploy"
+delta = "0.15.0@git:74303308cd6030071889e865c40aa638214ed938 -> 0.15.0@git:73b4257b17cc62ecc8df6d6aa3730bd9c6cba4b9"
 
 [[audits.wgpu-types]]
 who = "Nicolas Silva <nical@fastmail.com>"

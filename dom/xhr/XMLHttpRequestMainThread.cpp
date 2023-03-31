@@ -30,6 +30,7 @@
 #include "mozilla/dom/UserActivation.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/PromiseNativeHandler.h"
+#include "mozilla/dom/ReferrerInfo.h"
 #include "mozilla/dom/WorkerError.h"
 #include "mozilla/Encoding.h"
 #include "mozilla/EventDispatcher.h"
@@ -3338,11 +3339,20 @@ XMLHttpRequestMainThread::AsyncOnChannelRedirect(
     }
     return rv;
   }
-  OnRedirectVerifyCallback(NS_OK);
+
+  // we need to strip Authentication headers for cross-origin requests
+  // Ref: https://fetch.spec.whatwg.org/#http-redirect-fetch
+  bool stripAuth =
+      StaticPrefs::network_fetch_redirect_stripAuthHeader() &&
+      NS_ShouldRemoveAuthHeaderOnRedirect(aOldChannel, aNewChannel, aFlags);
+
+  OnRedirectVerifyCallback(NS_OK, stripAuth);
+
   return NS_OK;
 }
 
-nsresult XMLHttpRequestMainThread::OnRedirectVerifyCallback(nsresult result) {
+nsresult XMLHttpRequestMainThread::OnRedirectVerifyCallback(nsresult result,
+                                                            bool aStripAuth) {
   NS_ASSERTION(mRedirectCallback, "mRedirectCallback not set in callback");
   NS_ASSERTION(mNewRedirectChannel, "mNewRedirectChannel not set in callback");
 
@@ -3357,30 +3367,10 @@ nsresult XMLHttpRequestMainThread::OnRedirectVerifyCallback(nsresult result) {
 
     nsCOMPtr<nsIHttpChannel> newHttpChannel(do_QueryInterface(mChannel));
     if (newHttpChannel) {
-      // we need to strip Authentication headers for cross-origin requests
-      // Ref: https://fetch.spec.whatwg.org/#http-redirect-fetch
-      bool skipAuthHeader = false;
-      if (StaticPrefs::network_fetch_redirect_stripAuthHeader()) {
-        nsCOMPtr<nsIURI> oldUri;
-        MOZ_ALWAYS_SUCCEEDS(
-            NS_GetFinalChannelURI(oldHttpChannel, getter_AddRefs(oldUri)));
-
-        nsCOMPtr<nsIURI> newUri;
-        MOZ_ALWAYS_SUCCEEDS(
-            NS_GetFinalChannelURI(newHttpChannel, getter_AddRefs(newUri)));
-
-        nsresult rv = nsContentUtils::GetSecurityManager()->CheckSameOriginURI(
-            newUri, oldUri, false, false);
-
-        if (NS_FAILED(rv)) {
-          skipAuthHeader = true;
-        }
-      }
-
       // Ensure all original headers are duplicated for the new channel (bug
       // #553888)
       mAuthorRequestHeaders.ApplyToChannel(newHttpChannel, rewriteToGET,
-                                           skipAuthHeader);
+                                           aStripAuth);
     }
   } else {
     mErrorLoad = ErrorType::eRedirect;

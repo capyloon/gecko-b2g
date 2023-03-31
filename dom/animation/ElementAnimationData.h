@@ -17,13 +17,18 @@ enum class PseudoStyleType : uint8_t;
 class EffectSet;
 template <typename Animation>
 class AnimationCollection;
+template <typename TimelineType>
+class TimelineCollection;
 namespace dom {
 class Element;
 class CSSAnimation;
 class CSSTransition;
+class ProgressTimelineScheduler;
+class ScrollTimeline;
 }  // namespace dom
 using CSSAnimationCollection = AnimationCollection<dom::CSSAnimation>;
 using CSSTransitionCollection = AnimationCollection<dom::CSSTransition>;
+using ScrollTimelineCollection = TimelineCollection<dom::ScrollTimeline>;
 
 // The animation data for a given element (and its pseudo-elements).
 class ElementAnimationData {
@@ -32,6 +37,39 @@ class ElementAnimationData {
     UniquePtr<CSSAnimationCollection> mAnimations;
     UniquePtr<CSSTransitionCollection> mTransitions;
 
+    // Note: scroll-timeline-name is applied to elements which could be
+    // scroll containers, or replaced elements. view-timeline-name is applied to
+    // all elements. However, the named timeline is referenceable in
+    // animation-timeline by the tree order scope.
+    // Spec: https://drafts.csswg.org/scroll-animations-1/#timeline-scope.
+    //
+    // So it should be fine to create timeline objects only on the elements and
+    // pseudo elements which support animations.
+    UniquePtr<ScrollTimelineCollection> mScrollTimelines;
+    // TODO: Bug 1737920. Add support for ViewTimeline.
+
+    // This is different from |mScrollTimelines|. We use this to schedule all
+    // scroll-driven animations (which use anonymous/named scroll timelines or
+    // anonymous/name view timelines) for a specific scroll source (which is the
+    // element with nsIScrollableFrame).
+    //
+    // TimelineCollection owns and manages the named progress timeline generated
+    // by specifying scroll-timeline-name property and view-timeline-name
+    // property on this element. However, the anonymous progress timelines (e.g.
+    // animation-timeline:scroll()) are owned by Animation objects only.
+    //
+    // Note:
+    // 1. For named scroll timelines. The element which specifies
+    //    scroll-timeline-name is the scroll source. However, for named view
+    //    timelines, the element which specifies view-timeline-name may not be
+    //    the scroll source because we use its nearest scroll container as the
+    //    scroll source.
+    // 2. For anonymous progress timelines, we don't keep their timeline obejcts
+    //    in TimelineCollection.
+    // So, per 1) and 2), we use |mProgressTimelineScheduler| for the scroll
+    // source element to schedule scroll-driven animations.
+    UniquePtr<dom::ProgressTimelineScheduler> mProgressTimelineScheduler;
+
     PerElementOrPseudoData();
     ~PerElementOrPseudoData();
 
@@ -39,9 +77,15 @@ class ElementAnimationData {
     CSSTransitionCollection& DoEnsureTransitions(dom::Element&,
                                                  PseudoStyleType);
     CSSAnimationCollection& DoEnsureAnimations(dom::Element&, PseudoStyleType);
+    ScrollTimelineCollection& DoEnsureScrollTimelines(dom::Element&,
+                                                      PseudoStyleType);
+    dom::ProgressTimelineScheduler& DoEnsureProgressTimelineScheduler(
+        dom::Element&, PseudoStyleType);
     void DoClearEffectSet();
     void DoClearTransitions();
     void DoClearAnimations();
+    void DoClearScrollTimelines();
+    void DoClearProgressTimelineScheduler();
 
     void Traverse(nsCycleCollectionTraversalCallback&);
   };
@@ -143,8 +187,50 @@ class ElementAnimationData {
     return data.DoEnsureAnimations(aOwner, aType);
   }
 
+  ScrollTimelineCollection* GetScrollTimelineCollection(PseudoStyleType aType) {
+    return DataFor(aType).mScrollTimelines.get();
+  }
+
+  void ClearScrollTimelineCollectionFor(PseudoStyleType aType) {
+    auto& data = DataFor(aType);
+    if (data.mScrollTimelines) {
+      data.DoClearScrollTimelines();
+    }
+  }
+
+  ScrollTimelineCollection& EnsureScrollTimelineCollection(
+      dom::Element& aOwner, PseudoStyleType aType) {
+    auto& data = DataFor(aType);
+    if (auto* collection = data.mScrollTimelines.get()) {
+      return *collection;
+    }
+    return data.DoEnsureScrollTimelines(aOwner, aType);
+  }
+
+  dom::ProgressTimelineScheduler* GetProgressTimelineScheduler(
+      PseudoStyleType aType) {
+    return DataFor(aType).mProgressTimelineScheduler.get();
+  }
+
+  void ClearProgressTimelineScheduler(PseudoStyleType aType) {
+    auto& data = DataFor(aType);
+    if (data.mProgressTimelineScheduler) {
+      data.DoClearProgressTimelineScheduler();
+    }
+  }
+
+  dom::ProgressTimelineScheduler& EnsureProgressTimelineScheduler(
+      dom::Element& aOwner, PseudoStyleType aType) {
+    auto& data = DataFor(aType);
+    if (auto* collection = data.mProgressTimelineScheduler.get()) {
+      return *collection;
+    }
+    return data.DoEnsureProgressTimelineScheduler(aOwner, aType);
+  }
+
   ElementAnimationData() = default;
 };
+
 }  // namespace mozilla
 
 #endif

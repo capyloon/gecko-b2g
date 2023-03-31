@@ -655,6 +655,14 @@ var gPrivacyPane = {
       "command",
       gPrivacyPane.showMicrophoneExceptions
     );
+    document.getElementById(
+      "speakerSettingsRow"
+    ).hidden = !Services.prefs.getBoolPref("media.setsinkid.enabled", false);
+    setEventListener(
+      "speakerSettingsButton",
+      "command",
+      gPrivacyPane.showSpeakerExceptions
+    );
     setEventListener(
       "popupPolicyButton",
       "command",
@@ -1955,8 +1963,6 @@ var gPrivacyPane = {
    * Advanced users can choose other int-valued modes via about:config.
    */
   initCookieBannerHandling() {
-    this._initCookieBannerHandlingLearnMore();
-
     setSyncFromPrefListener("handleCookieBanners", () =>
       this.readCookieBannerMode()
     );
@@ -1968,14 +1974,6 @@ var gPrivacyPane = {
     preference.on("change", () => this.updateCookieBannerHandlingVisibility());
 
     this.updateCookieBannerHandlingVisibility();
-  },
-
-  _initCookieBannerHandlingLearnMore() {
-    let url =
-      Services.urlFormatter.formatURLPref("app.support.baseURL") +
-      "cookie-banner-reduction";
-    let learnMore = document.getElementById("cookieBannerHandlingLearnMore");
-    learnMore.setAttribute("href", url);
   },
 
   /**
@@ -2048,7 +2046,7 @@ var gPrivacyPane = {
     let onNimbus = () => this._updateFirefoxSuggestSection();
     NimbusFeatures.urlbar.onUpdate(onNimbus);
     window.addEventListener("unload", () => {
-      NimbusFeatures.urlbar.off(onNimbus);
+      NimbusFeatures.urlbar.offUpdate(onNimbus);
     });
 
     // The Firefox Suggest info box potentially needs updating when any of the
@@ -2263,6 +2261,22 @@ var gPrivacyPane = {
    */
   showMicrophoneExceptions() {
     let params = { permissionType: "microphone" };
+
+    gSubDialog.open(
+      "chrome://browser/content/preferences/dialogs/sitePermissions.xhtml",
+      { features: "resizable=yes" },
+      params
+    );
+  },
+
+  // SPEAKER
+
+  /**
+   * Displays the speaker exceptions dialog where specific site speaker
+   * preferences can be set.
+   */
+  showSpeakerExceptions() {
+    let params = { permissionType: "speaker" };
 
     gSubDialog.open(
       "chrome://browser/content/preferences/dialogs/sitePermissions.xhtml",
@@ -2486,11 +2500,12 @@ var gPrivacyPane = {
 
   toggleRelayIntegration() {
     const checkbox = document.getElementById("relayIntegration");
-
     if (checkbox.checked) {
       FirefoxRelay.markAsEnabled();
+      FirefoxRelayTelemetry.recordRelayPrefEvent("enabled");
     } else {
       FirefoxRelay.markAsDisabled();
+      FirefoxRelayTelemetry.recordRelayPrefEvent("disabled");
     }
   },
 
@@ -2830,7 +2845,7 @@ var gPrivacyPane = {
       updatePrivacySegmentationSectionVisibilityState
     );
     window.addEventListener("unload", () => {
-      NimbusFeatures.majorRelease2022.off(
+      NimbusFeatures.majorRelease2022.offUpdate(
         updatePrivacySegmentationSectionVisibilityState
       );
     });

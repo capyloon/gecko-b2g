@@ -3153,10 +3153,14 @@ bool BaseCompiler::jumpConditionalWithResults(BranchState* b, RegRef object,
     }
     if (b->stackHeight != resultsBase) {
       Label notTaken;
+      // Temporarily take the result registers so that branchGcObjectType
+      // doesn't use them.
+      needIntegerResultRegisters(b->resultType);
       branchGcObjectType(
           object, typeIndex, &notTaken,
           /*succeedOnNull=*/false,
           /*onSuccess=*/b->invertBranch ? onSuccess : !onSuccess);
+      freeIntegerResultRegisters(b->resultType);
 
       // Shuffle stack args.
       shuffleStackResultsBeforeBranch(resultsBase, b->stackHeight,
@@ -6404,30 +6408,28 @@ void BaseCompiler::branchGcObjectType(RegRef object, uint32_t typeIndex,
                                       bool onSuccess) {
   const TypeDef& castTypeDef = (*moduleEnv_.types)[typeIndex];
   RegPtr superTypeDef = loadTypeDef(typeIndex);
-  RegPtr subTypeDef = needPtr();
-  RegI32 length;
+  RegPtr scratch1 = needPtr();
+  RegI32 scratch2;
   if (castTypeDef.subTypingDepth() >= MinSuperTypeVectorLength) {
-    length = needI32();
+    scratch2 = needI32();
   }
 
   Label fallthrough;
   Label* successLabel = onSuccess ? label : &fallthrough;
   Label* failLabel = onSuccess ? &fallthrough : label;
-  if (succeedOnNull) {
-    masm.branchTestPtr(Assembler::Zero, object, object, successLabel);
-  } else {
-    masm.branchTestPtr(Assembler::Zero, object, object, failLabel);
-  }
-  masm.loadPtr(Address(object, WasmGcObject::offsetOfTypeDef()), subTypeDef);
-  masm.branchWasmTypeDefIsSubtype(subTypeDef, superTypeDef, length,
+  Label* nullLabel = succeedOnNull ? successLabel : failLabel;
+  masm.branchTestPtr(Assembler::Zero, object, object, nullLabel);
+  masm.branchTestObjectIsWasmGcObject(false, object, scratch1, failLabel);
+  masm.loadPtr(Address(object, WasmGcObject::offsetOfTypeDef()), scratch1);
+  masm.branchWasmTypeDefIsSubtype(scratch1, superTypeDef, scratch2,
                                   castTypeDef.subTypingDepth(), label,
                                   onSuccess);
   masm.bind(&fallthrough);
 
   if (castTypeDef.subTypingDepth() >= MinSuperTypeVectorLength) {
-    freeI32(length);
+    freeI32(scratch2);
   }
-  freePtr(subTypeDef);
+  freePtr(scratch1);
   freePtr(superTypeDef);
 }
 
@@ -7337,15 +7339,31 @@ bool BaseCompiler::emitBrOnCastCommon(bool onSuccess) {
   Control& target = controlItem(labelRelativeDepth);
   target.bceSafeOnExit &= bceSafe_;
 
-  RegRef object = popRef();
-  pushRef(object);
-
   // 3. br_if $l : [T*, ref] -> [T*, ref]
   BranchState b(&target.label, target.stackHeight, InvertBranch(false),
                 labelType);
-  if (!jumpConditionalWithResults(&b, object, castTypeIndex, onSuccess)) {
+
+  // Don't allocate the result register used in the branch
+  if (b.hasBlockResults()) {
+    needIntegerResultRegisters(b.resultType);
+  }
+
+  // Create a copy of the ref for passing to the br_on_cast label,
+  // the original ref is used for casting in the condition.
+  RegRef object = popRef();
+  RegRef objectCondition = needRef();
+  moveRef(object, objectCondition);
+  pushRef(object);
+
+  if (b.hasBlockResults()) {
+    freeIntegerResultRegisters(b.resultType);
+  }
+
+  if (!jumpConditionalWithResults(&b, objectCondition, castTypeIndex,
+                                  onSuccess)) {
     return false;
   }
+  freeRef(objectCondition);
 
   return true;
 }
@@ -8396,22 +8414,22 @@ static void RelaxedMaxF64x2(MacroAssembler& masm, RegV128 rs, RegV128 rsd) {
 
 static void RelaxedConvertF32x4ToI32x4(MacroAssembler& masm, RegV128 rs,
                                        RegV128 rd) {
-  masm.truncSatFloat32x4ToInt32x4Relaxed(rs, rd);
+  masm.truncFloat32x4ToInt32x4Relaxed(rs, rd);
 }
 
 static void RelaxedConvertF32x4ToUI32x4(MacroAssembler& masm, RegV128 rs,
                                         RegV128 rd) {
-  masm.unsignedTruncSatFloat32x4ToInt32x4Relaxed(rs, rd);
+  masm.unsignedTruncFloat32x4ToInt32x4Relaxed(rs, rd);
 }
 
 static void RelaxedConvertF64x2ToI32x4(MacroAssembler& masm, RegV128 rs,
                                        RegV128 rd) {
-  masm.truncSatFloat64x2ToInt32x4Relaxed(rs, rd);
+  masm.truncFloat64x2ToInt32x4Relaxed(rs, rd);
 }
 
 static void RelaxedConvertF64x2ToUI32x4(MacroAssembler& masm, RegV128 rs,
                                         RegV128 rd) {
-  masm.unsignedTruncSatFloat64x2ToInt32x4Relaxed(rs, rd);
+  masm.unsignedTruncFloat64x2ToInt32x4Relaxed(rs, rd);
 }
 
 static void RelaxedQ15MulrS(MacroAssembler& masm, RegV128 rs, RegV128 rsd) {
@@ -8433,18 +8451,6 @@ void BaseCompiler::emitDotI8x16I7x16AddS() {
 #    else
   masm.dotInt8x16Int7x16ThenAdd(rs0, rs1, rsd);
 #    endif
-  freeV128(rs1);
-  freeV128(rs0);
-  pushV128(rsd);
-}
-
-void BaseCompiler::emitDotBF16x8AddF32x4() {
-  RegV128 rsd = popV128();
-  RegV128 rs0, rs1;
-  pop2xV128(&rs0, &rs1);
-  RegV128 temp = needV128();
-  masm.dotBFloat16x8ThenAdd(rs0, rs1, rsd, temp);
-  freeV128(temp);
   freeV128(rs1);
   freeV128(rs0);
   pushV128(rsd);
@@ -10140,22 +10146,22 @@ bool BaseCompiler::emitBody() {
               return iter_.unrecognizedOpcode(&op);
             }
             CHECK_NEXT(dispatchVectorBinary(RelaxedMaxF64x2));
-          case uint32_t(SimdOp::I32x4RelaxedTruncSSatF32x4):
+          case uint32_t(SimdOp::I32x4RelaxedTruncF32x4S):
             if (!moduleEnv_.v128RelaxedEnabled()) {
               return iter_.unrecognizedOpcode(&op);
             }
             CHECK_NEXT(dispatchVectorUnary(RelaxedConvertF32x4ToI32x4));
-          case uint32_t(SimdOp::I32x4RelaxedTruncUSatF32x4):
+          case uint32_t(SimdOp::I32x4RelaxedTruncF32x4U):
             if (!moduleEnv_.v128RelaxedEnabled()) {
               return iter_.unrecognizedOpcode(&op);
             }
             CHECK_NEXT(dispatchVectorUnary(RelaxedConvertF32x4ToUI32x4));
-          case uint32_t(SimdOp::I32x4RelaxedTruncSatF64x2SZero):
+          case uint32_t(SimdOp::I32x4RelaxedTruncF64x2SZero):
             if (!moduleEnv_.v128RelaxedEnabled()) {
               return iter_.unrecognizedOpcode(&op);
             }
             CHECK_NEXT(dispatchVectorUnary(RelaxedConvertF64x2ToI32x4));
-          case uint32_t(SimdOp::I32x4RelaxedTruncSatF64x2UZero):
+          case uint32_t(SimdOp::I32x4RelaxedTruncF64x2UZero):
             if (!moduleEnv_.v128RelaxedEnabled()) {
               return iter_.unrecognizedOpcode(&op);
             }
@@ -10180,11 +10186,6 @@ bool BaseCompiler::emitBody() {
               return iter_.unrecognizedOpcode(&op);
             }
             CHECK_NEXT(dispatchTernary0(emitDotI8x16I7x16AddS, ValType::V128));
-          case uint32_t(SimdOp::F32x4RelaxedDotBF16x8AddF32x4):
-            if (!moduleEnv_.v128RelaxedEnabled()) {
-              return iter_.unrecognizedOpcode(&op);
-            }
-            CHECK_NEXT(dispatchTernary0(emitDotBF16x8AddF32x4, ValType::V128));
 #  endif
           default:
             break;

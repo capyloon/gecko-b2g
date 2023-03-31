@@ -181,13 +181,7 @@ class HyperTextAccessible : public AccessibleWrap,
       uint32_t aCoordType =
           nsIAccessibleCoordinateType::COORDTYPE_SCREEN_RELATIVE) override;
 
-  LayoutDeviceIntRect CharBounds(int32_t aOffset,
-                                 uint32_t aCoordType) override {
-    int32_t endOffset = aOffset == static_cast<int32_t>(CharacterCount())
-                            ? aOffset
-                            : aOffset + 1;
-    return TextBounds(aOffset, endOffset, aCoordType);
-  }
+  LayoutDeviceIntRect CharBounds(int32_t aOffset, uint32_t aCoordType) override;
 
   /**
    * Get/set caret offset, if no caret then -1.

@@ -17,7 +17,19 @@ export function initialSourcesState(state) {
      *
      * See create.js: `createSourceObject` method for the description of stored objects.
      */
-    sources: new Map(),
+    mutableSources: new Map(),
+
+    /**
+     * @backward-compat { version 112 } Specifies if the server supports overrides
+     * Remove this property once fully supported.
+     */
+    isOverridesSupported: state?.isOverridesSupported || false,
+    /**
+     * List of override objects whose sources texts have been locally overridden.
+     *
+     * Object { sourceUrl, path }
+     */
+    mutableOverrideSources: state?.mutableOverrideSources || new Map(),
 
     /**
      * All sources associated with a given URL. When using source maps, multiple
@@ -153,6 +165,18 @@ function update(state = initialSourcesState(), action) {
     case "REMOVE_THREAD": {
       return removeSourcesAndActors(state, action.threadActorID);
     }
+
+    case "SET_OVERRIDE": {
+      state.mutableOverrideSources.set(action.url, action.path);
+      return state;
+    }
+
+    case "REMOVE_OVERRIDE": {
+      if (state.mutableOverrideSources.has(action.url)) {
+        state.mutableOverrideSources.delete(action.url);
+      }
+      return state;
+    }
   }
 
   return state;
@@ -169,9 +193,8 @@ function addSources(state, sources) {
     urls: { ...state.urls },
   };
 
-  const newSourceMap = new Map(state.sources);
   for (const source of sources) {
-    newSourceMap.set(source.id, source);
+    state.mutableSources.set(source.id, source);
 
     // Update the source url map
     const existing = state.urls[source.url] || [];
@@ -187,7 +210,6 @@ function addSources(state, sources) {
       state.originalSources[generatedSourceId].push(source.id);
     }
   }
-  state.sources = newSourceMap;
 
   return state;
 }
@@ -199,8 +221,6 @@ function removeSourcesAndActors(state, threadActorID) {
     actors: { ...state.actors },
     originalSources: { ...state.originalSources },
   };
-
-  const newSourceMap = new Map(state.sources);
 
   for (const sourceId in state.actors) {
     let i = state.actors[sourceId].length;
@@ -216,7 +236,7 @@ function removeSourcesAndActors(state, threadActorID) {
     if (!state.actors[sourceId].length) {
       delete state.actors[sourceId];
 
-      const source = newSourceMap.get(sourceId);
+      const source = state.mutableSources.get(sourceId);
       if (source.url) {
         // urls
         if (state.urls[source.url]) {
@@ -229,17 +249,16 @@ function removeSourcesAndActors(state, threadActorID) {
         }
       }
 
-      newSourceMap.delete(sourceId);
+      state.mutableSources.delete(sourceId);
 
       // Also remove any original sources related to this generated source
       const originalSourceIds = state.originalSources[sourceId];
       if (originalSourceIds && originalSourceIds.length) {
-        originalSourceIds.forEach(id => newSourceMap.delete(id));
+        originalSourceIds.forEach(id => state.mutableSources.delete(id));
         delete state.originalSources[sourceId];
       }
     }
   }
-  state.sources = newSourceMap;
   return state;
 }
 
@@ -255,7 +274,13 @@ function insertSourceActors(state, action) {
   for (const sourceActor of sourceActors) {
     state.actors[sourceActor.source] = [
       ...(state.actors[sourceActor.source] || []),
-      { id: sourceActor.id, thread: sourceActor.thread },
+      {
+        id: sourceActor.id,
+        thread: sourceActor.thread,
+        startLine: sourceActor.startLine,
+        column: sourceActor.column,
+        length: sourceActor.length,
+      },
     ];
   }
 

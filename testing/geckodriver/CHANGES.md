@@ -5,6 +5,27 @@ All notable changes to this program are documented in this file.
 
 ## 0.32.2  (2023-02-08, `602aa16c20d4`)
 
+### Known problems
+
+- _Startup hang with Firefox running in a container (e.g. snap, flatpak):_
+
+  When Firefox is packaged inside a container (like the default Firefox browser
+  shipped with Ubuntu 22.04), it may see a different filesystem to the host.
+  This can affect access to the generated profile directory, which may result
+  in a hang when starting Firefox. Workarounds are listed in the geckodriver
+  [usage documentation].
+
+- _Potential hang with `moz:debuggerAddress` capability set to `true`:_
+
+  After enabling the site-isolation feature in Firefox with geckodriver 0.32.1
+  some WebDriver clients like Selenium that use the Chrome DevTools Protocol (CDP)
+  by default for logging events could trigger a hang in Firefox's experimental CDP
+  implementation. The fix for this problem will be shipped with Firefox 112.
+  Until then the following Firefox preferences should be set:
+
+  - `fission.bfcacheInParent: false`
+  - `fission.webContentIsolationStrategy: 0`
+
 ### Fixed
 
 - With the release of geckodriver 0.32.1 the marionette crate was inappropriately
@@ -12,6 +33,27 @@ All notable changes to this program are documented in this file.
   to fail for older releases.
 
 ## 0.32.1  (2023-02-02, `b7f075124503`)
+
+### Known problems
+
+- _Startup hang with Firefox running in a container (e.g. snap, flatpak):_
+
+  When Firefox is packaged inside a container (like the default Firefox browser
+  shipped with Ubuntu 22.04), it may see a different filesystem to the host.
+  This can affect access to the generated profile directory, which may result
+  in a hang when starting Firefox. Workarounds are listed in the geckodriver
+  [usage documentation].
+
+- _Potential hang with `moz:debuggerAddress` capability set to `true`:_
+
+  After enabling the site-isolation feature in Firefox with geckodriver 0.32.1
+  some WebDriver clients like Selenium that use the Chrome DevTools Protocol (CDP)
+  by default for logging events could trigger a hang in Firefox's experimental CDP
+  implementation. The fix for this problem will be shipped with Firefox 112.
+  Until then the following Firefox preferences should be set:
+
+  - `fission.bfcacheInParent: false`
+  - `fission.webContentIsolationStrategy: 0`
 
 ### Fixed
 
@@ -1648,6 +1690,7 @@ and greater.
 - Squash compile warnings
 
 [README]: https://github.com/mozilla/geckodriver/blob/master/README.md
+[usage documentation]: <https://firefox-source-docs.mozilla.org/testing/geckodriver/Usage.html#Running-Firefox-in-an-container-based-package>
 [Browser Toolbox]: https://developer.mozilla.org/en-US/docs/Tools/Browser_Toolbox
 [WebDriver conformance]: https://wpt.fyi/results/webdriver/tests?label=experimental
 [`webSocketUrl`]: https://developer.mozilla.org/en-US/docs/Web/WebDriver/Capabilities/webSocketUrl

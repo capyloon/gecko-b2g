@@ -5,7 +5,6 @@ ac_add_options --target=aarch64-apple-darwin
 CROSS_BUILD=1
 
 # $OSX_CROSS contains:
-#  * https://github.com/phracker/MacOSX-SDKs
 #  * linux64-libdmg
 #  * linux64-cctools-port
 #  * linux64-hfsplus
@@ -15,18 +14,19 @@ CROSS_BUILD=1
 
 CCTOOLS="$OSX_CROSS/cctools"
 
-OSX_CROSS_SYSROOT="$OSX_CROSS/MacOSX11.0.sdk"
-export MACOS_SDK_DIR="$OSX_CROSS_SYSROOT"
+MOZBUILD=$HOME/.mozbuild
+
+#ac_add_options --enable-bootstrap
 
 export DSYMUTIL="$OSX_CROSS/clang/bin/dsymutil"
 
-mk_add_options "export PATH=$CCTOOLS/bin:$OSX_CROSS/binutils/bin:$OSX_CROSS/llvm-dsymutil/bin:$PATH"
-mk_add_options "export LD_LIBRARY_PATH=$OSX_CROSS/clang/lib:$CCTOOLS/lib"
+mk_add_options "export PATH=$CCTOOLS/bin:$PATH"
+mk_add_options "export LD_LIBRARY_PATH=$MOZBUILD/clang/lib:$CCTOOLS/lib"
 
-export CC="$OSX_CROSS/clang/bin/clang"
-export CXX="$OSX_CROSS/clang/bin/clang++"
-export HOST_CC="$OSX_CROSS/clang/bin/clang"
-export HOST_CXX="$OSX_CROSS/clang/bin/clang++"
+export CC="$MOZBUILD/clang/bin/clang"
+export CXX="$MOZBUILD/clang/bin/clang++"
+export HOST_CC="$MOZBUILD/clang/bin/clang"
+export HOST_CXX="$MOZBUILD/clang/bin/clang++"
 
 # These are needed for packaging.
 export MKFSHFS="$OSX_CROSS/hfsplus-tools/newfs_hfs"

@@ -54,6 +54,7 @@
 #include "vm/BytecodeUtil-inl.h"
 #include "vm/EnvironmentObject-inl.h"
 #include "vm/JSContext-inl.h"
+#include "vm/JSFunction-inl.h"
 #include "vm/JSObject-inl.h"
 #include "vm/JSScript-inl.h"
 #include "vm/NativeObject-inl.h"
@@ -1062,7 +1063,7 @@ void GetPropIRGenerator::attachMegamorphicNativeSlot(ObjOperandId objId,
   }
   writer.returnFromIC();
 
-  trackAttached("MegamorphicNativeSlot");
+  trackAttached("GetMegamorphicNativeSlot");
 }
 
 AttachDecision GetPropIRGenerator::tryAttachNative(HandleObject obj,
@@ -1091,7 +1092,7 @@ AttachDecision GetPropIRGenerator::tryAttachNative(HandleObject obj,
       if (kind == NativeGetPropKind::Slot) {
         EmitReadSlotResult(writer, nobj, holder, *prop, objId);
         writer.returnFromIC();
-        trackAttached("NativeSlot");
+        trackAttached("GetNativeSlot");
       } else {
         EmitMissingPropResult(writer, nobj, objId);
         writer.returnFromIC();
@@ -1209,7 +1210,7 @@ AttachDecision GetPropIRGenerator::tryAttachWindowProxy(HandleObject obj,
       EmitReadSlotResult(writer, windowObj, holder, *prop, windowObjId);
       writer.returnFromIC();
 
-      trackAttached("WindowProxySlot");
+      trackAttached("GetWindowProxySlot");
       return AttachDecision::Attach;
     }
 
@@ -1491,7 +1492,7 @@ AttachDecision GetPropIRGenerator::tryAttachGenericProxy(
 
   writer.returnFromIC();
 
-  trackAttached("GenericProxy");
+  trackAttached("GetGenericProxy");
   return AttachDecision::Attach;
 }
 
@@ -1615,7 +1616,7 @@ AttachDecision GetPropIRGenerator::tryAttachDOMProxyShadowed(
   writer.proxyGetResult(objId, id);
   writer.returnFromIC();
 
-  trackAttached("DOMProxyShadowed");
+  trackAttached("GetDOMProxyShadowed");
   return AttachDecision::Attach;
 }
 
@@ -1713,7 +1714,7 @@ AttachDecision GetPropIRGenerator::tryAttachDOMProxyUnshadowed(
     writer.returnFromIC();
   }
 
-  trackAttached("DOMProxyUnshadowed");
+  trackAttached("GetDOMProxyUnshadowed");
   return AttachDecision::Attach;
 }
 
@@ -2572,7 +2573,7 @@ AttachDecision GetPropIRGenerator::tryAttachArgumentsObjectArg(
   writer.loadArgumentsObjectArgResult(objId, indexId);
   writer.returnFromIC();
 
-  trackAttached("ArgumentsObjectArg");
+  trackAttached("GetArgumentsObjectArg");
   return AttachDecision::Attach;
 }
 
@@ -2897,7 +2898,7 @@ AttachDecision GetPropIRGenerator::tryAttachProxyElement(HandleObject obj,
   writer.proxyGetByValueResult(objId, getElemKeyValueId());
   writer.returnFromIC();
 
-  trackAttached("ProxyElement");
+  trackAttached("GetProxyElement");
   return AttachDecision::Attach;
 }
 
@@ -3044,6 +3045,17 @@ AttachDecision GetNameIRGenerator::tryAttachGlobalNameValue(ObjOperandId objId,
     size_t dynamicSlotOffset =
         holder->dynamicSlotIndex(prop->slot()) * sizeof(Value);
     writer.loadDynamicSlotResult(objId, dynamicSlotOffset);
+  } else if (holder == &globalLexical->global()) {
+    MOZ_ASSERT(globalLexical->global().isGenerationCountedGlobal());
+    writer.guardGlobalGeneration(
+        globalLexical->global().generationCount(),
+        globalLexical->global().addressOfGenerationCount());
+    ObjOperandId holderId = writer.loadObject(holder);
+#ifdef DEBUG
+    writer.assertPropertyLookup(holderId, id.toAtom()->asPropertyName(),
+                                prop->slot());
+#endif
+    EmitLoadSlotResult(writer, holderId, holder, *prop);
   } else {
     // Check the prototype chain from the global to the holder
     // prototype. Ignore the global lexical scope as it doesn't figure
@@ -3057,15 +3069,12 @@ AttachDecision GetNameIRGenerator::tryAttachGlobalNameValue(ObjOperandId objId,
     writer.guardShape(objId, globalLexical->shape());
 
     // Guard on the shape of the GlobalObject.
-    ObjOperandId globalId = writer.loadEnclosingEnvironment(objId);
+    ObjOperandId globalId = writer.loadObject(&globalLexical->global());
     writer.guardShape(globalId, globalLexical->global().shape());
 
-    ObjOperandId holderId = globalId;
-    if (holder != &globalLexical->global()) {
-      // Shape guard holder.
-      holderId = writer.loadObject(holder);
-      writer.guardShape(holderId, holder->shape());
-    }
+    // Shape guard holder.
+    ObjOperandId holderId = writer.loadObject(holder);
+    writer.guardShape(holderId, holder->shape());
 
     EmitLoadSlotResult(writer, holderId, holder, *prop);
   }
@@ -3151,7 +3160,7 @@ AttachDecision GetNameIRGenerator::tryAttachGlobalNameGetter(ObjOperandId objId,
   return AttachDecision::Attach;
 }
 
-static bool NeedEnvironmentShapeGuard(JSObject* envObj) {
+static bool NeedEnvironmentShapeGuard(JSContext* cx, JSObject* envObj) {
   if (!envObj->is<CallObject>()) {
     return true;
   }
@@ -3162,7 +3171,8 @@ static bool NeedEnvironmentShapeGuard(JSObject* envObj) {
   // and we pessimistically create the guard.
   CallObject* callObj = &envObj->as<CallObject>();
   JSFunction* fun = &callObj->callee();
-  if (!fun->hasBaseScript() || fun->baseScript()->funHasExtensibleScope()) {
+  if (!fun->hasBaseScript() || fun->baseScript()->funHasExtensibleScope() ||
+      DebugEnvironments::hasDebugEnvironment(cx, *callObj)) {
     return true;
   }
 
@@ -3227,7 +3237,7 @@ AttachDecision GetNameIRGenerator::tryAttachEnvironmentName(ObjOperandId objId,
   ObjOperandId lastObjId = objId;
   env = env_;
   while (env) {
-    if (NeedEnvironmentShapeGuard(env)) {
+    if (NeedEnvironmentShapeGuard(cx_, env)) {
       writer.guardShape(lastObjId, env->shape());
     }
 
@@ -3247,7 +3257,7 @@ AttachDecision GetNameIRGenerator::tryAttachEnvironmentName(ObjOperandId objId,
   writer.loadOperandResult(resId);
   writer.returnFromIC();
 
-  trackAttached("EnvironmentName");
+  trackAttached("GetEnvironmentName");
   return AttachDecision::Attach;
 }
 
@@ -3372,7 +3382,7 @@ AttachDecision BindNameIRGenerator::tryAttachEnvironmentName(ObjOperandId objId,
   ObjOperandId lastObjId = objId;
   env = env_;
   while (env) {
-    if (NeedEnvironmentShapeGuard(env) && !env->is<GlobalObject>()) {
+    if (NeedEnvironmentShapeGuard(cx_, env) && !env->is<GlobalObject>()) {
       writer.guardShape(lastObjId, env->shape());
     }
 
@@ -3393,7 +3403,7 @@ AttachDecision BindNameIRGenerator::tryAttachEnvironmentName(ObjOperandId objId,
   writer.loadObjectResult(lastObjId);
   writer.returnFromIC();
 
-  trackAttached("EnvironmentName");
+  trackAttached("SetEnvironmentName");
   return AttachDecision::Attach;
 }
 
@@ -3549,7 +3559,7 @@ AttachDecision HasPropIRGenerator::tryAttachArgumentsObjectArg(
   writer.loadArgumentsObjectArgExistsResult(objId, indexId);
   writer.returnFromIC();
 
-  trackAttached("ArgumentsObjectArg");
+  trackAttached("HasArgumentsObjectArg");
   return AttachDecision::Attach;
 }
 
@@ -4027,7 +4037,7 @@ AttachDecision SetPropIRGenerator::tryAttachNativeSetSlot(HandleObject obj,
       IsPropertySetOp(JSOp(*pc_))) {
     writer.megamorphicStoreSlot(objId, id.toAtom()->asPropertyName(), rhsId);
     writer.returnFromIC();
-    trackAttached("MegamorphicNativeSlot");
+    trackAttached("SetMegamorphicNativeSlot");
     return AttachDecision::Attach;
   }
 
@@ -4040,7 +4050,7 @@ AttachDecision SetPropIRGenerator::tryAttachNativeSetSlot(HandleObject obj,
 
   EmitStoreSlotAndReturn(writer, objId, nobj, *prop, rhsId);
 
-  trackAttached("NativeSlot");
+  trackAttached("SetNativeSlot");
   return AttachDecision::Attach;
 }
 
@@ -4625,7 +4635,7 @@ AttachDecision SetPropIRGenerator::tryAttachGenericProxy(
 
   writer.returnFromIC();
 
-  trackAttached("GenericProxy");
+  trackAttached("SetGenericProxy");
   return AttachDecision::Attach;
 }
 
@@ -4642,7 +4652,7 @@ AttachDecision SetPropIRGenerator::tryAttachDOMProxyShadowed(
   writer.proxySet(objId, id, rhsId, IsStrictSetPC(pc_));
   writer.returnFromIC();
 
-  trackAttached("DOMProxyShadowed");
+  trackAttached("SetDOMProxyShadowed");
   return AttachDecision::Attach;
 }
 
@@ -4686,7 +4696,7 @@ AttachDecision SetPropIRGenerator::tryAttachDOMProxyUnshadowed(
   // guards will be generated, we can just pass that instead.
   EmitCallSetterNoGuards(cx_, writer, nproto, holder, *prop, objId, rhsId);
 
-  trackAttached("DOMProxyUnshadowed");
+  trackAttached("SetDOMProxyUnshadowed");
   return AttachDecision::Attach;
 }
 
@@ -4802,7 +4812,7 @@ AttachDecision SetPropIRGenerator::tryAttachProxyElement(HandleObject obj,
   writer.proxySetByValue(objId, setElemKeyValueId(), rhsId, IsStrictSetPC(pc_));
   writer.returnFromIC();
 
-  trackAttached("ProxyElement");
+  trackAttached("SetProxyElement");
   return AttachDecision::Attach;
 }
 
@@ -4863,7 +4873,7 @@ AttachDecision SetPropIRGenerator::tryAttachWindowProxy(HandleObject obj,
 
   EmitStoreSlotAndReturn(writer, windowObjId, windowObj, *prop, rhsId);
 
-  trackAttached("WindowProxySlot");
+  trackAttached("SetWindowProxySlot");
   return AttachDecision::Attach;
 }
 
@@ -5095,14 +5105,14 @@ AttachDecision SetPropIRGenerator::tryAttachAddSlotStub(
   } else if (holder->isFixedSlot(propInfo.slot())) {
     size_t offset = NativeObject::getFixedSlotOffset(propInfo.slot());
     writer.addAndStoreFixedSlot(objId, offset, rhsValId, newShape);
-    trackAttached("AddSlot");
+    trackAttached("AddSlotFixed");
   } else {
     size_t offset = holder->dynamicSlotIndex(propInfo.slot()) * sizeof(Value);
     uint32_t numOldSlots = NativeObject::calculateDynamicSlots(oldSharedShape);
     uint32_t numNewSlots = holder->numDynamicSlots();
     if (numOldSlots == numNewSlots) {
       writer.addAndStoreDynamicSlot(objId, offset, rhsValId, newShape);
-      trackAttached("AddSlot");
+      trackAttached("AddSlotDynamic");
     } else {
       MOZ_ASSERT(numNewSlots > numOldSlots);
       writer.allocateAndStoreDynamicSlot(objId, offset, rhsValId, newShape,
@@ -5266,7 +5276,7 @@ AttachDecision TypeOfIRGenerator::tryAttachPrimitive(ValOperandId valId) {
       TypeName(js::TypeOfValue(val_), cx_->names()));
   writer.returnFromIC();
   writer.setTypeData(TypeData(JSValueType(val_.type())));
-  trackAttached("Primitive");
+  trackAttached("TypeOf.Primitive");
   return AttachDecision::Attach;
 }
 
@@ -5279,7 +5289,7 @@ AttachDecision TypeOfIRGenerator::tryAttachObject(ValOperandId valId) {
   writer.loadTypeOfObjectResult(objId);
   writer.returnFromIC();
   writer.setTypeData(TypeData(JSValueType(val_.type())));
-  trackAttached("Object");
+  trackAttached("TypeOf.Object");
   return AttachDecision::Attach;
 }
 
@@ -5522,7 +5532,7 @@ AttachDecision OptimizeSpreadCallIRGenerator::tryAttachArguments() {
 
   Rooted<Shape*> shape(cx_, GlobalObject::getArrayShapeWithDefaultProto(cx_));
   if (!shape) {
-    cx_->recoverFromOutOfMemory();
+    cx_->clearPendingException();
     return AttachDecision::NoAction;
   }
 
@@ -7737,7 +7747,7 @@ AttachDecision InlinableNativeIRGenerator::tryAttachSpreadMathMinMax(
 
   writer.returnFromIC();
 
-  trackAttached(isMax ? "MathMax" : "MathMin");
+  trackAttached(isMax ? "MathMaxArray" : "MathMinArray");
   return AttachDecision::Attach;
 }
 
@@ -9198,7 +9208,7 @@ AttachDecision InlinableNativeIRGenerator::tryAttachTypedArrayByteOffset() {
   }
   writer.returnFromIC();
 
-  trackAttached("TypedArrayByteOffset");
+  trackAttached("IntrinsicTypedArrayByteOffset");
   return AttachDecision::Attach;
 }
 
@@ -9257,7 +9267,7 @@ AttachDecision InlinableNativeIRGenerator::tryAttachTypedArrayLength(
   }
   writer.returnFromIC();
 
-  trackAttached("TypedArrayLength");
+  trackAttached("IntrinsicTypedArrayLength");
   return AttachDecision::Attach;
 }
 
@@ -9714,6 +9724,135 @@ AttachDecision InlinableNativeIRGenerator::tryAttachTypedArrayConstructor() {
   return AttachDecision::Attach;
 }
 
+AttachDecision InlinableNativeIRGenerator::tryAttachSpecializedFunctionBind(
+    Handle<JSObject*> target, Handle<BoundFunctionObject*> templateObj) {
+  // Try to attach a faster stub that's more specialized than what we emit in
+  // tryAttachFunctionBind. This lets us allocate and initialize a bound
+  // function object in Ion without calling into C++.
+  //
+  // We can do this if:
+  //
+  // * The target's prototype is Function.prototype, because that's the proto we
+  //   use for the template object.
+  // * All bound arguments can be stored inline.
+  // * The `.name`, `.length`, and `IsConstructor` values match `target`.
+  //
+  // We initialize the template object with the bound function's name, length,
+  // and flags. At runtime we then only have to clone the template object and
+  // initialize the slots for the target, the bound `this` and the bound
+  // arguments.
+
+  if (!isFirstStub()) {
+    return AttachDecision::NoAction;
+  }
+  if (!target->is<JSFunction>() && !target->is<BoundFunctionObject>()) {
+    return AttachDecision::NoAction;
+  }
+  if (target->staticPrototype() != &cx_->global()->getFunctionPrototype()) {
+    return AttachDecision::NoAction;
+  }
+  size_t numBoundArgs = argc_ > 0 ? argc_ - 1 : 0;
+  if (numBoundArgs > BoundFunctionObject::MaxInlineBoundArgs) {
+    return AttachDecision::NoAction;
+  }
+
+  const bool targetIsConstructor = target->isConstructor();
+  Rooted<JSAtom*> targetName(cx_);
+  uint32_t targetLength = 0;
+
+  if (target->is<JSFunction>()) {
+    Rooted<JSFunction*> fun(cx_, &target->as<JSFunction>());
+    if (fun->isNativeFun()) {
+      return AttachDecision::NoAction;
+    }
+    if (fun->hasResolvedLength() || fun->hasResolvedName()) {
+      return AttachDecision::NoAction;
+    }
+    uint16_t len;
+    if (!JSFunction::getUnresolvedLength(cx_, fun, &len)) {
+      cx_->clearPendingException();
+      return AttachDecision::NoAction;
+    }
+    targetName = fun->infallibleGetUnresolvedName(cx_);
+    targetLength = len;
+  } else {
+    BoundFunctionObject* bound = &target->as<BoundFunctionObject>();
+    if (!targetIsConstructor) {
+      // Only support constructors for now. This lets us use
+      // GuardBoundFunctionIsConstructor.
+      return AttachDecision::NoAction;
+    }
+    Shape* initialShape =
+        cx_->global()->maybeBoundFunctionShapeWithDefaultProto();
+    if (bound->shape() != initialShape) {
+      return AttachDecision::NoAction;
+    }
+    Value lenVal = bound->getLengthForInitialShape();
+    Value nameVal = bound->getNameForInitialShape();
+    if (!lenVal.isInt32() || lenVal.toInt32() < 0 || !nameVal.isString() ||
+        !nameVal.toString()->isAtom()) {
+      return AttachDecision::NoAction;
+    }
+    targetName = &nameVal.toString()->asAtom();
+    targetLength = uint32_t(lenVal.toInt32());
+  }
+
+  if (!templateObj->initTemplateSlotsForSpecializedBind(
+          cx_, numBoundArgs, targetIsConstructor, targetLength, targetName)) {
+    cx_->recoverFromOutOfMemory();
+    return AttachDecision::NoAction;
+  }
+
+  initializeInputOperand();
+  emitNativeCalleeGuard();
+
+  ValOperandId thisValId =
+      writer.loadArgumentFixedSlot(ArgumentKind::This, argc_);
+  ObjOperandId targetId = writer.guardToObject(thisValId);
+
+  // Ensure the JSClass and proto match, and that the `length` and `name`
+  // properties haven't been redefined.
+  writer.guardShape(targetId, target->shape());
+
+  // Emit guards for the `IsConstructor`, `.length`, and `.name` values.
+  if (target->is<JSFunction>()) {
+    // Guard on:
+    // * The BaseScript (because that's what JSFunction uses for the `length`).
+    //   Because MGuardFunctionScript doesn't support self-hosted functions yet,
+    //   we use GuardSpecificFunction instead in this case.
+    //   See assertion in MGuardFunctionScript::getAliasSet.
+    // * The flags slot (for the CONSTRUCTOR, RESOLVED_NAME, RESOLVED_LENGTH,
+    //   HAS_INFERRED_NAME, and HAS_GUESSED_ATOM flags).
+    // * The atom slot.
+    JSFunction* fun = &target->as<JSFunction>();
+    if (fun->isSelfHostedBuiltin()) {
+      writer.guardSpecificFunction(targetId, fun);
+    } else {
+      writer.guardFunctionScript(targetId, fun->baseScript());
+    }
+    writer.guardFixedSlotValue(
+        targetId, JSFunction::offsetOfFlagsAndArgCount(),
+        fun->getReservedSlot(JSFunction::FlagsAndArgCountSlot));
+    writer.guardFixedSlotValue(targetId, JSFunction::offsetOfAtom(),
+                               fun->getReservedSlot(JSFunction::AtomSlot));
+  } else {
+    BoundFunctionObject* bound = &target->as<BoundFunctionObject>();
+    writer.guardBoundFunctionIsConstructor(targetId);
+    writer.guardFixedSlotValue(targetId,
+                               BoundFunctionObject::offsetOfLengthSlot(),
+                               bound->getLengthForInitialShape());
+    writer.guardFixedSlotValue(targetId,
+                               BoundFunctionObject::offsetOfNameSlot(),
+                               bound->getNameForInitialShape());
+  }
+
+  writer.specializedBindFunctionResult(targetId, argc_, templateObj);
+  writer.returnFromIC();
+
+  trackAttached("SpecializedFunctionBind");
+  return AttachDecision::Attach;
+}
+
 AttachDecision InlinableNativeIRGenerator::tryAttachFunctionBind() {
   // Ensure |this| (the target) is a function object or a bound function object.
   // We could support other callables too, but note that we rely on the target
@@ -9739,11 +9878,14 @@ AttachDecision InlinableNativeIRGenerator::tryAttachFunctionBind() {
     return AttachDecision::NoAction;
   }
 
-  JSObject* templateObj = BoundFunctionObject::createTemplateObject(cx_);
+  Rooted<BoundFunctionObject*> templateObj(
+      cx_, BoundFunctionObject::createTemplateObject(cx_));
   if (!templateObj) {
     cx_->recoverFromOutOfMemory();
     return AttachDecision::NoAction;
   }
+
+  TRY_ATTACH(tryAttachSpecializedFunctionBind(target, templateObj));
 
   initializeInputOperand();
 
@@ -10742,8 +10884,8 @@ AttachDecision CallIRGenerator::tryAttachCallNative(HandleFunction calleeFunc) {
         writer.loadArgumentDynamicSlot(ArgumentKind::This, argcId, flags);
     ObjOperandId thisObjId = writer.guardToObject(thisValId);
 
-    // Guard on the |this| class to make sure it's the right instance.
-    writer.guardAnyClass(thisObjId, thisval_.toObject().getClass());
+    // Guard on the |this| shape to make sure it's the right instance.
+    writer.guardShape(thisObjId, thisval_.toObject().shape());
 
     // Ensure callee matches this stub's callee
     writer.guardSpecificFunction(calleeObjId, calleeFunc);
@@ -11106,7 +11248,7 @@ AttachDecision CompareIRGenerator::tryAttachString(ValOperandId lhsId,
   writer.compareStringResult(op_, lhsStrId, rhsStrId);
   writer.returnFromIC();
 
-  trackAttached("String");
+  trackAttached("Compare.String");
   return AttachDecision::Attach;
 }
 
@@ -11123,7 +11265,7 @@ AttachDecision CompareIRGenerator::tryAttachObject(ValOperandId lhsId,
   writer.compareObjectResult(op_, lhsObjId, rhsObjId);
   writer.returnFromIC();
 
-  trackAttached("Object");
+  trackAttached("Compare.Object");
   return AttachDecision::Attach;
 }
 
@@ -11140,7 +11282,7 @@ AttachDecision CompareIRGenerator::tryAttachSymbol(ValOperandId lhsId,
   writer.compareSymbolResult(op_, lhsSymId, rhsSymId);
   writer.returnFromIC();
 
-  trackAttached("Symbol");
+  trackAttached("Compare.Symbol");
   return AttachDecision::Attach;
 }
 
@@ -11168,7 +11310,7 @@ AttachDecision CompareIRGenerator::tryAttachStrictDifferentTypes(
   writer.loadBooleanResult(op_ == JSOp::StrictNe ? true : false);
   writer.returnFromIC();
 
-  trackAttached("StrictDifferentTypes");
+  trackAttached("Compare.StrictDifferentTypes");
   return AttachDecision::Attach;
 }
 
@@ -11193,7 +11335,7 @@ AttachDecision CompareIRGenerator::tryAttachInt32(ValOperandId lhsId,
   writer.compareInt32Result(op_, lhsIntId, rhsIntId);
   writer.returnFromIC();
 
-  trackAttached("Int32");
+  trackAttached("Compare.Int32");
   return AttachDecision::Attach;
 }
 
@@ -11219,7 +11361,7 @@ AttachDecision CompareIRGenerator::tryAttachNumber(ValOperandId lhsId,
   writer.compareDoubleResult(op_, lhs, rhs);
   writer.returnFromIC();
 
-  trackAttached("Number");
+  trackAttached("Compare.Number");
   return AttachDecision::Attach;
 }
 
@@ -11235,7 +11377,7 @@ AttachDecision CompareIRGenerator::tryAttachBigInt(ValOperandId lhsId,
   writer.compareBigIntResult(op_, lhs, rhs);
   writer.returnFromIC();
 
-  trackAttached("BigInt");
+  trackAttached("Compare.BigInt");
   return AttachDecision::Attach;
 }
 
@@ -11262,21 +11404,21 @@ AttachDecision CompareIRGenerator::tryAttachAnyNullUndefined(
     if (rhsVal_.isNull()) {
       writer.guardIsNull(rhsId);
       writer.compareNullUndefinedResult(op_, /* isUndefined */ false, lhsId);
-      trackAttached("AnyNull");
+      trackAttached("Compare.AnyNull");
     } else {
       writer.guardIsUndefined(rhsId);
       writer.compareNullUndefinedResult(op_, /* isUndefined */ true, lhsId);
-      trackAttached("AnyUndefined");
+      trackAttached("Compare.AnyUndefined");
     }
   } else {
     if (lhsVal_.isNull()) {
       writer.guardIsNull(lhsId);
       writer.compareNullUndefinedResult(op_, /* isUndefined */ false, rhsId);
-      trackAttached("NullAny");
+      trackAttached("Compare.NullAny");
     } else {
       writer.guardIsUndefined(lhsId);
       writer.compareNullUndefinedResult(op_, /* isUndefined */ true, rhsId);
-      trackAttached("UndefinedAny");
+      trackAttached("Compare.UndefinedAny");
     }
   }
 
@@ -11296,7 +11438,7 @@ AttachDecision CompareIRGenerator::tryAttachNullUndefined(ValOperandId lhsId,
     writer.guardIsNullOrUndefined(rhsId);
     // Sloppy equality means we actually only care about the op:
     writer.loadBooleanResult(op_ == JSOp::Eq);
-    trackAttached("SloppyNullUndefined");
+    trackAttached("Compare.SloppyNullUndefined");
   } else {
     // Strict equality only hits this branch, and only in the
     // undef {!,=}==  undef and null {!,=}== null cases.
@@ -11307,7 +11449,7 @@ AttachDecision CompareIRGenerator::tryAttachNullUndefined(ValOperandId lhsId,
     rhsVal_.isNull() ? writer.guardIsNull(rhsId)
                      : writer.guardIsUndefined(rhsId);
     writer.loadBooleanResult(op_ == JSOp::StrictEq);
-    trackAttached("StrictNullUndefinedEquality");
+    trackAttached("Compare.StrictNullUndefinedEquality");
   }
 
   writer.returnFromIC();
@@ -11338,7 +11480,7 @@ AttachDecision CompareIRGenerator::tryAttachStringNumber(ValOperandId lhsId,
   writer.compareDoubleResult(op_, lhsGuardedId, rhsGuardedId);
   writer.returnFromIC();
 
-  trackAttached("StringNumber");
+  trackAttached("Compare.StringNumber");
   return AttachDecision::Attach;
 }
 
@@ -11393,7 +11535,7 @@ AttachDecision CompareIRGenerator::tryAttachPrimitiveSymbol(
   writer.loadBooleanResult(op_ == JSOp::Ne || op_ == JSOp::StrictNe);
   writer.returnFromIC();
 
-  trackAttached("PrimitiveSymbol");
+  trackAttached("Compare.PrimitiveSymbol");
   return AttachDecision::Attach;
 }
 
@@ -11421,7 +11563,7 @@ AttachDecision CompareIRGenerator::tryAttachBigIntInt32(ValOperandId lhsId,
   }
   writer.returnFromIC();
 
-  trackAttached("BigIntInt32");
+  trackAttached("Compare.BigIntInt32");
   return AttachDecision::Attach;
 }
 
@@ -11455,7 +11597,7 @@ AttachDecision CompareIRGenerator::tryAttachBigIntNumber(ValOperandId lhsId,
   }
   writer.returnFromIC();
 
-  trackAttached("BigIntNumber");
+  trackAttached("Compare.BigIntNumber");
   return AttachDecision::Attach;
 }
 
@@ -11483,7 +11625,7 @@ AttachDecision CompareIRGenerator::tryAttachBigIntString(ValOperandId lhsId,
   }
   writer.returnFromIC();
 
-  trackAttached("BigIntString");
+  trackAttached("Compare.BigIntString");
   return AttachDecision::Attach;
 }
 

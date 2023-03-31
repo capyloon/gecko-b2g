@@ -14,7 +14,6 @@
 #include <utility>
 #include "ErrorList.h"
 #include "MainThreadUtils.h"
-#include "ReferrerInfo.h"
 #include "Units.h"
 #include "imgIRequest.h"
 #include "js/RootingAPI.h"
@@ -95,6 +94,7 @@
 #include "nsPIDOMWindow.h"
 #include "nsPropertyTable.h"
 #include "nsRefPtrHashtable.h"
+#include "nsRFPService.h"
 #include "nsString.h"
 #include "nsTArray.h"
 #include "nsTHashSet.h"
@@ -727,7 +727,6 @@ class Document : public nsINode,
   virtual bool SuppressParserErrorConsoleMessages() { return false; }
 
   // nsINode
-  bool IsNodeOfType(uint32_t aFlags) const final;
   void InsertChildBefore(nsIContent* aKid, nsIContent* aBeforeThis,
                          bool aNotify, ErrorResult& aRv) override;
   void RemoveChildNode(nsIContent* aKid, bool aNotify) final;
@@ -874,9 +873,7 @@ class Document : public nsINode,
     return mUpgradeInsecureRequests;
   }
 
-  void SetReferrerInfo(nsIReferrerInfo* aReferrerInfo) {
-    mReferrerInfo = aReferrerInfo;
-  }
+  void SetReferrerInfo(nsIReferrerInfo*);
 
   /*
    * Referrer policy from <meta name="referrer" content=`policy`>
@@ -967,6 +964,7 @@ class Document : public nsINode,
    * the document, a new one is created.
    */
   URLExtraData* DefaultStyleAttrURLData();
+  nsIReferrerInfo* ReferrerInfoForInternalCSSAndSVGResources();
 
   /**
    * Get/Set the base target of a link in a document.
@@ -1927,6 +1925,10 @@ class Document : public nsINode,
   // layer. The removed element, if any, is returned.
   Element* TopLayerPop(FunctionRef<bool(Element*)> aPredicate);
 
+  // Removes the given element from the top layer. The removed element, if any,
+  // is returned.
+  Element* TopLayerPop(Element&);
+
   MOZ_CAN_RUN_SCRIPT bool TryAutoFocusCandidate(Element& aElement);
 
  public:
@@ -2235,7 +2237,7 @@ class Document : public nsINode,
     return AllowXULXBL();
   }
 
-  bool IsScriptEnabled();
+  bool IsScriptEnabled() const;
 
   /**
    * Returns true if this document was created from a nsXULPrototypeDocument.
@@ -2614,7 +2616,7 @@ class Document : public nsINode,
     return !mParentDocument && !mDisplayDocument;
   }
 
-  bool IsDocumentURISchemeChrome() const { return mDocURISchemeIsChrome; }
+  bool ChromeRulesEnabled() const { return mChromeRulesEnabled; }
 
   bool IsInChromeDocShell() const {
     const Document* root = this;
@@ -3449,6 +3451,32 @@ class Document : public nsINode,
   MOZ_CAN_RUN_SCRIPT void GetWireframe(bool aIncludeNodes,
                                        Nullable<Wireframe>&);
 
+  // Hides all popovers until the given end point, see
+  // https://html.spec.whatwg.org/multipage/popover.html#hide-all-popovers-until
+  MOZ_CAN_RUN_SCRIPT void HideAllPopoversUntil(nsINode& aEndpoint,
+                                               bool aFocusPreviousElement,
+                                               bool aFireEvents);
+
+  // Hides the given popover element, see
+  // https://html.spec.whatwg.org/multipage/popover.html#hide-popover-algorithm
+  MOZ_CAN_RUN_SCRIPT void HidePopover(Element& popover,
+                                      bool aFocusPreviousElement,
+                                      bool aFireEvents, ErrorResult& aRv);
+
+  // Returns a list of all the elements in the Document's top layer whose
+  // popover attribute is in the auto state.
+  // See https://html.spec.whatwg.org/multipage/popover.html#auto-popover-list
+  nsTArray<Element*> AutoPopoverList() const;
+
+  // Teturn document's auto popover list's last element.
+  // See
+  // https://html.spec.whatwg.org/multipage/popover.html#topmost-auto-popover
+  Element* GetTopmostAutoPopover() const;
+
+  // Adds/removes an element to/from the auto popover list.
+  void AddToAutoPopoverList(Element&);
+  void RemoveFromAutoPopoverList(Element&);
+
   Element* GetTopLayerTop();
   // Return the fullscreen element in the top layer
   Element* GetUnretargetedFullscreenElement() const;
@@ -3733,7 +3761,7 @@ class Document : public nsINode,
   // popup, a visible tab, a visible iframe ...e.t.c.
   bool IsExtensionPage() const;
 
-  bool HasScriptsBlockedBySandbox();
+  bool HasScriptsBlockedBySandbox() const;
 
   void ReportHasScrollLinkedEffect(const TimeStamp& aTimeStamp);
   bool HasScrollLinkedEffect() const;
@@ -3809,11 +3837,9 @@ class Document : public nsINode,
   nsresult Dispatch(TaskCategory aCategory,
                     already_AddRefed<nsIRunnable>&& aRunnable) final;
 
-  virtual nsISerialEventTarget* EventTargetFor(
-      TaskCategory aCategory) const override;
+  nsISerialEventTarget* EventTargetFor(TaskCategory) const override;
 
-  virtual AbstractThread* AbstractMainThreadFor(
-      TaskCategory aCategory) override;
+  AbstractThread* AbstractMainThreadFor(TaskCategory) override;
 
   // The URLs passed to this function should match what
   // JS::DescribeScriptedCaller() returns, since this API is used to
@@ -3861,7 +3887,14 @@ class Document : public nsINode,
    * This is a public method exposed on Document WebIDL
    * to chrome only documents.
    */
-  DocumentL10n* GetL10n();
+  DocumentL10n* GetL10n() const { return mDocumentL10n.get(); }
+
+  /**
+   * Whether there's any async l10n mutation work pending.
+   *
+   * When this turns false, we fire the L10nMutationsFinished event.
+   */
+  bool HasPendingL10nMutations() const;
 
   /**
    * This method should be called when the container
@@ -4125,9 +4158,7 @@ class Document : public nsINode,
    */
   class HighlightRegistry& HighlightRegistry();
 
-  bool ShouldResistFingerprinting() const {
-    return mShouldResistFingerprinting;
-  }
+  bool ShouldResistFingerprinting(RFPTarget aTarget = RFPTarget::Unknown) const;
 
   void RecomputeResistFingerprinting();
 
@@ -4458,9 +4489,9 @@ class Document : public nsINode,
   // The base domain of the document for third-party checks.
   nsCString mBaseDomain;
 
-  // A lazily-constructed URL data for style system to resolve URL value.
+  // A lazily-constructed URL data for style system to resolve URL values.
   RefPtr<URLExtraData> mCachedURLData;
-  nsCOMPtr<nsIReferrerInfo> mCachedReferrerInfo;
+  nsCOMPtr<nsIReferrerInfo> mCachedReferrerInfoForInternalCSSAndSVGResources;
 
   nsWeakPtr mDocumentLoadGroup;
 
@@ -4645,8 +4676,8 @@ class Document : public nsINode,
   // True if we're an SVG document being used as an image.
   bool mIsBeingUsedAsImage : 1;
 
-  // True if our current document URI's scheme is chrome://
-  bool mDocURISchemeIsChrome : 1;
+  // True if our current document URI's scheme enables privileged CSS rules.
+  bool mChromeRulesEnabled : 1;
 
   // True if we're loaded in a chrome docshell.
   bool mInChromeDocShell : 1;

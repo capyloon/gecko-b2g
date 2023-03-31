@@ -11,6 +11,7 @@ namespace {
 extern "C" {
 void ipfs_construct(nsIProtocolHandler** aResult);
 void ipns_construct(nsIProtocolHandler** aResult);
+void tile_construct(nsIProtocolHandler** aResult);
 }
 
 }  // namespace
@@ -28,6 +29,13 @@ already_AddRefed<nsIProtocolHandler> ConstructIpnsProtocolHandler() {
   printf_stderr("Ipfs: ConstructIpnsProtocolHandler\n");
   nsCOMPtr<nsIProtocolHandler> handler;
   ipns_construct(getter_AddRefs(handler));
+  return handler.forget();
+}
+
+already_AddRefed<nsIProtocolHandler> ConstructTileProtocolHandler() {
+  printf_stderr("Ipfs: ConstructTileProtocolHandler\n");
+  nsCOMPtr<nsIProtocolHandler> handler;
+  tile_construct(getter_AddRefs(handler));
   return handler.forget();
 }
 

@@ -340,46 +340,12 @@
   "CONTENT_PROCESS_LAUNCH_IS_SYNC" : {
     "record_in_processes": ["main"],
     "products": ["firefox", "fennec"],
-    "alert_emails": ["jld@mozilla.com", "jimm@mozilla.  com", "mconley@mozilla.com"],
+    "alert_emails": ["jld@mozilla.com", "jimm@mozilla.com", "mconley@mozilla.com"],
     "expires_in_version": "never",
     "bug_numbers": [1474991],
     "kind": "boolean",
     "releaseChannelCollection": "opt-out",
     "description": "Whether a content process was launched synchronously (unnecessarily delaying UI response)."
-  },
-  "CONTENT_PROCESS_COUNT": {
-    "record_in_processes": ["main"],
-    "products": ["firefox"],
-    "alert_emails": ["barret@mozilla.com", "perf-telemetry-alerts@mozilla.com"],
-    "expires_in_version": "104",
-    "bug_numbers": [1688078, 1745268],
-    "kind": "linear",
-    "high": 500,
-    "n_buckets": 100,
-    "releaseChannelCollection": "opt-out",
-    "description": "A count of the number of content processes, collected every five minutes."
-  },
-  "CONTENT_PROCESS_PRECISE_COUNT": {
-    "record_in_processes": ["main"],
-    "products": ["firefox"],
-    "alert_emails": ["barret@mozilla.com", "perf-telemetry-alerts@mozilla.com"],
-    "expires_in_version": "104",
-    "bug_numbers": [1722103, 1745268],
-    "kind": "enumerated",
-    "n_values": 100,
-    "releaseChannelCollection": "opt-out",
-    "description": "An enumerated count of the number of content processes, collected every five minutes."
-  },
-  "CONTENT_PROCESS_TIME_SINCE_LAST_LAUNCH_MS": {
-    "record_in_processes": ["main"],
-    "products": ["firefox"],
-    "alert_emails": ["barret@mozilla.com", "perf-telemetry-alerts@mozilla.com"],
-    "expires_in_version": "104",
-    "bug_numbers": [1688082, 1745268],
-    "kind": "exponential",
-    "high": 600000,
-    "n_buckets": 100,
-    "description": "The time (in milliseconds) since the last content process was launched."
   },
   "COOKIE_BANNERS_CLICK_HANDLE_DURATION_MS": {
     "record_in_processes": ["content"],
@@ -1163,6 +1129,18 @@
     "n_buckets": 50,
     "bug_numbers": [1817741],
     "description": "Number of interruptions/donations per slice during parallel marking."
+  },
+  "GC_TASK_START_DELAY_US": {
+    "record_in_processes": ["main", "content"],
+    "products": ["firefox"],
+    "alert_emails": ["dev-telemetry-gc-alerts@mozilla.org", "jcoppeard@mozilla.com"],
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "low": 1,
+    "high": 2000,
+    "n_buckets": 50,
+    "bug_numbers": [1817965],
+    "description": "Delay between queuing a GC task and the task starting."
   },
   "DESERIALIZE_BYTES": {
     "record_in_processes": ["main", "content"],
@@ -2788,24 +2766,13 @@
   "HTTP_SCHEME_UPGRADE_TYPE": {
     "record_in_processes": ["main", "content"],
     "products": ["firefox", "fennec"],
-    "alert_emails": ["seceng-telemetry@mozilla.com", "jkt@mozilla.com"],
-    "bug_numbers": [1340021, 1435733],
+    "alert_emails": ["seceng-telemetry@mozilla.com", "freddyb@mozilla.com"],
+    "bug_numbers": [1340021, 1435733, 1722895],
     "releaseChannelCollection": "opt-out",
     "expires_in_version": "never",
     "kind": "categorical",
-    "labels": ["AlreadyHTTPS", "NoReasonToUpgrade", "PrefBlockedSTS", "STS", "CSP", "BrowserDisplay"],
+    "labels": ["AlreadyHTTPS", "NoReasonToUpgrade", "PrefBlockedSTS", "STS", "CSP", "BrowserDisplay", "HTTPSOnly", "HTTPSFirst"],
     "description": "Was the URL upgraded to HTTPS?"
-  },
-  "MIXED_CONTENT_UPGRADE_SUCCESS": {
-    "record_in_processes": ["main"],
-    "products": ["firefox", "fennec"],
-    "alert_emails": ["seceng-telemetry@mozilla.com", "julianwels@mozilla.com", "ckerschbaumer@mozilla.com"],
-    "bug_numbers": [1674926],
-    "releaseChannelCollection": "opt-out",
-    "expires_in_version": "never",
-    "kind": "categorical",
-    "labels": ["ImageSuccess", "ImageFailed", "VideoSuccess", "VideoFailed", "AudioSuccess", "AudioFailed"],
-    "description": "Did the mixed-display-content upgrade succeed?"
   },
   "HTTP_RESPONSE_STATUS_CODE": {
     "record_in_processes": ["main", "content"],
@@ -3406,6 +3373,18 @@
     "high": 60000,
     "n_buckets": 200,
     "description": "ms of SSL wait time for full handshake including TCP and proxy tunneling, keyed by the key exchange algorithm used"
+  },
+  "HTTP3_ECH_OUTCOME": {
+    "record_in_processes": ["main"],
+    "products": ["firefox", "fennec"],
+    "alert_emails": ["seceng-telemetry@mozilla.com", "necko@mozilla.com", "djackson@mozilla.com"],
+    "bug_numbers": [182287 ],
+    "releaseChannelCollection": "opt-out",
+    "expires_in_version": "never",
+    "kind": "enumerated",
+    "keyed": true,
+    "n_values": 32,
+    "description": "Success / Fail Rates for HTTP3 Keyed by ECH Usage"
   },
   "SSL_BYTES_BEFORE_CERT_CALLBACK": {
     "record_in_processes": ["main", "content"],
@@ -6921,7 +6900,7 @@
   "PLACES_DATABASE_CORRUPTION_HANDLING_STAGE": {
     "record_in_processes": ["main"],
     "products": ["firefox", "fennec", "thunderbird"],
-    "alert_emails": ["mbonardo@mozilla.com", "mbanner@mozilla.com"],
+    "alert_emails": ["mbonardo@mozilla.com", "fx-search-telemetry@mozilla.com"],
     "expires_in_version": "never",
     "kind": "enumerated",
     "n_values": 6,
@@ -6942,13 +6921,15 @@
   },
   "PLACES_MOST_RECENT_EXPIRED_VISIT_DAYS": {
     "record_in_processes": ["main", "content"],
-    "products": ["firefox", "fennec"],
-    "alert_emails": ["mbonardo@mozilla.com", "mbanner@mozilla.com"],
+    "products": ["firefox"],
+    "alert_emails": ["mbonardo@mozilla.com", "fx-search-telemetry@mozilla.com"],
     "expires_in_version": "never",
     "kind": "linear",
     "low": 30,
     "high": 730,
     "n_buckets": 12,
+    "bug_numbers": [1822848],
+    "releaseChannelCollection": "opt-out",
     "description": "PLACES: the most recent expired visit in days"
   },
   "PLACES_BOOKMARKS_COUNT": {
@@ -7159,44 +7140,29 @@
   },
   "PLACES_DATABASE_FILESIZE_MB": {
     "record_in_processes": ["main", "content"],
-    "products": ["firefox", "fennec", "thunderbird"],
+    "alert_emails": ["mbonardo@mozilla.com", "fx-search-telemetry@mozilla.com"],
+    "products": ["firefox"],
     "expires_in_version": "never",
     "kind": "exponential",
     "low": 5,
     "high": 200,
     "n_buckets": 10,
+    "bug_numbers": [1822848],
+    "releaseChannelCollection": "opt-out",
     "description": "PLACES: Database filesize (MB)"
   },
-  "PLACES_DATABASE_PAGESIZE_B": {
-    "record_in_processes": ["main", "content"],
-    "products": ["firefox", "fennec", "thunderbird"],
-    "expires_in_version": "never",
-    "kind": "exponential",
-    "low": 1024,
-    "high": 32768,
-    "n_buckets": 10,
-    "description": "PLACES: Database page size (bytes)"
-  },
-  "PLACES_DATABASE_SIZE_PER_PAGE_B": {
-    "record_in_processes": ["main", "content"],
-    "products": ["firefox", "fennec", "thunderbird"],
-    "expires_in_version": "never",
-    "kind": "exponential",
-    "low": 500,
-    "high": 10240,
-    "n_buckets": 20,
-    "description": "PLACES: Average size of a place in the database (bytes)"
-  },
+
   "PLACES_DATABASE_FAVICONS_FILESIZE_MB": {
     "record_in_processes": ["main"],
-    "products": ["firefox", "fennec", "thunderbird"],
-    "alert_emails": ["mak@mozilla.com", "fx-search-telemetry@mozilla.com"],
-    "bug_numbers": [1346554],
+    "products": ["firefox"],
+    "alert_emails": ["mbonardo@mozilla.com", "fx-search-telemetry@mozilla.com"],
+    "bug_numbers": [1346554, 1822848],
     "expires_in_version": "never",
     "kind": "exponential",
     "low": 5,
     "high": 100,
     "n_buckets": 10,
+    "releaseChannelCollection": "opt-out",
     "description": "PLACES: Favicons database filesize (MB)"
   },
   "PLACES_EXPIRATION_STEPS_TO_CLEAN2": {
@@ -7262,6 +7228,17 @@
     "n_values": 20,
     "description": "Cumulative no. of History-specific searches performed before selecting a History link in Library."
   },
+  "PLACES_LIBRARY_CUMULATIVE_BOOKMARK_SEARCHES": {
+    "record_in_processes": ["main"],
+    "products": ["firefox"],
+    "expires_in_version": "never",
+    "alert_emails": ["firefox-view-engineers@mozilla.com"],
+    "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1819081],
+    "kind": "enumerated",
+    "n_values": 20,
+    "description": "Cumulative no. of Bookmark-specific searches performed before selecting a bookmark link in Library."
+  },
   "PLACES_IDLE_FRECENCY_DECAY_TIME_MS": {
     "record_in_processes": ["main", "content"],
     "products": ["firefox", "fennec", "thunderbird"],
@@ -7285,13 +7262,14 @@
   "PLACES_FRECENCY_RECALC_CHUNK_TIME_MS": {
     "record_in_processes": ["main"],
     "products": ["firefox"],
-    "alert_emails": ["fx-search-telemetry@mozilla.com"],
+    "alert_emails": ["mbonardo@mozilla.com", "fx-search-telemetry@mozilla.com"],
     "expires_in_version": "never",
     "kind": "exponential",
     "low": 50,
     "high": 10000,
     "n_buckets": 10,
-    "bug_numbers": [1811209],
+    "bug_numbers": [1811209, 1822848],
+    "releaseChannelCollection": "opt-out",
     "description": "PLACES: Time to recalculate frecency for a chunk of pages (ms)"
   },
   "PLACES_ANNOS_PAGES_COUNT": {
@@ -8431,6 +8409,28 @@
     "n_values": 10,
     "releaseChannelCollection": "opt-out",
     "description": "Where the migration wizard was entered from. 0=Other/catch-all, 1=first-run, 2=refresh-firefox, 3=Places window, 4=Password manager, 5=New tab, 6=File menu, 7=Help menu, 8=Bookmarks toolbar"
+  },
+  "FX_MIGRATION_ENTRY_POINT_CATEGORICAL": {
+    "record_in_processes": ["main"],
+    "products": ["firefox"],
+    "bug_numbers": [1822692],
+    "alert_emails": ["mconley@mozilla.com", "gijs@mozilla.com", "mak@mozilla.com"],
+    "expires_in_version": "never",
+    "kind": "categorical",
+    "labels": [
+      "unknown",
+      "firstrun",
+      "fxrefresh",
+      "places",
+      "passwords",
+      "newtab",
+      "file_menu",
+      "help_menu",
+      "bookmarks_toolbar",
+      "preferences"
+    ],
+    "releaseChannelCollection": "opt-out",
+    "description": "Where the migration wizard was entered from."
   },
   "FX_MIGRATION_SOURCE_BROWSER": {
     "record_in_processes": ["main"],
@@ -12273,11 +12273,23 @@
     "releaseChannelCollection": "opt-out",
     "description": "True if the browser was unable to set Firefox as the default browser"
   },
-  "BROWSER_SET_DEFAULT_USER_CHOICE_RESULT": {
+  "BROWSER_SET_DEFAULT_PDF_HANDLER_USER_CHOICE_RESULT": {
     "record_in_processes": ["main"],
     "products": ["firefox"],
     "operating_systems": ["windows"],
     "expires_in_version": "120",
+    "kind": "categorical",
+    "labels": ["Success", "ErrProgID", "ErrHash", "ErrLaunchExe", "ErrExeTimeout", "ErrExeProgID", "ErrExeHash", "ErrExeRejected", "ErrExeOther", "ErrOther", "ErrBuild"],
+    "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1805509],
+    "alert_emails": ["application-update-telemetry-alerts@mozilla.com"],
+    "description": "Result of each attempt to set the default browser with SetDefaultExtensionHandlersUserChoice() for pdf extension"
+  },
+  "BROWSER_SET_DEFAULT_USER_CHOICE_RESULT": {
+    "record_in_processes": ["main"],
+    "products": ["firefox"],
+    "operating_systems": ["windows"],
+    "expires_in_version": "118",
     "kind": "categorical",
     "labels": ["Success", "ErrProgID", "ErrHash", "ErrLaunchExe", "ErrExeTimeout", "ErrExeProgID", "ErrExeHash", "ErrExeRejected", "ErrExeOther", "ErrOther", "ErrBuild"],
     "releaseChannelCollection": "opt-out",
@@ -12337,6 +12349,36 @@
     "expires_in_version": "90",
     "kind": "boolean",
     "description": "Accumulates how many downloads are mixed-content (True = The download is MixedContent, False= is not MixedContent)"
+  },
+  "MIXED_CONTENT_IMAGES": {
+    "record_in_processes": ["main", "content"],
+    "products": ["firefox", "fennec"],
+    "bug_numbers": [1819336],
+    "alert_emails": ["seceng-telemetry@mozilla.com"],
+    "expires_in_version": "never",
+    "kind": "categorical",
+    "labels": ["ImgUpSuccess", "ImgUpFailure", "ImgNoUpSuccess", "ImgNoUpFailure"],
+    "description": "How often image loads fail in regular mode and in upgrading mode?"
+  },
+  "MIXED_CONTENT_VIDEO": {
+    "record_in_processes": ["main", "content"],
+    "products": ["firefox", "fennec"],
+    "bug_numbers": [1819336],
+    "alert_emails": ["seceng-telemetry@mozilla.com"],
+    "expires_in_version": "never",
+    "kind": "categorical",
+    "labels": ["VideoUpSuccess", "VideoUpFailure", "VideoNoUpSuccess", "VideoNoUpFailure"],
+    "description": "How often video loads fail in regular mode and in upgrading mode?"
+  },
+  "MIXED_CONTENT_AUDIO": {
+    "record_in_processes": ["main", "content"],
+    "products": ["firefox", "fennec"],
+    "bug_numbers": [1819336],
+    "alert_emails": ["seceng-telemetry@mozilla.com"],
+    "expires_in_version": "never",
+    "kind": "categorical",
+    "labels": ["AudioUpSuccess", "AudioUpFailure", "AudioNoUpSuccess", "AudioNoUpFailure"],
+    "description": "How often audio loads fail in regular mode and in upgrading mode?"
   },
   "CONTENT_SIGNATURE_VERIFICATION_STATUS": {
     "record_in_processes": ["main", "content"],
@@ -14990,34 +15032,6 @@
     "releaseChannelCollection": "opt-out",
     "description": "HTMLInputElement.webkitdirectory attribute used"
   },
-  "CONTAINER_USED": {
-    "record_in_processes": ["main", "content"],
-    "products": ["firefox", "fennec"],
-    "alert_emails": ["amarchesini@mozilla.com"],
-    "expires_in_version": "58",
-    "kind": "enumerated",
-    "bug_numbers": [1276006],
-    "n_values": 5,
-    "description": "Records a value each time a builtin container is opened. 1=personal 2=work 3=banking 4=shopping. Does not record usage of user-created containers."
-  },
-  "UNIQUE_CONTAINERS_OPENED": {
-    "record_in_processes": ["main", "content"],
-    "products": ["firefox", "fennec"],
-    "alert_emails": ["amarchesini@mozilla.com"],
-    "expires_in_version": "59",
-    "bug_numbers": [1276006],
-    "kind": "count",
-    "description": "Tracking the unique number of opened Containers."
-  },
-  "TOTAL_CONTAINERS_OPENED": {
-    "record_in_processes": ["main", "content"],
-    "products": ["firefox", "fennec"],
-    "alert_emails": ["amarchesini@mozilla.com"],
-    "expires_in_version": "59",
-    "bug_numbers": [1276006],
-    "kind": "count",
-    "description": "Tracking the total number of opened Containers."
-  },
   "TIME_TO_FIRST_CLICK_MS": {
     "record_in_processes": ["main", "content"],
     "products": ["firefox", "fennec"],
@@ -16062,6 +16076,17 @@
     "kind": "enumerated",
     "n_values": 20,
     "description": "Cumulative no. of search filters applied performed before selecting a link."
+  },
+  "PLACES_BOOKMARKS_SEARCHBAR_CUMULATIVE_SEARCHES": {
+    "record_in_processes": ["main"],
+    "products": ["firefox"],
+    "expires_in_version": "never",
+    "alert_emails": ["firefox-view-engineers@mozilla.com"],
+    "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1819081],
+    "kind": "enumerated",
+    "n_values": 20,
+    "description": "Cumulative no. bookmark of searches performed before selecting a link."
   },
   "NOTIFY_OBSERVERS_LATENCY_MS": {
     "record_in_processes": ["main", "content", "gpu"],

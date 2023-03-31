@@ -15,7 +15,7 @@ Awsy tests
 
 
 .. dropdown:: base (FF)
-   :container: + anchor-id-base-Awsy-tests
+   :class-container: anchor-id-base-Awsy-tests
 
    **Owner**: :mccr8 and Perftest Team
 
@@ -33,22 +33,6 @@ Awsy tests
             * awsy-base-dmd: None
 
       * test-macosx1015-64-shippable-qr/opt
-            * awsy-base: integration, mozilla-beta, mozilla-central, mozilla-release
-            * awsy-base-dmd: None
-
-      * test-windows10-32-2004-qr/opt
-            * awsy-base: None
-            * awsy-base-dmd: None
-
-      * test-windows10-32-2004-shippable-qr/opt
-            * awsy-base: None
-            * awsy-base-dmd: None
-
-      * test-windows10-64-2004-qr/opt
-            * awsy-base: None
-            * awsy-base-dmd: None
-
-      * test-windows10-64-2004-shippable-qr/opt
             * awsy-base: integration, mozilla-beta, mozilla-central, mozilla-release
             * awsy-base-dmd: None
 
@@ -70,7 +54,7 @@ Awsy tests
 
 
 .. dropdown:: dmd (FF)
-   :container: + anchor-id-dmd-Awsy-tests
+   :class-container: anchor-id-dmd-Awsy-tests
 
    **Owner**: :mccr8 and Perftest Team
 
@@ -88,22 +72,6 @@ Awsy tests
             * awsy-dmd: None
 
       * test-macosx1015-64-shippable-qr/opt
-            * awsy-base-dmd: None
-            * awsy-dmd: None
-
-      * test-windows10-32-2004-qr/opt
-            * awsy-base-dmd: None
-            * awsy-dmd: None
-
-      * test-windows10-32-2004-shippable-qr/opt
-            * awsy-base-dmd: None
-            * awsy-dmd: None
-
-      * test-windows10-64-2004-qr/opt
-            * awsy-base-dmd: None
-            * awsy-dmd: None
-
-      * test-windows10-64-2004-shippable-qr/opt
             * awsy-base-dmd: None
             * awsy-dmd: None
 
@@ -125,7 +93,7 @@ Awsy tests
 
 
 .. dropdown:: tp5 (FF)
-   :container: + anchor-id-tp5-Awsy-tests
+   :class-container: anchor-id-tp5-Awsy-tests
 
    **Owner**: :mccr8 and Perftest Team
 
@@ -137,14 +105,6 @@ Awsy tests
       * test-linux1804-64-shippable-qr/opt
 
       * test-macosx1015-64-shippable-qr/opt
-
-      * test-windows10-32-2004-qr/opt
-
-      * test-windows10-32-2004-shippable-qr/opt
-
-      * test-windows10-64-2004-qr/opt
-
-      * test-windows10-64-2004-shippable-qr/opt
 
       * test-windows11-32-2009-qr/opt
 
@@ -156,7 +116,7 @@ Awsy tests
 
 
 .. dropdown:: tp6 (FF)
-   :container: + anchor-id-tp6-Awsy-tests
+   :class-container: anchor-id-tp6-Awsy-tests
 
    **Owner**: :mccr8 and Perftest Team
 
@@ -171,18 +131,6 @@ Awsy tests
             * awsy-tp6: integration, mozilla-beta, mozilla-central, mozilla-release
 
       * test-macosx1015-64-shippable-qr/opt
-            * awsy-tp6: integration, mozilla-beta, mozilla-central, mozilla-release
-
-      * test-windows10-32-2004-qr/opt
-            * awsy-tp6: None
-
-      * test-windows10-32-2004-shippable-qr/opt
-            * awsy-tp6: None
-
-      * test-windows10-64-2004-qr/opt
-            * awsy-tp6: None
-
-      * test-windows10-64-2004-shippable-qr/opt
             * awsy-tp6: integration, mozilla-beta, mozilla-central, mozilla-release
 
       * test-windows11-32-2009-qr/opt

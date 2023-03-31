@@ -1798,6 +1798,9 @@ class MacroAssembler : public MacroAssemblerSpecific {
                                            Register scratch,
                                            const void* handlerp, Label* label);
 
+  inline void branchTestObjectIsWasmGcObject(bool isGcObject, Register obj,
+                                             Register scratch, Label* label);
+
   inline void branchTestNeedsIncrementalBarrier(Condition cond, Label* label);
   inline void branchTestNeedsIncrementalBarrierAnyZone(Condition cond,
                                                        Label* label,
@@ -3334,20 +3337,20 @@ class MacroAssembler : public MacroAssemblerSpecific {
                                                  FloatRegister temp)
       DEFINED_ON(x86_shared, arm64);
 
-  inline void truncSatFloat32x4ToInt32x4Relaxed(FloatRegister src,
-                                                FloatRegister dest)
+  inline void truncFloat32x4ToInt32x4Relaxed(FloatRegister src,
+                                             FloatRegister dest)
       DEFINED_ON(x86_shared, arm64);
 
-  inline void unsignedTruncSatFloat32x4ToInt32x4Relaxed(FloatRegister src,
-                                                        FloatRegister dest)
+  inline void unsignedTruncFloat32x4ToInt32x4Relaxed(FloatRegister src,
+                                                     FloatRegister dest)
       DEFINED_ON(x86_shared, arm64);
 
-  inline void truncSatFloat64x2ToInt32x4Relaxed(FloatRegister src,
-                                                FloatRegister dest)
+  inline void truncFloat64x2ToInt32x4Relaxed(FloatRegister src,
+                                             FloatRegister dest)
       DEFINED_ON(x86_shared, arm64);
 
-  inline void unsignedTruncSatFloat64x2ToInt32x4Relaxed(FloatRegister src,
-                                                        FloatRegister dest)
+  inline void unsignedTruncFloat64x2ToInt32x4Relaxed(FloatRegister src,
+                                                     FloatRegister dest)
       DEFINED_ON(x86_shared, arm64);
 
   // Floating point narrowing
@@ -3485,10 +3488,6 @@ class MacroAssembler : public MacroAssemblerSpecific {
   inline void dotInt8x16Int7x16ThenAdd(FloatRegister lhs, FloatRegister rhs,
                                        FloatRegister dest, FloatRegister temp)
       DEFINED_ON(arm64);
-
-  inline void dotBFloat16x8ThenAdd(FloatRegister lhs, FloatRegister rhs,
-                                   FloatRegister dest, FloatRegister temp)
-      DEFINED_ON(x86_shared, arm64);
 
   // Floating point rounding
 

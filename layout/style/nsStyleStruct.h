@@ -16,7 +16,6 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/Likely.h"
 #include "mozilla/Maybe.h"
-#include "mozilla/ServoStyleConstsInlines.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/WindowButtonType.h"
 #include "nsColor.h"
@@ -160,44 +159,6 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleFont {
   mozilla::Length mScriptMinSize;
   float mScriptSizeMultiplier;
   RefPtr<nsAtom> mLanguage;
-};
-
-// TODO(emilio, bug 1564526): Evaluate whether this is still needed.
-struct CachedBorderImageData {
-  ~CachedBorderImageData() { PurgeCachedImages(); }
-
-  // Caller are expected to ensure that the value of aSize is different from the
-  // cached one since the method won't do the check.
-  void SetCachedSVGViewportSize(const mozilla::Maybe<nsSize>& aSize) {
-    mCachedSVGViewportSize = aSize;
-  }
-
-  const mozilla::Maybe<nsSize>& GetCachedSVGViewportSize() const {
-    return mCachedSVGViewportSize;
-  }
-
-  void PurgeCachedImages();
-
-  void SetSubImage(uint8_t aIndex, imgIContainer* aSubImage) {
-    mSubImages.EnsureLengthAtLeast(aIndex + 1);
-    mSubImages[aIndex] = aSubImage;
-  }
-  imgIContainer* GetSubImage(uint8_t aIndex) {
-    return mSubImages.SafeElementAt(aIndex);
-  }
-
-  // These methods are used for the caller to caches the sub images created
-  // during a border-image paint operation
-  void PurgeCacheForViewportChange(
-      const mozilla::Maybe<nsSize>& aSVGViewportSize,
-      const bool aHasIntrinsicRatio);
-
- private:
-  // If this is a SVG border-image, we save the size of the SVG viewport that
-  // we used when rasterizing any cached border-image subimages. (The viewport
-  // size matters for percent-valued sizes & positions in inner SVG doc).
-  mozilla::Maybe<nsSize> mCachedSVGViewportSize;
-  nsTArray<RefPtr<imgIContainer>> mSubImages;
 };
 
 struct nsStyleImageLayers {
@@ -930,7 +891,7 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleText {
 
   nsChangeHint CalcDifference(const nsStyleText& aNewData) const;
 
-  mozilla::StyleRGBA mColor;
+  mozilla::StyleAbsoluteColor mColor;
   mozilla::StyleForcedColorAdjust mForcedColorAdjust;
   mozilla::StyleTextTransform mTextTransform;
   mozilla::StyleTextAlign mTextAlign;
@@ -1116,8 +1077,8 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleVisibility {
            mVisible == mozilla::StyleVisibility::Collapse;
   }
 
-  bool EmulateMozBoxWithFlex() const {
-    return mMozBoxLayout == mozilla::StyleMozBoxLayout::Flex;
+  bool UseLegacyCollapseBehavior() const {
+    return mMozBoxCollapse == mozilla::StyleMozBoxCollapse::Legacy;
   }
 
   /**
@@ -1151,7 +1112,7 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleVisibility {
   mozilla::StyleImageRendering mImageRendering;
   mozilla::StyleWritingModeProperty mWritingMode;
   mozilla::StyleTextOrientation mTextOrientation;
-  mozilla::StyleMozBoxLayout mMozBoxLayout;
+  mozilla::StyleMozBoxCollapse mMozBoxCollapse;
   mozilla::StylePrintColorAdjust mPrintColorAdjust;
 
  private:
@@ -1390,6 +1351,7 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleDisplay {
   mozilla::LengthPercentage mOffsetDistance;
   mozilla::StyleOffsetRotate mOffsetRotate;
   mozilla::StylePositionOrAuto mOffsetAnchor;
+  mozilla::StylePositionOrAuto mOffsetPosition;
 
   mozilla::StyleTransformOrigin mTransformOrigin;
   mozilla::StylePerspective mChildPerspective;
@@ -1527,8 +1489,7 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleDisplay {
     if (outside == mozilla::StyleDisplayOutside::Block) {
       return false;
     }
-    return mozilla::StyleDisplay::MozInlineBox == aDisplay ||
-           mozilla::StyleDisplay::RubyBase == aDisplay ||
+    return mozilla::StyleDisplay::RubyBase == aDisplay ||
            mozilla::StyleDisplay::RubyBaseContainer == aDisplay ||
            mozilla::StyleDisplay::RubyText == aDisplay ||
            mozilla::StyleDisplay::RubyTextContainer == aDisplay;
@@ -1656,7 +1617,7 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleDisplay {
     return HasTransformProperty() || HasIndividualTransform() ||
            mTransformStyle == mozilla::StyleTransformStyle::Preserve3d ||
            (mWillChange.bits & mozilla::StyleWillChangeBits::TRANSFORM) ||
-           !mOffsetPath.IsNone();
+           !mOffsetPath.IsNone() || !mOffsetPosition.IsAuto();
   }
 
   bool HasTransformProperty() const { return !mTransform._0.IsEmpty(); }
@@ -1666,6 +1627,12 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleDisplay {
   }
 
   bool HasPerspectiveStyle() const { return !mChildPerspective.IsNone(); }
+
+  bool IsStackingContext() const {
+    // offset-path and/or offset-position creates a stacking context and a
+    // motion transform.
+    return !mOffsetPath.IsNone() || !mOffsetPosition.IsAuto();
+  }
 
   bool BackfaceIsHidden() const {
     return mBackfaceVisibility == mozilla::StyleBackfaceVisibility::Hidden;

@@ -37,12 +37,7 @@ if (isNode()) {
   pref("devtools.debugger.ui.framework-grouping-on", true);
   pref("devtools.debugger.pending-selected-location", "{}");
   pref("devtools.debugger.expressions", "[]");
-  pref("devtools.debugger.file-search-case-sensitive", false);
-  pref("devtools.debugger.file-search-whole-word", false);
-  pref("devtools.debugger.file-search-regex-match", false);
-  pref("devtools.debugger.project-search-case-sensitive", false);
-  pref("devtools.debugger.project-search-whole-word", false);
-  pref("devtools.debugger.project-search-regex-match", false);
+  pref("devtools.debugger.search-options", "{}");
   pref("devtools.debugger.project-directory-root", "");
   pref("devtools.debugger.map-scopes-enabled", false);
   pref("devtools.debugger.prefs-schema-version", prefsSchemaVersion);
@@ -58,7 +53,6 @@ if (isNode()) {
   pref("devtools.debugger.features.remove-command-bar-options", true);
   pref("devtools.debugger.features.code-folding", false);
   pref("devtools.debugger.features.command-click", false);
-  pref("devtools.debugger.features.outline", true);
   pref("devtools.debugger.features.column-breakpoints", true);
   pref("devtools.debugger.features.component-pane", false);
   pref("devtools.debugger.features.autocomplete-expressions", false);
@@ -72,6 +66,7 @@ if (isNode()) {
   pref("devtools.debugger.features.overlay-step-buttons", true);
   pref("devtools.debugger.features.frame-step", true);
   pref("devtools.debugger.features.blackbox-lines", false);
+  pref("devtools.debugger.features.javascript-tracing", false);
   pref("devtools.editor.tabsize", 2);
 }
 
@@ -104,15 +99,7 @@ export const prefs = new PrefsHelper("devtools", {
   frameworkGroupingOn: ["Bool", "debugger.ui.framework-grouping-on"],
   pendingSelectedLocation: ["Json", "debugger.pending-selected-location", {}],
   expressions: ["Json", "debugger.expressions", []],
-  fileSearchCaseSensitive: ["Bool", "debugger.file-search-case-sensitive"],
-  fileSearchWholeWord: ["Bool", "debugger.file-search-whole-word"],
-  fileSearchRegexMatch: ["Bool", "debugger.file-search-regex-match"],
-  projectSearchCaseSensitive: [
-    "Bool",
-    "debugger.project-search-case-sensitive",
-  ],
-  projectSearchWholeWord: ["Bool", "debugger.project-search-whole-word"],
-  projectSearchRegexMatch: ["Bool", "debugger.project-search-regex-match"],
+  searchOptions: ["Json", "debugger.search-options"],
   debuggerPrefsSchemaVersion: ["Int", "debugger.prefs-schema-version"],
   projectDirectoryRoot: ["Char", "debugger.project-directory-root", ""],
   projectDirectoryRootName: [
@@ -158,6 +145,7 @@ export const features = new PrefsHelper("devtools.debugger.features", {
   windowlessServiceWorkers: ["Bool", "windowless-service-workers"],
   frameStep: ["Bool", "frame-step"],
   blackboxLines: ["Bool", "blackbox-lines"],
+  javascriptTracing: ["Bool", "javascript-tracing"],
 });
 
 // Import the asyncStore already spawned by the TargetMixin class

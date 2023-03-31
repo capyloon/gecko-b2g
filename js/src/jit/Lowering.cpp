@@ -202,19 +202,25 @@ void LIRGenerator::visitNewObject(MNewObject* ins) {
   assignSafepoint(lir, ins);
 }
 
-void LIRGenerator::visitNewBoundFunction(MNewBoundFunction* ins) {
+void LIRGenerator::visitBindFunction(MBindFunction* ins) {
   MDefinition* target = ins->target();
   MOZ_ASSERT(target->type() == MIRType::Object);
 
   if (!lowerCallArguments(ins)) {
-    abort(AbortReason::Alloc, "OOM: LIRGenerator::visitNewBoundFunction");
+    abort(AbortReason::Alloc, "OOM: LIRGenerator::visitBindFunction");
     return;
   }
 
   auto* lir = new (alloc())
-      LNewBoundFunction(useFixedAtStart(target, CallTempReg0),
-                        tempFixed(CallTempReg1), tempFixed(CallTempReg2));
+      LBindFunction(useFixedAtStart(target, CallTempReg0),
+                    tempFixed(CallTempReg1), tempFixed(CallTempReg2));
   defineReturn(lir, ins);
+  assignSafepoint(lir, ins);
+}
+
+void LIRGenerator::visitNewBoundFunction(MNewBoundFunction* ins) {
+  auto* lir = new (alloc()) LNewBoundFunction(temp());
+  define(lir, ins);
   assignSafepoint(lir, ins);
 }
 
@@ -3348,6 +3354,11 @@ void LIRGenerator::visitWasmTrap(MWasmTrap* ins) {
   add(new (alloc()) LWasmTrap, ins);
 }
 
+void LIRGenerator::visitWasmTrapIfNull(MWasmTrapIfNull* ins) {
+  auto* lir = new (alloc()) LWasmTrapIfNull(useRegister(ins->value()));
+  add(lir, ins);
+}
+
 void LIRGenerator::visitWasmReinterpret(MWasmReinterpret* ins) {
   if (ins->type() == MIRType::Int64) {
     defineInt64(new (alloc())
@@ -4646,6 +4657,12 @@ void LIRGenerator::visitGuardIsNativeObject(MGuardIsNativeObject* ins) {
   assignSnapshot(lir, ins->bailoutKind());
   add(lir, ins);
   redefine(ins, ins->object());
+}
+
+void LIRGenerator::visitGuardGlobalGeneration(MGuardGlobalGeneration* ins) {
+  auto* lir = new (alloc()) LGuardGlobalGeneration(temp());
+  assignSnapshot(lir, ins->bailoutKind());
+  add(lir, ins);
 }
 
 void LIRGenerator::visitGuardIsProxy(MGuardIsProxy* ins) {

@@ -137,6 +137,7 @@ XPCOMUtils.defineLazyPreferenceGetter(
 
 var {
   GlobalManager,
+  IconDetails,
   ParentAPIManager,
   StartupCache,
   apiManager: Management,
@@ -1341,12 +1342,11 @@ class ExtensionData {
         isPrivileged && manifest.permissions.includes("mozillaAddons")
       );
 
-      // Privileged and temporary extensions can opt out of originControls.
-      if (
-        (isPrivileged || this.temporarilyInstalled) &&
-        manifest.granted_host_permissions
-      ) {
-        result.originControls = false;
+      // Privileged and temporary extensions still get OriginControls, but
+      // can have host permissions automatically granted during install.
+      // For all other cases, ensure granted_host_permissions is false.
+      if (!isPrivileged && !this.temporarilyInstalled) {
+        manifest.granted_host_permissions = false;
       }
 
       let host_permissions = manifest.host_permissions ?? [];
@@ -2676,8 +2676,13 @@ class Extension extends ExtensionData {
     return common == this.baseURL;
   }
 
+  checkLoadURI(uri, options = {}) {
+    return ExtensionCommon.checkLoadURI(uri, this.principal, options);
+  }
+
+  // Note: use checkLoadURI instead of checkLoadURL if you already have a URI.
   checkLoadURL(url, options = {}) {
-    // As an optimization, f the URL starts with the extension's base URL,
+    // As an optimization, if the URL starts with the extension's base URL,
     // don't do any further checks. It's always allowed to load it.
     if (url.startsWith(this.baseURL)) {
       return true;
@@ -3118,72 +3123,7 @@ class Extension extends ExtensionData {
       }
 
       await this.clearCache(this.startupReason);
-
-      // We automatically add permissions to system/built-in extensions.
-      // Extensions expliticy stating not_allowed will never get permission.
-      let isAllowed = this.permissions.has(PRIVATE_ALLOWED_PERMISSION);
-      if (this.manifest.incognito === "not_allowed") {
-        // If an extension previously had permission, but upgrades/downgrades to
-        // a version that specifies "not_allowed" in manifest, remove the
-        // permission.
-        if (isAllowed) {
-          lazy.ExtensionPermissions.remove(this.id, {
-            permissions: [PRIVATE_ALLOWED_PERMISSION],
-            origins: [],
-          });
-          this.permissions.delete(PRIVATE_ALLOWED_PERMISSION);
-        }
-      } else if (
-        !isAllowed &&
-        this.isPrivileged &&
-        !this.temporarilyInstalled
-      ) {
-        // Add to EP so it is preserved after ADDON_INSTALL.  We don't wait on the add here
-        // since we are pushing the value into this.permissions.  EP will eventually save.
-        lazy.ExtensionPermissions.add(this.id, {
-          permissions: [PRIVATE_ALLOWED_PERMISSION],
-          origins: [],
-        });
-        this.permissions.add(PRIVATE_ALLOWED_PERMISSION);
-      }
-
-      // Allow other extensions to access static themes in private browsing windows
-      // (See Bug 1790115).
-      if (this.type === "theme") {
-        this.permissions.add(PRIVATE_ALLOWED_PERMISSION);
-      }
-
-      // We only want to update the SVG_CONTEXT_PROPERTIES_PERMISSION during install and
-      // upgrade/downgrade startups.
-      if (INSTALL_AND_UPDATE_STARTUP_REASONS.has(this.startupReason)) {
-        if (isMozillaExtension(this)) {
-          // Add to EP so it is preserved after ADDON_INSTALL.  We don't wait on the add here
-          // since we are pushing the value into this.permissions.  EP will eventually save.
-          lazy.ExtensionPermissions.add(this.id, {
-            permissions: [SVG_CONTEXT_PROPERTIES_PERMISSION],
-            origins: [],
-          });
-          this.permissions.add(SVG_CONTEXT_PROPERTIES_PERMISSION);
-        } else {
-          lazy.ExtensionPermissions.remove(this.id, {
-            permissions: [SVG_CONTEXT_PROPERTIES_PERMISSION],
-            origins: [],
-          });
-          this.permissions.delete(SVG_CONTEXT_PROPERTIES_PERMISSION);
-        }
-      }
-
-      // Ensure devtools permission is set
-      if (
-        this.manifest.devtools_page &&
-        !this.manifest.optional_permissions.includes("devtools")
-      ) {
-        lazy.ExtensionPermissions.add(this.id, {
-          permissions: ["devtools"],
-          origins: [],
-        });
-        this.permissions.add("devtools");
-      }
+      this._setupStartupPermissions();
 
       GlobalManager.init(this);
 
@@ -3285,6 +3225,97 @@ class Extension extends ExtensionData {
       // Mark readyPromise as resolved in case it has not happened before,
       // e.g. due to an early return or an error.
       resolveReadyPromise(null);
+    }
+  }
+
+  // Setup initial permissions on extension startup based on manifest
+  // and potentially previous manifest and permissions values. None of
+  // the ExtensionPermissions.add/remove() calls are are awaited here
+  // because we update the in-memory representation at the same time.
+  _setupStartupPermissions() {
+    // If we add/remove permissions conditionally based on startupReason,
+    // we need to update the cache, or changes will be lost after restart.
+    let updateCache = false;
+
+    // We automatically add permissions to system/built-in extensions.
+    // Extensions expliticy stating not_allowed will never get permission.
+    let isAllowed = this.permissions.has(PRIVATE_ALLOWED_PERMISSION);
+    if (this.manifest.incognito === "not_allowed") {
+      // If an extension previously had permission, but upgrades/downgrades to
+      // a version that specifies "not_allowed" in manifest, remove the
+      // permission.
+      if (isAllowed) {
+        lazy.ExtensionPermissions.remove(this.id, {
+          permissions: [PRIVATE_ALLOWED_PERMISSION],
+          origins: [],
+        });
+        this.permissions.delete(PRIVATE_ALLOWED_PERMISSION);
+      }
+    } else if (!isAllowed && this.isPrivileged && !this.temporarilyInstalled) {
+      // Add to EP so it is preserved after ADDON_INSTALL.
+      lazy.ExtensionPermissions.add(this.id, {
+        permissions: [PRIVATE_ALLOWED_PERMISSION],
+        origins: [],
+      });
+      this.permissions.add(PRIVATE_ALLOWED_PERMISSION);
+    }
+
+    // Allow other extensions to access static themes in private browsing windows
+    // (See Bug 1790115).
+    if (this.type === "theme") {
+      this.permissions.add(PRIVATE_ALLOWED_PERMISSION);
+    }
+
+    // We only want to update the SVG_CONTEXT_PROPERTIES_PERMISSION during
+    // install and upgrade/downgrade startups.
+    if (INSTALL_AND_UPDATE_STARTUP_REASONS.has(this.startupReason)) {
+      if (isMozillaExtension(this)) {
+        // Add to EP so it is preserved after ADDON_INSTALL.
+        lazy.ExtensionPermissions.add(this.id, {
+          permissions: [SVG_CONTEXT_PROPERTIES_PERMISSION],
+          origins: [],
+        });
+        this.permissions.add(SVG_CONTEXT_PROPERTIES_PERMISSION);
+      } else {
+        lazy.ExtensionPermissions.remove(this.id, {
+          permissions: [SVG_CONTEXT_PROPERTIES_PERMISSION],
+          origins: [],
+        });
+        this.permissions.delete(SVG_CONTEXT_PROPERTIES_PERMISSION);
+      }
+      updateCache = true;
+    }
+
+    // Ensure devtools permission is set.
+    if (
+      this.manifest.devtools_page &&
+      !this.manifest.optional_permissions.includes("devtools")
+    ) {
+      lazy.ExtensionPermissions.add(this.id, {
+        permissions: ["devtools"],
+        origins: [],
+      });
+      this.permissions.add("devtools");
+    }
+
+    if (
+      this.originControls &&
+      this.manifest.granted_host_permissions &&
+      this.startupReason === "ADDON_INSTALL"
+    ) {
+      let origins = this.getManifestOrigins();
+      lazy.ExtensionPermissions.add(this.id, { permissions: [], origins });
+      updateCache = true;
+
+      let allowed = this.allowedOrigins.patterns.map(p => p.pattern);
+      this.allowedOrigins = new MatchPatternSet(origins.concat(allowed), {
+        restrictSchemes: this.restrictSchemes,
+        ignorePath: true,
+      });
+    }
+
+    if (updateCache) {
+      this.cachePermissions();
     }
   }
 
@@ -3435,6 +3466,11 @@ class Extension extends ExtensionData {
 
   get hasBrowserActionUI() {
     return this.manifest.browser_action || this.manifest.action;
+  }
+
+  getPreferredIcon(size = 16) {
+    return IconDetails.getPreferredIcon(this.manifest.icons ?? {}, this, size)
+      .icon;
   }
 }
 

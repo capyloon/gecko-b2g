@@ -67,7 +67,10 @@ this.declarativeNetRequest = class extends ExtensionAPI {
           if (failures.length) {
             throw new ExtensionError(failures[0].message);
           }
-          ruleManager.setSessionRules(ruleValidator.getValidatedRules());
+          let validatedRules = ruleValidator.getValidatedRules();
+          let ruleQuotaCounter = new ExtensionDNR.RuleQuotaCounter();
+          ruleQuotaCounter.tryAddRules("_session", validatedRules);
+          ruleManager.setSessionRules(validatedRules);
         },
 
         async getEnabledRulesets() {
@@ -100,6 +103,32 @@ this.declarativeNetRequest = class extends ExtensionAPI {
           // the enumerable public fields of the class instances are copied to
           // plain objects, as desired.
           return ExtensionDNR.getRuleManager(extension).getSessionRules();
+        },
+
+        isRegexSupported(regexOptions) {
+          const {
+            regex: regexFilter,
+            isCaseSensitive: isUrlFilterCaseSensitive,
+            // requireCapturing: is ignored, as it does not affect validation.
+          } = regexOptions;
+
+          let ruleValidator = new ExtensionDNR.RuleValidator([]);
+          ruleValidator.addRules([
+            {
+              id: 1,
+              condition: { regexFilter, isUrlFilterCaseSensitive },
+              action: { type: "allow" },
+            },
+          ]);
+          let failures = ruleValidator.getFailures();
+          if (failures.length) {
+            // While the UnsupportedRegexReason enum has more entries than just
+            // "syntaxError" (e.g. also "memoryLimitExceeded"), our validation
+            // is currently very permissive, and therefore the only
+            // distinguishable error is "syntaxError".
+            return { isSupported: false, reason: "syntaxError" };
+          }
+          return { isSupported: true };
         },
 
         async testMatchOutcome(request, options) {

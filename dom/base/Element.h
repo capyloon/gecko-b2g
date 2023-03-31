@@ -129,6 +129,7 @@ class DOMIntersectionObserver;
 class DOMMatrixReadOnly;
 class Element;
 class ElementOrCSSPseudoElement;
+class PopoverData;
 class Promise;
 class Sanitizer;
 class ShadowRoot;
@@ -567,6 +568,21 @@ class Element : public FragmentOrElement {
   void ClearServoData() { ClearServoData(GetComposedDoc()); }
   void ClearServoData(Document* aDocument);
 
+  PopoverData* GetPopoverData() const {
+    const nsExtendedDOMSlots* slots = GetExistingExtendedDOMSlots();
+    return slots ? slots->mPopoverData.get() : nullptr;
+  }
+
+  PopoverData& EnsurePopoverData() {
+    if (auto* popoverData = GetPopoverData()) {
+      return *popoverData;
+    }
+    return CreatePopoverData();
+  }
+
+  bool IsAutoPopover() const;
+  bool IsPopoverOpen() const;
+
   ElementAnimationData* GetAnimationData() const {
     if (!MayHaveAnimations()) {
       return nullptr;
@@ -584,8 +600,11 @@ class Element : public FragmentOrElement {
 
  private:
   ElementAnimationData& CreateAnimationData();
+  PopoverData& CreatePopoverData();
 
  public:
+  void ClearPopoverData();
+
   /**
    * Gets the custom element data used by web components custom element.
    * Custom element data is created at the first attempt to enqueue a callback.
@@ -1053,8 +1072,6 @@ class Element : public FragmentOrElement {
    * @return the number of attributes
    */
   uint32_t GetAttrCount() const { return mAttrs.AttrCount(); }
-
-  virtual bool IsNodeOfType(uint32_t aFlags) const override;
 
   /**
    * Get the class list of this element (this corresponds to the value of the

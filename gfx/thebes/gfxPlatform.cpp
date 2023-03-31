@@ -12,6 +12,7 @@
 #include "mozilla/layers/ISurfaceAllocator.h"  // for GfxMemoryImageReporter
 #include "mozilla/layers/CompositorBridgeChild.h"
 #include "mozilla/layers/RemoteTextureMap.h"
+#include "mozilla/layers/VideoBridgeParent.h"
 #include "mozilla/webrender/RenderThread.h"
 #include "mozilla/webrender/WebRenderAPI.h"
 #include "mozilla/webrender/webrender_ffi.h"
@@ -301,8 +302,8 @@ void CrashStatsLogForwarder::UpdateCrashReport() {
   }
 
   for (auto& it : mBuffer) {
-    message << logAnnotation << Get<0>(it) << "]" << Get<1>(it)
-            << " (t=" << Get<2>(it) << ") ";
+    message << logAnnotation << std::get<0>(it) << "]" << std::get<1>(it)
+            << " (t=" << std::get<2>(it) << ") ";
   }
 
   nsCString reportString(message.str().c_str());
@@ -1360,6 +1361,8 @@ void gfxPlatform::ShutdownLayersIPC() {
     }
 
   } else if (XRE_IsParentProcess()) {
+    VideoBridgeParent::Shutdown();
+    RDDProcessManager::RDDProcessShutdown();
     gfx::VRManagerChild::ShutDown();
     gfx::CanvasManagerChild::Shutdown();
     layers::CompositorManagerChild::Shutdown();
@@ -2060,15 +2063,10 @@ DeviceColor gfxPlatform::TransformPixel(const sRGBColor& in,
   return DeviceColor(in.r, in.g, in.b, in.a);
 }
 
-nsTArray<uint8_t> gfxPlatform::GetPlatformCMSOutputProfileData() {
-  return GetPrefCMSOutputProfileData();
-}
-
 nsTArray<uint8_t> gfxPlatform::GetPrefCMSOutputProfileData() {
-  nsAutoCString fname;
-  Preferences::GetCString("gfx.color_management.display_profile", fname);
-
-  if (fname.IsEmpty()) {
+  const auto mirror = StaticPrefs::gfx_color_management_display_profile();
+  const auto fname = *mirror;
+  if (fname == "") {
     return nsTArray<uint8_t>();
   }
 
@@ -2835,11 +2833,19 @@ void gfxPlatform::InitWebRenderConfig() {
     gfxVars::SetReuseDecoderDevice(true);
   }
 
-  if (Preferences::GetBool("gfx.webrender.flip-sequential", false)) {
+  // SWAP_EFFECT_FLIP_SEQUENTIAL is strongly recommended on Win10+ machines --
+  // DXGI warnings are emitted by the Direct3D11 debug layer if it's not used.
+  //
+  // This avoids bug 1763981, which is only exhibited on Windows 11. (This may
+  // be due to some sort of raciness between the parent and GPU processes when
+  // no separate compositor-HWND is created. Alternatively, it may be a bug in
+  // Win11 DWM's handling of SWAP_EFFECT_SEQUENTIAL.)
+  if (Preferences::GetBool("gfx.webrender.flip-sequential", IsWin10OrLater())) {
     if (gfxVars::UseWebRenderANGLE()) {
       gfxVars::SetUseWebRenderFlipSequentialWin(true);
     }
   }
+
   if (Preferences::GetBool("gfx.webrender.triple-buffering.enabled", false)) {
     if (gfxVars::UseWebRenderDCompWin() ||
         gfxVars::UseWebRenderFlipSequentialWin()) {
@@ -3161,6 +3167,11 @@ static void AcceleratedCanvas2DPrefChangeCallback(const char*, void*) {
   if (kIsAndroid && !gfxConfig::IsEnabled(Feature::GPU_PROCESS)) {
     feature.Disable(FeatureStatus::Blocked, "Disabled by GPU Process disabled",
                     "FEATURE_FAILURE_DISABLED_BY_GPU_PROCESS_DISABLED"_ns);
+  } else if (!gfxConfig::IsEnabled(Feature::WEBRENDER)) {
+    // There isn't much benefit to accelerating Canvas2D if we can't accelerate
+    // WebRender itself.
+    feature.Disable(FeatureStatus::Blocked, "Disabled by Software WebRender",
+                    "FEATURE_FAILURE_DISABLED_BY_SOFTWARE_WEBRENDER"_ns);
   }
 
   // Check if blocklisted despite the default pref.

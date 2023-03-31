@@ -11,9 +11,10 @@ import subprocess
 import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "eslint"))
-from eslint import setup_helper
 from mozbuild.nodeutil import find_node_executable
 from mozlint import result
+
+from eslint import setup_helper
 
 ESLINT_ERROR_MESSAGE = """
 An error occurred running eslint. Please check the following error messages:
@@ -86,16 +87,12 @@ def lint(paths, config, binary=None, fix=None, rules=[], setup=None, **lintargs)
         + paths
     )
     log.debug("Command: {}".format(" ".join(cmd_args)))
-    results = run(cmd_args, config)
-    fixed = 0
-    # eslint requires that --fix be set before the --ext argument.
-    if fix:
-        fixed += len(results)
-        cmd_args.insert(2, "--fix")
-        results = run(cmd_args, config)
-        fixed = fixed - len(results)
 
-    return {"results": results, "fixed": fixed}
+    if fix:
+        # eslint requires that --fix be set before the --ext argument.
+        cmd_args.insert(2, "--fix")
+
+    return run(cmd_args, config)
 
 
 def run(cmd_args, config):
@@ -119,7 +116,7 @@ def run(cmd_args, config):
         output, errors = proc.communicate()
     except KeyboardInterrupt:
         proc.kill()
-        return []
+        return {"results": [], "fixed": 0}
 
     if errors:
         errors = errors.decode(encoding, "replace")
@@ -129,7 +126,7 @@ def run(cmd_args, config):
         return 1
 
     if not output:
-        return []  # no output means success
+        return {"results": [], "fixed": 0}  # no output means success
     output = output.decode(encoding, "replace")
     try:
         jsonresult = json.loads(output)
@@ -138,8 +135,13 @@ def run(cmd_args, config):
         return 1
 
     results = []
+    fixed = 0
     for obj in jsonresult:
         errors = obj["messages"]
+        # This will return a count of files fixed, rather than issues fixed, as
+        # that is the only count we have.
+        if "output" in obj:
+            fixed = fixed + 1
 
         for err in errors:
             err.update(
@@ -153,4 +155,4 @@ def run(cmd_args, config):
             )
             results.append(result.from_config(config, **err))
 
-    return results
+    return {"results": results, "fixed": fixed}

@@ -267,7 +267,7 @@ fn get_origin(url: &MozURL) -> Option<String> {
         "blob" | "ftp" | "http" | "https" | "ws" | "wss" => {
             Some(url.origin().ascii_serialization())
         }
-        "indexeddb" | "moz-extension" | "resource" => {
+        "indexeddb" | "moz-extension" | "resource" | "tile" => {
             let host = url.host_str().unwrap_or("");
 
             let port = url.port().or_else(|| default_port(url.scheme()));
@@ -314,7 +314,7 @@ pub extern "C" fn mozurl_origin(url: &MozURL, origin: &mut nsACString) {
 
 fn get_base_domain(url: &MozURL) -> Result<Option<String>, nsresult> {
     match url.scheme() {
-        "ftp" | "http" | "https" | "moz-extension" | "resource" => {
+        "ftp" | "http" | "https" | "moz-extension" | "resource" | "tile" => {
             let third_party_util: RefPtr<mozIThirdPartyUtil> =
                 xpcom::components::ThirdPartyUtil::service()
                     .map_err(|_| NS_ERROR_ILLEGAL_DURING_SHUTDOWN)?;

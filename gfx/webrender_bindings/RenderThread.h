@@ -22,6 +22,7 @@
 #include "mozilla/webrender/WebRenderTypes.h"
 #include "mozilla/layers/CompositionRecorder.h"
 #include "mozilla/layers/SynchronousTask.h"
+#include "mozilla/UniquePtr.h"
 #include "mozilla/VsyncDispatcher.h"
 
 #include <list>
@@ -166,11 +167,11 @@ class RenderThread final {
 
   // RenderNotifier implementation
 
-  /// Automatically forwarded to the render thread. Will trigger a render for
+  /// Forwarded to the render thread. Will trigger a render for
   /// the current pending frame once one call per document in that pending
   /// frame has been received.
-  void HandleFrameOneDoc(wr::WindowId aWindowId, bool aRender,
-                         bool aTrackedFrame);
+  void PostHandleFrameOneDoc(wr::WindowId aWindowId, bool aRender,
+                             bool aTrackedFrame);
 
   /// Automatically forwarded to the render thread.
   void SetClearColor(wr::WindowId aWindowId, wr::ColorF aColor);
@@ -182,8 +183,8 @@ class RenderThread final {
   void PipelineSizeChanged(wr::WindowId aWindowId, uint64_t aPipelineId,
                            float aWidth, float aHeight);
 
-  /// Automatically forwarded to the render thread.
-  void RunEvent(wr::WindowId aWindowId, UniquePtr<RendererEvent> aEvent);
+  /// Post RendererEvent to the render thread.
+  void PostEvent(wr::WindowId aWindowId, UniquePtr<RendererEvent> aEvent);
 
   /// Can only be called from the render thread.
   void UpdateAndRender(wr::WindowId aWindowId, const VsyncId& aStartId,
@@ -202,6 +203,10 @@ class RenderThread final {
 
   /// Can be called from any thread.
   void UnregisterExternalImage(const wr::ExternalImageId& aExternalImageId);
+
+  /// Can be called from any thread.
+  void DestroyExternalImagesSyncWait(
+      const std::vector<wr::ExternalImageId>&& aIds);
 
   /// Can be called from any thread.
   void PrepareForUse(const wr::ExternalImageId& aExternalImageId);
@@ -291,10 +296,7 @@ class RenderThread final {
                                const TimeStamp& aRecordingStart,
                                wr::PipelineId aRootPipelineId);
 
-  void WriteCollectedFramesForWindow(wr::WindowId aWindowId);
-
-  Maybe<layers::CollectedFrames> GetCollectedFramesForWindow(
-      wr::WindowId aWindowId);
+  Maybe<layers::FrameRecording> EndRecordingForWindow(wr::WindowId aWindowId);
 
   static void MaybeEnableGLDebugMessage(gl::GLContext* aGLContext);
 
@@ -313,6 +315,9 @@ class RenderThread final {
   void DeferredRenderTextureHostDestroy();
   void ShutDownTask();
   void InitDeviceTask();
+  void HandleFrameOneDoc(wr::WindowId aWindowId, bool aRender,
+                         bool aTrackedFrame);
+  void RunEvent(wr::WindowId aWindowId, UniquePtr<RendererEvent> aEvent);
   void PostRunnable(already_AddRefed<nsIRunnable> aRunnable);
 
   void DoAccumulateMemoryReport(MemoryReport,
@@ -322,6 +327,8 @@ class RenderThread final {
                           const wr::ExternalImageId& aExternalImageId);
 
   void CreateSingletonGL(nsACString& aError);
+
+  void DestroyExternalImages(const std::vector<wr::ExternalImageId>&& aIds);
 
   ~RenderThread();
 
@@ -356,7 +363,7 @@ class RenderThread final {
     bool mIsDestroyed = false;
   };
 
-  DataMutex<std::unordered_map<uint64_t, WindowInfo*>> mWindowInfos;
+  DataMutex<std::unordered_map<uint64_t, UniquePtr<WindowInfo>>> mWindowInfos;
 
   struct ExternalImageIdHashFn {
     std::size_t operator()(const wr::ExternalImageId& aId) const {

@@ -54,13 +54,7 @@ static bool IsLegacyBox(const nsIFrame* aFlexContainer) {
   MOZ_ASSERT(aFlexContainer->IsFlexContainerFrame(),
              "only flex containers may be passed to this function");
   return aFlexContainer->HasAnyStateBits(
-      NS_STATE_FLEX_IS_EMULATING_LEGACY_MOZ_BOX |
       NS_STATE_FLEX_IS_EMULATING_LEGACY_WEBKIT_BOX);
-}
-
-static bool IsLegacyMozBox(const nsFlexContainerFrame* aFlexContainer) {
-  return aFlexContainer->HasAnyStateBits(
-      NS_STATE_FLEX_IS_EMULATING_LEGACY_MOZ_BOX);
 }
 
 // Returns the OrderState enum we should pass to CSSOrderAwareFrameIterator
@@ -2160,7 +2154,7 @@ FlexItem::FlexItem(nsIFrame* aChildFrame, nscoord aCrossSize,
                    WritingMode aContainerWM,
                    const FlexboxAxisTracker& aAxisTracker)
     : mFrame(aChildFrame),
-      mWM(aContainerWM),
+      mWM(aChildFrame->GetWritingMode()),
       mCBWM(aContainerWM),
       mMainAxis(aAxisTracker.MainAxis()),
       mBorderPadding(mCBWM),
@@ -2752,9 +2746,7 @@ void nsFlexContainerFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
 
   // Figure out if we should set a frame state bit to indicate that this frame
   // represents a legacy -moz-{inline-}box or -webkit-{inline-}box container.
-  if (displayInside == StyleDisplayInside::MozBox) {
-    AddStateBits(NS_STATE_FLEX_IS_EMULATING_LEGACY_MOZ_BOX);
-  } else if (displayInside == StyleDisplayInside::WebkitBox) {
+  if (displayInside == StyleDisplayInside::WebkitBox) {
     AddStateBits(NS_STATE_FLEX_IS_EMULATING_LEGACY_WEBKIT_BOX);
   }
 }
@@ -3067,7 +3059,7 @@ void FlexLine::ResolveFlexibleLengths(nscoord aFlexContainerMainSize,
           weightSum += curWeight;
           flexFactorSum += curFlexFactor;
 
-          if (IsFinite(weightSum)) {
+          if (std::isfinite(weightSum)) {
             if (curWeight == 0.0) {
               item.SetShareOfWeightSoFar(0.0);
             } else {
@@ -3141,7 +3133,7 @@ void FlexLine::ResolveFlexibleLengths(nscoord aFlexContainerMainSize,
             // To avoid rounding issues, we compute the change in size for this
             // item, and then subtract it from the remaining available space.
             AuCoord64 sizeDelta = 0;
-            if (IsFinite(weightSum)) {
+            if (std::isfinite(weightSum)) {
               double myShareOfRemainingSpace = item.ShareOfWeightSoFar();
 
               MOZ_ASSERT(myShareOfRemainingSpace >= 0.0 &&
@@ -3855,7 +3847,7 @@ void FlexboxAxisInfo::InitAxesFromLegacyProps(const nsIFrame* aFlexContainer) {
   const nsStyleXUL* styleXUL = aFlexContainer->StyleXUL();
 
   const bool boxOrientIsVertical =
-      (styleXUL->mBoxOrient == StyleBoxOrient::Vertical);
+      styleXUL->mBoxOrient == StyleBoxOrient::Vertical;
   const bool wmIsVertical = aFlexContainer->GetWritingMode().IsVertical();
 
   // If box-orient agrees with our writing-mode, then we're "row-oriented"
@@ -3969,8 +3961,8 @@ void nsFlexContainerFrame::GenerateFlexLines(
   AddOrRemoveStateBits(NS_STATE_FLEX_NORMAL_FLOW_CHILDREN_IN_CSS_ORDER,
                        iter.ItemsAreAlreadyInOrder());
 
-  bool prevItemRequestedBreakAfter = false;
-  const bool useMozBoxCollapseBehavior = IsLegacyMozBox(this);
+  const bool useMozBoxCollapseBehavior =
+      StyleVisibility()->UseLegacyCollapseBehavior();
 
   for (; !iter.AtEnd(); iter.Next()) {
     nsIFrame* childFrame = *iter;
@@ -3978,15 +3970,6 @@ void nsFlexContainerFrame::GenerateFlexLines(
     if (childFrame->IsPlaceholderFrame()) {
       aPlaceholders.AppendElement(childFrame);
       continue;
-    }
-
-    // If we're multi-line and current line isn't empty, create a new flex line
-    // to satisfy the previous flex item's request or to honor "break-before".
-    if (!isSingleLine && !curLine->IsEmpty() &&
-        (prevItemRequestedBreakAfter ||
-         childFrame->StyleDisplay()->BreakBefore())) {
-      curLine = ConstructNewFlexLine();
-      prevItemRequestedBreakAfter = false;
     }
 
     const bool collapsed = childFrame->StyleVisibility()->IsCollapse();
@@ -4038,12 +4021,6 @@ void nsFlexContainerFrame::GenerateFlexLines(
 
     // Update the line's bookkeeping about how large its items collectively are.
     curLine->AddLastItemToMainSizeTotals();
-
-    // Honor "break-after" if we're multi-line. If we have more children, we
-    // will create a new flex line in the next iteration.
-    if (!isSingleLine && childFrame->StyleDisplay()->BreakAfter()) {
-      prevItemRequestedBreakAfter = true;
-    }
     itemIdxInContainer++;
   }
 }
@@ -4668,7 +4645,8 @@ void nsFlexContainerFrame::UnionInFlowChildOverflow(
   nsRect itemMarginBoxes;
   // Union of relative-positioned margin boxes for the relpos items only.
   nsRect relPosItemMarginBoxes;
-  const bool useMozBoxCollapseBehavior = IsLegacyMozBox(this);
+  const bool useMozBoxCollapseBehavior =
+      StyleVisibility()->UseLegacyCollapseBehavior();
   for (nsIFrame* f : mFrames) {
     if (useMozBoxCollapseBehavior && f->StyleVisibility()->IsCollapse()) {
       continue;
@@ -4951,7 +4929,7 @@ bool nsFlexContainerFrame::IsItemInlineAxisMainAxis(nsIFrame* aFrame) {
     // just directly check if that's vertical, and compare that to whether the
     // item's WM is also vertical:
     bool boxOrientIsVertical =
-        (flexContainer->StyleXUL()->mBoxOrient == StyleBoxOrient::Vertical);
+        flexContainer->StyleXUL()->mBoxOrient == StyleBoxOrient::Vertical;
     return flexItemWM.IsVertical() == boxOrientIsVertical;
   }
 
@@ -5096,7 +5074,8 @@ nsFlexContainerFrame::FlexLayoutResult nsFlexContainerFrame::DoFlexLayout(
   // constructor), we can create struts for any flex items with
   // "visibility: collapse" (and restart flex layout).
   // Make sure to only do this if we had no struts.
-  if (aStruts.IsEmpty() && !IsLegacyMozBox(this) && flr.mHasCollapsedItems) {
+  if (aStruts.IsEmpty() && flr.mHasCollapsedItems &&
+      !StyleVisibility()->UseLegacyCollapseBehavior()) {
     BuildStrutInfoFromCollapsedItems(flr.mLines, aStruts);
     if (!aStruts.IsEmpty()) {
       // Restart flex layout, using our struts.
@@ -5617,7 +5596,8 @@ nscoord nsFlexContainerFrame::IntrinsicISize(gfxContext* aRenderingContext,
                                                     NS_UNCONSTRAINEDSIZE);
   }
 
-  const bool useMozBoxCollapseBehavior = IsLegacyMozBox(this);
+  const bool useMozBoxCollapseBehavior =
+      StyleVisibility()->UseLegacyCollapseBehavior();
 
   // The loop below sets aside space for a gap before each item besides the
   // first. This bool helps us handle that special-case.

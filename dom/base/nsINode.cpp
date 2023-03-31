@@ -309,7 +309,7 @@ class IsItemInRangeComparator {
     MOZ_ASSERT(aStartOffset <= aEndOffset);
   }
 
-  int operator()(const nsRange* const aRange) const {
+  int operator()(const AbstractRange* const aRange) const {
     int32_t cmp = nsContentUtils::ComparePoints_Deprecated(
         &mNode, mEndOffset, aRange->GetStartContainer(), aRange->StartOffset(),
         nullptr, mCache);
@@ -373,25 +373,25 @@ bool nsINode::IsSelected(const uint32_t aStartOffset,
     while (high != low) {
       size_t middle = low + (high - low) / 2;
 
-      const nsRange* const range = selection->GetRangeAt(middle);
+      const AbstractRange* const range = selection->GetAbstractRangeAt(middle);
       int result = comparator(range);
       if (result == 0) {
         if (!range->Collapsed()) {
           return true;
         }
 
-        const nsRange* middlePlus1;
-        const nsRange* middleMinus1;
+        const AbstractRange* middlePlus1;
+        const AbstractRange* middleMinus1;
         // if node end > start of middle+1, result = 1
         if (middle + 1 < high &&
-            (middlePlus1 = selection->GetRangeAt(middle + 1)) &&
+            (middlePlus1 = selection->GetAbstractRangeAt(middle + 1)) &&
             nsContentUtils::ComparePoints_Deprecated(
                 this, aEndOffset, middlePlus1->GetStartContainer(),
                 middlePlus1->StartOffset(), nullptr, &cache) > 0) {
           result = 1;
           // if node start < end of middle - 1, result = -1
         } else if (middle >= 1 &&
-                   (middleMinus1 = selection->GetRangeAt(middle - 1)) &&
+                   (middleMinus1 = selection->GetAbstractRangeAt(middle - 1)) &&
                    nsContentUtils::ComparePoints_Deprecated(
                        this, aStartOffset, middleMinus1->GetEndContainer(),
                        middleMinus1->EndOffset(), nullptr, &cache) < 0) {
@@ -2977,12 +2977,11 @@ const RawServoSelectorList* nsINode::ParseSelectorList(
     // want to cache the "This is not a valid selector" result.
     //
     // NOTE(emilio): Off-hand, getting a CallerType here might seem like a
-    // better idea than using IsDocumentURISchemeChrome(), but that would mean
+    // better idea than using ChromeRulesEnabled(), but that would mean
     // that we'd need to key the selector cache by that.
-    // IsDocumentURISchemeChrome() gives us the same semantics as any inline
+    // ChromeRulesEnabled() gives us the same semantics as any inline
     // style associated to a document, which seems reasonable.
-    return Servo_SelectorList_Parse(&aSelectorString,
-                                    doc->IsDocumentURISchemeChrome())
+    return Servo_SelectorList_Parse(&aSelectorString, doc->ChromeRulesEnabled())
         .Consume();
   });
 
@@ -3169,6 +3168,29 @@ Element* nsINode::GetParentFlexElement() {
     }
   }
 
+  return nullptr;
+}
+
+Element* nsINode::GetNearestInclusiveOpenPopover() {
+  for (nsINode* node = this; node; node = node->GetFlattenedTreeParentNode()) {
+    if (auto* el = Element::FromNode(node)) {
+      if (el->IsAutoPopover() && el->IsPopoverOpen()) {
+        return el;
+      }
+    }
+  }
+  return nullptr;
+}
+
+Element* nsINode::GetNearestInclusiveTargetPopoverForInvoker() {
+  for (auto* el : InclusiveFlatTreeAncestorsOfType<
+           nsGenericHTMLFormControlElementWithState>()) {
+    if (auto* popover = el->GetPopoverTargetElement()) {
+      if (popover->IsAutoPopover() && popover->IsPopoverOpen()) {
+        return popover;
+      }
+    }
+  }
   return nullptr;
 }
 

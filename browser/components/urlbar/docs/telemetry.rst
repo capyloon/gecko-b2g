@@ -15,14 +15,20 @@ Histograms
 ----------
 
 PLACES_AUTOCOMPLETE_1ST_RESULT_TIME_MS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
   This probe tracks the amount of time it takes to get the first result.
   It is an exponential histogram with values between 5 and 100.
 
 PLACES_AUTOCOMPLETE_6_FIRST_RESULTS_TIME_MS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
   This probe tracks the amount of time it takes to get the first six results.
   It is an exponential histogram with values between 50 and 1000.
 
 FX_URLBAR_SELECTED_RESULT_METHOD
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
   This probe tracks how a result was picked by the user from the list.
   It is a categorical histogram with these values:
 
@@ -49,6 +55,8 @@ FX_URLBAR_SELECTED_RESULT_METHOD
     not pick it. Then the user could press Enter. This is no more possible.
 
 FX_URLBAR_ZERO_PREFIX_DWELL_TIME_MS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
   This probe records the amount of time the zero-prefix view was shown; that is,
   the time from when it was opened to the time it was closed. "Zero-prefix"
   means the search string was empty, so the zero-prefix view is the view that's
@@ -59,6 +67,8 @@ FX_URLBAR_ZERO_PREFIX_DWELL_TIME_MS
   Firefox 110.0 in bug 1806765.
 
 PLACES_FRECENCY_RECALC_CHUNK_TIME_MS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
   This records the time necessary to recalculate frecency of a chunk of pages,
   as defined in the `PlacesFrecencyRecalculator <https://searchfox.org/mozilla-central/source/toolkit/components/places/PlacesFrecencyRecalculator.sys.mjs>`_ module.
 
@@ -66,6 +76,8 @@ Scalars
 -------
 
 urlbar.abandonment
+~~~~~~~~~~~~~~~~~~
+
   A uint recording the number of abandoned engagements in the urlbar. An
   abandonment occurs when the user begins using the urlbar but stops before
   completing the engagement. This can happen when the user clicks outside the
@@ -73,17 +85,23 @@ urlbar.abandonment
   user switches to another window while the urlbar is focused.
 
 urlbar.autofill_deletion
+~~~~~~~~~~~~~~~~~~~~~~~~
+
   A uint recording the deletion count for autofilled string in the urlbar.
   This occurs when the user deletes whole autofilled string by BACKSPACE or
   DELETE key while the autofilled string is selected.
 
 urlbar.engagement
+~~~~~~~~~~~~~~~~~
+
   A uint recording the number of engagements the user completes in the urlbar.
   An engagement occurs when the user navigates to a page using the urlbar, for
   example by picking a result in the urlbar panel or typing a search term or URL
   in the urlbar and pressing the enter key.
 
 urlbar.impression.*
+~~~~~~~~~~~~~~~~~~~
+
   A uint recording the number of impression that was displaying when user picks
   any result.
 
@@ -104,7 +122,32 @@ urlbar.impression.*
   - ``autofill_url``
     For url type autofill.
 
+urlbar.persistedsearchterms.revert_by_popup_count
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+  A uint that is incremented when search terms are persisted in the Urlbar and
+  the Urlbar is reverted to show a full URL due to a PopupNotification. This
+  can happen when a user is on a SERP and permissions are requested, e.g.
+  request access to location. If the popup is persistent and the user did not
+  dismiss it before switching tabs, the popup will reappear when they return to
+  the tab. Thus, when returning to the tab with the persistent popup, this
+  value will be incremented because it should have persisted search terms but
+  instead showed a full URL.
+
+urlbar.persistedsearchterms.view_count
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+  A uint that is incremented when search terms should be persisted in the
+  Urlbar. This will trigger when a user loads a SERP from any SAP that results
+  in the search terms persisting in the Urlbar, as well as switching to a tab
+  containing a SERP that should be persisting the search terms in the Urlbar,
+  regardless of whether a PopupNotification is present. Thus, for every
+  ``revert_by_popup_count``, there should be at least one corresponding
+  ``view_count``.
+
 urlbar.tips
+~~~~~~~~~~~
+
   This is a keyed scalar whose values are uints and are incremented each time a
   tip result is shown, a tip is picked, and a tip's help button is picked. The
   keys are:
@@ -185,6 +228,8 @@ urlbar.tips
     Incremented when the redirect search tip is shown.
 
 urlbar.searchmode.*
+~~~~~~~~~~~~~~~~~~~
+
   This is a set of keyed scalars whose values are uints incremented each
   time search mode is entered in the Urlbar. The suffix on the scalar name
   describes how search mode was entered. Possibilities include:
@@ -240,6 +285,8 @@ urlbar.searchmode.*
   is done to reduce the number of keys used by these scalars.
 
 urlbar.picked.*
+~~~~~~~~~~~~~~~
+
   This is a set of keyed scalars whose values are uints incremented each
   time a result is picked from the Urlbar. The suffix on the scalar name
   is the result type. The keys for the scalars above are the 0-based index of
@@ -306,6 +353,8 @@ urlbar.picked.*
   - ``dynamic``
     A specially crafted result, often used in experiments when basic types are
     not flexible enough for a rich layout.
+  - ``dynamic_wikipedia``
+    A dynamic Wikipedia Firefox Suggest result.
   - ``extension``
     Added by an add-on through the omnibox WebExtension API.
   - ``formhistory``
@@ -314,6 +363,8 @@ urlbar.picked.*
     A URL from history.
   - ``keyword``
     A bookmark keyword.
+  - ``navigational``
+    A navigational suggestion Firefox Suggest result.
   - ``quickaction``
     A QuickAction.
   - ``quicksuggest``
@@ -333,6 +384,8 @@ urlbar.picked.*
     A tip result.
   - ``topsite``
     An entry from top sites.
+  - ``trending``
+    A trending suggestion.
   - ``unknown``
     An unknown result type, a bug should be filed to figure out what it is.
   - ``visiturl``
@@ -345,6 +398,8 @@ urlbar.picked.*
   .. _preloaded site: https://searchfox.org/mozilla-central/source/browser/components/urlbar/UrlbarProviderPreloadedSites.jsm
 
 urlbar.picked.searchmode.*
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
   This is a set of keyed scalars whose values are uints incremented each time a
   result is picked from the Urlbar while the Urlbar is in search mode. The
   suffix on the scalar name is the search mode entry point. The keys for the
@@ -364,6 +419,8 @@ urlbar.picked.searchmode.*
     ``urlbar.picked.searchsuggestion`` and ``urlbar.picked.searchmode.oneoff``.
 
 urlbar.tabtosearch.*
+~~~~~~~~~~~~~~~~~~~~
+
   This is a set of keyed scalars whose values are uints incremented when a
   tab-to-search result is shown, once per engine per engagement. There are two
   sub-probes: ``urlbar.tabtosearch.impressions`` and
@@ -379,6 +436,8 @@ urlbar.tabtosearch.*
     collected only on pre-release version of Firefox. See bug 1686330.
 
 urlbar.zeroprefix.abandonment
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
   A uint recording the number of abandonments of the zero-prefix view.
   "Zero-prefix" means the search string was empty, so the zero-prefix view is
   the view that's shown when the user clicks in the urlbar before typing a
@@ -388,6 +447,8 @@ urlbar.zeroprefix.abandonment
   introduced in Firefox 110.0 in bug 1806765.
 
 urlbar.zeroprefix.engagement
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
   A uint recording the number of engagements in the zero-prefix view.
   "Zero-prefix" means the search string was empty, so the zero-prefix view is
   the view that's shown when the user clicks in the urlbar before typing a
@@ -396,6 +457,8 @@ urlbar.zeroprefix.engagement
   view. This scalar was introduced in Firefox 110.0 in bug 1806765.
 
 urlbar.zeroprefix.exposure
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
   A uint recording the number of times the user was exposed to the zero-prefix
   view; that is, the number of times it was shown. "Zero-prefix" means the
   search string was empty, so the zero-prefix view is the view that's shown when
@@ -404,16 +467,22 @@ urlbar.zeroprefix.exposure
   was introduced in Firefox 110.0 in bug 1806765.
 
 urlbar.quickaction.impression
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
   A uint recording the number of times the user was shown a quickaction, the
   key is in the form $key-$n where $n is the number of characters the user typed
   in order for the suggestion to show. See bug 1806024.
 
 urlbar.quickaction.picked
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
   A uint recording the number of times the user selected a quickaction, the
   key is in the form $key-$n where $n is the number of characters the user typed
   in order for the suggestion to show. See bug 1783155.
 
 places.*
+~~~~~~~~
+
   This is Places related telemetry.
 
   Valid result types are:
@@ -469,6 +538,8 @@ the top sites feature.
     .. _custom pings: https://docs.telemetry.mozilla.org/cookbooks/new_ping.html#sending-a-custom-ping
 
 Top Sites Impression
+~~~~~~~~~~~~~~~~~~~~
+
   This records an impression when a sponsored top site is shown.
 
   - ``context_id``
@@ -503,6 +574,8 @@ Changelog
 .. _1794022: https://bugzilla.mozilla.org/show_bug.cgi?id=1794022
 
 Top Sites Click
+~~~~~~~~~~~~~~~
+
   This records a click ping when a sponsored top site is clicked by the user.
 
   - ``context_id``
@@ -538,9 +611,13 @@ Other telemetry relevant to the Address Bar
 -------------------------------------------
 
 Search Telemetry
+~~~~~~~~~~~~~~~~
+
   Some of the `search telemetry`_ is also relevant to the address bar.
 
 contextual.services.topsites.*
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
   These keyed scalars instrument the impressions and clicks for sponsored top
   sites in the urlbar.
   The key is a combination of the source and the placement of the top sites link
@@ -549,6 +626,8 @@ contextual.services.topsites.*
   Note that these scalars are shared with the top sites on the newtab page.
 
 Telemetry Environment
+~~~~~~~~~~~~~~~~~~~~~
+
   The following preferences relevant to the address bar are recorded in
   :doc:`telemetry environment data </toolkit/components/telemetry/data/environment>`:
 
@@ -563,6 +642,8 @@ Telemetry Environment
       enabled in the urlbar. Defaults to false.
 
 Firefox Suggest
+~~~~~~~~~~~~~~~
+
   Telemetry specific to Firefox Suggest is described in the
   :doc:`firefox-suggest-telemetry` document.
 
@@ -582,6 +663,8 @@ Event Telemetry
 The event telemetry is grouped under the ``urlbar`` category.
 
 Event Method
+~~~~~~~~~~~~
+
   There are two methods to describe the interaction with the urlbar:
 
   - ``engagement``
@@ -594,6 +677,8 @@ Event Method
     focus.
 
 Event Value
+~~~~~~~~~~~
+
   This is how the user interaction started
 
   - ``typed``: The text was typed into the urlbar.
@@ -618,6 +703,8 @@ Event Value
     cleared it and then typed a new string.
 
 Event Object
+~~~~~~~~~~~~
+
   These describe actions in the urlbar:
 
   - ``click``
@@ -632,6 +719,8 @@ Event Object
     The user unfocused the urlbar. This is only valid for ``abandonment``.
 
 Event Extra
+~~~~~~~~~~~
+
   This object contains additional information about the interaction.
   Extra is a key-value store, where all the keys and values are strings.
 

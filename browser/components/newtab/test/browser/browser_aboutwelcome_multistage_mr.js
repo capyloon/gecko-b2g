@@ -3,11 +3,8 @@
 const { AboutWelcomeParent } = ChromeUtils.import(
   "resource:///actors/AboutWelcomeParent.jsm"
 );
-const {
-  assertFirefoxViewTabSelected,
-  closeFirefoxViewTab,
-} = ChromeUtils.importESModule(
-  "resource://testing-common/FirefoxViewTestUtils.sys.mjs"
+const { AWScreenUtils } = ChromeUtils.import(
+  "resource://activity-stream/lib/AWScreenUtils.jsm"
 );
 
 async function clickVisibleButton(browser, selector) {
@@ -83,7 +80,15 @@ add_task(async function test_aboutwelcome_mr_template_content() {
 
   const sandbox = initSandbox();
 
-  let { browser, cleanup } = await openMRAboutWelcome();
+  sandbox
+    .stub(AWScreenUtils, "evaluateScreenTargeting")
+    .resolves(true)
+    .withArgs(
+      "os.windowsBuildNumber >= 15063 && !isDefaultBrowser && !doesAppNeedPin"
+    )
+    .resolves(false);
+
+  let { cleanup, browser } = await openMRAboutWelcome();
 
   await test_screen_content(
     browser,
@@ -130,6 +135,14 @@ add_task(async function test_aboutwelcome_mr_template_content_pin() {
 
   const sandbox = initSandbox({ isDefault: true });
 
+  sandbox
+    .stub(AWScreenUtils, "evaluateScreenTargeting")
+    .resolves(true)
+    .withArgs(
+      "os.windowsBuildNumber >= 15063 && !isDefaultBrowser && !doesAppNeedPin"
+    )
+    .resolves(false);
+
   let { browser, cleanup } = await openMRAboutWelcome();
 
   await test_screen_content(
@@ -164,9 +177,15 @@ add_task(async function test_aboutwelcome_mr_template_only_default() {
   await pushPrefs(["browser.shell.checkDefaultBrowser", true]);
 
   const sandbox = initSandbox({ pin: false });
+  sandbox
+    .stub(AWScreenUtils, "evaluateScreenTargeting")
+    .resolves(true)
+    .withArgs(
+      "os.windowsBuildNumber >= 15063 && !isDefaultBrowser && !doesAppNeedPin"
+    )
+    .resolves(false);
 
   let { browser, cleanup } = await openMRAboutWelcome();
-
   //should render set default
   await test_screen_content(
     browser,
@@ -189,6 +208,14 @@ add_task(async function test_aboutwelcome_mr_template_get_started() {
 
   const sandbox = initSandbox({ pin: false, isDefault: true });
 
+  sandbox
+    .stub(AWScreenUtils, "evaluateScreenTargeting")
+    .resolves(true)
+    .withArgs(
+      "os.windowsBuildNumber >= 15063 && !isDefaultBrowser && !doesAppNeedPin"
+    )
+    .resolves(false);
+
   let { browser, cleanup } = await openMRAboutWelcome();
 
   //should render set default
@@ -206,7 +233,7 @@ add_task(async function test_aboutwelcome_mr_template_get_started() {
   await popPrefs();
 });
 
-add_task(async function test_aboutwelcome_show_firefox_view() {
+add_task(async function test_aboutwelcome_gratitude() {
   const TEST_CONTENT = [
     {
       id: "AW_GRATITUDE",
@@ -228,15 +255,6 @@ add_task(async function test_aboutwelcome_show_firefox_view() {
             string_id: "mr2022-onboarding-gratitude-primary-button-label",
           },
           action: {
-            type: "OPEN_FIREFOX_VIEW",
-            navigate: true,
-          },
-        },
-        secondary_button: {
-          label: {
-            string_id: "mr2022-onboarding-gratitude-secondary-button-label",
-          },
-          action: {
             navigate: true,
           },
         },
@@ -249,19 +267,26 @@ add_task(async function test_aboutwelcome_show_firefox_view() {
   // execution
   await test_screen_content(
     browser,
+    "doesn't render secondary button on gratitude screen",
     //Expected selectors
-    ["main.UPGRADE_GRATITUDE"],
+    ["main.AW_GRATITUDE", "button[value='primary_button']"],
+
     //Unexpected selectors:
-    []
+    ["button[value='secondary_button']"]
   );
   await clickVisibleButton(browser, ".action-buttons button.primary");
 
-  // verification
-  await BrowserTestUtils.waitForEvent(gBrowser, "TabSwitchDone");
-  assertFirefoxViewTabSelected(gBrowser.ownerGlobal);
+  // make sure the button navigates to newtab
+  await test_screen_content(
+    browser,
+    //Expected selectors
+    ["body.activity-stream"],
+
+    //Unexpected selectors:
+    ["main.AW_GRATITUDE"]
+  );
 
   // cleanup
   await SpecialPowers.popPrefEnv(); // for setAboutWelcomeMultiStage
-  closeFirefoxViewTab(gBrowser.ownerGlobal);
   await cleanup();
 });

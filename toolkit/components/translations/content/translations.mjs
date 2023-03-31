@@ -7,9 +7,8 @@
 // allow for the page to get access to additional privileged features.
 
 /* global AT_getSupportedLanguages, AT_log, AT_getScriptDirection,
-   AT_getAppLocale, AT_logError, AT_destroyTranslationsEngine,
-   AT_createTranslationsEngine, AT_createLanguageIdEngine, 
-   AT_translate, AT_identifyLanguage */
+   AT_logError, AT_destroyTranslationsEngine, AT_createTranslationsEngine,
+   AT_isTranslationEngineSupported, AT_createLanguageIdEngine, AT_translate, AT_identifyLanguage */
 
 // Allow tests to override this value so that they can run faster.
 // This is the delay in milliseconds.
@@ -67,24 +66,41 @@ class TranslationsState {
   translationsEngine = null;
 
   constructor() {
+    /**
+     * Is the engine supported by the device?
+     * @type {boolean}
+     */
+    this.isTranslationEngineSupported = AT_isTranslationEngineSupported();
+
+    /**
+     * Allow code to wait for the engine to be created.
+     * @type {Promise<void>}
+     */
+    this.languageIdEngineCreated = AT_createLanguageIdEngine();
+
     this.supportedLanguages = AT_getSupportedLanguages();
     this.ui = new TranslationsUI(this);
     this.ui.setup();
   }
 
   /**
-   * Identifies the human language in which the message is written and logs the result.
+   * Identifies the human language in which the message is written and returns
+   * the two-letter language label of the language it is determined to be.
+   *
+   * e.g. "en" for English.
    *
    * @param {string} message
    */
   async identifyLanguage(message) {
+    await this.languageIdEngineCreated;
     const start = performance.now();
     const { languageLabel, confidence } = await AT_identifyLanguage(message);
     const duration = performance.now() - start;
     AT_log(
-      `[ ${languageLabel.slice(-2)}(${(confidence * 100).toFixed(2)}%) ]`,
+      `[ ${languageLabel}(${(confidence * 100).toFixed(2)}%) ]`,
       `Source language identified in ${duration / 1000} seconds`
     );
+    return languageLabel;
   }
 
   /**
@@ -106,6 +122,11 @@ class TranslationsState {
         messageToTranslate,
         translationsEngine,
       } = this;
+
+      if (!this.isTranslationEngineSupported) {
+        // Never translate when the engine isn't supported.
+        return;
+      }
 
       if (
         !fromLanguage ||
@@ -173,9 +194,18 @@ class TranslationsState {
     // If we may need to re-building the worker, the old translation is no longer valid.
     this.ui.updateTranslation("");
 
-    if (!this.fromLanguage || !this.toLanguage) {
-      // A from or to language could have been removed. Don't do any more translations
-      // with it.
+    // These are cases in which it wouldn't make sense or be possible to load any translations models.
+    if (
+      // If fromLanguage or toLanguage are unpopulated we cannot load anything.
+      !this.fromLanguage ||
+      !this.toLanguage ||
+      // If fromLanguage's value is "detect", rather than a two-letter language tag, then no language
+      // has been detected yet.
+      this.fromLanguage === "detect" ||
+      // If fromLanguage and toLanguage are the same, this means that the detected language
+      // is the same as the toLanguage, and we do not want to translate from one language to itself.
+      this.fromLanguage === this.toLanguage
+    ) {
       if (this.translationsEngine) {
         // The engine is no longer needed.
         AT_destroyTranslationsEngine();
@@ -199,19 +229,53 @@ class TranslationsState {
       await this.translationsEngine;
       const duration = performance.now() - start;
       AT_log(`Rebuilt the TranslationsEngine in ${duration / 1000} seconds`);
-      // TODO (Bug 1813781) - Report this error in the UI.
     } catch (error) {
+      this.ui.showInfo("about-translations-engine-error");
       AT_logError("Failed to get the Translations worker", error);
+    }
+  }
+
+  /**
+   * Updates the fromLanguage to match the detected language only if the
+   * about-translations-detect option is selected in the language-from dropdown.
+   *
+   * If the new fromLanguage is different than the previous fromLanguage this
+   * may update the UI to display the new language and may rebuild the translations
+   * worker if there is a valid selected target language.
+   */
+  async maybeUpdateDetectedLanguage() {
+    if (!this.ui.detectOptionIsSelected() || this.messageToTranslate === "") {
+      // If we are not detecting languages or if the message has been cleared
+      // we should ensure that the UI is not displaying a detected language
+      // and there is no need to run any language detection.
+      this.ui.setDetectOptionTextContent("");
+      return;
+    }
+
+    const [languageLabel, supportedLanguages] = await Promise.all([
+      this.identifyLanguage(this.messageToTranslate),
+      this.supportedLanguages,
+    ]);
+
+    // Only update the language if the detected language matches
+    // one of our supported languages.
+    const entry = supportedLanguages.find(
+      ({ langTag }) => langTag === languageLabel
+    );
+    if (entry) {
+      const { displayName } = entry;
+      await this.setFromLanguage(languageLabel);
+      this.ui.setDetectOptionTextContent(displayName);
     }
   }
 
   /**
    * @param {string} lang
    */
-  setFromLanguage(lang) {
+  async setFromLanguage(lang) {
     if (lang !== this.fromLanguage) {
       this.fromLanguage = lang;
-      this.maybeRebuildWorker();
+      await this.maybeRebuildWorker();
     }
   }
 
@@ -228,10 +292,10 @@ class TranslationsState {
   /**
    * @param {string} message
    */
-  setMessageToTranslate(message) {
+  async setMessageToTranslate(message) {
     if (message !== this.messageToTranslate) {
-      this.identifyLanguage(message);
       this.messageToTranslate = message;
+      await this.maybeUpdateDetectedLanguage();
       this.maybeRequestTranslation();
     }
   }
@@ -251,8 +315,20 @@ class TranslationsUI {
   translationTo = document.getElementById("translation-to");
   /** @type {HTMLDivElement} */
   translationToBlank = document.getElementById("translation-to-blank");
+  /** @type {HTMLDivElement} */
+  translationInfo = document.getElementById("translation-info");
+  /** @type {HTMLDivElement} */
+  translationInfoMessage = document.getElementById("translation-info-message");
   /** @type {TranslationsState} */
   state;
+
+  /**
+   * The detect-language option element. We want to maintain a handle to this so that
+   * we can dynamically update its display text to include the detected language.
+   *
+   * @type {HTMLOptionElement}
+   */
+  #detectOption;
 
   /**
    * @param {TranslationsState} state
@@ -260,6 +336,7 @@ class TranslationsUI {
   constructor(state) {
     this.state = state;
     this.translationTo.style.visibility = "visible";
+    this.#detectOption = document.querySelector('option[value="detect"]');
   }
 
   /**
@@ -268,10 +345,10 @@ class TranslationsUI {
   setup() {
     this.setupDropdowns();
     this.setupTextarea();
-    const start = performance.now();
-    AT_createLanguageIdEngine();
-    const duration = performance.now() - start;
-    AT_log(`Created LanguageIdEngine in ${duration / 1000} seconds`);
+
+    if (!this.state.isTranslationEngineSupported) {
+      this.showInfo("about-translations-no-support");
+    }
   }
 
   /**
@@ -291,15 +368,6 @@ class TranslationsUI {
       option.value = langTag;
       option.text = displayName;
       this.languageFrom.add(option);
-    }
-
-    // Set the translate "from" to the app locale, if it is in the list.
-    const appLocale = new Intl.Locale(AT_getAppLocale());
-    for (const option of this.languageFrom.options) {
-      if (option.value === appLocale.language) {
-        this.languageFrom.value = option.value;
-        break;
-      }
     }
 
     // Enable the controls.
@@ -325,7 +393,58 @@ class TranslationsUI {
     this.languageTo.addEventListener("input", () => {
       this.state.setToLanguage(this.languageTo.value);
       this.updateOnLanguageChange();
+      this.translationTo.setAttribute("lang", this.languageTo.value);
     });
+  }
+
+  /**
+   * Show an info message to the user.
+   *
+   * @param {string} l10nId
+   */
+  showInfo(l10nId) {
+    this.translationInfoMessage.setAttribute("data-l10n-id", l10nId);
+    this.translationInfo.style.display = "flex";
+  }
+
+  /**
+   * Hides the info UI.
+   */
+  hideInfo() {
+    this.translationInfo.style.display = "none";
+  }
+
+  /**
+   * Returns true if about-translations-detect is the currently
+   * selected option in the language-from dropdown, otherwise false.
+   *
+   * @returns {boolean}
+   */
+  detectOptionIsSelected() {
+    return this.languageFrom.value === "detect";
+  }
+
+  /**
+   * Sets the textContent of the about-translations-detect option in the
+   * language-from dropdown to include the detected language's display name.
+   *
+   * @param {string} displayName
+   */
+  setDetectOptionTextContent(displayName) {
+    if (displayName) {
+      // Set the text to the fluent value that takes an arg to display the language name.
+      document.l10n.setAttributes(
+        this.#detectOption,
+        "about-translations-detect-lang",
+        { language: displayName }
+      );
+    } else {
+      // Reset the text to the fluent value that does not display any language name.
+      document.l10n.setAttributes(
+        this.#detectOption,
+        "about-translations-detect"
+      );
+    }
   }
 
   /**
@@ -363,11 +482,10 @@ class TranslationsUI {
         option.hidden = true;
       }
     }
+    this.state.maybeUpdateDetectedLanguage();
   }
 
   /**
-   * TODO (Bug 1813783) - This needs automated testing.
-   *
    * Define the direction of the language message text, otherwise it might not display
    * correctly. For instance English in an RTL UI would display incorrectly like so:
    *
@@ -423,6 +541,7 @@ class TranslationsUI {
     if (message) {
       this.translationTo.style.visibility = "visible";
       this.translationToBlank.style.visibility = "hidden";
+      this.hideInfo();
     } else {
       this.translationTo.style.visibility = "hidden";
       this.translationToBlank.style.visibility = "visible";

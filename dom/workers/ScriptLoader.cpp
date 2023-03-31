@@ -32,6 +32,7 @@
 #include "js/CompilationAndEvaluation.h"
 #include "js/Exception.h"
 #include "js/SourceText.h"
+#include "js/TypeDecls.h"
 #include "nsError.h"
 #include "nsComponentManagerUtils.h"
 #include "nsContentSecurityManager.h"
@@ -63,6 +64,7 @@
 #include "mozilla/dom/nsCSPUtils.h"
 #include "mozilla/dom/PerformanceStorage.h"
 #include "mozilla/dom/Response.h"
+#include "mozilla/dom/ReferrerInfo.h"
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/dom/SerializedStackHolder.h"
 #include "mozilla/dom/workerinternals/CacheLoadHandler.h"
@@ -234,8 +236,10 @@ void LoadAllScripts(WorkerPrivate* aWorkerPrivate,
   if (!ok) {
     return;
   }
-
-  if (aWorkerPrivate->WorkerType() == WorkerType::Module) {
+  // Bug 1817259 - For now, we force loading the debugger script as Classic,
+  // even if the debugged worker is a Module.
+  if (aWorkerPrivate->WorkerType() == WorkerType::Module &&
+      aWorkerScriptType != DebuggerScript) {
     if (!StaticPrefs::dom_workers_modules_enabled()) {
       aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
       return;
@@ -456,13 +460,24 @@ class ScriptExecutorRunnable final : public MainThreadWorkerSyncRunnable {
 template <typename Unit>
 static bool EvaluateSourceBuffer(JSContext* aCx,
                                  const JS::CompileOptions& aOptions,
+                                 JS::loader::ClassicScript* aClassicScript,
                                  JS::SourceText<Unit>& aSourceBuffer) {
   static_assert(std::is_same<Unit, char16_t>::value ||
                     std::is_same<Unit, Utf8Unit>::value,
                 "inferred units must be UTF-8 or UTF-16");
 
+  JS::Rooted<JSScript*> script(aCx, JS::Compile(aCx, aOptions, aSourceBuffer));
+
+  if (!script) {
+    return false;
+  }
+
+  if (aClassicScript) {
+    aClassicScript->AssociateWithScript(script);
+  }
+
   JS::Rooted<JS::Value> unused(aCx);
-  return Evaluate(aCx, aOptions, aSourceBuffer, &unused);
+  return JS_ExecuteScript(aCx, script, &unused);
 }
 
 WorkerScriptLoader::WorkerScriptLoader(
@@ -477,7 +492,6 @@ WorkerScriptLoader::WorkerScriptLoader(
       mCleanedUp(false),
       mCleanUpLock("cleanUpLock") {
   aWorkerPrivate->AssertIsOnWorkerThread();
-  MOZ_ASSERT(aSyncLoopTarget);
 
   RefPtr<WorkerScriptLoader> self = this;
 
@@ -499,7 +513,7 @@ WorkerScriptLoader::WorkerScriptLoader(
   if (!StaticPrefs::dom_workers_modules_enabled()) {
     return;
   }
-  if (aWorkerPrivate->WorkerType() == WorkerType::Module) {
+  if (!aWorkerPrivate->IsServiceWorker()) {
     InitModuleLoader();
   }
 }
@@ -515,9 +529,11 @@ ScriptLoadRequest* WorkerScriptLoader::GetMainScript() {
 
 void WorkerScriptLoader::InitModuleLoader() {
   mWorkerRef->Private()->AssertIsOnWorkerThread();
+  if (GetGlobal()->GetModuleLoader(nullptr)) {
+    return;
+  }
   RefPtr<WorkerModuleLoader> moduleLoader =
       new WorkerModuleLoader(this, GetGlobal(), mSyncLoopTarget.get());
-
   if (mWorkerScriptType == WorkerScript) {
     mWorkerRef->Private()->GlobalScope()->InitModuleLoader(moduleLoader);
     return;
@@ -535,8 +551,12 @@ bool WorkerScriptLoader::CreateScriptRequests(
   // 10.3.1 Importing scripts and libraries.
   // Step 1. If worker global scope's type is "module", throw a TypeError
   //         exception.
+  //
+  // Also, for now, the debugger script is always loaded as Classic,
+  // even if the debugged worker is a Module. We still want to allow
+  // it to use importScripts.
   if (mWorkerRef->Private()->WorkerType() == WorkerType::Module &&
-      !aIsMainScript) {
+      !aIsMainScript && !IsDebuggerScript()) {
     // This should only run for non-main scripts, as only these are
     // importScripts
     mRv.ThrowTypeError(
@@ -566,6 +586,11 @@ nsTArray<RefPtr<ThreadSafeRequestHandle>> WorkerScriptLoader::GetLoadingList() {
     list.AppendElement(handle.forget());
   }
   return list;
+}
+
+bool WorkerScriptLoader::IsDynamicImport(ScriptLoadRequest* aRequest) {
+  return aRequest->IsModuleRequest() &&
+         aRequest->AsModuleRequest()->IsDynamicImport();
 }
 
 nsContentPolicyType WorkerScriptLoader::GetContentPolicyType(
@@ -598,7 +623,7 @@ already_AddRefed<ScriptLoadRequest> WorkerScriptLoader::CreateScriptLoadRequest(
   Maybe<ClientInfo> clientInfo = GetGlobal()->GetClientInfo();
 
   RefPtr<WorkerLoadContext> loadContext =
-      new WorkerLoadContext(kind, clientInfo);
+      new WorkerLoadContext(kind, clientInfo, this);
 
   // Create ScriptLoadRequests for this WorkerScriptLoader
   ReferrerPolicy referrerPolicy = mWorkerRef->Private()->GetReferrerPolicy();
@@ -621,7 +646,9 @@ already_AddRefed<ScriptLoadRequest> WorkerScriptLoader::CreateScriptLoadRequest(
       new ScriptFetchOptions(CORSMode::CORS_NONE, referrerPolicy, nullptr);
 
   RefPtr<ScriptLoadRequest> request = nullptr;
-  if (mWorkerRef->Private()->WorkerType() == WorkerType::Classic) {
+  // Bug 1817259 - For now the debugger scripts are always loaded a Classic.
+  if (mWorkerRef->Private()->WorkerType() == WorkerType::Classic ||
+      IsDebuggerScript()) {
     request = new ScriptLoadRequest(ScriptKind::eClassic, uri, fetchOptions,
                                     SRIMetadata(), nullptr,  // mReferrer
                                     loadContext);
@@ -838,6 +865,7 @@ nsresult WorkerScriptLoader::LoadScript(
   AssertIsOnMainThread();
 
   WorkerLoadContext* loadContext = aRequestHandle->GetContext();
+  ScriptLoadRequest* request = aRequestHandle->GetRequest();
   MOZ_ASSERT_IF(loadContext->IsTopLevel(), !IsDebuggerScript());
 
   // The URL passed to us for loading was invalid, stop loading at this point.
@@ -905,7 +933,6 @@ nsresult WorkerScriptLoader::LoadScript(
   if (!channel) {
     nsCOMPtr<nsIReferrerInfo> referrerInfo;
     uint32_t secFlags;
-    ScriptLoadRequest* request = aRequestHandle->GetRequest();
     if (request->IsModuleRequest()) {
       referrerInfo =
           new ReferrerInfo(request->mReferrer, request->ReferrerPolicy());
@@ -956,7 +983,10 @@ nsresult WorkerScriptLoader::LoadScript(
   // should have occured prior that processed the headers.
   if (!IsDebuggerScript()) {
     headerProcessor = MakeRefPtr<ScriptResponseHeaderProcessor>(
-        mWorkerRef->Private(), loadContext->IsTopLevel());
+        mWorkerRef->Private(),
+        loadContext->IsTopLevel() && !IsDynamicImport(request),
+        GetContentPolicyType(request) ==
+            nsIContentPolicy::TYPE_INTERNAL_WORKER_IMPORT_SCRIPTS);
   }
 
   nsCOMPtr<nsIStreamLoader> loader;
@@ -1052,6 +1082,7 @@ nsresult WorkerScriptLoader::FillCompileOptionsForRequest(
 bool WorkerScriptLoader::EvaluateScript(JSContext* aCx,
                                         ScriptLoadRequest* aRequest) {
   mWorkerRef->Private()->AssertIsOnWorkerThread();
+  MOZ_ASSERT(!IsDynamicImport(aRequest));
 
   WorkerLoadContext* loadContext = aRequest->GetWorkerLoadContext();
 
@@ -1085,6 +1116,7 @@ bool WorkerScriptLoader::EvaluateScript(JSContext* aCx,
     if (!request->mModuleScript) {
       return false;
     }
+
     // Implements To fetch a worklet/module worker script graph
     // Step 5. Fetch the descendants of and link result.
     if (!request->InstantiateModuleGraph()) {
@@ -1118,11 +1150,27 @@ bool WorkerScriptLoader::EvaluateScript(JSContext* aCx,
     return false;
   }
 
+  RefPtr<JS::loader::ClassicScript> classicScript = nullptr;
+  if (StaticPrefs::dom_workers_modules_enabled() &&
+      !mWorkerRef->Private()->IsServiceWorker()) {
+    // We need a LoadedScript to be associated with the JSScript in order to
+    // correctly resolve the referencing private for dynamic imports. In turn
+    // this allows us to correctly resolve the BaseURL.
+    //
+    // Dynamic import is disallowed on service workers.  Additionally, causes
+    // crashes because the life cycle isn't completed for service workers.  To
+    // keep things simple, we don't create a classic script for ServiceWorkers.
+    // If this changes then we will need to ensure that the reference that is
+    // held is released appropriately.
+    classicScript = new JS::loader::ClassicScript(aRequest->mFetchOptions,
+                                                  aRequest->mBaseURL);
+  }
+
   bool successfullyEvaluated =
       aRequest->IsUTF8Text()
-          ? EvaluateSourceBuffer(aCx, options,
+          ? EvaluateSourceBuffer(aCx, options, classicScript,
                                  maybeSource.ref<JS::SourceText<Utf8Unit>>())
-          : EvaluateSourceBuffer(aCx, options,
+          : EvaluateSourceBuffer(aCx, options, classicScript,
                                  maybeSource.ref<JS::SourceText<char16_t>>());
 
   if (aRequest->IsCanceled()) {
@@ -1181,8 +1229,11 @@ void WorkerScriptLoader::ShutdownScriptLoader(bool aResult, bool aMutedError) {
     }
 
     mWorkerRef->Private()->AssertIsOnWorkerThread();
-    mWorkerRef->Private()->StopSyncLoop(mSyncLoopTarget,
-                                        aResult ? NS_OK : NS_ERROR_FAILURE);
+    // Module loader doesn't use sync loop for dynamic import
+    if (mSyncLoopTarget) {
+      mWorkerRef->Private()->StopSyncLoop(mSyncLoopTarget,
+                                          aResult ? NS_OK : NS_ERROR_FAILURE);
+    }
 
     // Signal cleanup
     mCleanedUp = true;
@@ -1447,7 +1498,8 @@ void ScriptLoaderRunnable::DispatchProcessPendingRequests() {
         mScriptLoader, mWorkerRef->Private(), mScriptLoader->mSyncLoopTarget,
         Span<RefPtr<ThreadSafeRequestHandle>>{maybeRangeToExecute->first,
                                               maybeRangeToExecute->second});
-    if (!runnable->Dispatch()) {
+
+    if (!runnable->Dispatch() && mScriptLoader->mSyncLoopTarget) {
       MOZ_ASSERT(false, "This should never fail!");
     }
   }
@@ -1476,7 +1528,7 @@ bool ScriptExecutorRunnable::PreRun(WorkerPrivate* aWorkerPrivate) {
       mScriptLoader->mSyncLoopTarget == mSyncLoopTarget,
       "Unexpected SyncLoopTarget. Check if the sync loop was closed early");
 
-  if (!mLoadedRequests.begin()->get()->GetContext()->IsTopLevel()) {
+  if (!mLoadedRequests[0]->GetContext()->IsTopLevel()) {
     return true;
   }
 
@@ -1496,7 +1548,8 @@ bool ScriptExecutorRunnable::ProcessModuleScript(
       return true;
     }
 
-    const auto& requestHandle = mLoadedRequests.begin()->get();
+    MOZ_ASSERT(mLoadedRequests.Length() == 1);
+    const auto& requestHandle = mLoadedRequests[0];
     // The request must be valid.
     MOZ_ASSERT(!requestHandle->IsEmpty());
 
@@ -1511,15 +1564,21 @@ bool ScriptExecutorRunnable::ProcessModuleScript(
 
   WorkerLoadContext* loadContext = request->GetWorkerLoadContext();
   ModuleLoadRequest* moduleRequest = request->AsModuleRequest();
+
+  moduleRequest->OnFetchComplete(loadContext->mLoadResult);
+
   if (NS_FAILED(loadContext->mLoadResult)) {
-    if (!moduleRequest->IsTopLevel()) {
+    if (moduleRequest->IsDynamicImport()) {
+      if (request->isInList()) {
+        moduleRequest->CancelDynamicImport(loadContext->mLoadResult);
+        mScriptLoader->TryShutdown();
+      }
+    } else if (!moduleRequest->IsTopLevel()) {
       moduleRequest->Cancel();
     } else {
       moduleRequest->LoadFailed();
     }
   }
-
-  moduleRequest->OnFetchComplete(loadContext->mLoadResult);
   return true;
 }
 
@@ -1555,7 +1614,7 @@ bool ScriptExecutorRunnable::WorkerRun(JSContext* aCx,
       mScriptLoader->mSyncLoopTarget == mSyncLoopTarget,
       "Unexpected SyncLoopTarget. Check if the sync loop was closed early");
 
-  if (aWorkerPrivate->WorkerType() == WorkerType::Module) {
+  if (mLoadedRequests.begin()->get()->GetRequest()->IsModuleRequest()) {
     return ProcessModuleScript(aCx, aWorkerPrivate);
   }
 

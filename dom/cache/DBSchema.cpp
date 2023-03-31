@@ -1953,7 +1953,7 @@ Result<SavedResponse, nsresult> ReadResponse(mozIStorageConnection& aConn,
     nsDependentCSubstring scheme = url->Scheme();
 
     MOZ_ASSERT(
-        scheme == "http" || scheme == "https" || scheme == "file" ||
+        scheme == "http" || scheme == "https" || scheme == "file" || scheme == "tile" ||
         // A cached response entry may have a moz-extension principal if:
         //
         // - This is an extension background service worker. The response for

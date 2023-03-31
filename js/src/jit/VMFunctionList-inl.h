@@ -148,7 +148,10 @@ namespace jit {
   _(FinalSuspend, js::jit::FinalSuspend)                                       \
   _(FreshenLexicalEnv, js::jit::FreshenLexicalEnv)                             \
   _(FunWithProtoOperation, js::FunWithProtoOperation)                          \
+  _(FunctionBindCreate, js::BoundFunctionObject::createWithTemplate)           \
   _(FunctionBindImpl, js::BoundFunctionObject::functionBindImpl)               \
+  _(FunctionBindSpecializedBaseline,                                           \
+    js::BoundFunctionObject::functionBindSpecializedBaseline)                  \
   VMFUNCTION_FUZZILLI_LIST(_)                                                  \
   _(GeneratorThrowOrReturn, js::jit::GeneratorThrowOrReturn)                   \
   _(GetAndClearException, js::GetAndClearException)                            \
@@ -302,7 +305,6 @@ namespace jit {
   _(DoCheckPrivateFieldFallback, js::jit::DoCheckPrivateFieldFallback, 2)   \
   _(DoCloseIterFallback, js::jit::DoCloseIterFallback, 0)                   \
   _(DoCompareFallback, js::jit::DoCompareFallback, 2)                       \
-  _(DoConcatStringObject, js::jit::DoConcatStringObject, 2)                 \
   _(DoGetElemFallback, js::jit::DoGetElemFallback, 2)                       \
   _(DoGetElemSuperFallback, js::jit::DoGetElemSuperFallback, 3)             \
   _(DoGetIntrinsicFallback, js::jit::DoGetIntrinsicFallback, 0)             \

@@ -21,7 +21,6 @@
 #include "mozilla/Sprintf.h"
 #include "mozilla/TextUtils.h"
 #include "mozilla/ThreadLocal.h"
-#include "mozilla/Tuple.h"
 
 #include <algorithm>
 #include <cfloat>
@@ -107,6 +106,7 @@
 #include "util/Text.h"
 #include "vm/BooleanObject.h"
 #include "vm/DateObject.h"
+#include "vm/DateTime.h"
 #include "vm/ErrorObject.h"
 #include "vm/GlobalObject.h"
 #include "vm/HelperThreads.h"
@@ -150,8 +150,6 @@ using mozilla::AssertedCast;
 using mozilla::AsWritableChars;
 using mozilla::Maybe;
 using mozilla::Span;
-using mozilla::Tie;
-using mozilla::Tuple;
 
 using JS::AutoStableStringChars;
 using JS::CompileOptions;
@@ -2483,6 +2481,33 @@ static bool SetMarkStackLimit(JSContext* cx, unsigned argc, Value* vp) {
 
 #endif /* JS_GC_ZEAL */
 
+static bool SetMallocMaxDirtyPageModifier(JSContext* cx, unsigned argc,
+                                          Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+  if (args.length() != 1) {
+    RootedObject callee(cx, &args.callee());
+    ReportUsageErrorASCII(cx, callee, "Wrong number of arguments");
+    return false;
+  }
+
+  constexpr int32_t MinSupportedValue = -5;
+  constexpr int32_t MaxSupportedValue = 16;
+
+  int32_t value;
+  if (!ToInt32(cx, args[0], &value)) {
+    return false;
+  }
+  if (value < MinSupportedValue || value > MaxSupportedValue) {
+    JS_ReportErrorASCII(cx, "Bad argument to setMallocMaxDirtyPageModifier");
+    return false;
+  }
+
+  moz_set_max_dirty_page_modifier(value);
+
+  args.rval().setUndefined();
+  return true;
+}
+
 static bool GCState(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
 
@@ -2786,7 +2811,7 @@ static bool SaveStack(JSContext* cx, unsigned argc, Value* vp) {
     if (!ToNumber(cx, args[0], &maxDouble)) {
       return false;
     }
-    if (mozilla::IsNaN(maxDouble) || maxDouble < 0 || maxDouble > UINT32_MAX) {
+    if (std::isnan(maxDouble) || maxDouble < 0 || maxDouble > UINT32_MAX) {
       ReportValueError(cx, JSMSG_UNEXPECTED_TYPE, JSDVG_SEARCH_STACK, args[0],
                        nullptr, "not a valid maximum frame count");
       return false;
@@ -3356,7 +3381,13 @@ static bool NewRope(JSContext* cx, unsigned argc, Value* vp) {
     return false;
   }
 
-  Rooted<JSRope*> str(cx, JSRope::new_<CanGC>(cx, left, right, length, heap));
+  // Disallow creating ropes where one side is empty.
+  if (left->empty() || right->empty()) {
+    JS_ReportErrorASCII(cx, "rope child mustn't be the empty string");
+    return false;
+  }
+
+  auto* str = JSRope::new_<CanGC>(cx, left, right, length, heap);
   if (!str) {
     return false;
   }
@@ -5652,8 +5683,15 @@ static bool GetBacktrace(JSContext* cx, unsigned argc, Value* vp) {
     return false;
   }
 
-  JS::ConstUTF8CharsZ utf8chars(buf.get(), strlen(buf.get()));
-  JSString* str = NewStringCopyUTF8Z(cx, utf8chars);
+  size_t len;
+  UniqueTwoByteChars ucbuf(JS::LossyUTF8CharsToNewTwoByteCharsZ(
+                               cx, JS::UTF8Chars(buf.get(), strlen(buf.get())),
+                               &len, js::MallocArena)
+                               .get());
+  if (!ucbuf) {
+    return false;
+  }
+  JSString* str = JS_NewUCStringCopyN(cx, ucbuf.get(), len);
   if (!str) {
     return false;
   }
@@ -7720,15 +7758,15 @@ static bool EncodeAsUtf8InBuffer(JSContext* cx, unsigned argc, Value* vp) {
     return false;
   }
 
-  Maybe<Tuple<size_t, size_t>> amounts = JS_EncodeStringToUTF8BufferPartial(
-      cx, args[0].toString(), AsWritableChars(Span(data, length)));
+  Maybe<std::tuple<size_t, size_t>> amounts =
+      JS_EncodeStringToUTF8BufferPartial(cx, args[0].toString(),
+                                         AsWritableChars(Span(data, length)));
   if (!amounts) {
     ReportOutOfMemory(cx);
     return false;
   }
 
-  size_t unitsRead, bytesWritten;
-  Tie(unitsRead, bytesWritten) = *amounts;
+  auto [unitsRead, bytesWritten] = *amounts;
 
   array->initDenseElement(0, Int32Value(AssertedCast<int32_t>(unitsRead)));
   array->initDenseElement(1, Int32Value(AssertedCast<int32_t>(bytesWritten)));
@@ -7932,7 +7970,8 @@ static bool GetICUOptions(JSContext* cx, unsigned argc, Value* vp) {
 
   intl::FormatBuffer<char16_t, intl::INITIAL_CHAR_BUFFER_SIZE> buf(cx);
 
-  if (auto ok = mozilla::intl::TimeZone::GetDefaultTimeZone(buf); ok.isErr()) {
+  if (auto ok = DateTimeInfo::timeZoneId(DateTimeInfo::ShouldRFP::No, buf);
+      ok.isErr()) {
     intl::ReportInternalError(cx, ok.unwrapErr());
     return false;
   }
@@ -8155,7 +8194,7 @@ static bool FdLibM_Pow(JSContext* cx, unsigned argc, Value* vp) {
 
   // Because C99 and ECMA specify different behavior for pow(), we need to wrap
   // the fdlibm call to make it ECMA compliant.
-  if (!mozilla::IsFinite(y) && (x == 1.0 || x == -1.0)) {
+  if (!std::isfinite(y) && (x == 1.0 || x == -1.0)) {
     args.rval().setNaN();
   } else {
     args.rval().setDouble(fdlibm::pow(x, y));
@@ -8525,6 +8564,11 @@ gc::ZealModeHelpText),
     JS_FN_HELP("abortgc", AbortGC, 1, 0,
 "abortgc()",
 "  Abort the current incremental GC."),
+
+    JS_FN_HELP("setMallocMaxDirtyPageModifier", SetMallocMaxDirtyPageModifier, 1, 0,
+"setMallocMaxDirtyPageModifier(value)",
+"  Change the maximum size of jemalloc's page cache. The value should be between\n"
+"  -5 and 16 (inclusive). See moz_set_max_dirty_page_modifier.\n"),
 
     JS_FN_HELP("fullcompartmentchecks", FullCompartmentChecks, 1, 0,
 "fullcompartmentchecks(true|false)",

@@ -341,16 +341,15 @@ already_AddRefed<URLExtraData> nsIContent::GetURLDataForStyleAttr(
       return do_AddRef(data);
     }
   }
+  auto* doc = OwnerDoc();
   if (aSubjectPrincipal && aSubjectPrincipal != NodePrincipal()) {
-    // TODO: Cache this?
     nsCOMPtr<nsIReferrerInfo> referrerInfo =
-        ReferrerInfo::CreateForInternalCSSResources(OwnerDoc());
-    return MakeAndAddRef<URLExtraData>(OwnerDoc()->GetDocBaseURI(),
-                                       referrerInfo, aSubjectPrincipal);
+        doc->ReferrerInfoForInternalCSSAndSVGResources();
+    // TODO: Cache this?
+    return MakeAndAddRef<URLExtraData>(doc->GetDocBaseURI(), referrerInfo,
+                                       aSubjectPrincipal);
   }
-  // This also ignores the case that SVG inside XBL binding.
-  // But it is probably fine.
-  return do_AddRef(OwnerDoc()->DefaultStyleAttrURLData());
+  return do_AddRef(doc->DefaultStyleAttrURLData());
 }
 
 void nsIContent::ConstructUbiNode(void* storage) {
@@ -645,6 +644,7 @@ void FragmentOrElement::nsExtendedDOMSlots::UnlinkExtendedSlots(
   mSMILOverrideStyle = nullptr;
   mControllers = nullptr;
   mLabelsList = nullptr;
+  mPopoverData = nullptr;
   if (mCustomElementData) {
     mCustomElementData->Unlink();
     mCustomElementData = nullptr;
@@ -1047,7 +1047,8 @@ bool nsIContent::IsFocusable(int32_t* aTabIndex, bool aWithMouse) {
   return false;
 }
 
-Element* nsIContent::GetFocusDelegate(bool aWithMouse) const {
+Element* nsIContent::GetFocusDelegate(bool aWithMouse,
+                                      bool aAutofocusOnly) const {
   const nsIContent* whereToLook = this;
   if (ShadowRoot* root = GetShadowRoot()) {
     if (!root->DelegatesFocus()) {
@@ -1073,6 +1074,9 @@ Element* nsIContent::GetFocusDelegate(bool aWithMouse) const {
 
     const bool autofocus = el->GetBoolAttr(nsGkAtoms::autofocus);
 
+    if (aAutofocusOnly && !autofocus) {
+      continue;
+    }
     if (autofocus) {
       if (IsFocusable(el)) {
         // Found an autofocus candidate.

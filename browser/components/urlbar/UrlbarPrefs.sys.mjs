@@ -398,11 +398,6 @@ const PREF_URLBAR_DEFAULTS = new Map([
   // Feature gate pref for weather suggestions in the urlbar.
   ["weather.featureGate", false],
 
-  // If true, weather suggestions will be shown on "zero prefix", which means
-  // when the user focuses the urlbar without typing anything. If false, the
-  // user must type weather-related keywords to show weather suggestions.
-  ["weather.zeroPrefix", true],
-
   // Feature gate pref for trending suggestions in the urlbar.
   ["trending.featureGate", false],
 
@@ -410,6 +405,12 @@ const PREF_URLBAR_DEFAULTS = new Map([
   // mode or when the user initially opens the urlbar without selecting
   // an engine.
   ["trending.requireSearchMode", true],
+
+  // The maximum number of trending results to show in search mode.
+  ["trending.maxResultsSearchMode", 10],
+
+  // The maximum number of trending results to show while not in search mode.
+  ["trending.maxResultsNoSearchMode", 10],
 ]);
 
 const PREF_OTHER_DEFAULTS = new Map([
@@ -428,6 +429,9 @@ const NIMBUS_DEFAULTS = {
   experimentType: "",
   isBestMatchExperiment: false,
   quickSuggestRemoteSettingsDataType: "data",
+  recordNavigationalSuggestionTelemetry: false,
+  weatherKeywords: null,
+  weatherKeywordsMinimumLength: 0,
 };
 
 // Maps preferences under browser.urlbar.suggest to behavior names, as defined

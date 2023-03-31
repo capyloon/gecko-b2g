@@ -415,7 +415,8 @@ nsresult nsCopySupport::GetTransferableForNode(
   if (NS_WARN_IF(result.Failed())) {
     return result.StealNSResult();
   }
-  selection->AddRangeAndSelectFramesAndNotifyListeners(*range, aDoc, result);
+  selection->AddRangeAndSelectFramesAndNotifyListenersInternal(*range, aDoc,
+                                                               result);
   if (NS_WARN_IF(result.Failed())) {
     return result.StealNSResult();
   }
@@ -492,6 +493,13 @@ nsresult nsCopySupport::ImageCopy(nsIImageLoadingContent* aImageElement,
     nsCOMPtr<imgIContainer> image = nsContentUtils::GetImageFromContent(
         aImageElement, getter_AddRefs(imgRequest));
     NS_ENSURE_TRUE(image, NS_ERROR_FAILURE);
+
+    if (imgRequest) {
+      // Remember the referrer used for this image request.
+      nsCOMPtr<nsIReferrerInfo> referrerInfo;
+      imgRequest->GetReferrerInfo(getter_AddRefs(referrerInfo));
+      trans->SetReferrerInfo(referrerInfo);
+    }
 
 #ifdef XP_WIN
     rv = AppendImagePromise(trans, imgRequest, aImageElement);

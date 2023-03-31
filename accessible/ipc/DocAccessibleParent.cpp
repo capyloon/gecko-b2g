@@ -30,7 +30,8 @@
 #  include "mozilla/a11y/DocAccessiblePlatformExtParent.h"
 #endif
 
-#if defined(ANDROID)
+#if defined(MOZ_WIDGET_ANDROID)
+#  include "mozilla/a11y/SessionAccessibility.h"
 #  define ACQUIRE_ANDROID_LOCK \
     MonitorAutoLock mal(nsAccessibilityService::GetAndroidMonitor());
 #else
@@ -414,6 +415,10 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvStateChangeEvent(
 
   if (StaticPrefs::accessibility_cache_enabled_AtStartup()) {
     target->UpdateStateCache(aState, aEnabled);
+    if (nsCOMPtr<nsIObserverService> obsService =
+            services::GetObserverService()) {
+      obsService->NotifyObservers(nullptr, NS_ACCESSIBLE_CACHE_TOPIC, nullptr);
+    }
   }
   ProxyStateChangeEvent(target, aState, aEnabled);
 
@@ -797,7 +802,7 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvRoleChangedEvent(
 }
 
 mozilla::ipc::IPCResult DocAccessibleParent::RecvBindChildDoc(
-    PDocAccessibleParent* aChildDoc, const uint64_t& aID) {
+    NotNull<PDocAccessibleParent*> aChildDoc, const uint64_t& aID) {
   ACQUIRE_ANDROID_LOCK
   // One document should never directly be the child of another.
   // We should always have at least an outer doc accessible in between.
@@ -810,7 +815,7 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvBindChildDoc(
 
   MOZ_ASSERT(CheckDocTree());
 
-  auto childDoc = static_cast<DocAccessibleParent*>(aChildDoc);
+  auto childDoc = static_cast<DocAccessibleParent*>(aChildDoc.get());
   childDoc->Unbind();
   ipc::IPCResult result = AddChildDoc(childDoc, aID, false);
   MOZ_ASSERT(result);
@@ -842,7 +847,12 @@ ipc::IPCResult DocAccessibleParent::AddChildDoc(DocAccessibleParent* aChildDoc,
     return IPC_FAIL(this, "binding to nonexistant proxy!");
   }
 
+#ifdef XP_WIN
+  WeakPtr<RemoteAccessible> outerDoc = e->mProxy;
+#else
   RemoteAccessible* outerDoc = e->mProxy;
+#endif
+
   MOZ_ASSERT(outerDoc);
 
   // OuterDocAccessibles are expected to only have a document as a child.
@@ -899,6 +909,9 @@ ipc::IPCResult DocAccessibleParent::AddChildDoc(DocAccessibleParent* aChildDoc,
 #  endif  // defined(MOZ_SANDBOX)
           }
         }
+        if (!outerDoc) {
+          return IPC_FAIL(this, "OuterDoc removed while adding child doc");
+        }
         // Send a COM proxy for the embedder OuterDocAccessible to the embedded
         // document process. This will be returned as the parent of the
         // embedded document.
@@ -935,6 +948,9 @@ ipc::IPCResult DocAccessibleParent::AddChildDoc(DocAccessibleParent* aChildDoc,
                 topDocHolder.GetPreservedStream();
 #  endif  // defined(MOZ_SANDBOX)
           }
+        }
+        if (!outerDoc) {
+          return IPC_FAIL(this, "OuterDoc removed while adding child doc");
         }
       }
       if (nsWinUtils::IsWindowEmulationStarted()) {
@@ -1245,7 +1261,7 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvBatch(
   nsTArray<RemoteAccessible*> proxies(aData.Length());
   for (size_t i = 0; i < aData.Length(); i++) {
     DocAccessibleParent* doc = static_cast<DocAccessibleParent*>(
-        aData.ElementAt(i).Document().get_PDocAccessibleParent());
+        aData.ElementAt(i).Document().get_PDocAccessible().AsParent().get());
     MOZ_ASSERT(doc);
 
     if (doc->IsShutdown()) {

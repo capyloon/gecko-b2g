@@ -20,7 +20,6 @@
 #include "mozilla/Assertions.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/CycleCollectedJSContext.h"
-#include "mozilla/FloatingPoint.h"
 #include "mozilla/HoldDropJSObjects.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/dom/BindingCallContext.h"
@@ -83,17 +82,29 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(ReadableStream)
   NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
 
-ReadableStream::ReadableStream(nsIGlobalObject* aGlobal)
-    : mGlobal(aGlobal), mReader(nullptr) {
-  mozilla::HoldJSObjects(this);
+ReadableStream::ReadableStream(nsIGlobalObject* aGlobal,
+                               HoldDropJSObjectsCaller aHoldDropCaller)
+    : mGlobal(aGlobal), mReader(nullptr), mHoldDropCaller(aHoldDropCaller) {
+  if (mHoldDropCaller == HoldDropJSObjectsCaller::Implicit) {
+    mozilla::HoldJSObjects(this);
+  }
 }
 
-ReadableStream::ReadableStream(const GlobalObject& aGlobal)
-    : mGlobal(do_QueryInterface(aGlobal.GetAsSupports())), mReader(nullptr) {
-  mozilla::HoldJSObjects(this);
+ReadableStream::ReadableStream(const GlobalObject& aGlobal,
+                               HoldDropJSObjectsCaller aHoldDropCaller)
+    : mGlobal(do_QueryInterface(aGlobal.GetAsSupports())),
+      mReader(nullptr),
+      mHoldDropCaller(aHoldDropCaller) {
+  if (mHoldDropCaller == HoldDropJSObjectsCaller::Implicit) {
+    mozilla::HoldJSObjects(this);
+  }
 }
 
-ReadableStream::~ReadableStream() { mozilla::DropJSObjects(this); }
+ReadableStream::~ReadableStream() {
+  if (mHoldDropCaller == HoldDropJSObjectsCaller::Implicit) {
+    mozilla::DropJSObjects(this);
+  }
+}
 
 JSObject* ReadableStream::WrapObject(JSContext* aCx,
                                      JS::Handle<JSObject*> aGivenProto) {
@@ -168,7 +179,8 @@ already_AddRefed<ReadableStream> ReadableStream::Constructor(
   }
 
   // Step 3.
-  RefPtr<ReadableStream> readableStream = new ReadableStream(aGlobal);
+  RefPtr<ReadableStream> readableStream =
+      new ReadableStream(aGlobal, HoldDropJSObjectsCaller::Implicit);
 
   // Step 4.
   if (underlyingSourceDict.mType.WasPassed()) {
@@ -265,7 +277,8 @@ already_AddRefed<ReadableStream> ReadableStream::CreateAbstract(
   // Step 3.
   MOZ_ASSERT(IsNonNegativeNumber(highWaterMark));
   // Step 4.
-  RefPtr<ReadableStream> stream = new ReadableStream(aGlobal);
+  RefPtr<ReadableStream> stream =
+      new ReadableStream(aGlobal, HoldDropJSObjectsCaller::Implicit);
 
   // Step 5.
   InitializeReadableStream(stream);
@@ -952,6 +965,14 @@ already_AddRefed<Promise> ReadableStream::IteratorReturn(
       return nullptr;
     }
 
+    MOZ_DIAGNOSTIC_ASSERT(
+        reader->GetStream(),
+        "We shouldn't have a null stream here (bug 1821169).");
+    if (!reader->GetStream()) {
+      aRv.Throw(NS_ERROR_FAILURE);
+      return nullptr;
+    }
+
     // Step 4.2. Perform ! ReadableStreamDefaultReaderRelease(reader).
     ReadableStreamDefaultReaderRelease(aCx, reader, aRv);
     if (NS_WARN_IF(aRv.Failed())) {
@@ -994,7 +1015,8 @@ already_AddRefed<ReadableStream> ReadableStream::CreateByteAbstract(
     JSContext* aCx, nsIGlobalObject* aGlobal,
     UnderlyingSourceAlgorithmsBase* aAlgorithms, ErrorResult& aRv) {
   // Step 1. Let stream be a new ReadableStream.
-  RefPtr<ReadableStream> stream = new ReadableStream(aGlobal);
+  RefPtr<ReadableStream> stream =
+      new ReadableStream(aGlobal, HoldDropJSObjectsCaller::Implicit);
 
   // Step 2. Perform ! InitializeReadableStream(stream).
   InitializeReadableStream(stream);
@@ -1038,7 +1060,8 @@ already_AddRefed<ReadableStream> ReadableStream::CreateNative(
   // ReadableStream::Constructor for details)
 
   // Step 5: Perform ! InitializeReadableStream(stream).
-  RefPtr<ReadableStream> stream = new ReadableStream(aGlobal);
+  RefPtr<ReadableStream> stream =
+      new ReadableStream(aGlobal, HoldDropJSObjectsCaller::Implicit);
 
   // Step 6: Let controller be a new ReadableStreamDefaultController.
   auto controller = MakeRefPtr<ReadableStreamDefaultController>(aGlobal);
@@ -1085,7 +1108,8 @@ already_AddRefed<ReadableStream> ReadableStream::CreateByteNative(
     JSContext* aCx, nsIGlobalObject* aGlobal,
     UnderlyingSourceAlgorithmsWrapper& aAlgorithms,
     mozilla::Maybe<double> aHighWaterMark, ErrorResult& aRv) {
-  RefPtr<ReadableStream> stream = new ReadableStream(aGlobal);
+  RefPtr<ReadableStream> stream =
+      new ReadableStream(aGlobal, HoldDropJSObjectsCaller::Implicit);
   stream->SetUpByteNative(aCx, aAlgorithms, aHighWaterMark, aRv);
   if (aRv.Failed()) {
     return nullptr;

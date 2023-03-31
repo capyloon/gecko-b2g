@@ -9,22 +9,41 @@
  */
 add_task(async function test_about_translations_enabled() {
   await openAboutTranslations({
+    languagePairs: [],
     runInPage: async ({ selectors }) => {
       const { document, window } = content;
 
-      function checkElementIsVisble(name) {
+      await ContentTaskUtils.waitForCondition(() => {
+        const trElement = document.querySelector(selectors.translationResult);
+        const trBlankElement = document.querySelector(
+          selectors.translationResultBlank
+        );
+        const { visibility: trVisibility } = window.getComputedStyle(trElement);
+        const { visibility: trBlankVisibility } = window.getComputedStyle(
+          trBlankElement
+        );
+        return trVisibility === "hidden" && trBlankVisibility === "visible";
+      }, `Waiting for placeholder text to be visible."`);
+
+      function checkElementIsVisible(expectVisible, name) {
+        const expected = expectVisible ? "visible" : "hidden";
         const element = document.querySelector(selectors[name]);
         ok(Boolean(element), `Element ${name} was found.`);
         const { visibility } = window.getComputedStyle(element);
-        is(visibility, "visible", `Element ${name} was visible.`);
+        is(
+          visibility,
+          expected,
+          `Element ${name} was not ${expected} but should be.`
+        );
       }
 
-      checkElementIsVisble("pageHeader");
-      checkElementIsVisble("fromLanguageSelect");
-      checkElementIsVisble("toLanguageSelect");
-      checkElementIsVisble("translationTextarea");
-      checkElementIsVisble("translationResult");
-      checkElementIsVisble("translationResultBlank");
+      checkElementIsVisible(true, "pageHeader");
+      checkElementIsVisible(true, "fromLanguageSelect");
+      checkElementIsVisible(true, "toLanguageSelect");
+      checkElementIsVisible(true, "translationTextarea");
+      checkElementIsVisible(true, "translationResultBlank");
+
+      checkElementIsVisible(false, "translationResult");
     },
   });
 });
@@ -35,9 +54,15 @@ add_task(async function test_about_translations_enabled() {
 add_task(async function test_about_translations_disabled() {
   await openAboutTranslations({
     disabled: true,
-
+    languagePairs: [],
     runInPage: async ({ selectors }) => {
       const { document, window } = content;
+
+      await ContentTaskUtils.waitForCondition(() => {
+        const element = document.querySelector(selectors.translationResult);
+        const { visibility } = window.getComputedStyle(element);
+        return visibility === "hidden";
+      }, `Waiting for translated text to be hidden."`);
 
       function checkElementIsInvisible(name) {
         const element = document.querySelector(selectors[name]);
@@ -57,16 +82,6 @@ add_task(async function test_about_translations_disabled() {
 });
 
 add_task(async function test_about_translations_dropdowns() {
-  const { appLocaleAsBCP47 } = Services.locale;
-  if (!appLocaleAsBCP47.startsWith("en")) {
-    console.warn(
-      "This test assumes to be running in an 'en' app locale, however the app locale " +
-        `is set to ${appLocaleAsBCP47}. Skipping the test.`
-    );
-    ok(true, "Skipping test.");
-    return;
-  }
-
   await openAboutTranslations({
     languagePairs: [
       { fromLang: "en", toLang: "es" },
@@ -75,7 +90,15 @@ add_task(async function test_about_translations_dropdowns() {
       { fromLang: "is", toLang: "en" },
     ],
     runInPage: async ({ selectors }) => {
-      const { document } = content;
+      const { document, window } = content;
+
+      await ContentTaskUtils.waitForCondition(() => {
+        const element = document.querySelector(
+          selectors.translationResultBlank
+        );
+        const { visibility } = window.getComputedStyle(element);
+        return visibility === "visible";
+      }, `Waiting for placeholder text to be visible."`);
 
       /**
        * Some languages can be marked as hidden in the dropbdown. This function
@@ -112,36 +135,54 @@ add_task(async function test_about_translations_dropdowns() {
       const toSelect = document.querySelector(selectors.toLanguageSelect);
 
       assertOptions({
-        message: "From languages have English already selected.",
+        message: 'From languages have "detect" already selected.',
         select: fromSelect,
-        availableOptions: ["", "en", "is", "es"],
-        selectedValue: "en",
+        availableOptions: ["detect", "en", "is", "es"],
+        selectedValue: "detect",
       });
 
       assertOptions({
         message:
-          'The "to" options do not have "en" in the list, and nothing is selected.',
+          'The "to" options do not have "detect" in the list, and nothing is selected.',
         select: toSelect,
-        availableOptions: ["", "is", "es"],
+        availableOptions: ["", "en", "is", "es"],
         selectedValue: "",
       });
 
-      info('Switch the "to" language to Spanish.');
+      info('Switch the "to" language to "es".');
       toSelect.value = "es";
       toSelect.dispatchEvent(new Event("input"));
 
       assertOptions({
-        message: 'The "from" languages no longer suggest Spanish.',
+        message: 'The "from" languages no longer suggest "es".',
         select: fromSelect,
-        availableOptions: ["", "en", "is"],
-        selectedValue: "en",
+        availableOptions: ["detect", "en", "is"],
+        selectedValue: "detect",
       });
 
       assertOptions({
-        message: 'The "to" options remain the same.',
+        message: 'The "to" options remain the same, but "es" is selected.',
+        select: toSelect,
+        availableOptions: ["", "en", "is", "es"],
+        selectedValue: "es",
+      });
+
+      info('Switch the "from" language to English.');
+      fromSelect.value = "en";
+      fromSelect.dispatchEvent(new Event("input"));
+
+      assertOptions({
+        message: 'The "to" languages no longer suggest "en".',
         select: toSelect,
         availableOptions: ["", "is", "es"],
         selectedValue: "es",
+      });
+
+      assertOptions({
+        message: 'The "from" options remain the same, but "en" is selected.',
+        select: fromSelect,
+        availableOptions: ["detect", "en", "is"],
+        selectedValue: "en",
       });
     },
   });
@@ -162,7 +203,15 @@ add_task(async function test_about_translations_translations() {
     ],
     runInPage: async ({ selectors }) => {
       const { document, window } = content;
-      Cu.waiveXrays(window).DEBOUNCE_DELAY = 1; // Make the timer run faster for tests.
+      Cu.waiveXrays(window).DEBOUNCE_DELAY = 5; // Make the timer run faster for tests.
+
+      await ContentTaskUtils.waitForCondition(() => {
+        const element = document.querySelector(
+          selectors.translationResultBlank
+        );
+        const { visibility } = window.getComputedStyle(element);
+        return visibility === "visible";
+      }, `Waiting for placeholder text to be visible."`);
 
       /** @type {HTMLSelectElement} */
       const fromSelect = document.querySelector(selectors.fromLanguageSelect);
@@ -195,13 +244,22 @@ add_task(async function test_about_translations_translations() {
         );
       }
 
+      fromSelect.value = "en";
+      fromSelect.dispatchEvent(new Event("input"));
+
       toSelect.value = "fr";
       toSelect.dispatchEvent(new Event("input"));
+
       translationTextarea.value = "Text to translate.";
       translationTextarea.dispatchEvent(new Event("input"));
 
       // The mocked translations make the text uppercase and reports the models used.
       await assertTranslationResult("TEXT TO TRANSLATE. [en to fr]");
+      is(
+        translationResult.getAttribute("lang"),
+        "fr",
+        "The result is listed as in French."
+      );
 
       // Blank out the "to" select so it doesn't try to translate between is to fr.
       toSelect.value = "";
@@ -217,6 +275,11 @@ add_task(async function test_about_translations_translations() {
       await assertTranslationResult(
         "THIS IS THE SECOND TRANSLATION. [is to en]"
       );
+      is(
+        translationResult.getAttribute("lang"),
+        "en",
+        "The result is listed as in English."
+      );
     },
   });
 });
@@ -230,7 +293,15 @@ add_task(async function test_about_translations_language_directions() {
     ],
     runInPage: async ({ selectors }) => {
       const { document, window } = content;
-      Cu.waiveXrays(window).DEBOUNCE_DELAY = 1; // Make the timer run faster for tests.
+      Cu.waiveXrays(window).DEBOUNCE_DELAY = 5; // Make the timer run faster for tests.
+
+      await ContentTaskUtils.waitForCondition(() => {
+        const element = document.querySelector(
+          selectors.translationResultBlank
+        );
+        const { visibility } = window.getComputedStyle(element);
+        return visibility === "visible";
+      }, `Waiting for placeholder text to be visible."`);
 
       /** @type {HTMLSelectElement} */
       const fromSelect = document.querySelector(selectors.fromLanguageSelect);
@@ -298,7 +369,15 @@ add_task(async function test_about_translations_debounce() {
     runInPage: async ({ selectors }) => {
       const { document, window } = content;
       // Do not allow the debounce to come to completion.
-      Cu.waiveXrays(window).DEBOUNCE_DELAY = 1;
+      Cu.waiveXrays(window).DEBOUNCE_DELAY = 5;
+
+      await ContentTaskUtils.waitForCondition(() => {
+        const element = document.querySelector(
+          selectors.translationResultBlank
+        );
+        const { visibility } = window.getComputedStyle(element);
+        return visibility === "visible";
+      }, `Waiting for placeholder text to be visible."`);
 
       /** @type {HTMLSelectElement} */
       const fromSelect = document.querySelector(selectors.fromLanguageSelect);
@@ -343,7 +422,7 @@ add_task(async function test_about_translations_debounce() {
       await assertTranslationResult("T [en to fr]");
 
       info("Reset and pause the debounce state.");
-      Cu.waiveXrays(window).DEBOUNCE_DELAY = Infinity;
+      Cu.waiveXrays(window).DEBOUNCE_DELAY = 1_000_000_000;
       Cu.waiveXrays(window).DEBOUNCE_RUN_COUNT = 0;
 
       info("Input text which will be debounced.");
@@ -353,11 +432,171 @@ add_task(async function test_about_translations_debounce() {
       is(Cu.waiveXrays(window).DEBOUNCE_RUN_COUNT, 0, "Debounce has not run.");
 
       info("Allow the debounce to actually come to completion.");
-      Cu.waiveXrays(window).DEBOUNCE_DELAY = 1;
+      Cu.waiveXrays(window).DEBOUNCE_DELAY = 5;
       setInput(translationTextarea, "Text");
 
       await assertTranslationResult("TEXT [en to fr]");
       is(Cu.waiveXrays(window).DEBOUNCE_RUN_COUNT, 1, "Debounce ran once.");
+    },
+  });
+});
+
+/**
+ * Test the useHTML pref.
+ */
+add_task(async function test_about_translations_html() {
+  await openAboutTranslations({
+    languagePairs: [
+      { fromLang: "en", toLang: "fr" },
+      { fromLang: "fr", toLang: "en" },
+    ],
+    prefs: [["browser.translations.useHTML", true]],
+    runInPage: async ({ selectors }) => {
+      const { document, window } = content;
+      Cu.waiveXrays(window).DEBOUNCE_DELAY = 5; // Make the timer run faster for tests.
+
+      await ContentTaskUtils.waitForCondition(() => {
+        const element = document.querySelector(
+          selectors.translationResultBlank
+        );
+        const { visibility } = window.getComputedStyle(element);
+        return visibility === "visible";
+      }, `Waiting for placeholder text to be visible."`);
+
+      /** @type {HTMLSelectElement} */
+      const fromSelect = document.querySelector(selectors.fromLanguageSelect);
+      /** @type {HTMLSelectElement} */
+      const toSelect = document.querySelector(selectors.toLanguageSelect);
+      /** @type {HTMLTextAreaElement} */
+      const translationTextarea = document.querySelector(
+        selectors.translationTextarea
+      );
+      /** @type {HTMLDivElement} */
+      const translationResult = document.querySelector(
+        selectors.translationResult
+      );
+
+      async function assertTranslationResult(translation) {
+        try {
+          await ContentTaskUtils.waitForCondition(
+            () => translation === translationResult.innerText,
+            `Waiting for: "${translation}"`
+          );
+        } catch (error) {
+          // The result wasn't found, but the assertion below will report the error.
+          console.error(error);
+        }
+
+        is(
+          translation,
+          translationResult.innerText,
+          "The text runs through the mocked translations engine."
+        );
+      }
+
+      fromSelect.value = "en";
+      fromSelect.dispatchEvent(new Event("input"));
+      toSelect.value = "fr";
+      toSelect.dispatchEvent(new Event("input"));
+      translationTextarea.value = "Text to translate.";
+      translationTextarea.dispatchEvent(new Event("input"));
+
+      // The mocked translations make the text uppercase and reports the models used.
+      await assertTranslationResult("TEXT TO TRANSLATE. [en to fr, html]");
+    },
+  });
+});
+
+add_task(async function test_about_translations_language_identification() {
+  await openAboutTranslations({
+    detectedLanguageLabel: "en",
+    detectedLanguageConfidence: "0.98",
+    languagePairs: [
+      { fromLang: "en", toLang: "fr" },
+      { fromLang: "fr", toLang: "en" },
+    ],
+    runInPage: async ({ selectors }) => {
+      const { document, window } = content;
+      Cu.waiveXrays(window).DEBOUNCE_DELAY = 5; // Make the timer run faster for tests.
+
+      await ContentTaskUtils.waitForCondition(() => {
+        const element = document.querySelector(
+          selectors.translationResultBlank
+        );
+        const { visibility } = window.getComputedStyle(element);
+        return visibility === "visible";
+      }, `Waiting for placeholder text to be visible."`);
+
+      /** @type {HTMLSelectElement} */
+      const fromSelect = document.querySelector(selectors.fromLanguageSelect);
+      /** @type {HTMLSelectElement} */
+      const toSelect = document.querySelector(selectors.toLanguageSelect);
+      /** @type {HTMLTextAreaElement} */
+      const translationTextarea = document.querySelector(
+        selectors.translationTextarea
+      );
+      /** @type {HTMLDivElement} */
+      const translationResult = document.querySelector(
+        selectors.translationResult
+      );
+
+      async function assertTranslationResult(translation) {
+        try {
+          await ContentTaskUtils.waitForCondition(
+            () => translation === translationResult.innerText,
+            `Waiting for: "${translation}"`
+          );
+        } catch (error) {
+          // The result wasn't found, but the assertion below will report the error.
+          console.error(error);
+        }
+        is(
+          translation,
+          translationResult.innerText,
+          "The language identification engine correctly informs the translation."
+        );
+      }
+
+      const fromSelectStartValue = fromSelect.value;
+      const detectStartText = fromSelect.options[0].textContent;
+
+      is(
+        fromSelectStartValue,
+        "detect",
+        'The fromSelect starting value is "detect"'
+      );
+
+      translationTextarea.value = "Text to translate.";
+      translationTextarea.dispatchEvent(new Event("input"));
+
+      toSelect.value = "fr";
+      toSelect.dispatchEvent(new Event("input"));
+
+      await ContentTaskUtils.waitForCondition(() => {
+        const element = document.querySelector(
+          selectors.translationResultBlank
+        );
+        const { visibility } = window.getComputedStyle(element);
+        return visibility === "hidden";
+      }, `Waiting for placeholder text to be visible."`);
+
+      const fromSelectFinalValue = fromSelect.value;
+      is(
+        fromSelectFinalValue,
+        fromSelectStartValue,
+        "The fromSelect value has not changed"
+      );
+
+      // The mocked translations make the text uppercase and reports the models used.
+      await assertTranslationResult("TEXT TO TRANSLATE. [en to fr]");
+
+      const detectFinalText = fromSelect.options[0].textContent;
+      is(
+        true,
+        detectFinalText.startsWith(detectStartText) &&
+          detectFinalText.length > detectStartText.length,
+        `fromSelect starting display text (${detectStartText}) should be a substring of the final text (${detectFinalText})`
+      );
     },
   });
 });

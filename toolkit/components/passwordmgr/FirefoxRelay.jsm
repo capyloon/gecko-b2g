@@ -9,16 +9,25 @@ const EXPORTED_SYMBOLS = ["FirefoxRelay"];
 const { XPCOMUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/XPCOMUtils.sys.mjs"
 );
+
+const { FirefoxRelayTelemetry } = ChromeUtils.importESModule(
+  "resource://gre/modules/FirefoxRelayTelemetry.mjs"
+);
+
 const {
   LoginHelper,
   OptInFeature,
   ParentAutocompleteOption,
 } = ChromeUtils.import("resource://gre/modules/LoginHelper.jsm");
 
+const { TelemetryUtils } = ChromeUtils.import(
+  "resource://gre/modules/TelemetryUtils.jsm"
+);
+
 const lazy = {};
 
 // Static configuration
-const config = (function() {
+const gConfig = (function() {
   const baseUrl = Services.prefs.getStringPref(
     "signon.firefoxRelay.base_url",
     undefined
@@ -46,7 +55,7 @@ XPCOMUtils.defineLazyGetter(lazy, "strings", function() {
   return new Localization([
     "branding/brand.ftl",
     "browser/branding/sync-brand.ftl",
-    "browser/branding/brandings.ftl",
+    "toolkit/branding/brandings.ftl",
     "browser/firefoxRelay.ftl",
   ]);
 });
@@ -57,7 +66,7 @@ if (Services.appinfo.processType !== Services.appinfo.PROCESS_TYPE_DEFAULT) {
 
 async function getRelayTokenAsync() {
   try {
-    return await lazy.fxAccounts.getOAuthToken({ scope: config.scope });
+    return await lazy.fxAccounts.getOAuthToken({ scope: gConfig.scope });
   } catch (e) {
     console.error(`There was an error getting the user's token: ${e.message}`);
     return undefined;
@@ -109,7 +118,7 @@ async function isRelayUserAsync() {
 
   const response = await fetchWithReauth(
     null,
-    headers => new Request(config.profilesUrl, { headers })
+    headers => new Request(gConfig.profilesUrl, { headers })
   );
   if (!response) {
     return false;
@@ -130,18 +139,20 @@ async function getReusableMasksAsync(browser, _origin) {
   const response = await fetchWithReauth(
     browser,
     headers =>
-      new Request(config.addressesUrl, {
+      new Request(gConfig.addressesUrl, {
         method: "GET",
         headers,
       })
   );
 
   if (!response) {
-    return undefined;
+    // fetchWithReauth only returns undefined if login / obtaining a token failed.
+    // Otherwise, it will return a response object.
+    return [undefined, RelayFeature.AUTH_TOKEN_ERROR_CODE];
   }
 
   if (response.ok) {
-    return response.json();
+    return [await response.json(), response.status];
   }
 
   lazy.log.error(
@@ -150,9 +161,8 @@ async function getReusableMasksAsync(browser, _origin) {
   await showErrorAsync(browser, "firefox-relay-get-reusable-masks-failed", {
     status: response.status,
   });
-  // Services.telemetry.recordEvent("pwmgr", "make_relay_fail", "relay");
 
-  return undefined;
+  return [undefined, response.status];
 }
 
 /**
@@ -187,7 +197,7 @@ async function showErrorAsync(browser, messageId, messageArgs) {
       autofocus: true,
       removeOnDismissal: true,
       popupIconURL: "page-icon:https://relay.firefox.com",
-      learnMoreURL: config.learnMoreURL,
+      learnMoreURL: gConfig.learnMoreURL,
     }
   );
 }
@@ -220,9 +230,14 @@ async function formatMessages(...ids) {
   });
 }
 
-async function showReusableMasksAsync(browser, origin, errorMessage) {
-  const reusableMasks = await getReusableMasksAsync(browser, origin);
+async function showReusableMasksAsync(browser, origin, error) {
+  const [reusableMasks, status] = await getReusableMasksAsync(browser, origin);
   if (!reusableMasks) {
+    FirefoxRelayTelemetry.recordRelayReusePanelEvent(
+      "shown",
+      FirefoxRelay.flowId,
+      status
+    );
     return null;
   }
 
@@ -236,7 +251,11 @@ async function showReusableMasksAsync(browser, origin, errorMessage) {
     accessKey: getUnlimitedMasksStrings.accesskey,
     dismiss: true,
     async callback() {
-      browser.ownerGlobal.openWebLinkIn(config.learnMoreURL, "tab");
+      FirefoxRelayTelemetry.recordRelayReusePanelEvent(
+        "get_unlimited_masks",
+        FirefoxRelay.flowId
+      );
+      browser.ownerGlobal.openWebLinkIn(gConfig.learnMoreURL, "tab");
     },
   };
 
@@ -253,7 +272,7 @@ async function showReusableMasksAsync(browser, origin, errorMessage) {
 
     notification.owner.panel.getElementsByClassName(
       "error-message"
-    )[0].textContent = errorMessage;
+    )[0].textContent = error.detail || "";
 
     // rebuild "reuse mask" buttons list
     const list = getReusableMasksList();
@@ -279,6 +298,10 @@ async function showReusableMasksAsync(browser, origin, errorMessage) {
           notification.remove();
           lazy.log.info("Reusing Relay mask");
           fillUsername(mask.full_address);
+          FirefoxRelayTelemetry.recordRelayReusePanelEvent(
+            "reuse_mask",
+            FirefoxRelay.flowId
+          );
         });
         fragment.appendChild(button);
       });
@@ -297,6 +320,10 @@ async function showReusableMasksAsync(browser, origin, errorMessage) {
         break;
       case "shown":
         notificationShown();
+        FirefoxRelayTelemetry.recordRelayReusePanelEvent(
+          "shown",
+          FirefoxRelay.flowId
+        );
         break;
     }
   }
@@ -330,7 +357,7 @@ async function generateUsernameAsync(browser, origin) {
   const response = await fetchWithReauth(
     browser,
     headers =>
-      new Request(config.addressesUrl, {
+      new Request(gConfig.addressesUrl, {
         method: "POST",
         headers,
         body,
@@ -338,6 +365,11 @@ async function generateUsernameAsync(browser, origin) {
   );
 
   if (!response) {
+    FirefoxRelayTelemetry.recordRelayUsernameFilledEvent(
+      "shown",
+      FirefoxRelay.flowId,
+      RelayFeature.AUTH_TOKEN_ERROR_CODE
+    );
     return undefined;
   }
 
@@ -345,14 +377,18 @@ async function generateUsernameAsync(browser, origin) {
     lazy.log.info(`generated Relay mask`);
     const result = await response.json();
     showConfirmation(browser, "confirmation-hint-firefox-relay-mask-generated");
-    // Services.telemetry.recordEvent("pwmgr", "make_relay", "relay");
     return result.full_address;
   }
 
   if (response.status == 403) {
     const error = await response.json();
     if (error?.error_code == "free_tier_limit") {
-      return showReusableMasksAsync(browser, origin, error.detail);
+      FirefoxRelayTelemetry.recordRelayUsernameFilledEvent(
+        "shown",
+        FirefoxRelay.flowId,
+        error?.error_code
+      );
+      return showReusableMasksAsync(browser, origin, error);
     }
   }
 
@@ -363,7 +399,12 @@ async function generateUsernameAsync(browser, origin) {
   await showErrorAsync(browser, "firefox-relay-mask-generation-failed", {
     status: response.status,
   });
-  // Services.telemetry.recordEvent("pwmgr", "make_relay_fail", "relay");
+
+  FirefoxRelayTelemetry.recordRelayReusePanelEvent(
+    "shown",
+    FirefoxRelay.flowId,
+    response.status
+  );
 
   return undefined;
 }
@@ -391,7 +432,19 @@ class RelayOffered {
           title,
           subtitle,
           "PasswordManager:offerRelayIntegration",
-          null
+          {
+            telemetry: {
+              flowId: FirefoxRelay.flowId,
+              isRelayUser: this.#isRelayUser,
+              scenarioName,
+            },
+          }
+        );
+        FirefoxRelayTelemetry.recordRelayOfferedEvent(
+          "shown",
+          FirefoxRelay.flowId,
+          scenarioName,
+          this.#isRelayUser
         );
       }
     }
@@ -399,6 +452,7 @@ class RelayOffered {
 
   async offerRelayIntegration(feature, browser, origin) {
     const fxaUser = await lazy.fxAccounts.getSignedInUser();
+
     if (!fxaUser) {
       return null;
     }
@@ -423,6 +477,10 @@ class RelayOffered {
       async callback() {
         lazy.log.info("user opted in to Firefox Relay integration");
         feature.markAsEnabled();
+        FirefoxRelayTelemetry.recordRelayOptInPanelEvent(
+          "enabled",
+          FirefoxRelay.flowId
+        );
         fillUsername(await generateUsernameAsync(browser, origin));
       },
     };
@@ -435,6 +493,10 @@ class RelayOffered {
           "user decided not to decide about Firefox Relay integration"
         );
         feature.markAsOffered();
+        FirefoxRelayTelemetry.recordRelayOptInPanelEvent(
+          "postponed",
+          FirefoxRelay.flowId
+        );
       },
     };
     const disableIntegration = {
@@ -444,6 +506,10 @@ class RelayOffered {
       callback() {
         lazy.log.info("user opted out from Firefox Relay integration");
         feature.markAsDisabled();
+        FirefoxRelayTelemetry.recordRelayOptInPanelEvent(
+          "disabled",
+          FirefoxRelay.flowId
+        );
       },
     };
     let notification;
@@ -458,7 +524,7 @@ class RelayOffered {
       {
         autofocus: true,
         removeOnDismissal: true,
-        learnMoreURL: config.learnMoreURL,
+        learnMoreURL: gConfig.learnMoreURL,
         eventCallback: event => {
           switch (event) {
             case "shown":
@@ -477,6 +543,10 @@ class RelayOffered {
                   sitename: origin,
                   useremail: fxaUser.email,
                 }
+              );
+              FirefoxRelayTelemetry.recordRelayOptInPanelEvent(
+                "shown",
+                FirefoxRelay.flowId
               );
               break;
           }
@@ -504,7 +574,15 @@ class RelayEnabled {
         title,
         subtitle,
         "PasswordManager:generateRelayUsername",
-        origin
+        {
+          telemetry: {
+            flowId: FirefoxRelay.flowId,
+          },
+        }
+      );
+      FirefoxRelayTelemetry.recordRelayUsernameFilledEvent(
+        "shown",
+        FirefoxRelay.flowId
       );
     }
   }
@@ -517,16 +595,41 @@ class RelayEnabled {
 class RelayDisabled {}
 
 class RelayFeature extends OptInFeature {
+  // Using 418 to avoid conflict with other standard http error code
+  static AUTH_TOKEN_ERROR_CODE = 418;
+
   constructor() {
-    super(RelayOffered, RelayEnabled, RelayDisabled, config.relayFeaturePref);
+    super(RelayOffered, RelayEnabled, RelayDisabled, gConfig.relayFeaturePref);
+    Services.telemetry.setEventRecordingEnabled("relay_integration", true);
+    // Update the config when the signon.firefoxRelay.base_url pref is changed.
+    // This is added mainly for tests.
+    Services.prefs.addObserver(
+      "signon.firefoxRelay.base_url",
+      this.updateConfig
+    );
   }
 
   get learnMoreUrl() {
-    return config.learnMoreURL;
+    return gConfig.learnMoreURL;
+  }
+
+  updateConfig() {
+    const newBaseUrl = Services.prefs.getStringPref(
+      "signon.firefoxRelay.base_url"
+    );
+    gConfig.addressesUrl = newBaseUrl + `relayaddresses/`;
+    gConfig.profilesUrl = newBaseUrl + `profiles/`;
   }
 
   async autocompleteItemsAsync({ origin, scenarioName, hasInput }) {
     const result = [];
+
+    // Generate a flowID to unique identify a series of user action. FlowId
+    // allows us to link users' interaction on different UI component (Ex. autocomplete, notification)
+    // We can use flowID to build the Funnel Diagram
+    // This value need to always be regenerated in the entry point of an user
+    // action so we overwrite the previous one.
+    this.flowId = TelemetryUtils.generateUUID();
 
     if (this.implementation.autocompleteItemsAsync) {
       for await (const item of this.implementation.autocompleteItemsAsync(

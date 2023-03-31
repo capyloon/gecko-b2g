@@ -3268,7 +3268,7 @@ void HTMLMediaElement::Seek(double aTime, SeekTarget::Type aSeekType,
   // synchronous errors are returned using aRv, not promise rejections.
 
   // aTime should be non-NaN.
-  MOZ_ASSERT(!mozilla::IsNaN(aTime));
+  MOZ_ASSERT(!std::isnan(aTime));
 
   // Seeking step1, Set the media element's show poster flag to false.
   // https://html.spec.whatwg.org/multipage/media.html#dom-media-seek
@@ -4592,7 +4592,7 @@ void HTMLMediaElement::PlayInternal(bool aHandlingUserInput) {
     if (mDecoder->IsEnded()) {
       SetCurrentTime(0);
     }
-#ifdef MOZ_B2G
+#ifdef MOZ_WIDGET_GONK
     if (CanDecoderStartPlaying()) {
 #else
     if (!mSuspendedByInactiveDocOrDocshell) {
@@ -4704,6 +4704,9 @@ void HTMLMediaElement::UpdateWakeLock() {
 }
 
 void HTMLMediaElement::CreateAudioWakeLockIfNeeded() {
+  if (AppShutdown::IsInOrBeyond(ShutdownPhase::AppShutdownConfirmed)) {
+    return;
+  }
   if (!mWakeLock) {
     RefPtr<power::PowerManagerService> pmService =
         power::PowerManagerService::GetInstance();
@@ -5280,7 +5283,7 @@ nsresult HTMLMediaElement::FinishDecoderSetup(MediaDecoder* aDecoder) {
 
   if (!mPaused) {
     SetPlayedOrSeeked(true);
-#ifdef MOZ_B2G
+#ifdef MOZ_WIDGET_GONK
     if (CanDecoderStartPlaying()) {
 #else
     if (!mSuspendedByInactiveDocOrDocshell) {
@@ -6189,7 +6192,7 @@ void HTMLMediaElement::ChangeReadyState(nsMediaReadyState aState) {
   if (oldState < HAVE_FUTURE_DATA && mReadyState >= HAVE_FUTURE_DATA) {
     DispatchAsyncEvent(u"canplay"_ns);
     if (!mPaused) {
-#ifdef MOZ_B2G
+#ifdef MOZ_WIDGET_GONK
       if (mDecoder && CanDecoderStartPlaying()) {
 #else
       if (mDecoder && !mSuspendedByInactiveDocOrDocshell) {
@@ -6317,7 +6320,7 @@ void HTMLMediaElement::RunAutoplay() {
     if (mCurrentPlayRangeStart == -1.0) {
       mCurrentPlayRangeStart = CurrentTime();
     }
-#ifdef MOZ_B2G
+#ifdef MOZ_WIDGET_GONK
     if (CanDecoderStartPlaying()) {
       mDecoder->Play();
     }
@@ -6628,7 +6631,7 @@ void HTMLMediaElement::SuspendOrResumeElement(bool aSuspendElement,
   } else {
     if (mDecoder) {
       mDecoder->Resume();
-#ifdef MOZ_B2G
+#ifdef MOZ_WIDGET_GONK
       if (!mPaused && !mDecoder->IsEnded() && CanDecoderStartPlaying()) {
 #else
       if (!mPaused && !mDecoder->IsEnded()) {
@@ -6701,12 +6704,16 @@ bool HTMLMediaElement::CanDecoderStartPlaying() const {
   if (mReadyState >= HAVE_METADATA && !HasAudio()) {
     return true;
   }
+#if defined(MOZ_WIDGET_GONK)
   // For files with audio tracks, allow playing when AudioChannelAgent has
   // started playing and is not suspended.
   if (mAudioChannelWrapper && !mAudioChannelWrapper->IsStoppedOrSuspended()) {
     return true;
   }
   return false;
+#else
+  return true;
+#endif
 }
 
 void HTMLMediaElement::NotifyOwnerDocumentActivityChanged() {
@@ -6714,7 +6721,7 @@ void HTMLMediaElement::NotifyOwnerDocumentActivityChanged() {
     NotifyDecoderActivityChanges();
   }
 
-#ifdef MOZ_B2G
+#ifdef MOZ_WIDGET_GONK
   NotifySuspendConditionChanged();
 #else
   // We would suspend media when the document is inactive, or its docshell has

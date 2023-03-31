@@ -40,6 +40,7 @@ ChromeUtils.defineESModuleGetters(this, {
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
   PromiseUtils: "resource://gre/modules/PromiseUtils.sys.mjs",
   PromptUtils: "resource://gre/modules/PromptUtils.sys.mjs",
+  ReaderMode: "resource://gre/modules/ReaderMode.sys.mjs",
   Sanitizer: "resource:///modules/Sanitizer.sys.mjs",
   ScreenshotsUtils: "resource:///modules/ScreenshotsUtils.sys.mjs",
   SearchUIUtils: "resource:///modules/SearchUIUtils.sys.mjs",
@@ -52,6 +53,8 @@ ChromeUtils.defineESModuleGetters(this, {
   TabsSetupFlowManager:
     "resource:///modules/firefox-view-tabs-setup-manager.sys.mjs",
   TelemetryEnvironment: "resource://gre/modules/TelemetryEnvironment.sys.mjs",
+  TranslationsParent: "resource://gre/actors/TranslationsParent.sys.mjs",
+  UITour: "resource:///modules/UITour.sys.mjs",
   UpdateUtils: "resource://gre/modules/UpdateUtils.sys.mjs",
   UrlbarInput: "resource:///modules/UrlbarInput.sys.mjs",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
@@ -88,16 +91,12 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   PanelView: "resource:///modules/PanelMultiView.jsm",
   Pocket: "chrome://pocket/content/Pocket.jsm",
   ProcessHangMonitor: "resource:///modules/ProcessHangMonitor.jsm",
-  // TODO (Bug 1529552): Remove once old urlbar code goes away.
-  ReaderMode: "resource://gre/modules/ReaderMode.jsm",
-  RFPHelper: "resource://gre/modules/RFPHelper.jsm",
   SafeBrowsing: "resource://gre/modules/SafeBrowsing.jsm",
   SaveToPocket: "chrome://pocket/content/SaveToPocket.jsm",
   SiteDataManager: "resource:///modules/SiteDataManager.jsm",
   SitePermissions: "resource:///modules/SitePermissions.jsm",
   TabCrashHandler: "resource:///modules/ContentCrashHandlers.jsm",
   Translation: "resource:///modules/translation/TranslationParent.jsm",
-  UITour: "resource:///modules/UITour.jsm",
   WebNavigationFrames: "resource://gre/modules/WebNavigationFrames.jsm",
   webrtcUI: "resource:///modules/webrtcUI.jsm",
   ZoomUI: "resource:///modules/ZoomUI.jsm",
@@ -439,11 +438,28 @@ XPCOMUtils.defineLazyGetter(this, "PopupNotifications", () => {
       );
     };
 
+    // Before a Popup is shown, check that its anchor is visible.
+    // If the anchor is not visible, use one of the fallbacks.
+    // If no fallbacks are visible, return null.
+    const getVisibleAnchorElement = anchorElement => {
+      // If the anchor element is present in the Urlbar,
+      // ensure that both the anchor and page URL are visible.
+      gURLBar.maybeHandleRevertFromPopup(anchorElement);
+      if (anchorElement?.checkVisibility()) {
+        return anchorElement;
+      }
+      let fallback = [
+        document.getElementById("identity-icon"),
+        document.getElementById("urlbar-search-button"),
+      ];
+      return fallback.find(element => element?.checkVisibility()) ?? null;
+    };
+
     return new PopupNotifications(
       gBrowser,
       document.getElementById("notification-popup"),
       document.getElementById("notification-popup-box"),
-      { shouldSuppress }
+      { shouldSuppress, getVisibleAnchorElement }
     );
   } catch (ex) {
     console.error(ex);
@@ -1450,6 +1466,27 @@ var gBrowserInit = {
 
   _tabToAdopt: undefined,
 
+  _setupFirstContentWindowPaintPromise() {
+    let lastTransactionId = window.windowUtils.lastTransactionId;
+    let layerTreeListener = () => {
+      if (this.getTabToAdopt()) {
+        // Need to wait until we finish adopting the tab, or we might end
+        // up focusing the initial browser and then losing focus when it
+        // gets swapped out for the tab to adopt.
+        return;
+      }
+      removeEventListener("MozLayerTreeReady", layerTreeListener);
+      let listener = e => {
+        if (e.transactionId > lastTransactionId) {
+          window.removeEventListener("MozAfterPaint", listener);
+          this._firstContentWindowPaintDeferred.resolve();
+        }
+      };
+      addEventListener("MozAfterPaint", listener);
+    };
+    addEventListener("MozLayerTreeReady", layerTreeListener);
+  },
+
   getTabToAdopt() {
     if (this._tabToAdopt !== undefined) {
       return this._tabToAdopt;
@@ -1480,6 +1517,8 @@ var gBrowserInit = {
   },
 
   onBeforeInitialXULLayout() {
+    this._setupFirstContentWindowPaintPromise();
+
     BookmarkingUI.updateEmptyToolbarMessage();
     setToolbarVisibility(
       BookmarkingUI.toolbar,
@@ -1586,8 +1625,6 @@ var gBrowserInit = {
     BrowserWindowTracker.track(window);
 
     FirefoxViewHandler.init();
-
-    gCookieBannerHandlingExperiment.init();
 
     gNavToolbox.palette = document.getElementById(
       "BrowserToolbarPalette"
@@ -1806,7 +1843,6 @@ var gBrowserInit = {
     );
     Services.obs.addObserver(gXPInstallObserver, "addon-install-failed");
     Services.obs.addObserver(gXPInstallObserver, "addon-install-confirmation");
-    Services.obs.addObserver(gXPInstallObserver, "addon-install-complete");
     Services.obs.addObserver(gKeywordURIFixup, "keyword-uri-fixup");
 
     BrowserOffline.init();
@@ -2034,7 +2070,8 @@ var gBrowserInit = {
   },
 
   /**
-   * Resolved on the first MozAfterPaint in the first content window.
+   * Resolved on the first MozLayerTreeReady and next MozAfterPaint in the
+   * parent process.
    */
   get firstContentWindowPaintPromise() {
     return this._firstContentWindowPaintDeferred.promise;
@@ -2073,7 +2110,7 @@ var gBrowserInit = {
       // Otherwise use a regular promise to guarantee that mutationobserver
       // microtasks that could affect focusability have run.
       let promise = gBrowser.selectedBrowser.isRemoteBrowser
-        ? this._firstContentWindowPaintDeferred.promise
+        ? this.firstContentWindowPaintPromise
         : Promise.resolve();
 
       promise.then(() => {
@@ -2445,8 +2482,6 @@ var gBrowserInit = {
 
     FirefoxViewHandler.uninit();
 
-    gCookieBannerHandlingExperiment.uninit();
-
     // Now either cancel delayedStartup, or clean up the services initialized from
     // it.
     if (this._boundDelayedStartup) {
@@ -2497,7 +2532,6 @@ var gBrowserInit = {
         gXPInstallObserver,
         "addon-install-confirmation"
       );
-      Services.obs.removeObserver(gXPInstallObserver, "addon-install-complete");
       Services.obs.removeObserver(gKeywordURIFixup, "keyword-uri-fixup");
 
       if (AppConstants.isPlatformAndVersionAtLeast("win", "10")) {
@@ -4934,57 +4968,6 @@ function openNewUserContextTab(event) {
   });
 }
 
-/**
- * Updates the User Context UI indicators if the browser is in a non-default context
- */
-function updateUserContextUIIndicator() {
-  function replaceContainerClass(classType, element, value) {
-    let prefix = "identity-" + classType + "-";
-    if (value && element.classList.contains(prefix + value)) {
-      return;
-    }
-    for (let className of element.classList) {
-      if (className.startsWith(prefix)) {
-        element.classList.remove(className);
-      }
-    }
-    if (value) {
-      element.classList.add(prefix + value);
-    }
-  }
-
-  let hbox = document.getElementById("userContext-icons");
-
-  let userContextId = gBrowser.selectedBrowser.getAttribute("usercontextid");
-  if (!userContextId) {
-    replaceContainerClass("color", hbox, "");
-    hbox.hidden = true;
-    return;
-  }
-
-  let identity = ContextualIdentityService.getPublicIdentityFromId(
-    userContextId
-  );
-  if (!identity) {
-    replaceContainerClass("color", hbox, "");
-    hbox.hidden = true;
-    return;
-  }
-
-  replaceContainerClass("color", hbox, identity.color);
-
-  let label = ContextualIdentityService.getUserContextLabel(userContextId);
-  document.getElementById("userContext-label").setAttribute("value", label);
-  // Also set the container label as the tooltip so we can only show the icon
-  // in small windows.
-  hbox.setAttribute("tooltiptext", label);
-
-  let indicator = document.getElementById("userContext-indicator");
-  replaceContainerClass("icon", indicator, identity.icon);
-
-  hbox.hidden = false;
-}
-
 var XULBrowserWindow = {
   // Stored Status, Link and Loading values
   status: "",
@@ -5280,7 +5263,13 @@ var XULBrowserWindow = {
     // via simulated locationchange events such as switching between tabs, however
     // if this is a document navigation then PopupNotifications will be updated
     // via TabsProgressListener.onLocationChange and we do not want it called twice
-    gURLBar.setURI(aLocationURI, aIsSimulated, isSessionRestore);
+    gURLBar.setURI(
+      aLocationURI,
+      aIsSimulated,
+      isSessionRestore,
+      false,
+      isSameDocument
+    );
 
     BookmarkingUI.onLocationChange();
     // If we've actually changed document, update the toolbar visibility.
@@ -5375,6 +5364,9 @@ var XULBrowserWindow = {
     CFRPageActions.updatePageActions(gBrowser.selectedBrowser);
 
     AboutReaderParent.updateReaderButton(gBrowser.selectedBrowser);
+    TranslationsParent.updateButtonFromLocationChange(gBrowser.selectedBrowser);
+
+    PictureInPicture.updateUrlbarToggle(gBrowser.selectedBrowser);
 
     if (!gMultiProcessBrowser) {
       // Bug 1108553 - Cannot rotate images with e10s
@@ -5800,7 +5792,6 @@ var CombinedStopReload = {
 
     this._cancelTransition();
     if (shouldAnimate) {
-      BrowserUIUtils.setToolbarButtonHeightProperty(this.stopReloadContainer);
       this.stopReloadContainer.setAttribute("animate", "true");
     } else {
       this.stopReloadContainer.removeAttribute("animate");
@@ -5823,7 +5814,6 @@ var CombinedStopReload = {
       this.stopReloadContainer.closest("#nav-bar-customization-target");
 
     if (shouldAnimate) {
-      BrowserUIUtils.setToolbarButtonHeightProperty(this.stopReloadContainer);
       this.stopReloadContainer.setAttribute("animate", "true");
     } else {
       this.stopReloadContainer.removeAttribute("animate");
@@ -7569,7 +7559,6 @@ var WebAuthnPromptHelper = {
   },
 
   observe(aSubject, aTopic, aData) {
-    let mgr = aSubject.QueryInterface(Ci.nsIU2FTokenManager);
     let data = JSON.parse(aData);
 
     // If we receive a cancel, it might be a WebAuthn prompt starting in another
@@ -7577,6 +7566,7 @@ var WebAuthnPromptHelper = {
     // cancellations, so any cancel action we get should prompt us to cancel.
     if (data.action == "cancel") {
       this.cancel(data);
+      return;
     }
 
     if (
@@ -7585,6 +7575,10 @@ var WebAuthnPromptHelper = {
       // Must belong to some other window.
       return;
     }
+
+    let mgr = aSubject.QueryInterface(
+      data.is_ctap2 ? Ci.nsIWebAuthnController : Ci.nsIU2FTokenManager
+    );
 
     if (data.action == "register") {
       this.register(mgr, data);
@@ -7650,7 +7644,7 @@ var WebAuthnPromptHelper = {
         label: unescape(decodeURIComponent(usernames[i])),
         accessKey: i.toString(),
         callback(aState) {
-          mgr.resumeWithSelectedSignResult(tid, i);
+          mgr.signatureSelectionCallback(tid, i);
         },
       });
     }
@@ -7676,7 +7670,7 @@ var WebAuthnPromptHelper = {
       aPassword
     );
     if (res) {
-      mgr.pinCallback(aPassword.value);
+      mgr.pinCallback(tid, aPassword.value);
     } else {
       mgr.cancel(tid);
     }
@@ -8127,12 +8121,24 @@ function undoCloseTab(aIndex) {
     blankTabToRemove = gBrowser.selectedTab;
   }
 
+  let closedTabCount = SessionStore.getLastClosedTabCount(window);
+
+  // There's nothing to do here if there are no tabs to re-open for this
+  // window...
+  if (!closedTabCount) {
+    // ... unless there's a previous session that we can restore, in which
+    // case, we use this as a signal to restore that session and merge it into
+    // the current session.
+    if (SessionStore.canRestoreLastSession) {
+      SessionStore.restoreLastSession();
+    }
+    return null;
+  }
+
   let tab = null;
   // aIndex is undefined if the function is called without a specific tab to restore.
   let tabsToRemove =
-    aIndex !== undefined
-      ? [aIndex]
-      : new Array(SessionStore.getLastClosedTabCount(window)).fill(0);
+    aIndex !== undefined ? [aIndex] : new Array(closedTabCount).fill(0);
   let tabsRemoved = false;
   for (let index of tabsToRemove) {
     if (SessionStore.getClosedTabCount(window) > index) {
@@ -9671,7 +9677,7 @@ var ConfirmationHint = {
   show(anchor, messageId, options = {}) {
     this._reset();
 
-    MozXULElement.insertFTLIfNeeded("browser/branding/brandings.ftl");
+    MozXULElement.insertFTLIfNeeded("toolkit/branding/brandings.ftl");
     MozXULElement.insertFTLIfNeeded("browser/confirmationHints.ftl");
     document.l10n.setAttributes(this._message, messageId);
 
@@ -9792,7 +9798,7 @@ var FirefoxViewHandler = {
   uninit() {
     CustomizableUI.removeListener(this);
     Services.obs.removeObserver(this, "firefoxview-notification-dot-update");
-    NimbusFeatures.majorRelease2022.off(this._updateEnabledState);
+    NimbusFeatures.majorRelease2022.offUpdate(this._updateEnabledState);
   },
   _updateEnabledState() {
     this._enabled = NimbusFeatures.majorRelease2022.getVariable("firefoxView");
@@ -9922,80 +9928,5 @@ var FirefoxViewHandler = {
   },
   _toggleNotificationDot(shouldShow) {
     this.button?.toggleAttribute("attention", shouldShow);
-  },
-};
-
-/*
- * Global singleton that manages Nimbus variable to preferences mapping
- * for the cookie banner handling experiment in 111.
- *
- * This code will be streamlined to ship the winning variation in 113 (see
- * bug 1816980).
- */
-var gCookieBannerHandlingExperiment = {
-  init() {
-    // If the user has been enrolled in a variant, we don't need to do
-    // anything. This can happen, e.g., when the browser restarts after
-    // enrolling the user in the previous session.
-    // The pref value is set to 0 by default; the variant values are
-    // integers 1, 2, or 3.
-    this._isEnrolled =
-      Services.prefs.getIntPref("cookiebanners.ui.desktop.cfrVariant") != 0;
-    if (this._isEnrolled) {
-      return;
-    }
-
-    this._updateEnabledState = this._updateEnabledState.bind(this);
-    NimbusFeatures.cookieBannerHandling.onUpdate(this._updateEnabledState);
-  },
-  uninit() {
-    NimbusFeatures.cookieBannerHandling.off(this._updateEnabledState);
-  },
-  _updateEnabledState() {
-    // The variant should be 1, 2, or 3 if the user is in the experiment.
-    let variant = NimbusFeatures.cookieBannerHandling.getVariable(
-      "desktopCfrVariant"
-    );
-    if (typeof variant != "undefined") {
-      this._enrollUser(variant);
-    }
-  },
-  /*
-   * When a user is enrolled in the cookie banner handling experiment,
-   * configures relevant prefs so that they will see the CBH onboarding
-   * doorhanger when they visit a website with a cookie banner we can handle.
-   *
-   * @param  variant (int, required)
-   *         The integer indicating which variation the user should see.
-   */
-  _enrollUser(variant) {
-    // Set pref to persist which variation the user sees across reloads.
-    Services.prefs.setIntPref("cookiebanners.ui.desktop.cfrVariant", variant);
-
-    // Set prefs to enable the service to detect banners, needed to trigger
-    // the onboarding doorhanger.
-    Services.prefs.setIntPref("cookiebanners.service.mode", 1);
-    Services.prefs.setIntPref("cookiebanners.service.mode.privateBrowsing", 1);
-
-    // Set prefs to show the about:preferences UI, but hide the protections
-    // panel UI.
-    Services.prefs.setBoolPref("cookiebanners.ui.desktop.enabled", true);
-    Services.prefs.setBoolPref("cookiebanners.service.detectOnly", true);
-  },
-  /*
-   * When the user chooses to enable the feature via the onboarding doorhanger,
-   * configures prefs to enable the service and enable the desktop UI, then
-   * reloads the browser, giving the user the visual feedback of cookie banners
-   * disappearing from the current page.
-   */
-  onActivate() {
-    // Set prefs to enable the service to reject banners.
-    Services.prefs.setIntPref("cookiebanners.service.mode", 1);
-    Services.prefs.setIntPref("cookiebanners.service.mode.privateBrowsing", 1);
-
-    // Set prefs to show the protections panel UI.
-    Services.prefs.setBoolPref("cookiebanners.service.detectOnly", false);
-
-    BrowserReload();
   },
 };
