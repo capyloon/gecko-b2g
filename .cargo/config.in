@@ -15,7 +15,7 @@ git = "https://github.com/FirefoxGraphics/wpf-gpu-raster"
 rev = "a6514854d4518b02f2805719ff6cd74dae7dfde6"
 replace-with = "vendored-sources"
 
-[source."https://github.com/capyloon/b2ghald.git"]
+[source."git+https://github.com/capyloon/b2ghald.git"]
 git = "https://github.com/capyloon/b2ghald.git"
 replace-with = "vendored-sources"
 
@@ -109,9 +109,9 @@ git = "https://github.com/mozilla/uniffi-rs.git"
 rev = "bc7ff8977bf38d0fdd1a458810b14f434d4dc4de"
 replace-with = "vendored-sources"
 
-[source."git+https://github.com/rust-minidump/minidump-writer.git?rev=7d76616d27b9dc87fe3a94639b8b4f947d52a6aa"]
+[source."git+https://github.com/rust-minidump/minidump-writer.git?rev=59179c83ba62e4378619c6967c0b8c0c077cac2d"]
 git = "https://github.com/rust-minidump/minidump-writer.git"
-rev = "7d76616d27b9dc87fe3a94639b8b4f947d52a6aa"
+rev = "59179c83ba62e4378619c6967c0b8c0c077cac2d"
 replace-with = "vendored-sources"
 
 [source."git+https://github.com/servo/rust-cssparser?rev=45bc47e2bcb846f1efb5aea156be5fe7d18624bf"]

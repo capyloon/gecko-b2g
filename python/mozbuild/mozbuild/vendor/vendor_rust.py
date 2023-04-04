@@ -107,6 +107,8 @@ TOLERATED_DUPES = {
     # and hasn't been updated in 1.5 years (an hypothetical update is
     # expected to remove the dependency on time altogether).
     "time": 2,
+    # TODO(Capyloon) remove.
+    "memoffset": 2,
 }
 
 

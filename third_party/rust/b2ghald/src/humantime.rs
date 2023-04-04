@@ -1,7 +1,6 @@
-/// Extract of the humantine crate time formatting.
-
-use std::time::Duration;
 use std::fmt;
+/// Extract of the humantine crate time formatting.
+use std::time::Duration;
 
 pub struct FormattedDuration(Duration);
 
@@ -11,10 +10,7 @@ impl FormattedDuration {
     }
 }
 
-fn item_plural(f: &mut fmt::Formatter, started: &mut bool,
-    name: &str, value: u64)
-    -> fmt::Result
-{
+fn item_plural(f: &mut fmt::Formatter, started: &mut bool, name: &str, value: u64) -> fmt::Result {
     if value > 0 {
         if *started {
             f.write_str(" ")?;
@@ -27,9 +23,7 @@ fn item_plural(f: &mut fmt::Formatter, started: &mut bool,
     }
     Ok(())
 }
-fn item(f: &mut fmt::Formatter, started: &mut bool, name: &str, value: u32)
-    -> fmt::Result
-{
+fn item(f: &mut fmt::Formatter, started: &mut bool, name: &str, value: u32) -> fmt::Result {
     if value > 0 {
         if *started {
             f.write_str(" ")?;
@@ -64,7 +58,7 @@ impl fmt::Display for FormattedDuration {
         let micros = nanos / 1000 % 1000;
         let nanosec = nanos % 1000;
 
-        let ref mut started = false;
+        let started = &mut false;
         item_plural(f, started, "year", years)?;
         item_plural(f, started, "month", months)?;
         item_plural(f, started, "day", days)?;

@@ -123,13 +123,13 @@ fn main() {
             );
         }
         Command::RestartService { service } => {
-            client.control_service("restart", &service);
+            client.control_service("restart", service);
         }
         Command::StartService { service } => {
-            client.control_service("start", &service);
+            client.control_service("start", service);
         }
         Command::StopService { service } => {
-            client.control_service("stop", &service);
+            client.control_service("stop", service);
         }
         Command::SetTime { ms } => {
             client.set_system_time(*ms);
