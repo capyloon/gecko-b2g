@@ -5,7 +5,6 @@
 use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::RwLock;
-use std::thread;
 
 use super::{DispatchError, DispatchGuard, Dispatcher};
 

@@ -31,34 +31,3 @@ libc_bitflags!(
         MFD_ALLOW_SEALING;
     }
 );
-
-/// Creates an anonymous file that lives in memory, and return a file-descriptor to it.
-///
-/// The file behaves like a regular file, and so can be modified, truncated, memory-mapped, and so on.
-/// However, unlike a regular file, it lives in RAM and has a volatile backing storage.
-///
-/// For more information, see [`memfd_create(2)`].
-///
-/// [`memfd_create(2)`]: https://man7.org/linux/man-pages/man2/memfd_create.2.html
-pub fn memfd_create(name: &CStr, flags: MemFdCreateFlag) -> Result<RawFd> {
-    let res = unsafe {
-        cfg_if! {
-            if #[cfg(all(
-                // Android does not have a memfd_create symbol
-                not(target_os = "android"),
-                any(
-                    target_os = "freebsd",
-                    // If the OS is Linux, gnu and musl expose a memfd_create symbol but not uclibc
-                    target_env = "gnu",
-                    target_env = "musl",
-                )))]
-            {
-                libc::memfd_create(name.as_ptr(), flags.bits())
-            } else {
-                libc::syscall(libc::SYS_memfd_create, name.as_ptr(), flags.bits())
-            }
-        }
-    };
-
-    Errno::result(res).map(|r| r as RawFd)
-}

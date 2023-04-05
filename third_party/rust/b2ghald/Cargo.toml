@@ -36,14 +36,22 @@ path = "src/ctl.rs"
 [dependencies]
 bincode = "1.3"
 log = "0.4"
-nix = "0.26"
 
 [dependencies.clap]
 version = "3.0"
 features = ["derive"]
 
 [dependencies.env_logger]
-version = "0.9"
+version = "0.10"
+default-features = false
+
+[dependencies.nix]
+version = "0.26"
+features = [
+    "fs",
+    "reboot",
+    "time",
+]
 default-features = false
 
 [dependencies.serde]

@@ -3,8 +3,6 @@ edition = "2021"
 name = "b2glinuxhal"
 version = "0.1.0"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 b2ghald = {git = "https://github.com/capyloon/b2ghald.git"}
 log = "0.4"
