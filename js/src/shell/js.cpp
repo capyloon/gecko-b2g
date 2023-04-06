@@ -5436,7 +5436,7 @@ static bool DumpAST(JSContext* cx, const JS::ReadOnlyCompileOptions& options,
   if (goal == frontend::ParseGoal::Script) {
     pn = parser.parse();
   } else {
-    ModuleBuilder builder(cx, &fc, &parser);
+    ModuleBuilder builder(&fc, &parser);
 
     SourceExtent extent = SourceExtent::makeGlobalExtent(length);
     ModuleSharedContext modulesc(&fc, options, builder, extent);
@@ -5477,8 +5477,8 @@ template <typename Unit>
         srcBuf, ScopeKind::Global);
   } else {
     stencil = frontend::ParseModuleToExtensibleStencil(
-        cx, &fc, cx->stackLimitForCurrentPrincipal(), input.get(), &scopeCache,
-        srcBuf);
+        cx, &fc, cx->stackLimitForCurrentPrincipal(), cx->tempLifoAlloc(),
+        input.get(), &scopeCache, srcBuf);
   }
 
   if (!stencil) {
@@ -11459,6 +11459,9 @@ bool InitOptionParser(OptionParser& op) {
       !op.addStringOption(
           '\0', "ion-optimize-shapeguards", "on/off",
           "Eliminate redundant shape guards (default: on, off to disable)") ||
+      !op.addStringOption(
+          '\0', "ion-optimize-gcbarriers", "on/off",
+          "Eliminate redundant GC barriers (default: on, off to disable)") ||
       !op.addStringOption('\0', "ion-iterator-indices", "on/off",
                           "Optimize property access in for-in loops "
                           "(default: on, off to disable)") ||
@@ -11521,6 +11524,12 @@ bool InitOptionParser(OptionParser& op) {
       !op.addBoolOption('\0', "blinterp",
                         "Enable Baseline Interpreter (default)") ||
       !op.addBoolOption('\0', "no-blinterp", "Disable Baseline Interpreter") ||
+      !op.addBoolOption(
+          '\0', "emit-interpreter-entry",
+          "Emit Interpreter entry trampolines (default under --enable-perf)") ||
+      !op.addBoolOption(
+          '\0', "no-emit-interpreter-entry",
+          "Do not emit Interpreter entry trampolines (default).") ||
       !op.addBoolOption('\0', "blinterp-eager",
                         "Always Baseline-interpret scripts") ||
       !op.addIntOption(
@@ -12219,6 +12228,16 @@ bool SetContextJITOptions(JSContext* cx, const OptionParser& op) {
     }
   }
 
+  if (const char* str = op.getStringOption("ion-optimize-gcbarriers")) {
+    if (strcmp(str, "on") == 0) {
+      jit::JitOptions.disableRedundantGCBarriers = false;
+    } else if (strcmp(str, "off") == 0) {
+      jit::JitOptions.disableRedundantGCBarriers = true;
+    } else {
+      return OptionFailure("ion-optimize-gcbarriers", str);
+    }
+  }
+
   if (const char* str = op.getStringOption("ion-instruction-reordering")) {
     if (strcmp(str, "on") == 0) {
       jit::JitOptions.disableInstructionReordering = false;
@@ -12297,6 +12316,14 @@ bool SetContextJITOptions(JSContext* cx, const OptionParser& op) {
 
   if (op.getBoolOption("no-blinterp")) {
     jit::JitOptions.baselineInterpreter = false;
+  }
+
+  if (op.getBoolOption("emit-interpreter-entry")) {
+    jit::JitOptions.emitInterpreterEntryTrampoline = true;
+  }
+
+  if (op.getBoolOption("no-emit-interpreter-entry")) {
+    jit::JitOptions.emitInterpreterEntryTrampoline = false;
   }
 
   warmUpThreshold = op.getIntOption("blinterp-warmup-threshold");

@@ -770,6 +770,16 @@
   value: 0.5f
   mirror: always
 
+# If this is true, APZ fully recalculates the scroll thumb size and
+# position in the compositor. This leads to the size and position
+# being more accurate in scenarios such as async zooming, but the
+# recalculation code is error-prone so it's nightly-only for now
+# to give it more baking time.
+- name: apz.scrollthumb.recalc
+  type: RelaxedAtomicBool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+
 - name: apz.test.fails_with_native_injection
   type: RelaxedAtomicBool
   value: false
@@ -2478,7 +2488,7 @@
 
 - name: dom.enable_window_print
   type: bool
-  value: @IS_NOT_ANDROID@
+  value: true
   mirror: always
 
 # Only intended for fuzzing purposes, this will break mozPrintCallback, etc.
@@ -11789,6 +11799,14 @@
   value: false
   mirror: always
 
+# Whether windows-sso is enabled for the default (0) container.
+# To enable SSO for additional containers, add a new pref like
+# `network.http.windows-sso.container-enabled.${containerId}` = true
+- name: network.http.windows-sso.container-enabled.0
+  type: bool
+  value: true
+  mirror: never
+
 # The factor by which to increase the keepalive timeout when the
 # NS_HTTP_LARGE_KEEPALIVE flag is used for a connection
 - name: network.http.largeKeepaliveFactor
@@ -13611,12 +13629,6 @@
 - name: privacy.partition.network_state.connection_with_proxy
   type: bool
   value: false
-  mirror: always
-
-#  Partition the websocket pending connection queue by OriginAttributes.
-- name: privacy.partition.network_state.ws_connection_queue
-  type: RelaxedAtomicBool
-  value: true
   mirror: always
 
 # Partition the service workers unconditionally when dFPI is enabled.

@@ -155,6 +155,13 @@ export const PermissionsInstaller = {
       if (uri.scheme === "tile") {
         appType = "signed";
         isCore = true;
+
+        // Grant the autoplay permission to Tiles.
+        PermissionsHelper.addPermission(
+          "autoplay-media",
+          aManifestURL,
+          ALLOW_ACTION
+        );
       }
 
       // Add default permissions that are granted to all installed apps.

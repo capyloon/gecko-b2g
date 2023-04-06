@@ -1223,12 +1223,6 @@ pref("places.forgetThisSite.clearByBaseDomain", true);
 // Whether to warm up network connections for places: menus and places: toolbar.
 pref("browser.places.speculativeConnect.enabled", true);
 
-// Controls behavior of the "Add Exception" dialog launched from SSL error pages
-// 0 - don't pre-populate anything
-// 1 - pre-populate site URL, but don't fetch certificate
-// 2 - pre-populate site URL and pre-fetch certificate
-pref("browser.ssl_override_behavior", 2);
-
 // if true, use full page zoom instead of text zoom
 pref("browser.zoom.full", true);
 
@@ -2184,8 +2178,15 @@ pref("browser.migrate.opera-gx.enabled", true);
 pref("browser.migrate.safari.enabled", true);
 pref("browser.migrate.vivaldi.enabled", true);
 
+#ifdef NIGHTLY_BUILD
+pref("browser.migrate.content-modal.enabled", true);
+#else
 pref("browser.migrate.content-modal.enabled", false);
+#endif
+
 pref("browser.migrate.content-modal.import-all.enabled", false);
+// Values can be: "default", "autoclose", "standalone".
+pref("browser.migrate.content-modal.about-welcome-behavior", "default");
 
 // The maximum age of history entries we'll import, in days.
 pref("browser.migrate.history.maxAgeInDays", 180);
@@ -2197,6 +2198,7 @@ pref("browser.migrate.history.maxAgeInDays", 180);
 pref("browser.migrate.interactions.bookmarks", false);
 pref("browser.migrate.interactions.history", false);
 pref("browser.migrate.interactions.passwords", false);
+pref("browser.migrate.preferences-entrypoint.enabled", true);
 
 pref("extensions.pocket.api", "api.getpocket.com");
 pref("extensions.pocket.bffApi", "firefox-api-proxy.cdn.mozilla.net");

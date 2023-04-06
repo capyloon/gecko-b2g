@@ -128,6 +128,13 @@ XPCOMUtils.defineLazyPreferenceGetter(
   "[]"
 );
 
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "dnrEnabled",
+  "extensions.dnr.enabled",
+  true
+);
+
 // This pref modifies behavior for MV2.  MV3 is enabled regardless.
 XPCOMUtils.defineLazyPreferenceGetter(
   lazy,
@@ -219,8 +226,6 @@ if (
   }
 }
 
-const PREF_DNR_ENABLED = "extensions.dnr.enabled";
-
 // Message included in warnings and errors related to privileged permissions and
 // privileged manifest properties. Provides a link to the firefox-source-docs.mozilla.org
 // section related to developing and sign Privileged Add-ons.
@@ -277,15 +282,6 @@ function isMozillaExtension(extension) {
   return isSigned && isMozillaLineExtension;
 }
 
-function isDNRPermissionAllowed(perm) {
-  // DNR is under development and therefore disabled by default for now.
-  if (!Services.prefs.getBoolPref(PREF_DNR_ENABLED, false)) {
-    return false;
-  }
-
-  return true;
-}
-
 /**
  * Classify an individual permission from a webextension manifest
  * as a host/origin permission, an api permission, or a regular permission.
@@ -318,10 +314,7 @@ function classifyPermission(perm, restrictSchemes, isPrivileged) {
     return { api: match[2] };
   } else if (!isPrivileged && PRIVILEGED_PERMS.has(match[1])) {
     return { invalid: perm, privileged: true };
-  } else if (
-    perm.startsWith("declarativeNetRequest") &&
-    !isDNRPermissionAllowed(perm)
-  ) {
+  } else if (perm.startsWith("declarativeNetRequest") && !lazy.dnrEnabled) {
     return { invalid: perm };
   }
   return { permission: perm };
@@ -1288,6 +1281,29 @@ class ExtensionData {
         );
       }
       manifest.applications = manifest.browser_specific_settings;
+    }
+
+    // On Android, override the browser specific settings with those found in
+    // `bss.gecko_android`, if any.
+    //
+    // It is also worth noting that the `gecko_android` key in `applications`
+    // is marked as "unsupported" in the JSON schema.
+    if (
+      AppConstants.platform == "android" &&
+      manifest.browser_specific_settings?.gecko_android
+    ) {
+      const {
+        strict_min_version,
+        strict_max_version,
+      } = manifest.browser_specific_settings.gecko_android;
+
+      if (strict_min_version?.length) {
+        manifest.applications.gecko.strict_min_version = strict_min_version;
+      }
+
+      if (strict_max_version?.length) {
+        manifest.applications.gecko.strict_max_version = strict_max_version;
+      }
     }
 
     if (

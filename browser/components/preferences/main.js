@@ -333,6 +333,17 @@ var gMainPane = {
       )
     ) {
       document.getElementById("pictureInPictureBox").hidden = false;
+      setEventListener("pictureInPictureToggleEnabled", "command", function(
+        event
+      ) {
+        if (!event.target.checked) {
+          Services.telemetry.recordEvent(
+            "pictureinpicture.settings",
+            "disable",
+            "settings"
+          );
+        }
+      });
     }
 
     if (AppConstants.platform == "win") {
@@ -796,6 +807,10 @@ var gMainPane = {
     if (subcategory == "migrate") {
       this.showMigrationWizardDialog();
       return true;
+    }
+
+    if (subcategory == "migrate-autoclose") {
+      this.showMigrationWizardDialog({ closeTabWhenDone: true });
     }
 
     return false;
@@ -1742,7 +1757,7 @@ var gMainPane = {
   /**
    * Displays the migration wizard dialog in an HTML dialog.
    */
-  async showMigrationWizardDialog() {
+  async showMigrationWizardDialog({ closeTabWhenDone = false } = {}) {
     let migrationWizardDialog = document.getElementById(
       "migrationWizardDialog"
     );
@@ -1767,6 +1782,11 @@ var gMainPane = {
       migrationWizardDialog.appendChild(wizard);
     }
     migrationWizardDialog.firstElementChild.requestState();
+
+    if (closeTabWhenDone) {
+      migrationWizardDialog.addEventListener("close", () => window.close());
+    }
+
     migrationWizardDialog.showModal();
   },
 

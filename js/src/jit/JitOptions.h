@@ -60,6 +60,7 @@ struct DefaultJitOptions {
   bool disableCacheIR;
   bool disableSink;
   bool disableRedundantShapeGuards;
+  bool disableRedundantGCBarriers;
   bool disableBailoutLoopCheck;
   bool baselineInterpreter;
   bool baselineJit;
@@ -84,6 +85,7 @@ struct DefaultJitOptions {
   bool enableWasmImportCallSpew;
   bool enableWasmFuncCallSpew;
 #endif
+  bool emitInterpreterEntryTrampoline;
   uint32_t baselineInterpreterWarmUpThreshold;
   uint32_t baselineJitWarmUpThreshold;
   uint32_t trialInliningWarmUpThreshold;

@@ -6,6 +6,8 @@ import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
+import { ShortcutUtils } from "resource://gre/modules/ShortcutUtils.sys.mjs";
+
 const lazy = {};
 XPCOMUtils.defineLazyServiceGetters(lazy, {
   WindowsUIUtils: ["@mozilla.org/windows-ui-utils;1", "nsIWindowsUIUtils"],
@@ -26,6 +28,10 @@ const PLAYER_FEATURES = `chrome,alwaysontop,lockaspectratio,resizable,dialog,tit
 const WINDOW_TYPE = "Toolkit:PictureInPicture";
 const TOGGLE_ENABLED_PREF =
   "media.videocontrols.picture-in-picture.video-toggle.enabled";
+const TOGGLE_FIRST_SEEN_PREF =
+  "media.videocontrols.picture-in-picture.video-toggle.first-seen-secs";
+const TOGGLE_HAS_USED_PREF =
+  "media.videocontrols.picture-in-picture.video-toggle.has-used";
 const TOGGLE_POSITION_PREF =
   "media.videocontrols.picture-in-picture.video-toggle.position";
 const TOGGLE_POSITION_RIGHT = "right";
@@ -86,6 +92,17 @@ export class PictureInPictureToggleParent extends JSWindowActorParent {
         let { count } = aMessage.data;
         PictureInPicture.updateEligiblePipVideoCount(browsingContext, count);
         PictureInPicture.updateUrlbarToggle(browser);
+        break;
+      }
+      case "PictureInPicture:SetFirstSeen": {
+        let { dateSeconds } = aMessage.data;
+        PictureInPicture.setFirstSeen(dateSeconds);
+        break;
+      }
+      case "PictureInPicture:SetHasUsed": {
+        let { hasUsed } = aMessage.data;
+        PictureInPicture.setHasUsed(hasUsed);
+        break;
       }
     }
   }
@@ -441,6 +458,20 @@ export var PictureInPicture = {
   },
 
   /**
+   * This function updates the hover text on the urlbar PiP button when we enter or exit PiP
+   * @param {Document} document The window document
+   * @param {Element} pipToggle The urlbar PiP button
+   * @param {String} dataL10nId The data l10n id of the string we want to show
+   */
+  updateUrlbarHoverText(document, pipToggle, dataL10nId) {
+    let shortcut = document.getElementById("key_togglePictureInPicture");
+
+    document.l10n.setAttributes(pipToggle, dataL10nId, {
+      shortcut: ShortcutUtils.prettifyShortcut(shortcut),
+    });
+  },
+
+  /**
    * Toggles the visibility of the PiP urlbar button. If the total video count
    * is 1, then we will show the button. Otherwise the button is hidden.
    * @param {Browser} browser The selected browser
@@ -459,6 +490,11 @@ export var PictureInPicture = {
 
     let pipToggle = win.document.getElementById("picture-in-picture-button");
     pipToggle.hidden = !(totalPipCount === 1);
+
+    let dataL10nId = pipToggle.getAttribute("pipactive")
+      ? "picture-in-picture-urlbar-button-close"
+      : "picture-in-picture-urlbar-button-open";
+    this.updateUrlbarHoverText(win.document, pipToggle, dataL10nId);
   },
 
   /**
@@ -492,6 +528,12 @@ export var PictureInPicture = {
   setUrlbarPipIconActive(win) {
     let pipToggle = win.document.getElementById("picture-in-picture-button");
     pipToggle.toggleAttribute("pipactive", true);
+
+    this.updateUrlbarHoverText(
+      win.document,
+      pipToggle,
+      "picture-in-picture-urlbar-button-close"
+    );
   },
 
   /**
@@ -507,6 +549,12 @@ export var PictureInPicture = {
     let win = browser.ownerGlobal;
     let pipToggle = win.document.getElementById("picture-in-picture-button");
     pipToggle.toggleAttribute("pipactive", false);
+
+    this.updateUrlbarHoverText(
+      win.document,
+      pipToggle,
+      "picture-in-picture-urlbar-button-open"
+    );
   },
 
   /**
@@ -576,13 +624,11 @@ export var PictureInPicture = {
     }
     this.removePiPBrowserFromWeakMap(this.weakWinToBrowser.get(win));
 
-    let args = { reason };
     Services.telemetry.recordEvent(
       "pictureinpicture",
       "closed_method",
-      "method",
-      null,
-      args
+      reason,
+      null
     );
     await this.closePipWindow(win);
   },
@@ -642,10 +688,7 @@ export var PictureInPicture = {
     win.setScrubberPosition(videoData.scrubberPosition);
     win.setTimestamp(videoData.timestamp);
 
-    Services.prefs.setBoolPref(
-      "media.videocontrols.picture-in-picture.video-toggle.has-used",
-      true
-    );
+    Services.prefs.setBoolPref(TOGGLE_HAS_USED_PREF, true);
 
     let args = {
       width: win.innerWidth.toString(),
@@ -1253,6 +1296,11 @@ export var PictureInPicture = {
 
   hideToggle() {
     Services.prefs.setBoolPref(TOGGLE_ENABLED_PREF, false);
+    Services.telemetry.recordEvent(
+      "pictureinpicture.settings",
+      "disable",
+      "player"
+    );
   },
 
   /**
@@ -1422,5 +1470,17 @@ export var PictureInPicture = {
     );
 
     return { top, left, width, height };
+  },
+
+  setFirstSeen(dateSeconds) {
+    if (!dateSeconds) {
+      return;
+    }
+
+    Services.prefs.setIntPref(TOGGLE_FIRST_SEEN_PREF, dateSeconds);
+  },
+
+  setHasUsed(hasUsed) {
+    Services.prefs.setBoolPref(TOGGLE_HAS_USED_PREF, !!hasUsed);
   },
 };
