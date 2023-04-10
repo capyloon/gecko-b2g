@@ -2,19 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const EXPORTED_SYMBOLS = ["DeviceUtils"];
+import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
-const { XPCOMUtils } = ChromeUtils.import(
-  "resource://gre/modules/XPCOMUtils.jsm"
-);
-const { PromiseUtils } = ChromeUtils.import(
-  "resource://gre/modules/PromiseUtils.jsm"
-);
-const { AppConstants } = ChromeUtils.import(
-  "resource://gre/modules/AppConstants.jsm"
-);
+import { PromiseUtils } from "resource://gre/modules/PromiseUtils.sys.mjs";
+import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
 const isGonk = AppConstants.platform === "gonk";
+const hasRil = AppConstants.MOZ_B2G_RIL;
 
 const lazy = {};
 
@@ -61,7 +55,9 @@ const HTTP_CODE_REQUEST_TIMEOUT = 408;
 const XHR_REQUEST_TIMEOUT = 60000;
 
 XPCOMUtils.defineLazyGetter(lazy, "console", () => {
-  let { ConsoleAPI } = ChromeUtils.import("resource://gre/modules/Console.jsm");
+  let { ConsoleAPI } = ChromeUtils.importESModule(
+    "resource://gre/modules/Console.sys.mjs"
+  );
   return new ConsoleAPI({
     maxLogLevelPref: "toolkit.deviceUtils.loglevel",
     prefix: "DeviceUtils",
@@ -76,7 +72,7 @@ const device_type_map = {
   watch: 4000,
 };
 
-const DeviceUtils = {
+export const DeviceUtils = {
   device_info_cache: null,
   /**
    * Returns a Commercial Unit Reference which is vendor dependent.
@@ -98,6 +94,9 @@ const DeviceUtils = {
   },
 
   get iccInfo() {
+    if (!hasRil) {
+      return null;
+    }
     let icc = lazy.gIccService.getIccByServiceId(0);
     let iccInfo =
       icc && icc.cardState !== Ci.nsIIcc.CARD_STATE_UNDETECTED && icc.iccInfo;
@@ -109,6 +108,9 @@ const DeviceUtils = {
   },
 
   get imei() {
+    if (!hasRil) {
+      return null;
+    }
     let mobile = lazy.gMobileConnectionService.getItemByServiceId(0);
     if (mobile && mobile.deviceIdentities) {
       return mobile.deviceIdentities.imei;
@@ -137,6 +139,9 @@ const DeviceUtils = {
   },
 
   getConn(id) {
+    if (!hasRil) {
+      return null;
+    }
     let conn = lazy.gMobileConnectionService.getItemByServiceId(id);
     if (conn && conn.voice) {
       return conn.voice.network;
@@ -145,6 +150,9 @@ const DeviceUtils = {
   },
 
   get networkMcc() {
+    if (!hasRil) {
+      return null;
+    }
     let network = this.getConn(0);
     let netMcc = network && network.mcc;
     if (!netMcc && lazy.gMobileConnectionService.numItems > 1) {
@@ -155,6 +163,9 @@ const DeviceUtils = {
   },
 
   get networkMnc() {
+    if (!hasRil) {
+      return null;
+    }
     let network = this.getConn(0);
     let netMnc = network && network.mnc;
     if (!netMnc && lazy.gMobileConnectionService.numItems > 1) {
@@ -167,7 +178,7 @@ const DeviceUtils = {
   getDeviceId: function DeviceUtils_getDeviceId() {
     let deferred = PromiseUtils.defer();
     // TODO: need to check how to handle dual-SIM case.
-    if (typeof lazy.gMobileConnectionService != "undefined") {
+    if (hasRil && typeof lazy.gMobileConnectionService != "undefined") {
       let conn = lazy.gMobileConnectionService.getItemByServiceId(0);
       conn.getIdentities({
         notifyGetDeviceIdentitiesRequestSuccess(aResult) {

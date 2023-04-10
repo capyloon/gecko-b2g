@@ -1121,6 +1121,12 @@ pref("hangmonitor.timeout", 0);
 // level 0 means disable log
 pref("hangmonitor.log.level", 1);
 
+#ifdef B2G_RIL
+pref("b2g.ril.enabled", true);
+#else
+pref("b2g.ril.enabled", false);
+#endif
+
 #ifdef DISABLE_WIFI
 // Disable Gecko wifi
 pref("device.capability.wifi", false);
