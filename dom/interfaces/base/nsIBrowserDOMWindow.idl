@@ -83,6 +83,10 @@ interface nsIBrowserDOMWindow : nsISupports
    * Open in an attention window (disposition:attention).
    */
   const short OPEN_ATTENTIONWINDOW = 17;
+  /**
+   * Open in a fullscreen window (disposition:fullscreen).
+   */
+  const short OPEN_FULLSCREENWINDOW = 18;
 
   /**
    * Values for createContentWindow's and openURI's aFlags parameter.

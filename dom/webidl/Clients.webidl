@@ -48,5 +48,6 @@ dictionary ClientWindowOptions {
 enum ClientDisposition {
   "window",
   "inline",
-  "attention"
+  "attention",
+  "fullscreen"
 };
