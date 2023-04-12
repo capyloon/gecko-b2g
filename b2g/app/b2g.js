@@ -1324,3 +1324,7 @@ pref("layout.css.constructable-stylesheets.enabled", true);
 // See https://hackmd.io/@browsers-n-platforms/HykU2_jws
 pref("security.csp.enableNavigateTo", true);
 pref("network.protocol-handler.tile.csp", "default-src 'self' ipfs: ipns: http://*.localhost:* ws://localhost:*; style-src 'self' 'unsafe-inline' ipfs: ipns: http://*.localhost:*; script-src 'self' 'unsafe-inline' ipfs: ipns: 'wasm-unsafe-eval' http://*.localhost:* http://127.0.0.1:*; img-src 'self' ipfs: ipns: blob:; media-src 'self' ipfs: ipns: blob: http://localhost:*;  navigate-to 'self' ipfs: ipns:");
+
+#ifdef MOZ_WIDGET_GONK
+pref("browser.download.start_downloads_in_tmp_dir", true);
+#endif

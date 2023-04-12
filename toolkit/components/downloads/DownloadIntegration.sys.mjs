@@ -259,7 +259,24 @@ export var DownloadIntegration = {
           createAncestors: false,
         });
       }
+    } else {
+      // Try some hardocded values on devices where the volume management
+      // is not working properly.
+      let paths = ["/mnt/runtime/default/emulated"];
+
+      for (let path of paths) {
+        if (!directoryPath) {
+          let file = new lazy.FileUtils.File(path);
+          if (file.exists()) {
+            directoryPath = PathUtils.join(path, "downloads");
+            await IOUtils.makeDirectory(directoryPath, {
+              createAncestors: false,
+            });
+          }
+        }
+      }
     }
+
     if (directoryPath) {
       return directoryPath;
     }

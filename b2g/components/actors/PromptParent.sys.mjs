@@ -15,6 +15,10 @@ export class PromptParent extends JSWindowActorParent {
   receiveMessage(message) {
     let args = message.data;
     let browser = this.browsingContext.top.embedderElement;
+    if (!browser) {
+      this.log(`No browser (called from chrome?), args=${JSON.stringify(args)}`);
+      return;
+    }
     let window = browser.ownerGlobal;
 
     // If the page which called the prompt is different from the the top context
