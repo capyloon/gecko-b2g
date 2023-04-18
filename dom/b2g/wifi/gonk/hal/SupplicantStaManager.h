@@ -22,8 +22,13 @@
 #include <android/hidl/manager/1.0/IServiceNotification.h>
 #include <android/hardware/wifi/supplicant/1.0/ISupplicantIface.h>
 #include <android/hardware/wifi/supplicant/1.0/types.h>
+#if ANDROID_VERSION >= 30
+#include <android/hardware/wifi/supplicant/1.3/ISupplicant.h>
+#include <android/hardware/wifi/supplicant/1.3/ISupplicantStaIface.h>
+#else
 #include <android/hardware/wifi/supplicant/1.2/ISupplicant.h>
 #include <android/hardware/wifi/supplicant/1.2/ISupplicantStaIface.h>
+#endif
 #include <android/hardware/wifi/supplicant/1.2/ISupplicantP2pIface.h>
 
 #if defined(OLD_DEBUG)
@@ -55,6 +60,11 @@ using ISupplicantStaIfaceV1_1 =
     android::hardware::wifi::supplicant::V1_1::ISupplicantStaIface;
 using ISupplicantStaIfaceV1_2 =
     android::hardware::wifi::supplicant::V1_2::ISupplicantStaIface;
+#if ANDROID_VERSION >= 30
+using ISupplicantV1_3 = android::hardware::wifi::supplicant::V1_3::ISupplicant;
+using ISupplicantStaIfaceV1_3 =
+    android::hardware::wifi::supplicant::V1_3::ISupplicantStaIface;
+#endif
 
 using AnqpInfoId = ::android::hardware::wifi::supplicant::V1_0::
     ISupplicantStaIface::AnqpInfoId;
@@ -213,6 +223,12 @@ class SupplicantStaManager
   android::sp<ISupplicantV1_2> GetSupplicantV1_2();
   android::sp<ISupplicantStaIfaceV1_1> GetSupplicantStaIfaceV1_1();
   android::sp<ISupplicantStaIfaceV1_2> GetSupplicantStaIfaceV1_2();
+#if ANDROID_VERSION >= 30
+  android::sp<ISupplicantV1_3> GetSupplicantV1_3();
+  android::sp<ISupplicantStaIfaceV1_3> GetSupplicantStaIfaceV1_3();
+
+  bool IsSupplicantV1_3();
+#endif
 
   bool IsSupplicantV1_1();
   bool IsSupplicantV1_2();

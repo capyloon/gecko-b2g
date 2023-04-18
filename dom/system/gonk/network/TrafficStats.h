@@ -9,13 +9,13 @@
 
 #include "nsITrafficStats.h"
 #include "nsString.h"
-// FIXME
-#if 1
 #include "bpf/BpfUtils.h"
 #include "netdbpf/BpfNetworkStats.h"
 
-// using android::bpf
+#if ANDROID_VERSION >= 30
 using ::Stats;
+#else
+using android::bpf::Stats;
 #endif
 
 namespace mozilla {

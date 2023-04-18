@@ -41,7 +41,9 @@
 #include "hardware/lights.h"
 #include "hardware_legacy/uevent.h"
 #include "android/hardware/vibrator/1.0/IVibrator.h"
+#if ANDROID_VERSION >= 30
 #include "android/hardware/vibrator/IVibrator.h"
+#endif
 #include "libdisplay/GonkDisplay.h"
 
 #include "utils/threads.h"
@@ -127,7 +129,9 @@ using namespace mozilla;
 using namespace mozilla::hal;
 using namespace mozilla::dom;
 
+#if ANDROID_VERSION >= 30
 namespace Aidl = ::android::hardware::vibrator;
+#endif
 
 namespace mozilla {
 namespace hal_impl {
@@ -191,32 +195,44 @@ class HalVibrator {
       // Get a handle to the HIDL vibrator service.
       hidl = android::hardware::vibrator::V1_0::IVibrator::getService();
 
+#if ANDROID_VERSION >= 30
       // If we can't get the HIDL vibrator service, try the AIDL service.
       if (!hidl) {
         aidl = android::waitForVintfService<Aidl::IVibrator>();
-      } else {
+      }
+
+      if (!hidl && !aidl) {
         printf_stderr("Failed to run vibration pattern: vibrator == nullptr");
       }
+#endif
     }
 
     void off() {
       if (hidl) {
         hidl->off();
-      } else if (aidl) {
+      }
+#if ANDROID_VERSION >= 30
+     else if (aidl) {
         aidl->off();
       }
+#endif
     }
 
     void on(int32_t ms) {
       if (hidl) {
         hidl->on(ms);
-      } else if (aidl) {
+      }
+#if ANDROID_VERSION >= 30
+      else if (aidl) {
         aidl->on(ms, nullptr);
       }
+#endif
     }
 
   private:
+#if ANDROID_VERSION >= 30
     android::sp<Aidl::IVibrator> aidl = nullptr;
+#endif
     android::sp<android::hardware::vibrator::V1_0::IVibrator> hidl = nullptr;
 };
 
@@ -1302,29 +1318,27 @@ class FlashlightListener : public BnCameraServiceListener {
     return Status::ok();
   }
 
-  Status onPhysicalCameraStatusChanged(int32_t status, const ::android::String16& cameraId, const ::android::String16& physicalCameraId) override {
-    // do nothing
-    return Status::ok();
+#if ANDROID_VERSION >= 30
+  Status onPhysicalCameraStatusChanged (int32_t status, const ::android::String16& cameraId, const ::android::String16& physicalCameraId) override {
+   // do nothing
+   return Status::ok();
   }
 
-  Status onCameraOpened(const ::android::String16& cameraId, const ::android::String16& clientPackageId) {
-    // do nothing
-    return Status::ok();
+  Status onCameraOpened(const ::android::String16& cameraId, const ::android::String16& clientPackageId) override {
+   // do nothing
+   return Status::ok();
   }
 
-  Status onCameraClosed(const ::android::String16& cameraId) {
-    // do nothing
+  Status onCameraClosed(const ::android::String16& cameraId) override {
+   // do nothing
+   return Status::ok();
+  }
+#endif
+
+#if ANDROID_VERSION >= 33
+  Status onTorchStrengthLevelChanged(const ::android::String16& cameraId, int32_t newTorchStrength) override {
     return Status::ok();
   }
-
-  Status onTorchStrengthLevelChanged(const ::android::String16& cameraId, int32_t newTorchStrength) {
-    // do nothing
-    return Status::ok();
-  }
-
-#if 0
-  virtual ::android::binder::Status onTorchStatusChanged(int32_t status, const ::android::String16& cameraId) = 0;
-  virtual ::android::binder::Status onCameraAccessPrioritiesChanged() = 0;
 #endif
 
   Status onTorchStatusChanged(int32_t status,

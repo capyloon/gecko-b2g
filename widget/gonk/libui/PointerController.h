@@ -29,15 +29,6 @@
 
 namespace android {
 
-// FIXME
-// #include <input/DisplayViewport.h>
-enum {
-    DISPLAY_ORIENTATION_0 = 0,
-    DISPLAY_ORIENTATION_90 = 1,
-    DISPLAY_ORIENTATION_180 = 2,
-    DISPLAY_ORIENTATION_270 = 3
-};
-
 /**
  * Interface for tracking a mouse / touch pad pointer and touch pad spots.
  *

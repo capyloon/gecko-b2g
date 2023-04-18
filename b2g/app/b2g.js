@@ -1179,8 +1179,12 @@ pref("extensions.systemAddon.update.enabled", false);
 
 pref("browser.privatebrowsing.autostart", false);
 
-// FIXME: re-enable
+#if ANDROID_VERSION == 33
+// Bug 134841: to reset the level to 4.
 pref("security.sandbox.content.level", 0);
+#else
+pref("security.sandbox.content.level", 4);
+#endif
 
 pref("gfx.e10s.font-list.shared", true);
 

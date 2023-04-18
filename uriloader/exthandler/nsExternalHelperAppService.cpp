@@ -260,6 +260,10 @@ static nsresult GetDownloadDirectory(nsIFile** _directory,
   return NS_ERROR_FAILURE;
 #endif
 
+#if defined(MOZ_WIDGET_GONK)
+  return GetGonkDownloadDirectory(_directory, aSkipChecks);
+#endif
+
   bool usePrefDir = !StaticPrefs::browser_download_start_downloads_in_tmp_dir();
 
 #if defined(MOZ_WIDGET_GONK)

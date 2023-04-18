@@ -18,7 +18,6 @@
 #  error "Only ANDROID_VERSION >= 29 devices are supported"
 #endif
 
-#include <android/hardware/power/Mode.h>
 #include <gui/Surface.h>
 #include <gui/IProducerListener.h>
 #include <hardware/hardware.h>
@@ -26,7 +25,11 @@
 #include <hardware/power.h>
 #include <suspend/autosuspend.h>
 
+#if ANDROID_VERSION >= 30
+#include <android/hardware/power/Mode.h>
 #include "binder/IServiceManager.h"
+#endif
+
 #include "cutils/properties.h"
 #include "FramebufferSurface.h"
 #include "GonkDisplayP.h"
@@ -213,7 +216,12 @@ GonkDisplayP::GonkDisplayP()
   ALOGI("created native window\n");
   native_gralloc_initialize(0);
 
+#if ANDROID_VERSION >= 30
   mPower = android::waitForVintfService<IPower>();
+#else
+  mPower = IPower::getService();
+#endif
+
   if (mPower == nullptr) {
     ALOGE("Can't find IPower service...");
   }
@@ -342,9 +350,13 @@ void GonkDisplayP::SetEnabled(bool enabled) {
     if (!mExtFBEnabled) {
       autosuspend_disable();
       if (mPower) {
-        printf_stderr("Power change: display enabled=%d", enabled);
+#if ANDROID_VERSION >= 30
+        ALOGI("Power change: display enabled=%d", enabled);
         mPower->setMode(power::Mode::INTERACTIVE, true);
         mPower->setMode(power::Mode::DISPLAY_INACTIVE, false);
+#else
+        mPower->setInteractive(true);
+#endif
       }
 
       if (mHwc && mEnableHWCPower) {
@@ -376,9 +388,13 @@ void GonkDisplayP::SetEnabled(bool enabled) {
 
       autosuspend_enable();
       if (mPower) {
-        printf_stderr("Power change: display enabled=%d", enabled);
+#if ANDROID_VERSION >= 30
+        ALOGI("Power change: display enabled=%d", enabled);
         mPower->setMode(power::Mode::INTERACTIVE, false);
         mPower->setMode(power::Mode::DISPLAY_INACTIVE, true);
+#else
+        mPower->setInteractive(false);
+#endif
       }
     }
     mFBEnabled = enabled;
@@ -405,8 +421,14 @@ void GonkDisplayP::SetExtEnabled(bool enabled) {
   if (enabled) {
     if (!mFBEnabled) {
       autosuspend_disable();
-      mPower->setMode(power::Mode::INTERACTIVE, true);
-      mPower->setMode(power::Mode::DISPLAY_INACTIVE, false);
+      if (mPower) {
+#if ANDROID_VERSION >= 30
+        mPower->setMode(power::Mode::INTERACTIVE, true);
+        mPower->setMode(power::Mode::DISPLAY_INACTIVE, false);
+#else
+        mPower->setInteractive(true);
+#endif
+      }
 
       SetHwcPowerMode(enabled);
     }
@@ -427,8 +449,14 @@ void GonkDisplayP::SetExtEnabled(bool enabled) {
       SetHwcPowerMode(enabled);
 
       autosuspend_enable();
-      mPower->setMode(power::Mode::INTERACTIVE, false);
-      mPower->setMode(power::Mode::DISPLAY_INACTIVE, true);
+      if (mPower) {
+#if ANDROID_VERSION >= 30
+        mPower->setMode(power::Mode::INTERACTIVE, false);
+        mPower->setMode(power::Mode::DISPLAY_INACTIVE, true);
+#else
+        mPower->setInteractive(false);
+#endif
+      }
     }
   }
 }

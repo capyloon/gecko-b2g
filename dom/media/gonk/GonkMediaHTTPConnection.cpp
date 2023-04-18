@@ -75,9 +75,11 @@ status_t BnMediaHTTPConnection::onTransact(uint32_t code, const Parcel& data,
       if (size > memory->size()) {
         size = memory->size();
       }
-      // FIXME: These are now deprecated and are left here for backward-compatibility
-      // ssize_t len = readAt(offset, memory->pointer(), size);
-      ssize_t len = 0;
+#if ANDROID_VERSION >= 30
+      ssize_t len = readAt(offset, memory->unsecurePointer(), size);
+#else
+      ssize_t len = readAt(offset, memory->pointer(), size);
+#endif
       reply->writeNoException();
       reply->writeInt32(len);
       return NO_ERROR;

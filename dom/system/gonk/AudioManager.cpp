@@ -282,9 +282,12 @@ void AudioManager::HandleAudioFlingerDied() {
   // Restore device connection states
   SetAllDeviceConnectionStates();
 
-// FIXME
-//   // Restore call state
-//   AudioSystem::setPhoneState(static_cast<audio_mode_t>(mPhoneState));
+  // Restore call state
+#if ANDROID_VERSION >= 30
+  AudioSystem::setPhoneState(static_cast<audio_mode_t>(mPhoneState), 0);
+#else
+  AudioSystem::setPhoneState(static_cast<audio_mode_t>(mPhoneState));
+#endif
 
   // Restore master volume/mono/balance
   AudioSystem::setMasterVolume(1.0);
@@ -787,11 +790,13 @@ AudioManager::AudioManager()
 
 void AudioManager::Init() {
   // Register AudioSystem callbacks.
-// FIXME
-//  AudioSystem::setErrorCallback(BinderDeadCallback);
-
- // FIXME: Android 13 port: workaround crash
-// AudioSystem::addAudioPortCallback(mAudioPortCallbackHolder->Callback());
+#if ANDROID_VERSION >= 30
+  AudioSystem::addErrorCallback(BinderDeadCallback);
+#else
+  AudioSystem::setErrorCallback(BinderDeadCallback);
+#endif
+  // FIXME: Android 13 port: workaround crash
+  // AudioSystem::addAudioPortCallback(mAudioPortCallbackHolder->Callback());
 
   // Gecko only control stream volume not master so set to default value
   // directly.
@@ -896,8 +901,11 @@ void AudioManager::Init() {
 AudioManager::~AudioManager() {
   MOZ_ASSERT(!sAudioManager);
 
-// FIXME
-//  AudioSystem::setErrorCallback(nullptr);
+#if ANDROID_VERSION >= 30
+  AudioSystem::addErrorCallback(nullptr);
+#else
+  AudioSystem::setErrorCallback(nullptr);
+#endif
   AudioSystem::removeAudioPortCallback(mAudioPortCallbackHolder->Callback());
   hal::UnregisterSwitchObserver(hal::SWITCH_HEADPHONES, mObserver.get());
   hal::UnregisterSwitchObserver(hal::SWITCH_LINEOUT, mObserver.get());
@@ -1014,12 +1022,13 @@ AudioManager::SetPhoneState(int32_t aState) {
                          IntToString<int32_t>(aState).get());
   }
 
-// FIXME
-#if 0
+#if ANDROID_VERSION >= 30
+  if (AudioSystem::setPhoneState(static_cast<audio_mode_t>(aState), 0)) {
+#else
   if (AudioSystem::setPhoneState(static_cast<audio_mode_t>(aState))) {
+#endif
     return NS_ERROR_FAILURE;
   }
-#endif
 
   MaybeWriteVolumeSettings();
   mPhoneState = aState;

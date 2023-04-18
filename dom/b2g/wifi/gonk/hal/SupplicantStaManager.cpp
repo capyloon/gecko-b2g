@@ -31,6 +31,17 @@ static const char SUPPLICANT_INTERFACE_NAME_V1_1[] =
 static const char SUPPLICANT_INTERFACE_NAME_V1_2[] =
     "android.hardware.wifi.supplicant@1.2::ISupplicant";
 
+#if ANDROID_VERSION >= 30
+static const char SUPPLICANT_INTERFACE_NAME_V1_3[] =
+    "android.hardware.wifi.supplicant@1.3::ISupplicant";
+
+using ISupplicantStaNetworkV1_X =
+    ::android::hardware::wifi::supplicant::V1_3::ISupplicantStaNetwork;
+#else
+using ISupplicantStaNetworkV1_X =
+    ::android::hardware::wifi::supplicant::V1_2::ISupplicantStaNetwork;
+#endif
+
 static const char HAL_INSTANCE_NAME[] = "default";
 
 mozilla::Mutex SupplicantStaManager::sLock("supplicant-sta");
@@ -139,8 +150,13 @@ Result_t SupplicantStaManager::InitServiceManager() {
     return nsIWifiResult::ERROR_COMMAND_FAILED;
   }
 
+#if ANDROID_VERSION >= 30
+  if (!mServiceManager->registerForNotifications(SUPPLICANT_INTERFACE_NAME_V1_3,
+                                                 "", this)) {
+#else
   if (!mServiceManager->registerForNotifications(SUPPLICANT_INTERFACE_NAME_V1_2,
                                                  "", this)) {
+#endif
     WIFI_LOGE(LOG_TAG, "Failed to register for notifications to ISupplicant");
     mServiceManager = nullptr;
     return nsIWifiResult::ERROR_COMMAND_FAILED;
@@ -252,14 +268,21 @@ Result_t SupplicantStaManager::GetSupportedFeatures(
   uint32_t capabilities = 0;
 
   SupplicantStatus response;
+
+#if ANDROID_VERSION >= 30
+  if (IsSupplicantV1_3()) {
+    android::sp<ISupplicantStaIfaceV1_3> supplicant =
+        GetSupplicantStaIfaceV1_3();
+#else
   if (IsSupplicantV1_2()) {
-    android::sp<ISupplicantStaIfaceV1_2> supplicantV1_2 =
+    android::sp<ISupplicantStaIfaceV1_2> supplicant =
         GetSupplicantStaIfaceV1_2();
-    if (!supplicantV1_2) {
+#endif
+    if (!supplicant) {
       return nsIWifiResult::ERROR_INVALID_INTERFACE;
     }
 
-    supplicantV1_2->getKeyMgmtCapabilities(
+    supplicant->getKeyMgmtCapabilities(
         [&](const SupplicantStatus& status, uint32_t keyMgmtMask) {
           capabilities = keyMgmtMask;
           response = status;
@@ -269,19 +292,19 @@ Result_t SupplicantStaManager::GetSupportedFeatures(
       return nsIWifiResult::ERROR_COMMAND_FAILED;
     }
 
-    if (capabilities & ISupplicantStaNetworkV1_2::KeyMgmtMask::SAE) {
+    if (capabilities & ISupplicantStaNetworkV1_X::KeyMgmtMask::SAE) {
       // SAE supported
       aSupportedFeatures |= nsIWifiResult::FEATURE_WPA3_SAE;
     }
-    if (capabilities & ISupplicantStaNetworkV1_2::KeyMgmtMask::SUITE_B_192) {
+    if (capabilities & ISupplicantStaNetworkV1_X::KeyMgmtMask::SUITE_B_192) {
       // SUITE_B supported
       aSupportedFeatures |= nsIWifiResult::FEATURE_WPA3_SUITE_B;
     }
-    if (capabilities & ISupplicantStaNetworkV1_2::KeyMgmtMask::OWE) {
+    if (capabilities & ISupplicantStaNetworkV1_X::KeyMgmtMask::OWE) {
       // OWE supported
       aSupportedFeatures |= nsIWifiResult::FEATURE_OWE;
     }
-    if (capabilities & ISupplicantStaNetworkV1_2::KeyMgmtMask::DPP) {
+    if (capabilities & ISupplicantStaNetworkV1_X::KeyMgmtMask::DPP) {
       // DPP supported
       aSupportedFeatures |= nsIWifiResult::FEATURE_DPP;
     }
@@ -445,6 +468,22 @@ Result_t SupplicantStaManager::SetupStaInterface(
   android::sp<SupplicantStaIfaceCallback> supplicantCallback =
       new SupplicantStaIfaceCallback(mInterfaceName, mCallback,
                                      mPasspointCallback, this);
+#if ANDROID_VERSION >= 30
+  if (IsSupplicantV1_3()) {
+    android::sp<SupplicantStaIfaceCallbackV1_1> supplicantCallbackV1_1 =
+        new SupplicantStaIfaceCallbackV1_1(mInterfaceName, mCallback,
+                                           supplicantCallback);
+    android::sp<SupplicantStaIfaceCallbackV1_2> supplicantCallbackV1_2 =
+        new SupplicantStaIfaceCallbackV1_2(mInterfaceName, mCallback,
+                                           supplicantCallbackV1_1);
+    android::sp<SupplicantStaIfaceCallbackV1_3> supplicantCallbackV1_3 =
+        new SupplicantStaIfaceCallbackV1_3(mInterfaceName, mCallback,
+                                           supplicantCallbackV1_2);
+    HIDL_SET(GetSupplicantStaIfaceV1_3(), registerCallback_1_3,
+             SupplicantStatus, response, supplicantCallbackV1_3);
+    mSupplicantStaIfaceCallback = supplicantCallbackV1_3;
+  } else
+#endif
   if (IsSupplicantV1_2()) {
     android::sp<SupplicantStaIfaceCallbackV1_1> supplicantCallbackV1_1 =
         new SupplicantStaIfaceCallbackV1_1(mInterfaceName, mCallback,
@@ -1312,6 +1351,21 @@ bool SupplicantStaManager::IsSupplicantV1_1() {
 bool SupplicantStaManager::IsSupplicantV1_2() {
   return SupplicantVersionSupported(SUPPLICANT_INTERFACE_NAME_V1_2);
 }
+
+#if ANDROID_VERSION >= 30
+android::sp<ISupplicantV1_3> SupplicantStaManager::GetSupplicantV1_3() {
+  return ISupplicantV1_3::castFrom(GetSupplicant());
+}
+
+android::sp<ISupplicantStaIfaceV1_3>
+SupplicantStaManager::GetSupplicantStaIfaceV1_3() {
+  return ISupplicantStaIfaceV1_3::castFrom(mSupplicantStaIface);
+}
+
+bool SupplicantStaManager::IsSupplicantV1_3() {
+  return SupplicantVersionSupported(SUPPLICANT_INTERFACE_NAME_V1_3);
+}
+#endif
 
 bool SupplicantStaManager::SupplicantVersionSupported(const std::string& name) {
   if (!mServiceManager) {

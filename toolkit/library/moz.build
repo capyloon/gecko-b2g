@@ -180,13 +180,11 @@ def Libxul(name, output_category=None):
             "android.hardware.graphics.composer@2.2",
             "android.hardware.graphics.composer@2.3",
             "android.hardware.power@1.0",
-            "android.hardware.power-V3-cpp",
             "android.hardware.radio@1.0",
             "android.hardware.radio@1.1",
             "android.hardware.sensors@1.0",
             "android.hardware.sensors@2.0",
             "android.hardware.vibrator@1.0",
-            "android.hardware.vibrator-V2-cpp",
             "android.hardware.wifi@1.0",
             "android.hardware.wifi@1.1",
             "android.hardware.wifi@1.2",
@@ -198,11 +196,7 @@ def Libxul(name, output_category=None):
             "android.hardware.wifi.supplicant@1.1",
             "android.hardware.wifi.supplicant@1.2",
             "android.system.wifi.keystore@1.0",
-            "binder_b2g_connectivity_interface-V1-cpp",
             "binder_b2g_stub",
-            "binder_b2g_system_interface-V1-cpp",
-            "binder_b2g_telephony_interface-V1-cpp",
-            "binder_b2g_remotesimunlock_interface-V1-cpp",
             "dnsresolver_aidl_interface-V2-cpp",
             "netd_aidl_interface-V2-cpp",
             "netd_aidl_interface-V10-cpp",
@@ -215,7 +209,32 @@ def Libxul(name, output_category=None):
                 "android.hardware.gnss@2.0",
                 "android.hardware.gnss.visibility_control@1.0",
             )
-
+        if CONFIG["ANDROID_VERSION"] == "29":
+            AOSPSharedObjects(
+                "binder_b2g_connectivity_interface-cpp",
+                "binder_b2g_system_interface-cpp",
+                "binder_b2g_telephony_interface-cpp",
+                "binder_b2g_remotesimunlock_interface-cpp",
+            )
+        if CONFIG["ANDROID_VERSION"] == "30":
+            AOSPSharedObjects(
+                "android.hardware.power-V1-cpp",
+                "android.hardware.vibrator-V1-cpp",
+            )
+        if CONFIG["ANDROID_VERSION"] >= "30":
+            AOSPSharedObjects(
+                "android.hardware.wifi@1.4",
+                "android.hardware.wifi.supplicant@1.3",
+                "binder_b2g_connectivity_interface-V1-cpp",
+                "binder_b2g_system_interface-V1-cpp",
+                "binder_b2g_telephony_interface-V1-cpp",
+                "binder_b2g_remotesimunlock_interface-V1-cpp",
+            )
+        if CONFIG["ANDROID_VERSION"] == "33":
+            AOSPSharedObjects(
+                "android.hardware.power-V3-cpp",
+                "android.hardware.vibrator-V2-cpp",
+            )
         if CONFIG["B2G_OEMHOOK"]:
             AOSPSharedObjects(
                 "vendor.qti.hardware.radio.qcrilhook@1.0",

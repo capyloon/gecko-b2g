@@ -19,6 +19,12 @@ using ::android::defaultServiceManager;
 using ::android::IBinder;
 using ::android::String16;
 
+#if ANDROID_VERSION >= 30
+namespace Wifi = android::net::wifi::nl80211;
+#else
+namespace Wifi = android::net::wifi;
+#endif
+
 using namespace mozilla::dom::wifi;
 
 #define EVENT_HOTSPOT_CLIENT_CHANGED u"HOTSPOT_CLIENT_CHANGED"_ns
@@ -28,7 +34,7 @@ android::sp<SoftapEventService> SoftapEventService::sSoftapEvent = nullptr;
 SoftapEventService::SoftapEventService(
     const std::string& aInterfaceName,
     const android::sp<WifiEventCallback>& aCallback)
-    : android::net::wifi::nl80211::BnApInterfaceEventCallback(),
+    : Wifi::BnApInterfaceEventCallback(),
       mSoftapInterfaceName(aInterfaceName),
       mCallback(aCallback) {}
 
@@ -56,6 +62,23 @@ android::sp<SoftapEventService> SoftapEventService::CreateService(
   return sSoftapEvent;
 }
 
+#if ANDROID_VERSION >= 30
+android::binder::Status SoftapEventService::onSoftApChannelSwitched(
+    int32_t frequency, int32_t bandwidth) {
+  WIFI_LOGI(LOG_TAG, "onSoftApChannelSwitched frequency=%d bandwith=%d",
+    frequency, bandwidth);
+  return android::binder::Status::ok();
+}
+
+android::binder::Status SoftapEventService::onConnectedClientsChanged(
+    const Wifi::NativeWifiClient& client,
+          bool isConnected) {
+  WIFI_LOGI(LOG_TAG, "onConnectedClientsChanged isConnected=%s",
+    isConnected ? "yes" : "no");
+  return android::binder::Status::ok();
+}
+
+#else
 /**
  * Implement IApInterfaceEventCallback
  */
@@ -88,3 +111,4 @@ android::binder::Status SoftapEventService::onConnectedClientsChanged(
     isConnected ? "yes" : "no");
   return android::binder::Status::ok();
 }
+#endif
