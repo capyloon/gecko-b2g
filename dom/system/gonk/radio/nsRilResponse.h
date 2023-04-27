@@ -9,56 +9,15 @@
 #include <nsISupportsImpl.h>
 #include <nsTArray.h>
 
-#include <android/hardware/radio/1.1/IRadioResponse.h>
+#include "nsRadioVersion.h"
 
-using namespace ::android::hardware::radio::V1_1;
-using ::android::sp;
-using ::android::hardware::hidl_string;
-using ::android::hardware::hidl_vec;
-using ::android::hardware::Return;
-using ::android::hardware::Void;
-using ::android::hardware::radio::V1_0::ActivityStatsInfo;
-using ::android::hardware::radio::V1_0::AppState;
-using ::android::hardware::radio::V1_0::AppType;
-using ::android::hardware::radio::V1_0::Call;
-using ::android::hardware::radio::V1_0::CallForwardInfo;
-using ::android::hardware::radio::V1_0::CallForwardInfoStatus;
-using ::android::hardware::radio::V1_0::CallPresentation;
-using ::android::hardware::radio::V1_0::CallState;
-using ::android::hardware::radio::V1_0::CardState;
-using ::android::hardware::radio::V1_0::CardStatus;
-using ::android::hardware::radio::V1_0::Carrier;
-using ::android::hardware::radio::V1_0::CarrierRestrictions;
-using ::android::hardware::radio::V1_0::CdmaBroadcastSmsConfigInfo;
-using ::android::hardware::radio::V1_0::CdmaRoamingType;
-using ::android::hardware::radio::V1_0::CdmaSubscriptionSource;
-using ::android::hardware::radio::V1_0::ClipStatus;
-using ::android::hardware::radio::V1_0::DataRegStateResult;
-using ::android::hardware::radio::V1_0::GsmBroadcastSmsConfigInfo;
-using ::android::hardware::radio::V1_0::HardwareConfig;
-using ::android::hardware::radio::V1_0::IccIoResult;
-using ::android::hardware::radio::V1_0::LastCallFailCause;
-using ::android::hardware::radio::V1_0::LastCallFailCauseInfo;
-using ::android::hardware::radio::V1_0::LceDataInfo;
-using ::android::hardware::radio::V1_0::LceStatusInfo;
-using ::android::hardware::radio::V1_0::NeighboringCell;
-using ::android::hardware::radio::V1_0::OperatorInfo;
-using ::android::hardware::radio::V1_0::OperatorStatus;
-using ::android::hardware::radio::V1_0::PersoSubstate;
-using ::android::hardware::radio::V1_0::PinState;
-using ::android::hardware::radio::V1_0::PreferredNetworkType;
-using ::android::hardware::radio::V1_0::RadioBandMode;
-using ::android::hardware::radio::V1_0::RadioCapability;
-using ::android::hardware::radio::V1_0::RadioError;
-using ::android::hardware::radio::V1_0::RadioResponseInfo;
-using ::android::hardware::radio::V1_0::RadioTechnologyFamily;
-using ::android::hardware::radio::V1_0::RegState;
-using ::android::hardware::radio::V1_0::SendSmsResult;
-using ::android::hardware::radio::V1_0::TtyMode;
-using ::android::hardware::radio::V1_0::UusDcs;
-using ::android::hardware::radio::V1_0::UusType;
-using ::android::hardware::radio::V1_0::VoiceRegStateResult;
-using ::android::hardware::radio::V1_1::IRadioResponse;
+#if RADIO_HAL >= 14
+#  include <android/hardware/radio/1.4/IRadioResponse.h>
+using RADIO_1_4::IRadioResponse;
+#else
+#  include <android/hardware/radio/1.1/IRadioResponse.h>
+using RADIO_1_1::IRadioResponse;
+#endif
 
 class nsRilWorker;
 class nsRilResponse : public IRadioResponse {
@@ -68,8 +27,8 @@ class nsRilResponse : public IRadioResponse {
 
   RadioResponseInfo rspInfo;
 
-  Return<void> getIccCardStatusResponse(const RadioResponseInfo& info,
-                                        const CardStatus& cardStatus);
+  Return<void> getIccCardStatusResponse(
+      const RadioResponseInfo& info, const RADIO_1_0::CardStatus& cardStatus);
 
   Return<void> supplyIccPinForAppResponse(const RadioResponseInfo& info,
                                           int32_t remainingRetries);
@@ -92,15 +51,13 @@ class nsRilResponse : public IRadioResponse {
   Return<void> supplyNetworkDepersonalizationResponse(
       const RadioResponseInfo& info, int32_t remainingRetries);
 
-  Return<void> getCurrentCallsResponse(
-      const RadioResponseInfo& info,
-      const ::android::hardware::hidl_vec<Call>& calls);
+  Return<void> getCurrentCallsResponse(const RadioResponseInfo& info,
+                                       const hidl_vec<RADIO_1_0::Call>& calls);
 
   Return<void> dialResponse(const RadioResponseInfo& info);
 
-  Return<void> getIMSIForAppResponse(
-      const RadioResponseInfo& info,
-      const ::android::hardware::hidl_string& imsi);
+  Return<void> getIMSIForAppResponse(const RadioResponseInfo& info,
+                                     const hidl_string& imsi);
 
   Return<void> hangupConnectionResponse(const RadioResponseInfo& info);
 
@@ -120,21 +77,22 @@ class nsRilResponse : public IRadioResponse {
       const RadioResponseInfo& info,
       const LastCallFailCauseInfo& failCauseInfo);
 
-  Return<void> getSignalStrengthResponse(const RadioResponseInfo& info,
-                                         const SignalStrength& sigStrength);
+  Return<void> getSignalStrengthResponse(
+      const RadioResponseInfo& info,
+      const RADIO_1_0::SignalStrength& sigStrength);
 
   Return<void> getVoiceRegistrationStateResponse(
       const RadioResponseInfo& info,
-      const VoiceRegStateResult& voiceRegResponse);
+      const RADIO_1_0::VoiceRegStateResult& voiceRegResponse);
 
   Return<void> getDataRegistrationStateResponse(
-      const RadioResponseInfo& info, const DataRegStateResult& dataRegResponse);
-
-  Return<void> getOperatorResponse(
       const RadioResponseInfo& info,
-      const ::android::hardware::hidl_string& longName,
-      const ::android::hardware::hidl_string& shortName,
-      const ::android::hardware::hidl_string& numeric);
+      const RADIO_1_0::DataRegStateResult& dataRegResponse);
+
+  Return<void> getOperatorResponse(const RadioResponseInfo& info,
+                                   const hidl_string& longName,
+                                   const hidl_string& shortName,
+                                   const hidl_string& numeric);
 
   Return<void> setRadioPowerResponse(const RadioResponseInfo& info);
 
@@ -146,8 +104,9 @@ class nsRilResponse : public IRadioResponse {
   Return<void> sendSMSExpectMoreResponse(const RadioResponseInfo& info,
                                          const SendSmsResult& sms);
 
-  Return<void> setupDataCallResponse(const RadioResponseInfo& info,
-                                     const SetupDataCallResult& dcResponse);
+  Return<void> setupDataCallResponse(
+      const RadioResponseInfo& info,
+      const RADIO_1_0::SetupDataCallResult& dcResponse);
 
   Return<void> iccIOForAppResponse(const RadioResponseInfo& info,
                                    const IccIoResult& iccIo);
@@ -163,7 +122,7 @@ class nsRilResponse : public IRadioResponse {
 
   Return<void> getCallForwardStatusResponse(
       const RadioResponseInfo& info,
-      const ::android::hardware::hidl_vec<CallForwardInfo>& call_forwardInfos);
+      const hidl_vec<CallForwardInfo>& call_forwardInfos);
 
   Return<void> setCallForwardResponse(const RadioResponseInfo& info);
 
@@ -198,15 +157,14 @@ class nsRilResponse : public IRadioResponse {
 
   Return<void> getAvailableNetworksResponse(
       const RadioResponseInfo& info,
-      const ::android::hardware::hidl_vec<OperatorInfo>& networkInfos);
+      const hidl_vec<OperatorInfo>& networkInfos);
 
   Return<void> startDtmfResponse(const RadioResponseInfo& info);
 
   Return<void> stopDtmfResponse(const RadioResponseInfo& info);
 
-  Return<void> getBasebandVersionResponse(
-      const RadioResponseInfo& info,
-      const ::android::hardware::hidl_string& version);
+  Return<void> getBasebandVersionResponse(const RadioResponseInfo& info,
+                                          const hidl_string& version);
 
   Return<void> separateConnectionResponse(const RadioResponseInfo& info);
 
@@ -219,16 +177,13 @@ class nsRilResponse : public IRadioResponse {
 
   Return<void> getDataCallListResponse(
       const RadioResponseInfo& info,
-      const ::android::hardware::hidl_vec<SetupDataCallResult>& dcResponse);
+      const hidl_vec<RADIO_1_0::SetupDataCallResult>& dcResponse);
 
-  Return<void> sendOemRilRequestRawResponse(
-      const RadioResponseInfo& info,
-      const ::android::hardware::hidl_vec<uint8_t>& data);
+  Return<void> sendOemRilRequestRawResponse(const RadioResponseInfo& info,
+                                            const hidl_vec<uint8_t>& data);
 
   Return<void> sendOemRilRequestStringsResponse(
-      const RadioResponseInfo& info,
-      const ::android::hardware::hidl_vec<::android::hardware::hidl_string>&
-          data);
+      const RadioResponseInfo& info, const hidl_vec<hidl_string>& data);
 
   Return<void> setSuppServiceNotificationsResponse(
       const RadioResponseInfo& info);
@@ -241,12 +196,10 @@ class nsRilResponse : public IRadioResponse {
   Return<void> setBandModeResponse(const RadioResponseInfo& info);
 
   Return<void> getAvailableBandModesResponse(
-      const RadioResponseInfo& info,
-      const ::android::hardware::hidl_vec<RadioBandMode>& bandModes);
+      const RadioResponseInfo& info, const hidl_vec<RadioBandMode>& bandModes);
 
-  Return<void> sendEnvelopeResponse(
-      const RadioResponseInfo& info,
-      const ::android::hardware::hidl_string& commandResponse);
+  Return<void> sendEnvelopeResponse(const RadioResponseInfo& info,
+                                    const hidl_string& commandResponse);
 
   Return<void> sendTerminalResponseToSimResponse(const RadioResponseInfo& info);
 
@@ -261,8 +214,7 @@ class nsRilResponse : public IRadioResponse {
                                                PreferredNetworkType nwType);
 
   Return<void> getNeighboringCidsResponse(
-      const RadioResponseInfo& info,
-      const ::android::hardware::hidl_vec<NeighboringCell>& cells);
+      const RadioResponseInfo& info, const hidl_vec<NeighboringCell>& cells);
 
   Return<void> setLocationUpdatesResponse(const RadioResponseInfo& info);
 
@@ -294,7 +246,7 @@ class nsRilResponse : public IRadioResponse {
 
   Return<void> getGsmBroadcastConfigResponse(
       const RadioResponseInfo& info,
-      const ::android::hardware::hidl_vec<GsmBroadcastSmsConfigInfo>& configs);
+      const hidl_vec<GsmBroadcastSmsConfigInfo>& configs);
 
   Return<void> setGsmBroadcastConfigResponse(const RadioResponseInfo& info);
 
@@ -302,38 +254,35 @@ class nsRilResponse : public IRadioResponse {
 
   Return<void> getCdmaBroadcastConfigResponse(
       const RadioResponseInfo& info,
-      const ::android::hardware::hidl_vec<CdmaBroadcastSmsConfigInfo>& configs);
+      const hidl_vec<CdmaBroadcastSmsConfigInfo>& configs);
 
   Return<void> setCdmaBroadcastConfigResponse(const RadioResponseInfo& info);
 
   Return<void> setCdmaBroadcastActivationResponse(
       const RadioResponseInfo& info);
 
-  Return<void> getCDMASubscriptionResponse(
-      const RadioResponseInfo& info,
-      const ::android::hardware::hidl_string& mdn,
-      const ::android::hardware::hidl_string& hSid,
-      const ::android::hardware::hidl_string& hNid,
-      const ::android::hardware::hidl_string& min,
-      const ::android::hardware::hidl_string& prl);
+  Return<void> getCDMASubscriptionResponse(const RadioResponseInfo& info,
+                                           const hidl_string& mdn,
+                                           const hidl_string& hSid,
+                                           const hidl_string& hNid,
+                                           const hidl_string& min,
+                                           const hidl_string& prl);
 
   Return<void> writeSmsToRuimResponse(const RadioResponseInfo& info,
                                       uint32_t index);
 
   Return<void> deleteSmsOnRuimResponse(const RadioResponseInfo& info);
 
-  Return<void> getDeviceIdentityResponse(
-      const RadioResponseInfo& info,
-      const ::android::hardware::hidl_string& imei,
-      const ::android::hardware::hidl_string& imeisv,
-      const ::android::hardware::hidl_string& esn,
-      const ::android::hardware::hidl_string& meid);
+  Return<void> getDeviceIdentityResponse(const RadioResponseInfo& info,
+                                         const hidl_string& imei,
+                                         const hidl_string& imeisv,
+                                         const hidl_string& esn,
+                                         const hidl_string& meid);
 
   Return<void> exitEmergencyCallbackModeResponse(const RadioResponseInfo& info);
 
-  Return<void> getSmscAddressResponse(
-      const RadioResponseInfo& info,
-      const ::android::hardware::hidl_string& smsc);
+  Return<void> getSmscAddressResponse(const RadioResponseInfo& info,
+                                      const hidl_string& smsc);
 
   Return<void> setSmscAddressResponse(const RadioResponseInfo& info);
 
@@ -344,9 +293,8 @@ class nsRilResponse : public IRadioResponse {
   Return<void> getCdmaSubscriptionSourceResponse(const RadioResponseInfo& info,
                                                  CdmaSubscriptionSource source);
 
-  Return<void> requestIsimAuthenticationResponse(
-      const RadioResponseInfo& info,
-      const ::android::hardware::hidl_string& response);
+  Return<void> requestIsimAuthenticationResponse(const RadioResponseInfo& info,
+                                                 const hidl_string& response);
 
   Return<void> acknowledgeIncomingGsmSmsWithPduResponse(
       const RadioResponseInfo& info);
@@ -355,11 +303,11 @@ class nsRilResponse : public IRadioResponse {
                                               const IccIoResult& iccIo);
 
   Return<void> getVoiceRadioTechnologyResponse(const RadioResponseInfo& info,
-                                               RadioTechnology rat);
+                                               RADIO_1_0::RadioTechnology rat);
 
   Return<void> getCellInfoListResponse(
       const RadioResponseInfo& info,
-      const ::android::hardware::hidl_vec<CellInfo>& cellInfo);
+      const hidl_vec<RADIO_1_0::CellInfo>& cellInfo);
 
   Return<void> setCellInfoListRateResponse(const RadioResponseInfo& info);
 
@@ -377,16 +325,15 @@ class nsRilResponse : public IRadioResponse {
 
   Return<void> iccOpenLogicalChannelResponse(
       const RadioResponseInfo& info, int32_t channelId,
-      const ::android::hardware::hidl_vec<int8_t>& selectResponse);
+      const hidl_vec<int8_t>& selectResponse);
 
   Return<void> iccCloseLogicalChannelResponse(const RadioResponseInfo& info);
 
   Return<void> iccTransmitApduLogicalChannelResponse(
       const RadioResponseInfo& info, const IccIoResult& result);
 
-  Return<void> nvReadItemResponse(
-      const RadioResponseInfo& info,
-      const ::android::hardware::hidl_string& result);
+  Return<void> nvReadItemResponse(const RadioResponseInfo& info,
+                                  const hidl_string& result);
 
   Return<void> nvWriteItemResponse(const RadioResponseInfo& info);
 
@@ -399,8 +346,7 @@ class nsRilResponse : public IRadioResponse {
   Return<void> setDataAllowedResponse(const RadioResponseInfo& info);
 
   Return<void> getHardwareConfigResponse(
-      const RadioResponseInfo& info,
-      const ::android::hardware::hidl_vec<HardwareConfig>& config);
+      const RadioResponseInfo& info, const hidl_vec<HardwareConfig>& config);
 
   Return<void> requestIccSimAuthenticationResponse(
       const RadioResponseInfo& info, const IccIoResult& result);
@@ -410,10 +356,10 @@ class nsRilResponse : public IRadioResponse {
   Return<void> requestShutdownResponse(const RadioResponseInfo& info);
 
   Return<void> getRadioCapabilityResponse(const RadioResponseInfo& info,
-                                          const RadioCapability& rc);
+                                          const RADIO_1_0::RadioCapability& rc);
 
   Return<void> setRadioCapabilityResponse(const RadioResponseInfo& info,
-                                          const RadioCapability& rc);
+                                          const RADIO_1_0::RadioCapability& rc);
 
   Return<void> startLceServiceResponse(const RadioResponseInfo& info,
                                        const LceStatusInfo& statusInfo);
@@ -455,6 +401,65 @@ class nsRilResponse : public IRadioResponse {
                                       const KeepaliveStatus& status);
 
   Return<void> stopKeepaliveResponse(const RadioResponseInfo& info);
+
+#if RADIO_HAL >= 14
+  Return<void> getSignalStrengthResponse_1_4(
+      const RadioResponseInfo& info,
+      const RADIO_1_4::SignalStrength& signalStrength);
+  Return<void> getAllowedCarriersResponse_1_4(
+      const RadioResponseInfo& info,
+      const RADIO_1_4::CarrierRestrictionsWithPriority& carriers,
+      RADIO_1_4::SimLockMultiSimPolicy multiSimPolicy);
+  Return<void> setAllowedCarriersResponse_1_4(const RadioResponseInfo& info);
+  Return<void> setupDataCallResponse_1_4(
+      const RadioResponseInfo& info,
+      const RADIO_1_4::SetupDataCallResult& dcResponse);
+  Return<void> getDataCallListResponse_1_4(
+      const RadioResponseInfo& info,
+      const hidl_vec<RADIO_1_4::SetupDataCallResult>& dcResponse);
+  Return<void> setPreferredNetworkTypeBitmapResponse(
+      const RadioResponseInfo& info);
+  Return<void> getPreferredNetworkTypeBitmapResponse(
+      const RadioResponseInfo& info,
+      ::android::hardware::hidl_bitfield<RADIO_1_4::RadioAccessFamily>
+          networkTypeBitmap);
+  Return<void> getIccCardStatusResponse_1_4(
+      const RadioResponseInfo& info, const RADIO_1_4::CardStatus& cardStatus);
+  Return<void> getDataRegistrationStateResponse_1_4(
+      const RadioResponseInfo& info,
+      const RADIO_1_4::DataRegStateResult& dataRegResponse);
+  Return<void> getCellInfoListResponse_1_4(
+      const RadioResponseInfo& info,
+      const hidl_vec<RADIO_1_4::CellInfo>& cellInfo);
+  Return<void> startNetworkScanResponse_1_4(const RadioResponseInfo& info);
+  Return<void> emergencyDialResponse(const RadioResponseInfo& info);
+  Return<void> getModemStackStatusResponse(const RadioResponseInfo& info,
+                                           bool isEnabled);
+  Return<void> enableModemResponse(const RadioResponseInfo& info);
+  Return<void> setSystemSelectionChannelsResponse(
+      const RadioResponseInfo& info);
+
+  Return<void> getDataRegistrationStateResponse_1_2(
+      const RadioResponseInfo& info,
+      const RADIO_1_2::DataRegStateResult& dataRegResponse);
+  Return<void> getVoiceRegistrationStateResponse_1_2(
+      const RadioResponseInfo& info,
+      const RADIO_1_2::VoiceRegStateResult& voiceRegResponse);
+  Return<void> getSignalStrengthResponse_1_2(
+      const RadioResponseInfo& info,
+      const RADIO_1_2::SignalStrength& signalStrength);
+  Return<void> getCurrentCallsResponse_1_2(
+      const RadioResponseInfo& info, const hidl_vec<RADIO_1_2::Call>& calls);
+  Return<void> setLinkCapacityReportingCriteriaResponse(
+      const RadioResponseInfo& info);
+  Return<void> setSignalStrengthReportingCriteriaResponse(
+      const RadioResponseInfo& info);
+  Return<void> getIccCardStatusResponse_1_2(
+      const RadioResponseInfo& info, const RADIO_1_2::CardStatus& cardStatus);
+  Return<void> getCellInfoListResponse_1_2(
+      const RadioResponseInfo& info,
+      const hidl_vec<RADIO_1_2::CellInfo>& cellInfo);
+#endif
 
  private:
   void defaultResponse(const RadioResponseInfo& rspInfo,

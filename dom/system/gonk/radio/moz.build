@@ -39,6 +39,9 @@ UNIFIED_SOURCES += [
 ]
 
 EXPORTS += [
+    "nsRadioTypes1_1.h",
+    "nsRadioTypes1_4.h",
+    "nsRadioVersion.h",
     "nsRilIndication.h",
     "nsRilIndicationResult.h",
     "nsRilResponse.h",

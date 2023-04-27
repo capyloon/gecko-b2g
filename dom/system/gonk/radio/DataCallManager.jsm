@@ -159,7 +159,7 @@ const RIL_RADIO_CDMA_TECHNOLOGY_BITMASK =
   (1 << (RIL.GECKO_RADIO_TECH.indexOf("ehrpd") - 1));
 
 // set to true in ril_consts.js to see debug messages
-var DEBUG = RIL_DEBUG.DEBUG_RIL;
+var DEBUG = true; //RIL_DEBUG.DEBUG_RIL;
 
 function updateDebugFlag() {
   // Read debug setting from pref
@@ -2011,6 +2011,15 @@ DataCall.prototype = {
     return sizes;
   },
 
+  /* Sample data:
+   {"failCause":0,
+    "suggestedRetryTime":-1,
+    "cid":2,"active":2,"pdpType":2,
+    "ifname":"rmnet1",
+    "addresses":"2607:fb91:7917:805c:ac39:9a51:4f60:b000/64",
+    "dnses":"fd00:976a::9 fd00:976a::10",
+    "gateways":"::","pcscf":"","mtu":1436}
+ */
   onSetupDataCallResult(aDataCall) {
     this.debug("onSetupDataCallResult: " + JSON.stringify(aDataCall));
     let errorMsg = aDataCall.errorMsg;
@@ -2110,6 +2119,7 @@ DataCall.prototype = {
     for (let i = 0; i < this.requestedNetworkIfaces.length; i++) {
       this.requestedNetworkIfaces[i].notifyRILNetworkInterface();
     }
+    this.debug("onSetupDataCallResult done");
   },
 
   onDeactivateDataCallResult() {
@@ -2451,7 +2461,7 @@ DataCall.prototype = {
   },
 
   reset() {
-    this.debug("reset");
+    this.debug(`reset from ${new Error().stack}`);
     this.resetLinkInfo();
 
     // Reset the retry counter.

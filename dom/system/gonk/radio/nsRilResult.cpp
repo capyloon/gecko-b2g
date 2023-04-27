@@ -1833,177 +1833,362 @@ nsRilResult::~nsRilResult() {}
 
 // Helper function
 
-int32_t nsRilResult::convertRadioTechnology(RadioTechnology aRat) {
+int32_t nsRilResult::convertRadioTechnology(RADIO_1_0::RadioTechnology aRat) {
   switch (aRat) {
-    case RadioTechnology::UNKNOWN:
+    case RADIO_1_0::RadioTechnology::UNKNOWN:
       return nsIRadioTechnologyState::RADIO_CREG_TECH_UNKNOWN;
-    case RadioTechnology::GPRS:
+    case RADIO_1_0::RadioTechnology::GPRS:
       return nsIRadioTechnologyState::RADIO_CREG_TECH_GPRS;
-    case RadioTechnology::EDGE:
+    case RADIO_1_0::RadioTechnology::EDGE:
       return nsIRadioTechnologyState::RADIO_CREG_TECH_EDGE;
-    case RadioTechnology::UMTS:
+    case RADIO_1_0::RadioTechnology::UMTS:
       return nsIRadioTechnologyState::RADIO_CREG_TECH_UMTS;
-    case RadioTechnology::IS95A:
+    case RADIO_1_0::RadioTechnology::IS95A:
       return nsIRadioTechnologyState::RADIO_CREG_TECH_IS95A;
-    case RadioTechnology::IS95B:
+    case RADIO_1_0::RadioTechnology::IS95B:
       return nsIRadioTechnologyState::RADIO_CREG_TECH_IS95B;
-    case RadioTechnology::ONE_X_RTT:
+    case RADIO_1_0::RadioTechnology::ONE_X_RTT:
       return nsIRadioTechnologyState::RADIO_CREG_TECH_1XRTT;
-    case RadioTechnology::EVDO_0:
+    case RADIO_1_0::RadioTechnology::EVDO_0:
       return nsIRadioTechnologyState::RADIO_CREG_TECH_EVDO0;
-    case RadioTechnology::EVDO_A:
+    case RADIO_1_0::RadioTechnology::EVDO_A:
       return nsIRadioTechnologyState::RADIO_CREG_TECH_EVDOA;
-    case RadioTechnology::HSDPA:
+    case RADIO_1_0::RadioTechnology::HSDPA:
       return nsIRadioTechnologyState::RADIO_CREG_TECH_HSDPA;
-    case RadioTechnology::HSUPA:
+    case RADIO_1_0::RadioTechnology::HSUPA:
       return nsIRadioTechnologyState::RADIO_CREG_TECH_HSUPA;
-    case RadioTechnology::HSPA:
+    case RADIO_1_0::RadioTechnology::HSPA:
       return nsIRadioTechnologyState::RADIO_CREG_TECH_HSPA;
-    case RadioTechnology::EVDO_B:
+    case RADIO_1_0::RadioTechnology::EVDO_B:
       return nsIRadioTechnologyState::RADIO_CREG_TECH_EVDOB;
-    case RadioTechnology::EHRPD:
+    case RADIO_1_0::RadioTechnology::EHRPD:
       return nsIRadioTechnologyState::RADIO_CREG_TECH_EHRPD;
-    case RadioTechnology::LTE:
+    case RADIO_1_0::RadioTechnology::LTE:
       return nsIRadioTechnologyState::RADIO_CREG_TECH_LTE;
-    case RadioTechnology::HSPAP:
+    case RADIO_1_0::RadioTechnology::HSPAP:
       return nsIRadioTechnologyState::RADIO_CREG_TECH_HSPAP;
-    case RadioTechnology::GSM:
+    case RADIO_1_0::RadioTechnology::GSM:
       return nsIRadioTechnologyState::RADIO_CREG_TECH_GSM;
-    case RadioTechnology::TD_SCDMA:
+    case RADIO_1_0::RadioTechnology::TD_SCDMA:
       return nsIRadioTechnologyState::RADIO_CREG_TECH_TD_SCDMA;
-    case RadioTechnology::IWLAN:
+    case RADIO_1_0::RadioTechnology::IWLAN:
       return nsIRadioTechnologyState::RADIO_CREG_TECH_IWLAN;
-    case RadioTechnology::LTE_CA:
+    case RADIO_1_0::RadioTechnology::LTE_CA:
       return nsIRadioTechnologyState::RADIO_CREG_TECH_LTE_CA;
     default:
       return nsIRadioTechnologyState::RADIO_CREG_TECH_UNKNOWN;
   }
 }
 
-int32_t nsRilResult::convertDataCallFailCause(DataCallFailCause aCause) {
+#if RADIO_HAL >= 14
+int32_t nsRilResult::convertRadioTechnology(RADIO_1_4::RadioTechnology aRat) {
+  switch (aRat) {
+    case RADIO_1_4::RadioTechnology::UNKNOWN:
+      return nsIRadioTechnologyState::RADIO_CREG_TECH_UNKNOWN;
+    case RADIO_1_4::RadioTechnology::GPRS:
+      return nsIRadioTechnologyState::RADIO_CREG_TECH_GPRS;
+    case RADIO_1_4::RadioTechnology::EDGE:
+      return nsIRadioTechnologyState::RADIO_CREG_TECH_EDGE;
+    case RADIO_1_4::RadioTechnology::UMTS:
+      return nsIRadioTechnologyState::RADIO_CREG_TECH_UMTS;
+    case RADIO_1_4::RadioTechnology::IS95A:
+      return nsIRadioTechnologyState::RADIO_CREG_TECH_IS95A;
+    case RADIO_1_4::RadioTechnology::IS95B:
+      return nsIRadioTechnologyState::RADIO_CREG_TECH_IS95B;
+    case RADIO_1_4::RadioTechnology::ONE_X_RTT:
+      return nsIRadioTechnologyState::RADIO_CREG_TECH_1XRTT;
+    case RADIO_1_4::RadioTechnology::EVDO_0:
+      return nsIRadioTechnologyState::RADIO_CREG_TECH_EVDO0;
+    case RADIO_1_4::RadioTechnology::EVDO_A:
+      return nsIRadioTechnologyState::RADIO_CREG_TECH_EVDOA;
+    case RADIO_1_4::RadioTechnology::HSDPA:
+      return nsIRadioTechnologyState::RADIO_CREG_TECH_HSDPA;
+    case RADIO_1_4::RadioTechnology::HSUPA:
+      return nsIRadioTechnologyState::RADIO_CREG_TECH_HSUPA;
+    case RADIO_1_4::RadioTechnology::HSPA:
+      return nsIRadioTechnologyState::RADIO_CREG_TECH_HSPA;
+    case RADIO_1_4::RadioTechnology::EVDO_B:
+      return nsIRadioTechnologyState::RADIO_CREG_TECH_EVDOB;
+    case RADIO_1_4::RadioTechnology::EHRPD:
+      return nsIRadioTechnologyState::RADIO_CREG_TECH_EHRPD;
+    case RADIO_1_4::RadioTechnology::LTE:
+      return nsIRadioTechnologyState::RADIO_CREG_TECH_LTE;
+    case RADIO_1_4::RadioTechnology::HSPAP:
+      return nsIRadioTechnologyState::RADIO_CREG_TECH_HSPAP;
+    case RADIO_1_4::RadioTechnology::GSM:
+      return nsIRadioTechnologyState::RADIO_CREG_TECH_GSM;
+    case RADIO_1_4::RadioTechnology::TD_SCDMA:
+      return nsIRadioTechnologyState::RADIO_CREG_TECH_TD_SCDMA;
+    case RADIO_1_4::RadioTechnology::IWLAN:
+      return nsIRadioTechnologyState::RADIO_CREG_TECH_IWLAN;
+    case RADIO_1_4::RadioTechnology::LTE_CA:
+      return nsIRadioTechnologyState::RADIO_CREG_TECH_LTE_CA;
+    // TODO: Add support for RadioTechnology::NR to nsIRadioTechnologyState
+    default:
+      return nsIRadioTechnologyState::RADIO_CREG_TECH_UNKNOWN;
+  }
+}
+
+int32_t nsRilResult::convertDataCallFailCause(
+    RADIO_1_4::DataCallFailCause aCause) {
+#  define TYPE_NAME RADIO_1_4::DataCallFailCause
   switch (aCause) {
-    case DataCallFailCause::NONE:
+    case TYPE_NAME::NONE:
       return nsIDataCallFailCause::DATACALL_FAIL_NONE;
-    case DataCallFailCause::OPERATOR_BARRED:
+    case TYPE_NAME::OPERATOR_BARRED:
       return nsIDataCallFailCause::DATACALL_FAIL_OPERATOR_BARRED;
-    case DataCallFailCause::NAS_SIGNALLING:
+    case TYPE_NAME::NAS_SIGNALLING:
       return nsIDataCallFailCause::DATACALL_FAIL_NAS_SIGNALLING;
-    case DataCallFailCause::INSUFFICIENT_RESOURCES:
+    case TYPE_NAME::INSUFFICIENT_RESOURCES:
       return nsIDataCallFailCause::DATACALL_FAIL_INSUFFICIENT_RESOURCES;
-    case DataCallFailCause::MISSING_UKNOWN_APN:
+    case TYPE_NAME::MISSING_UKNOWN_APN:
       return nsIDataCallFailCause::DATACALL_FAIL_MISSING_UKNOWN_APN;
-    case DataCallFailCause::UNKNOWN_PDP_ADDRESS_TYPE:
+    case TYPE_NAME::UNKNOWN_PDP_ADDRESS_TYPE:
       return nsIDataCallFailCause::DATACALL_FAIL_UNKNOWN_PDP_ADDRESS_TYPE;
-    case DataCallFailCause::USER_AUTHENTICATION:
+    case TYPE_NAME::USER_AUTHENTICATION:
       return nsIDataCallFailCause::DATACALL_FAIL_USER_AUTHENTICATION;
-    case DataCallFailCause::ACTIVATION_REJECT_GGSN:
+    case TYPE_NAME::ACTIVATION_REJECT_GGSN:
       return nsIDataCallFailCause::DATACALL_FAIL_ACTIVATION_REJECT_GGSN;
-    case DataCallFailCause::ACTIVATION_REJECT_UNSPECIFIED:
+    case TYPE_NAME::ACTIVATION_REJECT_UNSPECIFIED:
       return nsIDataCallFailCause::DATACALL_FAIL_ACTIVATION_REJECT_UNSPECIFIED;
-    case DataCallFailCause::SERVICE_OPTION_NOT_SUPPORTED:
+    case TYPE_NAME::SERVICE_OPTION_NOT_SUPPORTED:
       return nsIDataCallFailCause::DATACALL_FAIL_SERVICE_OPTION_NOT_SUPPORTED;
-    case DataCallFailCause::SERVICE_OPTION_NOT_SUBSCRIBED:
+    case TYPE_NAME::SERVICE_OPTION_NOT_SUBSCRIBED:
       return nsIDataCallFailCause::DATACALL_FAIL_SERVICE_OPTION_NOT_SUBSCRIBED;
-    case DataCallFailCause::SERVICE_OPTION_OUT_OF_ORDER:
+    case TYPE_NAME::SERVICE_OPTION_OUT_OF_ORDER:
       return nsIDataCallFailCause::DATACALL_FAIL_SERVICE_OPTION_OUT_OF_ORDER;
-    case DataCallFailCause::NSAPI_IN_USE:
+    case TYPE_NAME::NSAPI_IN_USE:
       return nsIDataCallFailCause::DATACALL_FAIL_NSAPI_IN_USE;
-    case DataCallFailCause::REGULAR_DEACTIVATION:
+    case TYPE_NAME::REGULAR_DEACTIVATION:
       return nsIDataCallFailCause::DATACALL_FAIL_REGULAR_DEACTIVATION;
-    case DataCallFailCause::QOS_NOT_ACCEPTED:
+    case TYPE_NAME::QOS_NOT_ACCEPTED:
       return nsIDataCallFailCause::DATACALL_FAIL_QOS_NOT_ACCEPTED;
-    case DataCallFailCause::NETWORK_FAILURE:
+    case TYPE_NAME::NETWORK_FAILURE:
       return nsIDataCallFailCause::DATACALL_FAIL_NETWORK_FAILURE;
-    case DataCallFailCause::UMTS_REACTIVATION_REQ:
+    case TYPE_NAME::UMTS_REACTIVATION_REQ:
       return nsIDataCallFailCause::DATACALL_FAIL_UMTS_REACTIVATION_REQ;
-    case DataCallFailCause::FEATURE_NOT_SUPP:
+    case TYPE_NAME::FEATURE_NOT_SUPP:
       return nsIDataCallFailCause::DATACALL_FAIL_FEATURE_NOT_SUPP;
-    case DataCallFailCause::TFT_SEMANTIC_ERROR:
+    case TYPE_NAME::TFT_SEMANTIC_ERROR:
       return nsIDataCallFailCause::DATACALL_FAIL_TFT_SEMANTIC_ERROR;
-    case DataCallFailCause::TFT_SYTAX_ERROR:
+    case TYPE_NAME::TFT_SYTAX_ERROR:
       return nsIDataCallFailCause::DATACALL_FAIL_TFT_SYTAX_ERROR;
-    case DataCallFailCause::UNKNOWN_PDP_CONTEXT:
+    case TYPE_NAME::UNKNOWN_PDP_CONTEXT:
       return nsIDataCallFailCause::DATACALL_FAIL_UNKNOWN_PDP_CONTEXT;
-    case DataCallFailCause::FILTER_SEMANTIC_ERROR:
+    case TYPE_NAME::FILTER_SEMANTIC_ERROR:
       return nsIDataCallFailCause::DATACALL_FAIL_FILTER_SEMANTIC_ERROR;
-    case DataCallFailCause::FILTER_SYTAX_ERROR:
+    case TYPE_NAME::FILTER_SYTAX_ERROR:
       return nsIDataCallFailCause::DATACALL_FAIL_FILTER_SYTAX_ERROR;
-    case DataCallFailCause::PDP_WITHOUT_ACTIVE_TFT:
+    case TYPE_NAME::PDP_WITHOUT_ACTIVE_TFT:
       return nsIDataCallFailCause::DATACALL_FAIL_PDP_WITHOUT_ACTIVE_TFT;
-    case DataCallFailCause::ONLY_IPV4_ALLOWED:
+    case TYPE_NAME::ONLY_IPV4_ALLOWED:
       return nsIDataCallFailCause::DATACALL_FAIL_ONLY_IPV4_ALLOWED;
-    case DataCallFailCause::ONLY_IPV6_ALLOWED:
+    case TYPE_NAME::ONLY_IPV6_ALLOWED:
       return nsIDataCallFailCause::DATACALL_FAIL_ONLY_IPV6_ALLOWED;
-    case DataCallFailCause::ONLY_SINGLE_BEARER_ALLOWED:
+    case TYPE_NAME::ONLY_SINGLE_BEARER_ALLOWED:
       return nsIDataCallFailCause::DATACALL_FAIL_ONLY_SINGLE_BEARER_ALLOWED;
-    case DataCallFailCause::ESM_INFO_NOT_RECEIVED:
+    case TYPE_NAME::ESM_INFO_NOT_RECEIVED:
       return nsIDataCallFailCause::DATACALL_FAIL_ESM_INFO_NOT_RECEIVED;
-    case DataCallFailCause::PDN_CONN_DOES_NOT_EXIST:
+    case TYPE_NAME::PDN_CONN_DOES_NOT_EXIST:
       return nsIDataCallFailCause::DATACALL_FAIL_PDN_CONN_DOES_NOT_EXIST;
-    case DataCallFailCause::MULTI_CONN_TO_SAME_PDN_NOT_ALLOWED:
+    case TYPE_NAME::MULTI_CONN_TO_SAME_PDN_NOT_ALLOWED:
       return nsIDataCallFailCause::
           DATACALL_FAIL_MULTI_CONN_TO_SAME_PDN_NOT_ALLOWED;
-    case DataCallFailCause::MAX_ACTIVE_PDP_CONTEXT_REACHED:
+    case TYPE_NAME::MAX_ACTIVE_PDP_CONTEXT_REACHED:
       return nsIDataCallFailCause::DATACALL_FAIL_MAX_ACTIVE_PDP_CONTEXT_REACHED;
-    case DataCallFailCause::UNSUPPORTED_APN_IN_CURRENT_PLMN:
+    case TYPE_NAME::UNSUPPORTED_APN_IN_CURRENT_PLMN:
       return nsIDataCallFailCause::
           DATACALL_FAIL_UNSUPPORTED_APN_IN_CURRENT_PLMN;
-    case DataCallFailCause::INVALID_TRANSACTION_ID:
+    case TYPE_NAME::INVALID_TRANSACTION_ID:
       return nsIDataCallFailCause::DATACALL_FAIL_INVALID_TRANSACTION_ID;
-    case DataCallFailCause::MESSAGE_INCORRECT_SEMANTIC:
+    case TYPE_NAME::MESSAGE_INCORRECT_SEMANTIC:
       return nsIDataCallFailCause::DATACALL_FAIL_MESSAGE_INCORRECT_SEMANTIC;
-    case DataCallFailCause::INVALID_MANDATORY_INFO:
+    case TYPE_NAME::INVALID_MANDATORY_INFO:
       return nsIDataCallFailCause::DATACALL_FAIL_INVALID_MANDATORY_INFO;
-    case DataCallFailCause::MESSAGE_TYPE_UNSUPPORTED:
+    case TYPE_NAME::MESSAGE_TYPE_UNSUPPORTED:
       return nsIDataCallFailCause::DATACALL_FAIL_MESSAGE_TYPE_UNSUPPORTED;
-    case DataCallFailCause::MSG_TYPE_NONCOMPATIBLE_STATE:
+    case TYPE_NAME::MSG_TYPE_NONCOMPATIBLE_STATE:
       return nsIDataCallFailCause::DATACALL_FAIL_MSG_TYPE_NONCOMPATIBLE_STATE;
-    case DataCallFailCause::UNKNOWN_INFO_ELEMENT:
+    case TYPE_NAME::UNKNOWN_INFO_ELEMENT:
       return nsIDataCallFailCause::DATACALL_FAIL_UNKNOWN_INFO_ELEMENT;
-    case DataCallFailCause::CONDITIONAL_IE_ERROR:
+    case TYPE_NAME::CONDITIONAL_IE_ERROR:
       return nsIDataCallFailCause::DATACALL_FAIL_CONDITIONAL_IE_ERROR;
-    case DataCallFailCause::MSG_AND_PROTOCOL_STATE_UNCOMPATIBLE:
+    case TYPE_NAME::MSG_AND_PROTOCOL_STATE_UNCOMPATIBLE:
       return nsIDataCallFailCause::
           DATACALL_FAIL_MSG_AND_PROTOCOL_STATE_UNCOMPATIBLE;
-    case DataCallFailCause::PROTOCOL_ERRORS:
+    case TYPE_NAME::PROTOCOL_ERRORS:
       return nsIDataCallFailCause::DATACALL_FAIL_PROTOCOL_ERRORS;
-    case DataCallFailCause::APN_TYPE_CONFLICT:
+    case TYPE_NAME::APN_TYPE_CONFLICT:
       return nsIDataCallFailCause::DATACALL_FAIL_APN_TYPE_CONFLICT;
-    case DataCallFailCause::INVALID_PCSCF_ADDR:
+    case TYPE_NAME::INVALID_PCSCF_ADDR:
       return nsIDataCallFailCause::DATACALL_FAIL_INVALID_PCSCF_ADDR;
-    case DataCallFailCause::INTERNAL_CALL_PREEMPT_BY_HIGH_PRIO_APN:
+    case TYPE_NAME::INTERNAL_CALL_PREEMPT_BY_HIGH_PRIO_APN:
       return nsIDataCallFailCause::
           DATACALL_FAIL_INTERNAL_CALL_PREEMPT_BY_HIGH_PRIO_APN;
-    case DataCallFailCause::EMM_ACCESS_BARRED:
+    case TYPE_NAME::EMM_ACCESS_BARRED:
       return nsIDataCallFailCause::DATACALL_FAIL_EMM_ACCESS_BARRED;
-    case DataCallFailCause::EMERGENCY_IFACE_ONLY:
+    case TYPE_NAME::EMERGENCY_IFACE_ONLY:
       return nsIDataCallFailCause::DATACALL_FAIL_EMERGENCY_IFACE_ONLY;
-    case DataCallFailCause::IFACE_MISMATCH:
+    case TYPE_NAME::IFACE_MISMATCH:
       return nsIDataCallFailCause::DATACALL_FAIL_IFACE_MISMATCH;
-    case DataCallFailCause::COMPANION_IFACE_IN_USE:
+    case TYPE_NAME::COMPANION_IFACE_IN_USE:
       return nsIDataCallFailCause::DATACALL_FAIL_COMPANION_IFACE_IN_USE;
-    case DataCallFailCause::IP_ADDRESS_MISMATCH:
+    case TYPE_NAME::IP_ADDRESS_MISMATCH:
       return nsIDataCallFailCause::DATACALL_FAIL_IP_ADDRESS_MISMATCH;
-    case DataCallFailCause::IFACE_AND_POL_FAMILY_MISMATCH:
+    case TYPE_NAME::IFACE_AND_POL_FAMILY_MISMATCH:
       return nsIDataCallFailCause::DATACALL_FAIL_IFACE_AND_POL_FAMILY_MISMATCH;
-    case DataCallFailCause::EMM_ACCESS_BARRED_INFINITE_RETRY:
+    case TYPE_NAME::EMM_ACCESS_BARRED_INFINITE_RETRY:
       return nsIDataCallFailCause::
           DATACALL_FAIL_EMM_ACCESS_BARRED_INFINITE_RETRY;
-    case DataCallFailCause::AUTH_FAILURE_ON_EMERGENCY_CALL:
+    case TYPE_NAME::AUTH_FAILURE_ON_EMERGENCY_CALL:
       return nsIDataCallFailCause::DATACALL_FAIL_AUTH_FAILURE_ON_EMERGENCY_CALL;
-    case DataCallFailCause::VOICE_REGISTRATION_FAIL:
+    case TYPE_NAME::VOICE_REGISTRATION_FAIL:
       return nsIDataCallFailCause::DATACALL_FAIL_VOICE_REGISTRATION_FAIL;
-    case DataCallFailCause::DATA_REGISTRATION_FAIL:
+    case TYPE_NAME::DATA_REGISTRATION_FAIL:
       return nsIDataCallFailCause::DATACALL_FAIL_DATA_REGISTRATION_FAIL;
-    case DataCallFailCause::SIGNAL_LOST:
+    case TYPE_NAME::SIGNAL_LOST:
       return nsIDataCallFailCause::DATACALL_FAIL_SIGNAL_LOST;
-    case DataCallFailCause::PREF_RADIO_TECH_CHANGED:
+    case TYPE_NAME::PREF_RADIO_TECH_CHANGED:
       return nsIDataCallFailCause::DATACALL_FAIL_PREF_RADIO_TECH_CHANGED;
-    case DataCallFailCause::RADIO_POWER_OFF:
+    case TYPE_NAME::RADIO_POWER_OFF:
       return nsIDataCallFailCause::DATACALL_FAIL_RADIO_POWER_OFF;
-    case DataCallFailCause::TETHERED_CALL_ACTIVE:
+    case TYPE_NAME::TETHERED_CALL_ACTIVE:
       return nsIDataCallFailCause::DATACALL_FAIL_TETHERED_CALL_ACTIVE;
-    case DataCallFailCause::ERROR_UNSPECIFIED:
+    case TYPE_NAME::ERROR_UNSPECIFIED:
+      return nsIDataCallFailCause::DATACALL_FAIL_ERROR_UNSPECIFIED;
+    default:
+      return nsIDataCallFailCause::DATACALL_FAIL_ERROR_UNSPECIFIED;
+  }
+}
+
+#endif
+
+int32_t nsRilResult::convertDataCallFailCause(
+    RADIO_1_0::DataCallFailCause aCause) {
+#define TYPE_NAME RADIO_1_0::DataCallFailCause
+  switch (aCause) {
+    case TYPE_NAME::NONE:
+      return nsIDataCallFailCause::DATACALL_FAIL_NONE;
+    case TYPE_NAME::OPERATOR_BARRED:
+      return nsIDataCallFailCause::DATACALL_FAIL_OPERATOR_BARRED;
+    case TYPE_NAME::NAS_SIGNALLING:
+      return nsIDataCallFailCause::DATACALL_FAIL_NAS_SIGNALLING;
+    case TYPE_NAME::INSUFFICIENT_RESOURCES:
+      return nsIDataCallFailCause::DATACALL_FAIL_INSUFFICIENT_RESOURCES;
+    case TYPE_NAME::MISSING_UKNOWN_APN:
+      return nsIDataCallFailCause::DATACALL_FAIL_MISSING_UKNOWN_APN;
+    case TYPE_NAME::UNKNOWN_PDP_ADDRESS_TYPE:
+      return nsIDataCallFailCause::DATACALL_FAIL_UNKNOWN_PDP_ADDRESS_TYPE;
+    case TYPE_NAME::USER_AUTHENTICATION:
+      return nsIDataCallFailCause::DATACALL_FAIL_USER_AUTHENTICATION;
+    case TYPE_NAME::ACTIVATION_REJECT_GGSN:
+      return nsIDataCallFailCause::DATACALL_FAIL_ACTIVATION_REJECT_GGSN;
+    case TYPE_NAME::ACTIVATION_REJECT_UNSPECIFIED:
+      return nsIDataCallFailCause::DATACALL_FAIL_ACTIVATION_REJECT_UNSPECIFIED;
+    case TYPE_NAME::SERVICE_OPTION_NOT_SUPPORTED:
+      return nsIDataCallFailCause::DATACALL_FAIL_SERVICE_OPTION_NOT_SUPPORTED;
+    case TYPE_NAME::SERVICE_OPTION_NOT_SUBSCRIBED:
+      return nsIDataCallFailCause::DATACALL_FAIL_SERVICE_OPTION_NOT_SUBSCRIBED;
+    case TYPE_NAME::SERVICE_OPTION_OUT_OF_ORDER:
+      return nsIDataCallFailCause::DATACALL_FAIL_SERVICE_OPTION_OUT_OF_ORDER;
+    case TYPE_NAME::NSAPI_IN_USE:
+      return nsIDataCallFailCause::DATACALL_FAIL_NSAPI_IN_USE;
+    case TYPE_NAME::REGULAR_DEACTIVATION:
+      return nsIDataCallFailCause::DATACALL_FAIL_REGULAR_DEACTIVATION;
+    case TYPE_NAME::QOS_NOT_ACCEPTED:
+      return nsIDataCallFailCause::DATACALL_FAIL_QOS_NOT_ACCEPTED;
+    case TYPE_NAME::NETWORK_FAILURE:
+      return nsIDataCallFailCause::DATACALL_FAIL_NETWORK_FAILURE;
+    case TYPE_NAME::UMTS_REACTIVATION_REQ:
+      return nsIDataCallFailCause::DATACALL_FAIL_UMTS_REACTIVATION_REQ;
+    case TYPE_NAME::FEATURE_NOT_SUPP:
+      return nsIDataCallFailCause::DATACALL_FAIL_FEATURE_NOT_SUPP;
+    case TYPE_NAME::TFT_SEMANTIC_ERROR:
+      return nsIDataCallFailCause::DATACALL_FAIL_TFT_SEMANTIC_ERROR;
+    case TYPE_NAME::TFT_SYTAX_ERROR:
+      return nsIDataCallFailCause::DATACALL_FAIL_TFT_SYTAX_ERROR;
+    case TYPE_NAME::UNKNOWN_PDP_CONTEXT:
+      return nsIDataCallFailCause::DATACALL_FAIL_UNKNOWN_PDP_CONTEXT;
+    case TYPE_NAME::FILTER_SEMANTIC_ERROR:
+      return nsIDataCallFailCause::DATACALL_FAIL_FILTER_SEMANTIC_ERROR;
+    case TYPE_NAME::FILTER_SYTAX_ERROR:
+      return nsIDataCallFailCause::DATACALL_FAIL_FILTER_SYTAX_ERROR;
+    case TYPE_NAME::PDP_WITHOUT_ACTIVE_TFT:
+      return nsIDataCallFailCause::DATACALL_FAIL_PDP_WITHOUT_ACTIVE_TFT;
+    case TYPE_NAME::ONLY_IPV4_ALLOWED:
+      return nsIDataCallFailCause::DATACALL_FAIL_ONLY_IPV4_ALLOWED;
+    case TYPE_NAME::ONLY_IPV6_ALLOWED:
+      return nsIDataCallFailCause::DATACALL_FAIL_ONLY_IPV6_ALLOWED;
+    case TYPE_NAME::ONLY_SINGLE_BEARER_ALLOWED:
+      return nsIDataCallFailCause::DATACALL_FAIL_ONLY_SINGLE_BEARER_ALLOWED;
+    case TYPE_NAME::ESM_INFO_NOT_RECEIVED:
+      return nsIDataCallFailCause::DATACALL_FAIL_ESM_INFO_NOT_RECEIVED;
+    case TYPE_NAME::PDN_CONN_DOES_NOT_EXIST:
+      return nsIDataCallFailCause::DATACALL_FAIL_PDN_CONN_DOES_NOT_EXIST;
+    case TYPE_NAME::MULTI_CONN_TO_SAME_PDN_NOT_ALLOWED:
+      return nsIDataCallFailCause::
+          DATACALL_FAIL_MULTI_CONN_TO_SAME_PDN_NOT_ALLOWED;
+    case TYPE_NAME::MAX_ACTIVE_PDP_CONTEXT_REACHED:
+      return nsIDataCallFailCause::DATACALL_FAIL_MAX_ACTIVE_PDP_CONTEXT_REACHED;
+    case TYPE_NAME::UNSUPPORTED_APN_IN_CURRENT_PLMN:
+      return nsIDataCallFailCause::
+          DATACALL_FAIL_UNSUPPORTED_APN_IN_CURRENT_PLMN;
+    case TYPE_NAME::INVALID_TRANSACTION_ID:
+      return nsIDataCallFailCause::DATACALL_FAIL_INVALID_TRANSACTION_ID;
+    case TYPE_NAME::MESSAGE_INCORRECT_SEMANTIC:
+      return nsIDataCallFailCause::DATACALL_FAIL_MESSAGE_INCORRECT_SEMANTIC;
+    case TYPE_NAME::INVALID_MANDATORY_INFO:
+      return nsIDataCallFailCause::DATACALL_FAIL_INVALID_MANDATORY_INFO;
+    case TYPE_NAME::MESSAGE_TYPE_UNSUPPORTED:
+      return nsIDataCallFailCause::DATACALL_FAIL_MESSAGE_TYPE_UNSUPPORTED;
+    case TYPE_NAME::MSG_TYPE_NONCOMPATIBLE_STATE:
+      return nsIDataCallFailCause::DATACALL_FAIL_MSG_TYPE_NONCOMPATIBLE_STATE;
+    case TYPE_NAME::UNKNOWN_INFO_ELEMENT:
+      return nsIDataCallFailCause::DATACALL_FAIL_UNKNOWN_INFO_ELEMENT;
+    case TYPE_NAME::CONDITIONAL_IE_ERROR:
+      return nsIDataCallFailCause::DATACALL_FAIL_CONDITIONAL_IE_ERROR;
+    case TYPE_NAME::MSG_AND_PROTOCOL_STATE_UNCOMPATIBLE:
+      return nsIDataCallFailCause::
+          DATACALL_FAIL_MSG_AND_PROTOCOL_STATE_UNCOMPATIBLE;
+    case TYPE_NAME::PROTOCOL_ERRORS:
+      return nsIDataCallFailCause::DATACALL_FAIL_PROTOCOL_ERRORS;
+    case TYPE_NAME::APN_TYPE_CONFLICT:
+      return nsIDataCallFailCause::DATACALL_FAIL_APN_TYPE_CONFLICT;
+    case TYPE_NAME::INVALID_PCSCF_ADDR:
+      return nsIDataCallFailCause::DATACALL_FAIL_INVALID_PCSCF_ADDR;
+    case TYPE_NAME::INTERNAL_CALL_PREEMPT_BY_HIGH_PRIO_APN:
+      return nsIDataCallFailCause::
+          DATACALL_FAIL_INTERNAL_CALL_PREEMPT_BY_HIGH_PRIO_APN;
+    case TYPE_NAME::EMM_ACCESS_BARRED:
+      return nsIDataCallFailCause::DATACALL_FAIL_EMM_ACCESS_BARRED;
+    case TYPE_NAME::EMERGENCY_IFACE_ONLY:
+      return nsIDataCallFailCause::DATACALL_FAIL_EMERGENCY_IFACE_ONLY;
+    case TYPE_NAME::IFACE_MISMATCH:
+      return nsIDataCallFailCause::DATACALL_FAIL_IFACE_MISMATCH;
+    case TYPE_NAME::COMPANION_IFACE_IN_USE:
+      return nsIDataCallFailCause::DATACALL_FAIL_COMPANION_IFACE_IN_USE;
+    case TYPE_NAME::IP_ADDRESS_MISMATCH:
+      return nsIDataCallFailCause::DATACALL_FAIL_IP_ADDRESS_MISMATCH;
+    case TYPE_NAME::IFACE_AND_POL_FAMILY_MISMATCH:
+      return nsIDataCallFailCause::DATACALL_FAIL_IFACE_AND_POL_FAMILY_MISMATCH;
+    case TYPE_NAME::EMM_ACCESS_BARRED_INFINITE_RETRY:
+      return nsIDataCallFailCause::
+          DATACALL_FAIL_EMM_ACCESS_BARRED_INFINITE_RETRY;
+    case TYPE_NAME::AUTH_FAILURE_ON_EMERGENCY_CALL:
+      return nsIDataCallFailCause::DATACALL_FAIL_AUTH_FAILURE_ON_EMERGENCY_CALL;
+    case TYPE_NAME::VOICE_REGISTRATION_FAIL:
+      return nsIDataCallFailCause::DATACALL_FAIL_VOICE_REGISTRATION_FAIL;
+    case TYPE_NAME::DATA_REGISTRATION_FAIL:
+      return nsIDataCallFailCause::DATACALL_FAIL_DATA_REGISTRATION_FAIL;
+    case TYPE_NAME::SIGNAL_LOST:
+      return nsIDataCallFailCause::DATACALL_FAIL_SIGNAL_LOST;
+    case TYPE_NAME::PREF_RADIO_TECH_CHANGED:
+      return nsIDataCallFailCause::DATACALL_FAIL_PREF_RADIO_TECH_CHANGED;
+    case TYPE_NAME::RADIO_POWER_OFF:
+      return nsIDataCallFailCause::DATACALL_FAIL_RADIO_POWER_OFF;
+    case TYPE_NAME::TETHERED_CALL_ACTIVE:
+      return nsIDataCallFailCause::DATACALL_FAIL_TETHERED_CALL_ACTIVE;
+    case TYPE_NAME::ERROR_UNSPECIFIED:
       return nsIDataCallFailCause::DATACALL_FAIL_ERROR_UNSPECIFIED;
     default:
       return nsIDataCallFailCause::DATACALL_FAIL_ERROR_UNSPECIFIED;
@@ -2011,7 +2196,60 @@ int32_t nsRilResult::convertDataCallFailCause(DataCallFailCause aCause) {
 }
 
 RefPtr<nsCellIdentity> nsRilResult::convertCellIdentity(
-    const CellIdentity& aCellIdentity) {
+    const RADIO_1_0::CellIdentity& aCellIdentity) {
+  int32_t cellInfoType = convertCellInfoType(aCellIdentity.cellInfoType);
+  if (aCellIdentity.cellInfoType == CellInfoType::GSM) {
+    uint32_t numCellIdentityGsm = aCellIdentity.cellIdentityGsm.size();
+    if (numCellIdentityGsm > 0) {
+      RefPtr<nsCellIdentityGsm> cellIdentityGsm =
+          convertCellIdentityGsm(aCellIdentity.cellIdentityGsm[0]);
+      RefPtr<nsCellIdentity> cellIdentity =
+          new nsCellIdentity(cellInfoType, cellIdentityGsm);
+      return cellIdentity;
+    }
+  } else if (aCellIdentity.cellInfoType == CellInfoType::LTE) {
+    uint32_t numCellIdentityLte = aCellIdentity.cellIdentityLte.size();
+    if (numCellIdentityLte > 0) {
+      RefPtr<nsCellIdentityLte> cellIdentityLte =
+          convertCellIdentityLte(aCellIdentity.cellIdentityLte[0]);
+      RefPtr<nsCellIdentity> cellIdentity =
+          new nsCellIdentity(cellInfoType, cellIdentityLte);
+      return cellIdentity;
+    }
+  } else if (aCellIdentity.cellInfoType == CellInfoType::WCDMA) {
+    uint32_t numCellIdentityWcdma = aCellIdentity.cellIdentityWcdma.size();
+    if (numCellIdentityWcdma > 0) {
+      RefPtr<nsCellIdentityWcdma> cellIdentityWcdma =
+          convertCellIdentityWcdma(aCellIdentity.cellIdentityWcdma[0]);
+      RefPtr<nsCellIdentity> cellIdentity =
+          new nsCellIdentity(cellInfoType, cellIdentityWcdma);
+      return cellIdentity;
+    }
+  } else if (aCellIdentity.cellInfoType == CellInfoType::TD_SCDMA) {
+    uint32_t numCellIdentityTdScdma = aCellIdentity.cellIdentityTdscdma.size();
+    if (numCellIdentityTdScdma > 0) {
+      RefPtr<nsCellIdentityTdScdma> cellIdentityTdScdma =
+          convertCellIdentityTdScdma(aCellIdentity.cellIdentityTdscdma[0]);
+      RefPtr<nsCellIdentity> cellIdentity =
+          new nsCellIdentity(cellInfoType, cellIdentityTdScdma);
+      return cellIdentity;
+    }
+  } else if (aCellIdentity.cellInfoType == CellInfoType::CDMA) {
+    uint32_t numCellIdentityCdma = aCellIdentity.cellIdentityCdma.size();
+    if (numCellIdentityCdma > 0) {
+      RefPtr<nsCellIdentityCdma> cellIdentityCdma =
+          convertCellIdentityCdma(aCellIdentity.cellIdentityCdma[0]);
+      RefPtr<nsCellIdentity> cellIdentity =
+          new nsCellIdentity(cellInfoType, cellIdentityCdma);
+      return cellIdentity;
+    }
+  }
+  return nullptr;
+}
+
+#if RADIO_HAL >= 14
+RefPtr<nsCellIdentity> nsRilResult::convertCellIdentity(
+    const RADIO_1_2::CellIdentity& aCellIdentity) {
   int32_t cellInfoType = convertCellInfoType(aCellIdentity.cellInfoType);
   if (aCellIdentity.cellInfoType == CellInfoType::GSM) {
     uint32_t numCellIdentityGsm = aCellIdentity.cellIdentityGsm.size();
@@ -2063,7 +2301,58 @@ RefPtr<nsCellIdentity> nsRilResult::convertCellIdentity(
 }
 
 RefPtr<nsCellIdentityGsm> nsRilResult::convertCellIdentityGsm(
-    const CellIdentityGsm& aCellIdentityGsm) {
+    const RADIO_1_2::CellIdentityGsm& aCellIdentityGsm) {
+  auto cellIdentity = aCellIdentityGsm.base;
+  RefPtr<nsCellIdentityGsm> cellIdentityGsm = new nsCellIdentityGsm(
+      NS_ConvertUTF8toUTF16(cellIdentity.mcc.c_str()),
+      NS_ConvertUTF8toUTF16(cellIdentity.mnc.c_str()), cellIdentity.lac,
+      cellIdentity.cid, cellIdentity.arfcn, cellIdentity.bsic);
+  return cellIdentityGsm;
+}
+
+RefPtr<nsCellIdentityLte> nsRilResult::convertCellIdentityLte(
+    const RADIO_1_2::CellIdentityLte& aCellIdentityLte) {
+  auto cellIdentity = aCellIdentityLte.base;
+  RefPtr<nsCellIdentityLte> cellIdentityLte = new nsCellIdentityLte(
+      NS_ConvertUTF8toUTF16(cellIdentity.mcc.c_str()),
+      NS_ConvertUTF8toUTF16(cellIdentity.mnc.c_str()), cellIdentity.ci,
+      cellIdentity.pci, cellIdentity.tac, cellIdentity.earfcn);
+  return cellIdentityLte;
+}
+
+RefPtr<nsCellIdentityWcdma> nsRilResult::convertCellIdentityWcdma(
+    const RADIO_1_2::CellIdentityWcdma& aCellIdentityWcdma) {
+  auto cellIdentity = aCellIdentityWcdma.base;
+  RefPtr<nsCellIdentityWcdma> cellIdentityWcdma = new nsCellIdentityWcdma(
+      NS_ConvertUTF8toUTF16(cellIdentity.mcc.c_str()),
+      NS_ConvertUTF8toUTF16(cellIdentity.mnc.c_str()), cellIdentity.lac,
+      cellIdentity.cid, cellIdentity.psc, cellIdentity.uarfcn);
+  return cellIdentityWcdma;
+}
+
+RefPtr<nsCellIdentityTdScdma> nsRilResult::convertCellIdentityTdScdma(
+    const RADIO_1_2::CellIdentityTdscdma& aCellIdentityTdScdma) {
+  auto cellIdentity = aCellIdentityTdScdma.base;
+  RefPtr<nsCellIdentityTdScdma> cellIdentityTdScdma = new nsCellIdentityTdScdma(
+      NS_ConvertUTF8toUTF16(cellIdentity.mcc.c_str()),
+      NS_ConvertUTF8toUTF16(cellIdentity.mnc.c_str()), cellIdentity.lac,
+      cellIdentity.cid, cellIdentity.cpid);
+  return cellIdentityTdScdma;
+}
+
+RefPtr<nsCellIdentityCdma> nsRilResult::convertCellIdentityCdma(
+    const RADIO_1_2::CellIdentityCdma& aCellIdentityCdma) {
+  auto cellIdentity = aCellIdentityCdma.base;
+  RefPtr<nsCellIdentityCdma> cellIdentityCdma = new nsCellIdentityCdma(
+      cellIdentity.networkId, cellIdentity.systemId, cellIdentity.baseStationId,
+      cellIdentity.longitude, cellIdentity.latitude);
+  return cellIdentityCdma;
+}
+
+#endif
+
+RefPtr<nsCellIdentityGsm> nsRilResult::convertCellIdentityGsm(
+    const RADIO_1_0::CellIdentityGsm& aCellIdentityGsm) {
   RefPtr<nsCellIdentityGsm> cellIdentityGsm = new nsCellIdentityGsm(
       NS_ConvertUTF8toUTF16(aCellIdentityGsm.mcc.c_str()),
       NS_ConvertUTF8toUTF16(aCellIdentityGsm.mnc.c_str()), aCellIdentityGsm.lac,
@@ -2072,7 +2361,7 @@ RefPtr<nsCellIdentityGsm> nsRilResult::convertCellIdentityGsm(
 }
 
 RefPtr<nsCellIdentityLte> nsRilResult::convertCellIdentityLte(
-    const CellIdentityLte& aCellIdentityLte) {
+    const RADIO_1_0::CellIdentityLte& aCellIdentityLte) {
   RefPtr<nsCellIdentityLte> cellIdentityLte = new nsCellIdentityLte(
       NS_ConvertUTF8toUTF16(aCellIdentityLte.mcc.c_str()),
       NS_ConvertUTF8toUTF16(aCellIdentityLte.mnc.c_str()), aCellIdentityLte.ci,
@@ -2081,7 +2370,7 @@ RefPtr<nsCellIdentityLte> nsRilResult::convertCellIdentityLte(
 }
 
 RefPtr<nsCellIdentityWcdma> nsRilResult::convertCellIdentityWcdma(
-    const CellIdentityWcdma& aCellIdentityWcdma) {
+    const RADIO_1_0::CellIdentityWcdma& aCellIdentityWcdma) {
   RefPtr<nsCellIdentityWcdma> cellIdentityWcdma = new nsCellIdentityWcdma(
       NS_ConvertUTF8toUTF16(aCellIdentityWcdma.mcc.c_str()),
       NS_ConvertUTF8toUTF16(aCellIdentityWcdma.mnc.c_str()),
@@ -2091,7 +2380,7 @@ RefPtr<nsCellIdentityWcdma> nsRilResult::convertCellIdentityWcdma(
 }
 
 RefPtr<nsCellIdentityTdScdma> nsRilResult::convertCellIdentityTdScdma(
-    const CellIdentityTdscdma& aCellIdentityTdScdma) {
+    const RADIO_1_0::CellIdentityTdscdma& aCellIdentityTdScdma) {
   RefPtr<nsCellIdentityTdScdma> cellIdentityTdScdma = new nsCellIdentityTdScdma(
       NS_ConvertUTF8toUTF16(aCellIdentityTdScdma.mcc.c_str()),
       NS_ConvertUTF8toUTF16(aCellIdentityTdScdma.mnc.c_str()),
@@ -2101,7 +2390,7 @@ RefPtr<nsCellIdentityTdScdma> nsRilResult::convertCellIdentityTdScdma(
 }
 
 RefPtr<nsCellIdentityCdma> nsRilResult::convertCellIdentityCdma(
-    const CellIdentityCdma& aCellIdentityCdma) {
+    const RADIO_1_0::CellIdentityCdma& aCellIdentityCdma) {
   RefPtr<nsCellIdentityCdma> cellIdentityCdma = new nsCellIdentityCdma(
       aCellIdentityCdma.networkId, aCellIdentityCdma.systemId,
       aCellIdentityCdma.baseStationId, aCellIdentityCdma.longitude,
@@ -2109,8 +2398,29 @@ RefPtr<nsCellIdentityCdma> nsRilResult::convertCellIdentityCdma(
   return cellIdentityCdma;
 }
 
+#if RADIO_HAL >= 14
 RefPtr<nsSignalStrength> nsRilResult::convertSignalStrength(
-    const SignalStrength& aSignalStrength) {
+    const RADIO_1_4::SignalStrength& aSignalStrength) {
+  RefPtr<nsGsmSignalStrength> gsmSignalStrength =
+      convertGsmSignalStrength(aSignalStrength.gsm);
+  RefPtr<nsCdmaSignalStrength> cdmaSignalStrength =
+      convertCdmaSignalStrength(aSignalStrength.cdma);
+  RefPtr<nsEvdoSignalStrength> evdoSignalStrength =
+      convertEvdoSignalStrength(aSignalStrength.evdo);
+  RefPtr<nsLteSignalStrength> lteSignalStrength =
+      convertLteSignalStrength(aSignalStrength.lte);
+  RefPtr<nsTdScdmaSignalStrength> tdscdmaSignalStrength =
+      convertTdScdmaSignalStrength(aSignalStrength.tdscdma);
+  RefPtr<nsSignalStrength> signalStrength = new nsSignalStrength(
+      gsmSignalStrength, cdmaSignalStrength, evdoSignalStrength,
+      lteSignalStrength, tdscdmaSignalStrength);
+
+  return signalStrength;
+}
+#endif
+
+RefPtr<nsSignalStrength> nsRilResult::convertSignalStrength(
+    const RADIO_1_0::SignalStrength& aSignalStrength) {
   RefPtr<nsGsmSignalStrength> gsmSignalStrength =
       convertGsmSignalStrength(aSignalStrength.gw);
   RefPtr<nsCdmaSignalStrength> cdmaSignalStrength =
@@ -2121,7 +2431,6 @@ RefPtr<nsSignalStrength> nsRilResult::convertSignalStrength(
       convertLteSignalStrength(aSignalStrength.lte);
   RefPtr<nsTdScdmaSignalStrength> tdscdmaSignalStrength =
       convertTdScdmaSignalStrength(aSignalStrength.tdScdma);
-
   RefPtr<nsSignalStrength> signalStrength = new nsSignalStrength(
       gsmSignalStrength, cdmaSignalStrength, evdoSignalStrength,
       lteSignalStrength, tdscdmaSignalStrength);
@@ -2139,12 +2448,12 @@ RefPtr<nsGsmSignalStrength> nsRilResult::convertGsmSignalStrength(
 }
 
 RefPtr<nsWcdmaSignalStrength> nsRilResult::convertWcdmaSignalStrength(
-    const WcdmaSignalStrength& aWcdmaSignalStrength) {
+    const RADIO_1_0::WcdmaSignalStrength& aWcdmaSignalStrength) {
   RefPtr<nsWcdmaSignalStrength> wcdmaSignalStrength = new nsWcdmaSignalStrength(
       aWcdmaSignalStrength.signalStrength, aWcdmaSignalStrength.bitErrorRate);
-
   return wcdmaSignalStrength;
 }
+
 RefPtr<nsCdmaSignalStrength> nsRilResult::convertCdmaSignalStrength(
     const CdmaSignalStrength& aCdmaSignalStrength) {
   RefPtr<nsCdmaSignalStrength> cdmaSignalStrength = new nsCdmaSignalStrength(
@@ -2169,16 +2478,104 @@ RefPtr<nsLteSignalStrength> nsRilResult::convertLteSignalStrength(
 
   return lteSignalStrength;
 }
+
+#if RADIO_HAL >= 14
+RefPtr<nsWcdmaSignalStrength> nsRilResult::convertWcdmaSignalStrength(
+    const RADIO_1_2::WcdmaSignalStrength& aWcdmaSignalStrength) {
+  RefPtr<nsWcdmaSignalStrength> wcdmaSignalStrength =
+      new nsWcdmaSignalStrength(aWcdmaSignalStrength.base.signalStrength,
+                                aWcdmaSignalStrength.base.bitErrorRate);
+  return wcdmaSignalStrength;
+}
+
 RefPtr<nsTdScdmaSignalStrength> nsRilResult::convertTdScdmaSignalStrength(
-    const TdScdmaSignalStrength& aTdScdmaSignalStrength) {
+    const RADIO_1_2::TdscdmaSignalStrength& aTdScdmaSignalStrength) {
+  RefPtr<nsTdScdmaSignalStrength> tdscdmaSignalStrength =
+      new nsTdScdmaSignalStrength(aTdScdmaSignalStrength.rscp);
+
+  return tdscdmaSignalStrength;
+}
+#endif
+
+RefPtr<nsTdScdmaSignalStrength> nsRilResult::convertTdScdmaSignalStrength(
+    const RADIO_1_0::TdScdmaSignalStrength& aTdScdmaSignalStrength) {
   RefPtr<nsTdScdmaSignalStrength> tdscdmaSignalStrength =
       new nsTdScdmaSignalStrength(aTdScdmaSignalStrength.rscp);
 
   return tdscdmaSignalStrength;
 }
 
+#if RADIO_HAL >= 14
+int32_t convertCellInfoType_1_4(
+    RADIO_1_4::CellInfo::Info::hidl_discriminator type) {
+#  define DISCRIM RADIO_1_4::CellInfo::Info::hidl_discriminator
+
+  switch (type) {
+    case DISCRIM::gsm:
+      return nsICellInfoType::RADIO_CELL_INFO_TYPE_GSM;
+    case DISCRIM::cdma:
+      return nsICellInfoType::RADIO_CELL_INFO_TYPE_CDMA;
+    case DISCRIM::wcdma:
+      return nsICellInfoType::RADIO_CELL_INFO_TYPE_WCDMA;
+    case DISCRIM::tdscdma:
+      return nsICellInfoType::RADIO_CELL_INFO_TYPE_TD_SCDMA;
+    case DISCRIM::lte:
+      return nsICellInfoType::RADIO_CELL_INFO_TYPE_LTE;
+    case DISCRIM::nr:  // TODO: add new type.
+    default:
+      return nsICellInfoType::RADIO_CELL_INFO_TYPE_UNKNOW;
+  }
+}
+
 RefPtr<nsRilCellInfo> nsRilResult::convertRilCellInfo(
-    const CellInfo& aCellInfo) {
+    const RADIO_1_4::CellInfo& aCellInfo) {
+  int32_t cellInfoType =
+      convertCellInfoType_1_4(aCellInfo.info.getDiscriminator());
+
+  bool registered = aCellInfo.isRegistered;
+
+  // TODO: is there a way to get that info in 1.4 ??
+  int32_t timeStampType = 0;
+  int32_t timeStamp = 0;
+
+  if (cellInfoType == nsICellInfoType::RADIO_CELL_INFO_TYPE_GSM) {
+    RefPtr<nsCellInfoGsm> cellInfoGsm =
+        convertCellInfoGsm(aCellInfo.info.gsm());
+    RefPtr<nsRilCellInfo> cellInfo = new nsRilCellInfo(
+        cellInfoType, registered, timeStampType, timeStamp, cellInfoGsm);
+    return cellInfo;
+  } else if (cellInfoType == nsICellInfoType::RADIO_CELL_INFO_TYPE_LTE) {
+    RefPtr<nsCellInfoLte> cellInfoLte =
+        convertCellInfoLte(aCellInfo.info.lte());
+    RefPtr<nsRilCellInfo> cellInfo = new nsRilCellInfo(
+        cellInfoType, registered, timeStampType, timeStamp, cellInfoLte);
+    return cellInfo;
+  } else if (cellInfoType == nsICellInfoType::RADIO_CELL_INFO_TYPE_WCDMA) {
+    RefPtr<nsCellInfoWcdma> cellInfoWcdma =
+        convertCellInfoWcdma(aCellInfo.info.wcdma());
+    RefPtr<nsRilCellInfo> cellInfo = new nsRilCellInfo(
+        cellInfoType, registered, timeStampType, timeStamp, cellInfoWcdma);
+    return cellInfo;
+  } else if (cellInfoType == nsICellInfoType::RADIO_CELL_INFO_TYPE_TD_SCDMA) {
+    RefPtr<nsCellInfoTdScdma> cellInfoTdScdma =
+        convertCellInfoTdScdma(aCellInfo.info.tdscdma());
+    RefPtr<nsRilCellInfo> cellInfo = new nsRilCellInfo(
+        cellInfoType, registered, timeStampType, timeStamp, cellInfoTdScdma);
+    return cellInfo;
+  } else if (cellInfoType == nsICellInfoType::RADIO_CELL_INFO_TYPE_CDMA) {
+    RefPtr<nsCellInfoCdma> cellInfoCdma =
+        convertCellInfoCdma(aCellInfo.info.cdma());
+    RefPtr<nsRilCellInfo> cellInfo = new nsRilCellInfo(
+        cellInfoType, registered, timeStampType, timeStamp, cellInfoCdma);
+    return cellInfo;
+  } else {
+    return nullptr;
+  }
+}
+#endif
+
+RefPtr<nsRilCellInfo> nsRilResult::convertRilCellInfo(
+    const RADIO_1_0::CellInfo& aCellInfo) {
   int32_t cellInfoType = convertCellInfoType(aCellInfo.cellInfoType);
   bool registered = aCellInfo.registered;
   int32_t timeStampType = convertTimeStampType(aCellInfo.timeStampType);
@@ -2218,7 +2615,7 @@ RefPtr<nsRilCellInfo> nsRilResult::convertRilCellInfo(
 }
 
 RefPtr<nsCellInfoGsm> nsRilResult::convertCellInfoGsm(
-    const CellInfoGsm& aCellInfoGsm) {
+    const RADIO_1_0::CellInfoGsm& aCellInfoGsm) {
   RefPtr<nsCellIdentityGsm> cellIdentityGsm =
       convertCellIdentityGsm(aCellInfoGsm.cellIdentityGsm);
   RefPtr<nsGsmSignalStrength> gsmSignalStrength =
@@ -2230,7 +2627,7 @@ RefPtr<nsCellInfoGsm> nsRilResult::convertCellInfoGsm(
 }
 
 RefPtr<nsCellInfoCdma> nsRilResult::convertCellInfoCdma(
-    const CellInfoCdma& aCellInfoCdma) {
+    const RADIO_1_0::CellInfoCdma& aCellInfoCdma) {
   RefPtr<nsCellIdentityCdma> cellIdentityCdma =
       convertCellIdentityCdma(aCellInfoCdma.cellIdentityCdma);
   RefPtr<nsCdmaSignalStrength> cdmaSignalStrength =
@@ -2244,7 +2641,7 @@ RefPtr<nsCellInfoCdma> nsRilResult::convertCellInfoCdma(
 }
 
 RefPtr<nsCellInfoWcdma> nsRilResult::convertCellInfoWcdma(
-    const CellInfoWcdma& aCellInfoWcdma) {
+    const RADIO_1_0::CellInfoWcdma& aCellInfoWcdma) {
   RefPtr<nsCellIdentityWcdma> cellIdentityWcdma =
       convertCellIdentityWcdma(aCellInfoWcdma.cellIdentityWcdma);
   RefPtr<nsWcdmaSignalStrength> wcdmaSignalStrength =
@@ -2256,7 +2653,7 @@ RefPtr<nsCellInfoWcdma> nsRilResult::convertCellInfoWcdma(
 }
 
 RefPtr<nsCellInfoLte> nsRilResult::convertCellInfoLte(
-    const CellInfoLte& aCellInfoLte) {
+    const RADIO_1_0::CellInfoLte& aCellInfoLte) {
   RefPtr<nsCellIdentityLte> cellIdentityLte =
       convertCellIdentityLte(aCellInfoLte.cellIdentityLte);
   RefPtr<nsLteSignalStrength> lteSignalStrength =
@@ -2268,7 +2665,7 @@ RefPtr<nsCellInfoLte> nsRilResult::convertCellInfoLte(
 }
 
 RefPtr<nsCellInfoTdScdma> nsRilResult::convertCellInfoTdScdma(
-    const CellInfoTdscdma& aCellInfoTdscdma) {
+    const RADIO_1_0::CellInfoTdscdma& aCellInfoTdscdma) {
   RefPtr<nsCellIdentityTdScdma> cellIdentityTdScdma =
       convertCellIdentityTdScdma(aCellInfoTdscdma.cellIdentityTdscdma);
   RefPtr<nsTdScdmaSignalStrength> tdscdmaSignalStrength =
@@ -2279,8 +2676,118 @@ RefPtr<nsCellInfoTdScdma> nsRilResult::convertCellInfoTdScdma(
   return cellInfoTdScdma;
 }
 
+#if RADIO_HAL >= 14
+RefPtr<nsCellInfoGsm> nsRilResult::convertCellInfoGsm(
+    const RADIO_1_2::CellInfoGsm& aCellInfoGsm) {
+  RefPtr<nsCellIdentityGsm> cellIdentityGsm =
+      convertCellIdentityGsm(aCellInfoGsm.cellIdentityGsm);
+  RefPtr<nsGsmSignalStrength> gsmSignalStrength =
+      convertGsmSignalStrength(aCellInfoGsm.signalStrengthGsm);
+  RefPtr<nsCellInfoGsm> cellInfoGsm =
+      new nsCellInfoGsm(cellIdentityGsm, gsmSignalStrength);
+
+  return cellInfoGsm;
+}
+
+RefPtr<nsCellInfoCdma> nsRilResult::convertCellInfoCdma(
+    const RADIO_1_2::CellInfoCdma& aCellInfoCdma) {
+  RefPtr<nsCellIdentityCdma> cellIdentityCdma =
+      convertCellIdentityCdma(aCellInfoCdma.cellIdentityCdma);
+  RefPtr<nsCdmaSignalStrength> cdmaSignalStrength =
+      convertCdmaSignalStrength(aCellInfoCdma.signalStrengthCdma);
+  RefPtr<nsEvdoSignalStrength> evdoSignalStrength =
+      convertEvdoSignalStrength(aCellInfoCdma.signalStrengthEvdo);
+  RefPtr<nsCellInfoCdma> cellInfoCdma = new nsCellInfoCdma(
+      cellIdentityCdma, cdmaSignalStrength, evdoSignalStrength);
+
+  return cellInfoCdma;
+}
+
+RefPtr<nsCellInfoWcdma> nsRilResult::convertCellInfoWcdma(
+    const RADIO_1_2::CellInfoWcdma& aCellInfoWcdma) {
+  RefPtr<nsCellIdentityWcdma> cellIdentityWcdma =
+      convertCellIdentityWcdma(aCellInfoWcdma.cellIdentityWcdma);
+  RefPtr<nsWcdmaSignalStrength> wcdmaSignalStrength =
+      convertWcdmaSignalStrength(aCellInfoWcdma.signalStrengthWcdma);
+  RefPtr<nsCellInfoWcdma> cellInfoWcdma =
+      new nsCellInfoWcdma(cellIdentityWcdma, wcdmaSignalStrength);
+
+  return cellInfoWcdma;
+}
+
+RefPtr<nsCellInfoLte> nsRilResult::convertCellInfoLte(
+    const RADIO_1_4::CellInfoLte& aCellInfoLte) {
+  auto cellInfo = aCellInfoLte.base;
+  RefPtr<nsCellIdentityLte> cellIdentityLte =
+      convertCellIdentityLte(cellInfo.cellIdentityLte);
+  RefPtr<nsLteSignalStrength> lteSignalStrength =
+      convertLteSignalStrength(cellInfo.signalStrengthLte);
+  RefPtr<nsCellInfoLte> cellInfoLte =
+      new nsCellInfoLte(cellIdentityLte, lteSignalStrength);
+
+  return cellInfoLte;
+}
+
+RefPtr<nsCellInfoTdScdma> nsRilResult::convertCellInfoTdScdma(
+    const RADIO_1_2::CellInfoTdscdma& aCellInfoTdscdma) {
+  RefPtr<nsCellIdentityTdScdma> cellIdentityTdScdma =
+      convertCellIdentityTdScdma(aCellInfoTdscdma.cellIdentityTdscdma);
+  RefPtr<nsTdScdmaSignalStrength> tdscdmaSignalStrength =
+      convertTdScdmaSignalStrength(aCellInfoTdscdma.signalStrengthTdscdma);
+  RefPtr<nsCellInfoTdScdma> cellInfoTdScdma =
+      new nsCellInfoTdScdma(cellIdentityTdScdma, tdscdmaSignalStrength);
+
+  return cellInfoTdScdma;
+}
+
+nsString convertPdpProtocolType(PdpProtocolType protocol) {
+  switch (protocol) {
+    case PdpProtocolType::IP:
+      return u"IP"_ns;
+    case PdpProtocolType::IPV6:
+      return u"IPV6"_ns;
+    case PdpProtocolType::IPV4V6:
+      return u"IPV4V6"_ns;
+    case PdpProtocolType::PPP:
+      return u"PPP"_ns;
+    case PdpProtocolType::NON_IP:
+      return u"NON_IP"_ns;
+    case PdpProtocolType::UNSTRUCTURED:
+      return u"UNSTRUCTURED"_ns;
+    case PdpProtocolType::UNKNOWN:
+    default:
+      return u"UNKNOWN"_ns;
+  }
+}
+
+nsString joinHidlVec(const hidl_vec<hidl_string>& source) {
+  std::string result;
+  for (auto iter = source.begin(); iter != source.end(); ++iter) {
+    result += *iter;
+    if (iter != source.end() - 1) {
+      result += " ";
+    }
+  }
+  return NS_ConvertUTF8toUTF16(result.c_str());
+}
+
 RefPtr<nsSetupDataCallResult> nsRilResult::convertDcResponse(
-    const SetupDataCallResult& aDcResponse) {
+    const RADIO_1_4::SetupDataCallResult& aDcResponse) {
+  RefPtr<nsSetupDataCallResult> dcResponse = new nsSetupDataCallResult(
+      convertDataCallFailCause(aDcResponse.cause),
+      aDcResponse.suggestedRetryTime, aDcResponse.cid,
+      (int32_t)aDcResponse.active, convertPdpProtocolType(aDcResponse.type),
+      NS_ConvertUTF8toUTF16(aDcResponse.ifname.c_str()),
+      joinHidlVec(aDcResponse.addresses), joinHidlVec(aDcResponse.dnses),
+      joinHidlVec(aDcResponse.gateways), joinHidlVec(aDcResponse.pcscf),
+      aDcResponse.mtu);
+
+  return dcResponse;
+}
+#endif
+
+RefPtr<nsSetupDataCallResult> nsRilResult::convertDcResponse(
+    const RADIO_1_0::SetupDataCallResult& aDcResponse) {
   RefPtr<nsSetupDataCallResult> dcResponse = new nsSetupDataCallResult(
       convertDataCallFailCause(aDcResponse.status),
       aDcResponse.suggestedRetryTime, aDcResponse.cid, aDcResponse.active,

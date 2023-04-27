@@ -4,7 +4,7 @@
 
 "use strict";
 
-const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
 
 const { XPCOMUtils } = ChromeUtils.import(
   "resource://gre/modules/XPCOMUtils.jsm"
@@ -127,14 +127,16 @@ Point.prototype = {
   },
 
   distance(aPoint) {
-    return Math.sqrt(Math.pow(this.x - aPoint.x, 2) + Math.pow(this.y - aPoint.y, 2));
+    return Math.sqrt(
+      Math.pow(this.x - aPoint.x, 2) + Math.pow(this.y - aPoint.y, 2)
+    );
   },
 
   equals(aPoint) {
-    if (this == aPoint){
+    if (this == aPoint) {
       return true;
     }
-    return (this.x == aPoint.x && this.y == aPoint.y);
+    return this.x == aPoint.x && this.y == aPoint.y;
   },
 };
 
@@ -156,7 +158,7 @@ LineSegment.prototype = {
     let sub2 = this.pointB.subtract(this.pointA);
     let dot = sub1.x * sub2.x + sub1.y * sub2.y;
 
-    let magnitude = dot / (Math.pow(this.length(), 2));
+    let magnitude = dot / Math.pow(this.length(), 2);
 
     if (magnitude > 1.0) {
       magnitude = 1.0;
@@ -164,17 +166,19 @@ LineSegment.prototype = {
       magnitude = 0.0;
     }
 
-    let projectX = this.pointA.x + ((this.pointB.x - this.pointA.x) * magnitude);
-    let projectY = this.pointA.y + ((this.pointB.y - this.pointA.y) * magnitude);
+    let projectX = this.pointA.x + (this.pointB.x - this.pointA.x) * magnitude;
+    let projectY = this.pointA.y + (this.pointB.y - this.pointA.y) * magnitude;
 
     return aPoint.distance(new Point(projectX, projectY));
-    },
+  },
 };
 
 function Polygon(aLatLngs) {
   this._vertices = [];
   this._scaledVertices = [];
-  aLatLngs.forEach(latlng => {this._vertices.push(new LatLng(latlng.lat, latlng.lng));});
+  aLatLngs.forEach(latlng => {
+    this._vertices.push(new LatLng(latlng.lat, latlng.lng));
+  });
   this.type = GEOMETRY_TYPE_POLYGON;
 
   // Find the point with smallest longitude as the mOrigin point.
@@ -220,12 +224,16 @@ Polygon.prototype = {
   },
 
   _convertToDistanceFromOrigin(aLatLng) {
-    let x = new LatLng(aLatLng.lat, _origin.lng).distance(new LatLng(_origin.lat, _origin.lng));
-    let y = new LatLng(_origin.lat, aLatLng.lng).distance(new LatLng(_origin.lat, _origin.lng));
+    let x = new LatLng(aLatLng.lat, _origin.lng).distance(
+      new LatLng(_origin.lat, _origin.lng)
+    );
+    let y = new LatLng(_origin.lat, aLatLng.lng).distance(
+      new LatLng(_origin.lat, _origin.lng)
+    );
 
     x = aLatLng.lat > _origin.lat ? x : -x;
     y = aLatLng.lng > _origin.lng ? y : -y;
-    return new Point(x,y);
+    return new Point(x, y);
   },
 
   distance(aLatLng) {
@@ -234,7 +242,7 @@ Polygon.prototype = {
 
     for (let i = 0; i < verticesLength; i++) {
       let verticeA = this._vertices[i];
-      let verticeB = this._vertices[(i+1) % verticesLength];
+      let verticeB = this._vertices[(i + 1) % verticesLength];
 
       let pointSA = _convertToDistanceFromOrigin(verticeA);
       let pointSB = _convertToDistanceFromOrigin(verticeB);
@@ -245,7 +253,7 @@ Polygon.prototype = {
 
       minDistance = Math.min(distance, minDistance);
     }
-      return minDistance;
+    return minDistance;
   },
 
   /**
@@ -254,7 +262,7 @@ Polygon.prototype = {
    * The winding number would be zero if the point inside the polygon.
    */
   contains(aLatLng, aThresholdInMeters = 0) {
-    if(aThresholdInMeters > 0) {
+    if (aThresholdInMeters > 0) {
       //TODO: Handle accuracy > threshold
       return this.distance(aLatLng) <= aThresholdInMeters;
     }
@@ -310,9 +318,8 @@ Circle.prototype = {
 
   contains(aLatLng, aThresholdInMeters = 0) {
     //TODO: Handle accuracy > threshold
-    return this._center.distance(aLatLng) <= (this._radius + aThresholdInMeters);
+    return this._center.distance(aLatLng) <= this._radius + aThresholdInMeters;
   },
-
 };
 
 function Context(aRadioInterfcae) {
@@ -1484,7 +1491,7 @@ GsmPDUHelperObject.prototype = {
     this.pdu = this.insert(this.pdu, nibble.toString(16), this.lengthIndex);
     this.pduWriteIndex++;
     nibble = length & 0x0f;
-    this.pdu = this.insert(this.pdu, nibble.toString(16), this.lengthIndex+1);
+    this.pdu = this.insert(this.pdu, nibble.toString(16), this.lengthIndex + 1);
     this.pduWriteIndex++;
     this.lengthIndex = 0;
   },
@@ -3054,7 +3061,6 @@ GsmPDUHelperObject.prototype = {
     if (DEBUG) {
       this.context.debug("readCbMessageIdentifier messageId: " + msg.messageId);
     }
-
   },
 
   /**
@@ -3220,7 +3226,10 @@ GsmPDUHelperObject.prototype = {
     let bufAdapter = {
       context: this.context,
       readHexOctet() {
-        return (this.context.GsmPDUHelper.readHexNibble() << 4) | this.context.GsmPDUHelper.readHexNibble();
+        return (
+          (this.context.GsmPDUHelper.readHexNibble() << 4) |
+          this.context.GsmPDUHelper.readHexNibble()
+        );
       },
     };
 
@@ -3298,7 +3307,9 @@ GsmPDUHelperObject.prototype = {
         this.readHexNibble();
 
       if (DEBUG) {
-        this.context.debug("readWACLatLng wacLng: " + wacLng + " wacLat: " + wacLat);
+        this.context.debug(
+          "readWACLatLng wacLng: " + wacLng + " wacLat: " + wacLat
+        );
       }
 
       // latitude = wacLatitude * 180 / 2^22 - 90
@@ -3414,7 +3425,7 @@ GsmPDUHelperObject.prototype = {
         (this.readHexOctet() << 8) | this.readHexOctet();
       cbIdentifiers.push(cellBroadcastIdentity);
     }
-    msg.geoFencingTrigger = {type, cbIdentifiers };
+    msg.geoFencingTrigger = { type, cbIdentifiers };
   },
 
   /**
@@ -3450,7 +3461,10 @@ GsmPDUHelperObject.prototype = {
     let bufAdapter = {
       context: this.context,
       readHexOctet() {
-        return (this.context.GsmPDUHelper.readHexNibble() << 4) | this.context.GsmPDUHelper.readHexNibble();
+        return (
+          (this.context.GsmPDUHelper.readHexNibble() << 4) |
+          this.context.GsmPDUHelper.readHexNibble()
+        );
       },
     };
 
@@ -3470,7 +3484,7 @@ GsmPDUHelperObject.prototype = {
       this.seekIncoming(CB_MSG_PAGE_INFO_SIZE * PDU_HEX_OCTET_SIZE);
       length = this.readHexOctet();
       if (DEBUG) {
-        this.context.debug("readUmtsCbData page length: " +length);
+        this.context.debug("readUmtsCbData page length: " + length);
       }
       totalLength += length;
       pageLengths.push(length);
@@ -6656,8 +6670,13 @@ ICCPDUHelperObject.prototype = {
             // Unread.
             // +1 for the GSM alphabet indexed at i,
             //GsmPDUHelper.seekIncoming(-1 * (count + 1) * PDU_HEX_OCTET_SIZE);
-            let gsm8bitValue = value.slice(GsmPDUHelper.pduReadIndex -(count * PDU_HEX_OCTET_SIZE));
-            str += this.read8BitUnpackedToString(gsm8bitValue, count + 1 - gotUCS2);
+            let gsm8bitValue = value.slice(
+              GsmPDUHelper.pduReadIndex - count * PDU_HEX_OCTET_SIZE
+            );
+            str += this.read8BitUnpackedToString(
+              gsm8bitValue,
+              count + 1 - gotUCS2
+            );
             i += count - gotUCS2;
           }
         }
@@ -8775,7 +8794,8 @@ StkProactiveCmdHelperObject.prototype = {
         );
         break;
       case STK_TEXT_CODING_GSM_8BIT:
-        text.textString = this.context.ICCPDUHelper.read8BitUnpackedToString(value,
+        text.textString = this.context.ICCPDUHelper.read8BitUnpackedToString(
+          value,
           length
         );
         break;

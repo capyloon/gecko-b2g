@@ -14,33 +14,15 @@
 #include "nsIRilResult.h"
 #include "nsString.h"
 
-#include <android/hardware/radio/1.1/IRadio.h>
+#include "nsRadioVersion.h"
 
-using ::android::hardware::hidl_vec;
-using ::android::hardware::radio::V1_0::CdmaSignalStrength;
-using ::android::hardware::radio::V1_0::CellIdentity;
-using ::android::hardware::radio::V1_0::CellIdentityCdma;
-using ::android::hardware::radio::V1_0::CellIdentityGsm;
-using ::android::hardware::radio::V1_0::CellIdentityLte;
-using ::android::hardware::radio::V1_0::CellIdentityTdscdma;
-using ::android::hardware::radio::V1_0::CellIdentityWcdma;
-using ::android::hardware::radio::V1_0::CellInfo;
-using ::android::hardware::radio::V1_0::CellInfoCdma;
-using ::android::hardware::radio::V1_0::CellInfoGsm;
-using ::android::hardware::radio::V1_0::CellInfoLte;
-using ::android::hardware::radio::V1_0::CellInfoTdscdma;
-using ::android::hardware::radio::V1_0::CellInfoType;
-using ::android::hardware::radio::V1_0::CellInfoWcdma;
-using ::android::hardware::radio::V1_0::DataCallFailCause;
-using ::android::hardware::radio::V1_0::EvdoSignalStrength;
-using ::android::hardware::radio::V1_0::GsmSignalStrength;
-using ::android::hardware::radio::V1_0::LteSignalStrength;
-using ::android::hardware::radio::V1_0::RadioTechnology;
-using ::android::hardware::radio::V1_0::SetupDataCallResult;
-using ::android::hardware::radio::V1_0::SignalStrength;
-using ::android::hardware::radio::V1_0::TdScdmaSignalStrength;
-using ::android::hardware::radio::V1_0::TimeStampType;
-using ::android::hardware::radio::V1_0::WcdmaSignalStrength;
+#if RADIO_HAL >= 14
+#  include <android/hardware/radio/1.4/IRadio.h>
+#  include <android/hardware/radio/1.4/IRadioResponse.h>
+#else
+#  include <android/hardware/radio/1.1/IRadio.h>
+#  include <android/hardware/radio/1.1/IRadioResponse.h>
+#endif
 
 class nsRilResult;
 
@@ -707,33 +689,39 @@ class nsRilResult {
   explicit nsRilResult(const nsAString& aRilMessageType);
   nsRilResult(const nsAString& aRilMessageType, int32_t aRilMessageToken,
               int32_t aErrorMsg);
-  RefPtr<nsRilCellInfo> convertRilCellInfo(const CellInfo& aCellInfo);
-  RefPtr<nsCellInfoGsm> convertCellInfoGsm(const CellInfoGsm& aCellInfoGsm);
-  RefPtr<nsCellInfoCdma> convertCellInfoCdma(const CellInfoCdma& aCellInfoCdma);
-  RefPtr<nsCellInfoWcdma> convertCellInfoWcdma(
-      const CellInfoWcdma& aCellInfoWcdma);
-  RefPtr<nsCellInfoLte> convertCellInfoLte(const CellInfoLte& aCellInfoLte);
-  RefPtr<nsCellInfoTdScdma> convertCellInfoTdScdma(
-      const CellInfoTdscdma& aCellInfoTdscdma);
+  RefPtr<nsRilCellInfo> convertRilCellInfo(
+      const RADIO_1_0::CellInfo& aCellInfo);
 
-  RefPtr<nsCellIdentity> convertCellIdentity(const CellIdentity& aCellIdentity);
+  RefPtr<nsCellInfoGsm> convertCellInfoGsm(
+      const RADIO_1_0::CellInfoGsm& aCellInfoGsm);
+  RefPtr<nsCellInfoCdma> convertCellInfoCdma(
+      const RADIO_1_0::CellInfoCdma& aCellInfoCdma);
+  RefPtr<nsCellInfoWcdma> convertCellInfoWcdma(
+      const RADIO_1_0::CellInfoWcdma& aCellInfoWcdma);
+  RefPtr<nsCellInfoLte> convertCellInfoLte(
+      const RADIO_1_0::CellInfoLte& aCellInfoLte);
+  RefPtr<nsCellInfoTdScdma> convertCellInfoTdScdma(
+      const RADIO_1_0::CellInfoTdscdma& aCellInfoTdscdma);
+
+  RefPtr<nsCellIdentity> convertCellIdentity(
+      const RADIO_1_0::CellIdentity& aCellIdentity);
   RefPtr<nsCellIdentityGsm> convertCellIdentityGsm(
-      const CellIdentityGsm& aCellIdentityGsm);
+      const RADIO_1_0::CellIdentityGsm& aCellIdentityGsm);
   RefPtr<nsCellIdentityWcdma> convertCellIdentityWcdma(
-      const CellIdentityWcdma& aCellIdentityWcdma);
+      const RADIO_1_0::CellIdentityWcdma& aCellIdentityWcdma);
   RefPtr<nsCellIdentityCdma> convertCellIdentityCdma(
-      const CellIdentityCdma& aCellIdentityCdma);
+      const RADIO_1_0::CellIdentityCdma& aCellIdentityCdma);
   RefPtr<nsCellIdentityLte> convertCellIdentityLte(
-      const CellIdentityLte& aCellIdentityLte);
+      const RADIO_1_0::CellIdentityLte& aCellIdentityLte);
   RefPtr<nsCellIdentityTdScdma> convertCellIdentityTdScdma(
-      const CellIdentityTdscdma& aCellIdentityTdScdma);
+      const RADIO_1_0::CellIdentityTdscdma& aCellIdentityTdScdma);
 
   RefPtr<nsSignalStrength> convertSignalStrength(
-      const SignalStrength& aSignalStrength);
+      const RADIO_1_0::SignalStrength& aSignalStrength);
   RefPtr<nsGsmSignalStrength> convertGsmSignalStrength(
       const GsmSignalStrength& aGsmSignalStrength);
   RefPtr<nsWcdmaSignalStrength> convertWcdmaSignalStrength(
-      const WcdmaSignalStrength& aWcdmaSignalStrength);
+      const RADIO_1_0::WcdmaSignalStrength& aWcdmaSignalStrength);
   RefPtr<nsCdmaSignalStrength> convertCdmaSignalStrength(
       const CdmaSignalStrength& aCdmaSignalStrength);
   RefPtr<nsEvdoSignalStrength> convertEvdoSignalStrength(
@@ -741,12 +729,53 @@ class nsRilResult {
   RefPtr<nsLteSignalStrength> convertLteSignalStrength(
       const LteSignalStrength& aLteSignalStrength);
   RefPtr<nsTdScdmaSignalStrength> convertTdScdmaSignalStrength(
-      const TdScdmaSignalStrength& aTdScdmaSignalStrength);
+      const RADIO_1_0::TdScdmaSignalStrength& aTdScdmaSignalStrength);
   RefPtr<nsSetupDataCallResult> convertDcResponse(
-      const SetupDataCallResult& aDcResponse);
+      const RADIO_1_0::SetupDataCallResult& aDcResponse);
+#if RADIO_HAL >= 14
+  RefPtr<nsRilCellInfo> convertRilCellInfo(
+      const RADIO_1_4::CellInfo& aCellInfo);
+  RefPtr<nsCellIdentity> convertCellIdentity(
+      const RADIO_1_2::CellIdentity& aCellIdentity);
+  RefPtr<nsCellIdentityGsm> convertCellIdentityGsm(
+      const RADIO_1_2::CellIdentityGsm& aCellIdentityGsm);
+  RefPtr<nsCellIdentityWcdma> convertCellIdentityWcdma(
+      const RADIO_1_2::CellIdentityWcdma& aCellIdentityWcdma);
+  RefPtr<nsCellIdentityCdma> convertCellIdentityCdma(
+      const RADIO_1_2::CellIdentityCdma& aCellIdentityCdma);
+  RefPtr<nsCellIdentityLte> convertCellIdentityLte(
+      const RADIO_1_2::CellIdentityLte& aCellIdentityLte);
+  RefPtr<nsCellIdentityTdScdma> convertCellIdentityTdScdma(
+      const RADIO_1_2::CellIdentityTdscdma& aCellIdentityTdScdma);
 
-  static int32_t convertRadioTechnology(RadioTechnology aRat);
-  static int32_t convertDataCallFailCause(DataCallFailCause aCause);
+  RefPtr<nsCellInfoGsm> convertCellInfoGsm(
+      const RADIO_1_2::CellInfoGsm& aCellInfoGsm);
+  RefPtr<nsCellInfoCdma> convertCellInfoCdma(
+      const RADIO_1_2::CellInfoCdma& aCellInfoCdma);
+  RefPtr<nsCellInfoWcdma> convertCellInfoWcdma(
+      const RADIO_1_2::CellInfoWcdma& aCellInfoWcdma);
+  RefPtr<nsCellInfoLte> convertCellInfoLte(
+      const RADIO_1_4::CellInfoLte& aCellInfoLte);
+  RefPtr<nsCellInfoTdScdma> convertCellInfoTdScdma(
+      const RADIO_1_2::CellInfoTdscdma& aCellInfoTdscdma);
+
+  RefPtr<nsSignalStrength> convertSignalStrength(
+      const RADIO_1_4::SignalStrength& aSignalStrength);
+  RefPtr<nsTdScdmaSignalStrength> convertTdScdmaSignalStrength(
+      const RADIO_1_2::TdscdmaSignalStrength& aTdScdmaSignalStrength);
+  RefPtr<nsWcdmaSignalStrength> convertWcdmaSignalStrength(
+      const RADIO_1_2::WcdmaSignalStrength& aWcdmaSignalStrength);
+
+  RefPtr<nsSetupDataCallResult> convertDcResponse(
+      const RADIO_1_4::SetupDataCallResult& aDcResponse);
+#endif
+
+  static int32_t convertRadioTechnology(RADIO_1_0::RadioTechnology aRat);
+  static int32_t convertDataCallFailCause(RADIO_1_0::DataCallFailCause aCause);
+#if RADIO_HAL >= 14
+  static int32_t convertRadioTechnology(RADIO_1_4::RadioTechnology aRat);
+  static int32_t convertDataCallFailCause(RADIO_1_4::DataCallFailCause aCause);
+#endif
   static int32_t convertCellInfoType(CellInfoType type);
   static int32_t convertTimeStampType(TimeStampType type);
 

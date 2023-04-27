@@ -625,8 +625,13 @@ NS_IMETHODIMP nsRilWorker::SetInitialAttachApn(int32_t serial,
   bool modemCognitive;
   profile->GetModemCognitive(&modemCognitive);
 
+#if RADIO_HAL >= 14
+  Return<void> ret = mRadioProxy->setInitialAttachApn_1_4(
+      serial, convertToHalDataProfile(profile));
+#else
   Return<void> ret = mRadioProxy->setInitialAttachApn(
       serial, convertToHalDataProfile(profile), modemCognitive, isRoaming);
+#endif
 
   if (!ret.isOk()) {
     ERROR_NS_OK("setInitialAttachApn Error.");
@@ -649,8 +654,13 @@ NS_IMETHODIMP nsRilWorker::SetDataProfile(
     DataProfileInfo profile = convertToHalDataProfile(profileList[i]);
     dataProfileInfoList.push_back(profile);
   }
+#if RADIO_HAL >= 14
+  Return<void> ret =
+      mRadioProxy->setDataProfile_1_4(serial, dataProfileInfoList);
+#else
   Return<void> ret =
       mRadioProxy->setDataProfile(serial, dataProfileInfoList, isRoaming);
+#endif
 
   if (!ret.isOk()) {
     ERROR_NS_OK("setDataProfile Error.");
@@ -672,10 +682,20 @@ NS_IMETHODIMP nsRilWorker::SetupDataCall(int32_t serial,
   bool modemCognitive;
   profile->GetModemCognitive(&modemCognitive);
 
+#if RADIO_HAL >= 14
+  hidl_vec<hidl_string> addresses;
+  hidl_vec<hidl_string> dnses;
+  Return<void> ret = mRadioProxy->setupDataCall_1_4(
+      serial,
+      AccessNetwork::EUTRAN,  // TODO: don't hardcode.
+      convertToHalDataProfile(profile), allowRoaming, DataRequestReason::NORMAL,
+      addresses, dnses);
+#else
   Return<void> ret =
       mRadioProxy->setupDataCall(serial, RadioTechnology(radioTechnology),
                                  convertToHalDataProfile(profile),
                                  modemCognitive, allowRoaming, isRoaming);
+#endif
 
   if (!ret.isOk()) {
     ERROR_NS_OK("setupDataCall Error.");
@@ -1733,6 +1753,92 @@ MvnoType nsRilWorker::convertToHalMvnoType(const nsAString& mvnoType) {
   }
 }
 
+#if RADIO_HAL >= 14
+PdpProtocolType convertToHalPdpType(const nsAString& val) {
+  if (u"IP"_ns.Equals(val)) {
+    return PdpProtocolType::IP;
+  } else if (u"IPV6"_ns.Equals(val)) {
+    return PdpProtocolType::IPV6;
+  } else if (u"IPV4V6n"_ns.Equals(val)) {
+    return PdpProtocolType::IPV4V6;
+  } else if (u"PPP"_ns.Equals(val)) {
+    return PdpProtocolType::PPP;
+  } else if (u"NON_IP"_ns.Equals(val)) {
+    return PdpProtocolType::NON_IP;
+  } else {
+    return PdpProtocolType::UNKNOWN;
+  }
+}
+
+DataProfileInfo nsRilWorker::convertToHalDataProfile(nsIDataProfile* profile) {
+  DataProfileInfo dataProfileInfo;
+
+  int32_t profileId;
+  profile->GetProfileId(&profileId);
+  dataProfileInfo.profileId = DataProfileId(profileId);
+
+  nsString apn;
+  profile->GetApn(apn);
+  dataProfileInfo.apn = NS_ConvertUTF16toUTF8(apn).get();
+
+  nsString protocol;
+  profile->GetProtocol(protocol);
+  dataProfileInfo.protocol = convertToHalPdpType(protocol);
+
+  nsString roamingProtocol;
+  profile->GetRoamingProtocol(roamingProtocol);
+  dataProfileInfo.roamingProtocol = convertToHalPdpType(roamingProtocol);
+
+  int32_t authType;
+  profile->GetAuthType(&authType);
+  dataProfileInfo.authType = ApnAuthType(authType);
+
+  nsString user;
+  profile->GetUser(user);
+  dataProfileInfo.user = NS_ConvertUTF16toUTF8(user).get();
+
+  nsString password;
+  profile->GetPassword(password);
+  dataProfileInfo.password = NS_ConvertUTF16toUTF8(password).get();
+
+  int32_t type;
+  profile->GetType(&type);
+  dataProfileInfo.type = DataProfileInfoType(type);
+
+  int32_t maxConnsTime;
+  profile->GetMaxConnsTime(&maxConnsTime);
+  dataProfileInfo.maxConnsTime = maxConnsTime;
+
+  int32_t maxConns;
+  profile->GetMaxConns(&maxConns);
+  dataProfileInfo.maxConns = maxConns;
+
+  int32_t waitTime;
+  profile->GetWaitTime(&waitTime);
+  dataProfileInfo.waitTime = waitTime;
+
+  bool enabled;
+  profile->GetEnabled(&enabled);
+  dataProfileInfo.enabled = enabled;
+
+  int32_t supportedApnTypesBitmap;
+  profile->GetSupportedApnTypesBitmap(&supportedApnTypesBitmap);
+  dataProfileInfo.supportedApnTypesBitmap =
+      (int32_t)ApnTypes(supportedApnTypesBitmap);
+
+  int32_t bearerBitmap;
+  profile->GetBearerBitmap(&bearerBitmap);
+  dataProfileInfo.bearerBitmap = (int32_t)RadioAccessFamily(bearerBitmap);
+
+  int32_t mtu;
+  profile->GetMtu(&mtu);
+  dataProfileInfo.mtu = mtu;
+
+  return dataProfileInfo;
+}
+
+#else
+
 DataProfileInfo nsRilWorker::convertToHalDataProfile(nsIDataProfile* profile) {
   DataProfileInfo dataProfileInfo;
 
@@ -1808,3 +1914,5 @@ DataProfileInfo nsRilWorker::convertToHalDataProfile(nsIDataProfile* profile) {
 
   return dataProfileInfo;
 }
+
+#endif  // RADIO_HAL >= 14

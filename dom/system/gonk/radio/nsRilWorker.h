@@ -17,45 +17,17 @@
 #include "nsRilResponseResult.h"
 #include "nsRilResult.h"
 
-#include <android/hardware/radio/1.1/IRadio.h>
+#include "nsRadioVersion.h"
 
-using ::android::sp;
+#if RADIO_HAL >= 14
+#  include <android/hardware/radio/1.4/IRadio.h>
+using RADIO_1_4::IRadio;
+#else
+#  include <android/hardware/radio/1.1/IRadio.h>
+using RADIO_1_1::IRadio;
+#endif
+
 using ::android::hardware::hidl_death_recipient;
-using ::android::hardware::hidl_string;
-using ::android::hardware::Return;
-using ::android::hardware::Void;
-using ::android::hardware::radio::V1_0::ApnAuthType;
-using ::android::hardware::radio::V1_0::ApnTypes;
-using ::android::hardware::radio::V1_0::CallForwardInfo;
-using ::android::hardware::radio::V1_0::CallForwardInfoStatus;
-using ::android::hardware::radio::V1_0::ClipStatus;
-using ::android::hardware::radio::V1_0::Clir;
-using ::android::hardware::radio::V1_0::DataProfileId;
-using ::android::hardware::radio::V1_0::DataProfileInfo;
-using ::android::hardware::radio::V1_0::DataProfileInfoType;
-using ::android::hardware::radio::V1_0::Dial;
-using ::android::hardware::radio::V1_0::GsmSmsMessage;
-using ::android::hardware::radio::V1_0::HardwareConfigModem;
-using ::android::hardware::radio::V1_0::HardwareConfigSim;
-using ::android::hardware::radio::V1_0::IccIo;
-using ::android::hardware::radio::V1_0::MvnoType;
-using ::android::hardware::radio::V1_0::OperatorStatus;
-using ::android::hardware::radio::V1_0::PhoneRestrictedState;
-using ::android::hardware::radio::V1_0::PreferredNetworkType;
-using ::android::hardware::radio::V1_0::RadioResponseType;
-using ::android::hardware::radio::V1_0::RadioTechnology;
-using ::android::hardware::radio::V1_0::SelectUiccSub;
-using ::android::hardware::radio::V1_0::SimRefreshType;
-using ::android::hardware::radio::V1_0::SmsAcknowledgeFailCause;
-using ::android::hardware::radio::V1_0::SubscriptionType;
-using ::android::hardware::radio::V1_0::TtyMode;
-using ::android::hardware::radio::V1_0::UiccSubActStatus;
-using ::android::hardware::radio::V1_0::UusInfo;
-using ::android::hardware::radio::V1_1::IRadio;
-using ::android::hardware::radio::V1_1::NetworkScanRequest;
-using ::android::hardware::radio::V1_1::RadioAccessNetworks;
-using ::android::hardware::radio::V1_1::RadioAccessSpecifier;
-using ::android::hardware::radio::V1_1::ScanType;
 using ::android::hidl::base::V1_0::IBase;
 
 static bool gRilDebug_isLoggingEnabled = false;

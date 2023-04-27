@@ -23,8 +23,6 @@
     }                                                          \
   } while (0)
 
-CardStatus cardStatus;
-
 /**
  *
  */
@@ -40,7 +38,7 @@ nsRilResponse::~nsRilResponse() {
 }
 
 Return<void> nsRilResponse::getIccCardStatusResponse(
-    const RadioResponseInfo& info, const CardStatus& card_status) {
+    const RadioResponseInfo& info, const RADIO_1_0::CardStatus& card_status) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -87,6 +85,60 @@ Return<void> nsRilResponse::getIccCardStatusResponse(
   mRIL->sendRilResponseResult(result);
   return Void();
 }
+
+#if RADIO_HAL >= 14
+// On HAL 1.4, need to go through the 1.2 then 1.0 base.
+#  define CARD_STATUS_1_0 card_status.base.base
+
+Return<void> nsRilResponse::getIccCardStatusResponse_1_4(
+    const RadioResponseInfo& info, const CardStatus& card_status) {
+  rspInfo = info;
+  mRIL->processResponse(rspInfo.type);
+
+  RefPtr<nsRilResponseResult> result =
+      new nsRilResponseResult(u"getICCStatus"_ns, rspInfo.serial,
+                              convertRadioErrorToNum(rspInfo.error));
+  if (rspInfo.error == RadioError::NONE) {
+    DEBUG("getICCStatus success.");
+    uint32_t numApplications = CARD_STATUS_1_0.applications.size();
+
+    // limit to maximum allowed applications
+    if (numApplications > nsIRilResponseResult::CARD_MAX_APPS) {
+      numApplications = nsIRilResponseResult::CARD_MAX_APPS;
+    }
+
+    nsTArray<RefPtr<nsAppStatus>> applications(numApplications);
+
+    for (uint32_t i = 0; i < numApplications; i++) {
+      RefPtr<nsAppStatus> application = new nsAppStatus(
+          convertAppType(CARD_STATUS_1_0.applications[i].appType),
+          convertAppState(CARD_STATUS_1_0.applications[i].appState),
+          convertPersoSubstate(CARD_STATUS_1_0.applications[i].persoSubstate),
+          NS_ConvertUTF8toUTF16(CARD_STATUS_1_0.applications[i].aidPtr.c_str()),
+          NS_ConvertUTF8toUTF16(
+              CARD_STATUS_1_0.applications[i].appLabelPtr.c_str()),
+          CARD_STATUS_1_0.applications[i].pin1Replaced,
+          convertPinState(CARD_STATUS_1_0.applications[i].pin1),
+          convertPinState(CARD_STATUS_1_0.applications[i].pin2));
+
+      applications.AppendElement(application);
+    }
+
+    RefPtr<nsCardStatus> cardStatus =
+        new nsCardStatus(convertCardState(CARD_STATUS_1_0.cardState),
+                         convertPinState(CARD_STATUS_1_0.universalPinState),
+                         CARD_STATUS_1_0.gsmUmtsSubscriptionAppIndex,
+                         CARD_STATUS_1_0.cdmaSubscriptionAppIndex,
+                         CARD_STATUS_1_0.imsSubscriptionAppIndex, applications);
+    result->updateIccCardStatus(cardStatus);
+  } else {
+    DEBUG("getICCStatus error.");
+  }
+
+  mRIL->sendRilResponseResult(result);
+  return Void();
+}
+#endif
 
 Return<void> nsRilResponse::supplyIccPinForAppResponse(
     const RadioResponseInfo& info, int32_t remainingRetries) {
@@ -197,8 +249,7 @@ Return<void> nsRilResponse::supplyNetworkDepersonalizationResponse(
 }
 
 Return<void> nsRilResponse::getCurrentCallsResponse(
-    const RadioResponseInfo& info,
-    const ::android::hardware::hidl_vec<Call>& calls) {
+    const RadioResponseInfo& info, const hidl_vec<RADIO_1_0::Call>& calls) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -245,6 +296,59 @@ Return<void> nsRilResponse::getCurrentCallsResponse(
   return Void();
 }
 
+#if RADIO_HAL >= 14
+// On HAL 1.2, need to go through the 1.2 base.
+#  define CALLS_1_0 calls[i].base
+
+Return<void> nsRilResponse::getCurrentCallsResponse_1_2(
+    const RadioResponseInfo& info, const hidl_vec<RADIO_1_2::Call>& calls) {
+  rspInfo = info;
+  mRIL->processResponse(rspInfo.type);
+
+  RefPtr<nsRilResponseResult> result =
+      new nsRilResponseResult(u"getCurrentCalls"_ns, rspInfo.serial,
+                              convertRadioErrorToNum(rspInfo.error));
+  if (rspInfo.error == RadioError::NONE) {
+    uint32_t numCalls = calls.size();
+    DEBUG("getCurrentCalls numCalls= %d", numCalls);
+    nsTArray<RefPtr<nsCall>> aCalls(numCalls);
+
+    for (uint32_t i = 0; i < numCalls; i++) {
+      uint32_t numUusInfo = CALLS_1_0.uusInfo.size();
+      DEBUG("getCurrentCalls numUusInfo= %d", numUusInfo);
+      nsTArray<RefPtr<nsUusInfo>> aUusInfos(numUusInfo);
+
+      for (uint32_t j = 0; j < numUusInfo; j++) {
+        RefPtr<nsUusInfo> uusinfo = new nsUusInfo(
+            convertUusType(CALLS_1_0.uusInfo[j].uusType),
+            convertUusDcs(CALLS_1_0.uusInfo[j].uusDcs),
+            NS_ConvertUTF8toUTF16(CALLS_1_0.uusInfo[j].uusData.c_str()));
+
+        aUusInfos.AppendElement(uusinfo);
+      }
+
+      DEBUG("getCurrentCalls index= %d  state=%d", CALLS_1_0.index,
+            convertCallState(CALLS_1_0.state));
+      RefPtr<nsCall> call = new nsCall(
+          convertCallState(CALLS_1_0.state), CALLS_1_0.index, CALLS_1_0.toa,
+          CALLS_1_0.isMpty, CALLS_1_0.isMT, int32_t(CALLS_1_0.als),
+          CALLS_1_0.isVoice, CALLS_1_0.isVoicePrivacy,
+          NS_ConvertUTF8toUTF16(CALLS_1_0.number.c_str()),
+          convertCallPresentation(CALLS_1_0.numberPresentation),
+          NS_ConvertUTF8toUTF16(CALLS_1_0.name.c_str()),
+          convertCallPresentation(CALLS_1_0.namePresentation), aUusInfos);
+      aCalls.AppendElement(call);
+    }
+    result->updateCurrentCalls(aCalls);
+  } else {
+    DEBUG("getCurrentCalls error.");
+  }
+
+  mRIL->sendRilResponseResult(result);
+  return Void();
+}
+#endif
+
 Return<void> nsRilResponse::dialResponse(const RadioResponseInfo& info) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
@@ -253,9 +357,8 @@ Return<void> nsRilResponse::dialResponse(const RadioResponseInfo& info) {
   return Void();
 }
 
-Return<void> nsRilResponse::getIMSIForAppResponse(
-    const RadioResponseInfo& info,
-    const ::android::hardware::hidl_string& imsi) {
+Return<void> nsRilResponse::getIMSIForAppResponse(const RadioResponseInfo& info,
+                                                  const hidl_string& imsi) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -343,7 +446,8 @@ Return<void> nsRilResponse::getLastCallFailCauseResponse(
 }
 
 Return<void> nsRilResponse::getSignalStrengthResponse(
-    const RadioResponseInfo& info, const SignalStrength& sig_strength) {
+    const RadioResponseInfo& info,
+    const RADIO_1_0::SignalStrength& sig_strength) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -364,7 +468,7 @@ Return<void> nsRilResponse::getSignalStrengthResponse(
 
 Return<void> nsRilResponse::getVoiceRegistrationStateResponse(
     const RadioResponseInfo& info,
-    const VoiceRegStateResult& voiceRegResponse) {
+    const RADIO_1_0::VoiceRegStateResult& voiceRegResponse) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -391,7 +495,8 @@ Return<void> nsRilResponse::getVoiceRegistrationStateResponse(
 }
 
 Return<void> nsRilResponse::getDataRegistrationStateResponse(
-    const RadioResponseInfo& info, const DataRegStateResult& dataRegResponse) {
+    const RadioResponseInfo& info,
+    const RADIO_1_0::DataRegStateResult& dataRegResponse) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -415,11 +520,10 @@ Return<void> nsRilResponse::getDataRegistrationStateResponse(
   return Void();
 }
 
-Return<void> nsRilResponse::getOperatorResponse(
-    const RadioResponseInfo& info,
-    const ::android::hardware::hidl_string& longName,
-    const ::android::hardware::hidl_string& shortName,
-    const ::android::hardware::hidl_string& numeric) {
+Return<void> nsRilResponse::getOperatorResponse(const RadioResponseInfo& info,
+                                                const hidl_string& longName,
+                                                const hidl_string& shortName,
+                                                const hidl_string& numeric) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -485,7 +589,8 @@ Return<void> nsRilResponse::sendSMSExpectMoreResponse(
 }
 
 Return<void> nsRilResponse::setupDataCallResponse(
-    const RadioResponseInfo& info, const SetupDataCallResult& dcResponse) {
+    const RadioResponseInfo& info,
+    const RADIO_1_0::SetupDataCallResult& dcResponse) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -570,7 +675,7 @@ Return<void> nsRilResponse::setClirResponse(const RadioResponseInfo& info) {
 
 Return<void> nsRilResponse::getCallForwardStatusResponse(
     const RadioResponseInfo& info,
-    const ::android::hardware::hidl_vec<CallForwardInfo>& callForwardInfos) {
+    const hidl_vec<CallForwardInfo>& callForwardInfos) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -737,8 +842,7 @@ Return<void> nsRilResponse::setNetworkSelectionModeManualResponse(
 }
 
 Return<void> nsRilResponse::getAvailableNetworksResponse(
-    const RadioResponseInfo& info,
-    const ::android::hardware::hidl_vec<OperatorInfo>& networkInfos) {
+    const RadioResponseInfo& info, const hidl_vec<OperatorInfo>& networkInfos) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -783,8 +887,7 @@ Return<void> nsRilResponse::stopDtmfResponse(const RadioResponseInfo& info) {
 }
 
 Return<void> nsRilResponse::getBasebandVersionResponse(
-    const RadioResponseInfo& info,
-    const ::android::hardware::hidl_string& version) {
+    const RadioResponseInfo& info, const hidl_string& version) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -846,7 +949,7 @@ Return<void> nsRilResponse::getClipResponse(const RadioResponseInfo& info,
 
 Return<void> nsRilResponse::getDataCallListResponse(
     const RadioResponseInfo& info,
-    const ::android::hardware::hidl_vec<SetupDataCallResult>& dcResponse) {
+    const hidl_vec<RADIO_1_0::SetupDataCallResult>& dcResponse) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -871,15 +974,12 @@ Return<void> nsRilResponse::getDataCallListResponse(
 }
 
 Return<void> nsRilResponse::sendOemRilRequestRawResponse(
-    const RadioResponseInfo& /*info*/,
-    const ::android::hardware::hidl_vec<uint8_t>& /*data*/) {
+    const RadioResponseInfo& /*info*/, const hidl_vec<uint8_t>& /*data*/) {
   return Void();
 }
 
 Return<void> nsRilResponse::sendOemRilRequestStringsResponse(
-    const RadioResponseInfo& /*info*/,
-    const ::android::hardware::hidl_vec<
-        ::android::hardware::hidl_string>& /*data*/) {
+    const RadioResponseInfo& /*info*/, const hidl_vec<hidl_string>& /*data*/) {
   return Void();
 }
 
@@ -918,7 +1018,7 @@ Return<void> nsRilResponse::setBandModeResponse(const RadioResponseInfo& info) {
 
 Return<void> nsRilResponse::getAvailableBandModesResponse(
     const RadioResponseInfo& info,
-    const ::android::hardware::hidl_vec<RadioBandMode>& /*bandModes*/) {
+    const hidl_vec<RadioBandMode>& /*bandModes*/) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -926,8 +1026,7 @@ Return<void> nsRilResponse::getAvailableBandModesResponse(
 }
 
 Return<void> nsRilResponse::sendEnvelopeResponse(
-    const RadioResponseInfo& info,
-    const ::android::hardware::hidl_string& /*commandResponse*/) {
+    const RadioResponseInfo& info, const hidl_string& /*commandResponse*/) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -988,8 +1087,7 @@ Return<void> nsRilResponse::getPreferredNetworkTypeResponse(
 }
 
 Return<void> nsRilResponse::getNeighboringCidsResponse(
-    const RadioResponseInfo& info,
-    const ::android::hardware::hidl_vec<NeighboringCell>& cells) {
+    const RadioResponseInfo& info, const hidl_vec<NeighboringCell>& cells) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -1130,8 +1228,7 @@ Return<void> nsRilResponse::acknowledgeLastIncomingCdmaSmsResponse(
 
 Return<void> nsRilResponse::getGsmBroadcastConfigResponse(
     const RadioResponseInfo& info,
-    const ::android::hardware::hidl_vec<
-        GsmBroadcastSmsConfigInfo>& /*configs*/) {
+    const hidl_vec<GsmBroadcastSmsConfigInfo>& /*configs*/) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -1158,8 +1255,7 @@ Return<void> nsRilResponse::setGsmBroadcastActivationResponse(
 
 Return<void> nsRilResponse::getCdmaBroadcastConfigResponse(
     const RadioResponseInfo& info,
-    const ::android::hardware::hidl_vec<
-        CdmaBroadcastSmsConfigInfo>& /*configs*/) {
+    const hidl_vec<CdmaBroadcastSmsConfigInfo>& /*configs*/) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -1183,12 +1279,9 @@ Return<void> nsRilResponse::setCdmaBroadcastActivationResponse(
 }
 
 Return<void> nsRilResponse::getCDMASubscriptionResponse(
-    const RadioResponseInfo& info,
-    const ::android::hardware::hidl_string& /*mdn*/,
-    const ::android::hardware::hidl_string& /*hSid*/,
-    const ::android::hardware::hidl_string& /*hNid*/,
-    const ::android::hardware::hidl_string& /*min*/,
-    const ::android::hardware::hidl_string& /*prl*/) {
+    const RadioResponseInfo& info, const hidl_string& /*mdn*/,
+    const hidl_string& /*hSid*/, const hidl_string& /*hNid*/,
+    const hidl_string& /*min*/, const hidl_string& /*prl*/) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -1213,10 +1306,9 @@ Return<void> nsRilResponse::deleteSmsOnRuimResponse(
 }
 
 Return<void> nsRilResponse::getDeviceIdentityResponse(
-    const RadioResponseInfo& info, const ::android::hardware::hidl_string& imei,
-    const ::android::hardware::hidl_string& imeisv,
-    const ::android::hardware::hidl_string& esn,
-    const ::android::hardware::hidl_string& meid) {
+    const RadioResponseInfo& info, const hidl_string& imei,
+    const hidl_string& imeisv, const hidl_string& esn,
+    const hidl_string& meid) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -1244,8 +1336,7 @@ Return<void> nsRilResponse::exitEmergencyCallbackModeResponse(
 }
 
 Return<void> nsRilResponse::getSmscAddressResponse(
-    const RadioResponseInfo& info,
-    const ::android::hardware::hidl_string& smsc) {
+    const RadioResponseInfo& info, const hidl_string& smsc) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -1294,8 +1385,7 @@ Return<void> nsRilResponse::getCdmaSubscriptionSourceResponse(
 }
 
 Return<void> nsRilResponse::requestIsimAuthenticationResponse(
-    const RadioResponseInfo& info,
-    const ::android::hardware::hidl_string& /*response*/) {
+    const RadioResponseInfo& info, const hidl_string& /*response*/) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -1319,7 +1409,7 @@ Return<void> nsRilResponse::sendEnvelopeWithStatusResponse(
 }
 
 Return<void> nsRilResponse::getVoiceRadioTechnologyResponse(
-    const RadioResponseInfo& info, RadioTechnology rat) {
+    const RadioResponseInfo& info, RADIO_1_0::RadioTechnology rat) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -1337,7 +1427,7 @@ Return<void> nsRilResponse::getVoiceRadioTechnologyResponse(
 
 Return<void> nsRilResponse::getCellInfoListResponse(
     const RadioResponseInfo& info,
-    const ::android::hardware::hidl_vec<CellInfo>& cellInfo) {
+    const hidl_vec<RADIO_1_0::CellInfo>& cellInfo) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -1354,7 +1444,7 @@ Return<void> nsRilResponse::getCellInfoListResponse(
     }
     result->updateCellInfoList(aCellInfoLists);
   } else {
-    DEBUG("getDataCallListResponse error.");
+    DEBUG("getCellInfoListResponse error.");
   }
   mRIL->sendRilResponseResult(result);
   return Void();
@@ -1406,7 +1496,7 @@ Return<void> nsRilResponse::iccTransmitApduBasicChannelResponse(
 
 Return<void> nsRilResponse::iccOpenLogicalChannelResponse(
     const RadioResponseInfo& info, int32_t channelId,
-    const ::android::hardware::hidl_vec<int8_t>& /*selectResponse*/) {
+    const hidl_vec<int8_t>& /*selectResponse*/) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -1429,9 +1519,8 @@ Return<void> nsRilResponse::iccTransmitApduLogicalChannelResponse(
   return Void();
 }
 
-Return<void> nsRilResponse::nvReadItemResponse(
-    const RadioResponseInfo& info,
-    const ::android::hardware::hidl_string& /*result*/) {
+Return<void> nsRilResponse::nvReadItemResponse(const RadioResponseInfo& info,
+                                               const hidl_string& /*result*/) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -1480,8 +1569,7 @@ Return<void> nsRilResponse::setDataAllowedResponse(
 }
 
 Return<void> nsRilResponse::getHardwareConfigResponse(
-    const RadioResponseInfo& info,
-    const ::android::hardware::hidl_vec<HardwareConfig>& /*config*/) {
+    const RadioResponseInfo& info, const hidl_vec<HardwareConfig>& /*config*/) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -1529,7 +1617,7 @@ Return<void> nsRilResponse::requestShutdownResponse(
 }
 
 Return<void> nsRilResponse::getRadioCapabilityResponse(
-    const RadioResponseInfo& info, const RadioCapability& rc) {
+    const RadioResponseInfo& info, const RADIO_1_0::RadioCapability& rc) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -1552,7 +1640,7 @@ Return<void> nsRilResponse::getRadioCapabilityResponse(
 }
 
 Return<void> nsRilResponse::setRadioCapabilityResponse(
-    const RadioResponseInfo& info, const RadioCapability& /*rc*/) {
+    const RadioResponseInfo& info, const RADIO_1_0::RadioCapability& /*rc*/) {
   rspInfo = info;
   mRIL->processResponse(rspInfo.type);
 
@@ -2340,3 +2428,273 @@ int32_t nsRilResponse::convertTtyMode(TtyMode mode) {
       return nsIRilResponseResult::TTY_MODE_OFF;
   }
 }
+
+#if RADIO_HAL >= 14
+Return<void> nsRilResponse::getSignalStrengthResponse_1_4(
+    const RadioResponseInfo& info, const SignalStrength& sig_strength) {
+  rspInfo = info;
+  mRIL->processResponse(rspInfo.type);
+
+  RefPtr<nsRilResponseResult> result =
+      new nsRilResponseResult(u"getSignalStrength"_ns, rspInfo.serial,
+                              convertRadioErrorToNum(rspInfo.error));
+  if (rspInfo.error == RadioError::NONE) {
+    RefPtr<nsSignalStrength> signalStrength =
+        result->convertSignalStrength(sig_strength);
+    result->updateSignalStrength(signalStrength);
+  } else {
+    DEBUG("getSignalStrength error.");
+  }
+
+  mRIL->sendRilResponseResult(result);
+  return Void();
+}
+
+Return<void> nsRilResponse::getAllowedCarriersResponse_1_4(
+    const RadioResponseInfo& info,
+    const RADIO_1_4::CarrierRestrictionsWithPriority& carriers,
+    RADIO_1_4::SimLockMultiSimPolicy multiSimPolicy) {
+  rspInfo = info;
+  mRIL->processResponse(rspInfo.type);
+
+  return Void();
+}
+
+Return<void> nsRilResponse::setAllowedCarriersResponse_1_4(
+    const RadioResponseInfo& info) {
+  rspInfo = info;
+  mRIL->processResponse(rspInfo.type);
+
+  return Void();
+}
+
+Return<void> nsRilResponse::setupDataCallResponse_1_4(
+    const RadioResponseInfo& info,
+    const RADIO_1_4::SetupDataCallResult& dcResponse) {
+  rspInfo = info;
+  mRIL->processResponse(rspInfo.type);
+
+  RefPtr<nsRilResponseResult> result =
+      new nsRilResponseResult(u"setupDataCall"_ns, rspInfo.serial,
+                              convertRadioErrorToNum(rspInfo.error));
+  if (rspInfo.error == RadioError::NONE) {
+    RefPtr<nsSetupDataCallResult> datacallresponse =
+        result->convertDcResponse(dcResponse);
+    result->updateDataCallResponse(datacallresponse);
+  } else {
+    DEBUG("setupDataCall error.");
+  }
+
+  mRIL->sendRilResponseResult(result);
+  return Void();
+}
+
+Return<void> nsRilResponse::getDataCallListResponse_1_4(
+    const RadioResponseInfo& info,
+    const hidl_vec<RADIO_1_4::SetupDataCallResult>& dcResponse) {
+  rspInfo = info;
+  mRIL->processResponse(rspInfo.type);
+
+  RefPtr<nsRilResponseResult> result =
+      new nsRilResponseResult(u"getDataCallList"_ns, rspInfo.serial,
+                              convertRadioErrorToNum(rspInfo.error));
+  if (rspInfo.error == RadioError::NONE) {
+    uint32_t numDataCall = dcResponse.size();
+    nsTArray<RefPtr<nsSetupDataCallResult>> aDcLists(numDataCall);
+
+    for (uint32_t i = 0; i < numDataCall; i++) {
+      RefPtr<nsSetupDataCallResult> datcall =
+          result->convertDcResponse(dcResponse[i]);
+      aDcLists.AppendElement(datcall);
+    }
+    result->updateDcList(aDcLists);
+  } else {
+    DEBUG("getDataCallListResponse error.");
+  }
+  mRIL->sendRilResponseResult(result);
+  return Void();
+}
+
+Return<void> nsRilResponse::setPreferredNetworkTypeBitmapResponse(
+    const RadioResponseInfo& info) {
+  DEBUG("Not implemented: setPreferredNetworkTypeBitmapResponse");
+  rspInfo = info;
+  mRIL->processResponse(rspInfo.type);
+  return Void();
+}
+
+Return<void> nsRilResponse::getPreferredNetworkTypeBitmapResponse(
+    const RadioResponseInfo& info,
+    ::android::hardware::hidl_bitfield<RADIO_1_4::RadioAccessFamily>
+        networkTypeBitmap) {
+  DEBUG("Not implemented: getPreferredNetworkTypeBitmapResponse");
+  rspInfo = info;
+  mRIL->processResponse(rspInfo.type);
+  return Void();
+}
+
+Return<void> nsRilResponse::getDataRegistrationStateResponse_1_4(
+    const RadioResponseInfo& info,
+    const RADIO_1_4::DataRegStateResult& dataRegResponse) {
+  rspInfo = info;
+  mRIL->processResponse(rspInfo.type);
+
+  RefPtr<nsRilResponseResult> result =
+      new nsRilResponseResult(u"getDataRegistrationState"_ns, rspInfo.serial,
+                              convertRadioErrorToNum(rspInfo.error));
+  if (rspInfo.error == RadioError::NONE) {
+    DEBUG("getDataRegistrationState success.");
+    RefPtr<nsCellIdentity> cellIdentity =
+        result->convertCellIdentity(dataRegResponse.base.cellIdentity);
+    RefPtr<nsDataRegState> dataRegState = new nsDataRegState(
+        convertRegState(dataRegResponse.base.regState),
+        dataRegResponse.base.rat, dataRegResponse.base.reasonDataDenied,
+        dataRegResponse.base.maxDataCalls, cellIdentity);
+    result->updateDataRegStatus(dataRegState);
+  } else {
+    DEBUG("getDataRegistrationState error.");
+  }
+
+  mRIL->sendRilResponseResult(result);
+  return Void();
+}
+
+Return<void> nsRilResponse::getCellInfoListResponse_1_4(
+    const RadioResponseInfo& info,
+    const hidl_vec<RADIO_1_4::CellInfo>& cellInfo) {
+  rspInfo = info;
+  mRIL->processResponse(rspInfo.type);
+
+  RefPtr<nsRilResponseResult> result =
+      new nsRilResponseResult(u"getCellInfoList"_ns, rspInfo.serial,
+                              convertRadioErrorToNum(rspInfo.error));
+  if (rspInfo.error == RadioError::NONE) {
+    uint32_t numCellInfo = cellInfo.size();
+    nsTArray<RefPtr<nsRilCellInfo>> aCellInfoLists(numCellInfo);
+
+    for (uint32_t i = 0; i < numCellInfo; i++) {
+      RefPtr<nsRilCellInfo> cell = result->convertRilCellInfo(cellInfo[i]);
+      aCellInfoLists.AppendElement(cell);
+    }
+    result->updateCellInfoList(aCellInfoLists);
+  } else {
+    DEBUG("getCellInfoListResponse error.");
+  }
+  mRIL->sendRilResponseResult(result);
+  return Void();
+}
+
+Return<void> nsRilResponse::startNetworkScanResponse_1_4(
+    const RadioResponseInfo& info) {
+  rspInfo = info;
+  mRIL->processResponse(rspInfo.type);
+  return Void();
+}
+
+Return<void> nsRilResponse::emergencyDialResponse(
+    const RadioResponseInfo& info) {
+  DEBUG("Not implemented: emergencyDialResponse");
+  rspInfo = info;
+  mRIL->processResponse(rspInfo.type);
+  return Void();
+}
+
+Return<void> nsRilResponse::getModemStackStatusResponse(
+    const RadioResponseInfo& info, bool isEnabled) {
+  rspInfo = info;
+  mRIL->processResponse(rspInfo.type);
+  return Void();
+}
+
+Return<void> nsRilResponse::enableModemResponse(const RadioResponseInfo& info) {
+  rspInfo = info;
+  mRIL->processResponse(rspInfo.type);
+  return Void();
+}
+
+Return<void> nsRilResponse::setSystemSelectionChannelsResponse(
+    const RadioResponseInfo& info) {
+  rspInfo = info;
+  mRIL->processResponse(rspInfo.type);
+  return Void();
+}
+
+Return<void> nsRilResponse::getDataRegistrationStateResponse_1_2(
+    const RadioResponseInfo& info,
+    const RADIO_1_2::DataRegStateResult& dataRegResponse) {
+  DEBUG("Not implemented: getDataRegistrationStateResponse_1_2");
+  rspInfo = info;
+  mRIL->processResponse(rspInfo.type);
+  return Void();
+}
+
+Return<void> nsRilResponse::getVoiceRegistrationStateResponse_1_2(
+    const RadioResponseInfo& info,
+    const RADIO_1_2::VoiceRegStateResult& voiceRegResponse) {
+  rspInfo = info;
+  mRIL->processResponse(rspInfo.type);
+
+  RefPtr<nsRilResponseResult> result =
+      new nsRilResponseResult(u"getVoiceRegistrationState"_ns, rspInfo.serial,
+                              convertRadioErrorToNum(rspInfo.error));
+  if (rspInfo.error == RadioError::NONE) {
+    DEBUG("getVoiceRegistrationState success.");
+    RefPtr<nsCellIdentity> cellIdentity =
+        result->convertCellIdentity(voiceRegResponse.cellIdentity);
+    RefPtr<nsVoiceRegState> voiceRegState = new nsVoiceRegState(
+        convertRegState(voiceRegResponse.regState), voiceRegResponse.rat,
+        voiceRegResponse.cssSupported, voiceRegResponse.roamingIndicator,
+        voiceRegResponse.systemIsInPrl,
+        voiceRegResponse.defaultRoamingIndicator,
+        voiceRegResponse.reasonForDenial, cellIdentity);
+    result->updateVoiceRegStatus(voiceRegState);
+  } else {
+    DEBUG("getVoiceRegistrationState error.");
+  }
+
+  mRIL->sendRilResponseResult(result);
+  return Void();
+}
+
+Return<void> nsRilResponse::getSignalStrengthResponse_1_2(
+    const RadioResponseInfo& info,
+    const RADIO_1_2::SignalStrength& signalStrength) {
+  DEBUG("Not implemented: getSignalStrengthResponse_1_2");
+  rspInfo = info;
+  mRIL->processResponse(rspInfo.type);
+  return Void();
+}
+
+Return<void> nsRilResponse::setLinkCapacityReportingCriteriaResponse(
+    const RadioResponseInfo& info) {
+  DEBUG("Not implemented: setLinkCapacityReportingCriteriaResponse");
+  rspInfo = info;
+  mRIL->processResponse(rspInfo.type);
+  return Void();
+}
+
+Return<void> nsRilResponse::setSignalStrengthReportingCriteriaResponse(
+    const RadioResponseInfo& info) {
+  DEBUG("Not implemented: setSignalStrengthReportingCriteriaResponse");
+  rspInfo = info;
+  mRIL->processResponse(rspInfo.type);
+  return Void();
+}
+
+Return<void> nsRilResponse::getIccCardStatusResponse_1_2(
+    const RadioResponseInfo& info, const RADIO_1_2::CardStatus& cardStatus) {
+  DEBUG("Not implemented: getIccCardStatusResponse_1_2");
+  rspInfo = info;
+  mRIL->processResponse(rspInfo.type);
+  return Void();
+}
+
+Return<void> nsRilResponse::getCellInfoListResponse_1_2(
+    const RadioResponseInfo& info,
+    const hidl_vec<RADIO_1_2::CellInfo>& cellInfo) {
+  DEBUG("Not implemented: getCellInfoListResponse_1_2");
+  rspInfo = info;
+  mRIL->processResponse(rspInfo.type);
+  return Void();
+}
+#endif
