@@ -801,13 +801,13 @@ export class UrlbarView {
     this.#resultMenuResult = result;
     this.resultMenu.openPopup(anchor, "bottomright topright");
     anchor.toggleAttribute("open", true);
-    this.resultMenu.addEventListener(
-      "popuphidden",
-      () => {
+    let listener = event => {
+      if (event.target == this.resultMenu) {
         anchor.removeAttribute("open");
-      },
-      { once: true }
-    );
+        this.resultMenu.removeEventListener("popuphidden", listener);
+      }
+    };
+    this.resultMenu.addEventListener("popuphidden", listener);
   }
 
   /**
@@ -1066,10 +1066,16 @@ export class UrlbarView {
       // Continue updating rows as long as we haven't encountered a new
       // suggestedIndex result that couldn't replace a current result.
       if (!seenMisplacedResult) {
+        let result = results[resultIndex];
+        // skip this result if it is supposed to be hidden from the view.
+        if (result.exposureResultHidden) {
+          this.#addExposure(result);
+          resultIndex++;
+          continue;
+        }
         seenSearchSuggestion =
           seenSearchSuggestion ||
           (!row.result.heuristic && this.#resultIsSearchSuggestion(row.result));
-        let result = results[resultIndex];
         if (
           this.#rowCanUpdateToResult(rowIndex, result, seenSearchSuggestion)
         ) {
@@ -1099,8 +1105,13 @@ export class UrlbarView {
 
     // Add remaining results, if we have fewer rows than results.
     for (; resultIndex < results.length; ++resultIndex) {
-      let row = this.#createRow();
       let result = results[resultIndex];
+      // skip this result if it is supposed to be hidden from the view.
+      if (result.exposureResultHidden) {
+        this.#addExposure(result);
+        continue;
+      }
+      let row = this.#createRow();
       this.#updateRow(row, result);
       if (!seenMisplacedResult && result.hasSuggestedIndex) {
         if (result.isSuggestedIndexRelativeToGroup) {
@@ -1375,12 +1386,14 @@ export class UrlbarView {
       if (result.payload.isBlockable) {
         this.#addRowButton(item, {
           name: "block",
+          command: "dismiss",
           l10n: result.payload.blockL10n,
         });
       }
       if (result.payload.helpUrl) {
         this.#addRowButton(item, {
           name: "help",
+          command: "help",
           url: result.payload.helpUrl,
           l10n: result.payload.helpL10n,
         });
@@ -1388,7 +1401,11 @@ export class UrlbarView {
     } else if (this.#getResultMenuCommands(result)) {
       this.#addRowButton(item, {
         name: "menu",
-        l10n: { id: "urlbar-result-menu-button" },
+        l10n: {
+          id: result.showFeedbackMenu
+            ? "urlbar-result-menu-button-feedback"
+            : "urlbar-result-menu-button",
+        },
         attributes: lazy.UrlbarPrefs.get("resultMenu.keyboardAccessible")
           ? null
           : {
@@ -1398,7 +1415,7 @@ export class UrlbarView {
     }
   }
 
-  #addRowButton(item, { name, l10n, url, attributes }) {
+  #addRowButton(item, { name, command, l10n, url, attributes }) {
     let button = this.#createElement("span");
     this.#setDynamicAttributes(button, attributes);
     button.id = `${item.id}-button-${name}`;
@@ -1407,6 +1424,9 @@ export class UrlbarView {
     button.dataset.name = name;
     if (l10n) {
       this.#setElementL10n(button, l10n);
+    }
+    if (command) {
+      button.dataset.command = command;
     }
     if (url) {
       button.dataset.url = url;
@@ -1839,6 +1859,9 @@ export class UrlbarView {
 
       let visible = this.#isElementVisible(item);
       if (visible) {
+        if (item.result.exposureResultType) {
+          this.#addExposure(item.result);
+        }
         this.visibleResults.push(item.result);
       }
 
@@ -2666,8 +2689,8 @@ export class UrlbarView {
   /**
    * @param {UrlbarResult} result
    *   The result to get menu commands for.
-   * @returns {Map}
-   *   Map of menu commands available for the result, null if there are none.
+   * @returns {Array}
+   *   Array of menu commands available for the result, null if there are none.
    */
   #getResultMenuCommands(result) {
     if (!lazy.UrlbarPrefs.get("resultMenu")) {
@@ -2676,46 +2699,72 @@ export class UrlbarView {
     if (this.#resultMenuCommands.has(result)) {
       return this.#resultMenuCommands.get(result);
     }
-    let commands = new Map();
+
+    let commands = lazy.UrlbarProvidersManager.getProvider(
+      result.providerName
+    ).tryMethod("getResultCommands", result);
+    if (commands) {
+      this.#resultMenuCommands.set(result, commands);
+      return commands;
+    }
+
+    commands = [];
     if (
       result.source == lazy.UrlbarUtils.RESULT_SOURCE.HISTORY &&
       !result.autofill
     ) {
-      commands.set(RESULT_MENU_COMMANDS.DISMISS, {
-        l10n: { id: "urlbar-result-menu-remove-from-history" },
-      });
-      commands.set(RESULT_MENU_COMMANDS.HELP, {
-        l10n: { id: "urlbar-result-menu-learn-more" },
-      });
+      commands.push(
+        {
+          name: RESULT_MENU_COMMANDS.DISMISS,
+          l10n: { id: "urlbar-result-menu-remove-from-history" },
+        },
+        {
+          name: RESULT_MENU_COMMANDS.HELP,
+          l10n: { id: "urlbar-result-menu-learn-more" },
+        }
+      );
     }
     if (result.payload.isBlockable) {
-      commands.set(RESULT_MENU_COMMANDS.DISMISS, {
+      commands.push({
+        name: RESULT_MENU_COMMANDS.DISMISS,
         l10n: result.payload.blockL10n,
       });
     }
     if (result.payload.helpUrl) {
-      commands.set(RESULT_MENU_COMMANDS.HELP, {
+      commands.push({
+        name: RESULT_MENU_COMMANDS.HELP,
         l10n: result.payload.helpL10n,
       });
     }
-    let rv = commands.size ? commands : null;
+    let rv = commands.length ? commands : null;
     this.#resultMenuCommands.set(result, rv);
     return rv;
   }
 
-  #populateResultMenu() {
-    this.resultMenu.textContent = "";
-    for (const [command, data] of this.#getResultMenuCommands(
-      this.#resultMenuResult
-    )) {
-      let menuitem = this.document.createElementNS(
-        "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul",
-        "menuitem"
-      );
-      menuitem.dataset.command = command;
+  #populateResultMenu(
+    menupopup = this.resultMenu,
+    commands = this.#getResultMenuCommands(this.#resultMenuResult)
+  ) {
+    menupopup.textContent = "";
+    for (let data of commands) {
+      if (data.children) {
+        let popup = this.document.createXULElement("menupopup");
+        this.#populateResultMenu(popup, data.children);
+        let menu = this.document.createXULElement("menu");
+        this.#setElementL10n(menu, data.l10n);
+        menu.appendChild(popup);
+        menupopup.appendChild(menu);
+        continue;
+      }
+      if (data.name == "separator") {
+        menupopup.appendChild(this.document.createXULElement("menuseparator"));
+        continue;
+      }
+      let menuitem = this.document.createXULElement("menuitem");
+      menuitem.dataset.command = data.name;
       menuitem.classList.add("urlbarView-result-menuitem");
       this.#setElementL10n(menuitem, data.l10n);
-      this.resultMenu.appendChild(menuitem);
+      menupopup.appendChild(menuitem);
     }
   }
 
@@ -3003,9 +3052,18 @@ export class UrlbarView {
   }
 
   on_popupshowing(event) {
-    if (event.currentTarget == this.resultMenu) {
+    if (event.target == this.resultMenu) {
       this.#populateResultMenu();
     }
+  }
+
+  /**
+   * Add result to exposure set on the controller.
+   *
+   * @param {UrlbarResult} result UrlbarResult for which to record an exposure.
+   */
+  #addExposure(result) {
+    this.controller.engagementEvent.addExposure(result);
   }
 }
 

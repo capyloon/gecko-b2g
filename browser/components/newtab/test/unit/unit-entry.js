@@ -142,11 +142,6 @@ const TEST_GLOBAL = {
       return true;
     },
   },
-  BuiltInThemes: {
-    findActiveColorwayCollection() {
-      return true;
-    },
-  },
   UpdateUtils: { getUpdateChannel() {} },
   BasePromiseWorker: class {
     constructor() {
@@ -617,6 +612,9 @@ const TEST_GLOBAL = {
         set() {},
       },
       homepageCategory: {
+        set() {},
+      },
+      blockedSponsors: {
         set() {},
       },
     },

@@ -200,18 +200,18 @@ function waitForSelectedLocation(dbg, line, column) {
  */
 function waitForSelectedSource(dbg, sourceOrUrl) {
   const {
-    getSelectedSource,
     getSelectedSourceTextContent,
     getSymbols,
     getBreakableLines,
     getSourceActorsForSource,
     getSourceActorBreakableLines,
+    getFirstSourceActorForGeneratedSource,
   } = dbg.selectors;
 
   return waitForState(
     dbg,
     state => {
-      const source = getSelectedSource() || {};
+      const location = dbg.selectors.getSelectedLocation() || {};
       const sourceTextContent = getSelectedSourceTextContent();
       if (!sourceTextContent) {
         return false;
@@ -221,34 +221,45 @@ function waitForSelectedSource(dbg, sourceOrUrl) {
         // Second argument is either a source URL (string)
         // or a Source object.
         if (typeof sourceOrUrl == "string") {
-          if (!source.url.includes(encodeURI(sourceOrUrl))) {
+          if (!location.source.url.includes(encodeURI(sourceOrUrl))) {
             return false;
           }
-        } else if (source.id != sourceOrUrl.id) {
+        } else if (location.source.id != sourceOrUrl.id) {
           return false;
         }
       }
 
       // Wait for symbols/AST to be parsed
-      if (!getSymbols(source)) {
+      if (!getSymbols(location) && !isWasmBinarySource(location.source)) {
         return false;
       }
 
       // Finaly wait for breakable lines to be set
-      if (source.isHTML) {
+      if (location.source.isHTML) {
         // For HTML sources we need to wait for each source actor to be processed.
         // getBreakableLines will return the aggregation without being able to know
         // if that's complete, with all the source actors.
-        const sourceActors = getSourceActorsForSource(source.id);
+        const sourceActors = getSourceActorsForSource(location.source.id);
         const allSourceActorsProcessed = sourceActors.every(
           sourceActor => !!getSourceActorBreakableLines(sourceActor.id)
         );
         return allSourceActorsProcessed;
       }
-      return getBreakableLines(source.id);
+      return getBreakableLines(location.source.id);
     },
     "selected source"
   );
+}
+
+/**
+ * The generated source of WASM source are WASM binary file,
+ * which have many broken/disabled features in the debugger.
+ *
+ * They especially have a very special behavior in CodeMirror
+ * where line labels aren't line number, but hex addresses.
+ */
+function isWasmBinarySource(source) {
+  return source.isWasm && !source.isOriginal;
 }
 
 function getVisibleSelectedFrameLine(dbg) {
@@ -327,9 +338,14 @@ function assertHighlightLocation(dbg, source, line) {
  * Assert that CodeMirror reports to be paused at the given line/column.
  */
 function _assertDebugLine(dbg, line, column) {
+  const source = dbg.selectors.getSelectedSource();
+  // WASM lines are hex addresses which have to be mapped to decimal line number
+  if (isWasmBinarySource(source)) {
+    line = dbg.wasmOffsetToLine(source.id, line) + 1;
+  }
+
   // Check the debug line
   const lineInfo = getCM(dbg).lineInfo(line - 1);
-  const source = dbg.selectors.getSelectedSource();
   const sourceTextContent = dbg.selectors.getSelectedSourceTextContent();
   if (source && !sourceTextContent) {
     const url = source.url;
@@ -368,7 +384,7 @@ function _assertDebugLine(dbg, line, column) {
   ok(isVisibleInEditor(dbg, debugLine), "debug line is visible");
 
   const markedSpans = lineInfo.handle.markedSpans;
-  if (markedSpans && markedSpans.length) {
+  if (markedSpans && markedSpans.length && !isWasmBinarySource(source)) {
     const hasExpectedDebugLine = markedSpans.some(
       span =>
         span.marker.className?.includes("debug-expression") &&
@@ -425,6 +441,13 @@ function assertPausedAtSourceAndLine(
   ok(isVisibleInEditor(dbg, getCM(dbg).display.gutters), "gutter is visible");
 
   const frames = dbg.selectors.getCurrentThreadFrames();
+  const source = dbg.selectors.getSelectedSource();
+
+  // WASM support is limited when we are on the generated binary source
+  if (isWasmBinarySource(source)) {
+    return;
+  }
+
   ok(frames.length >= 1, "Got at least one frame");
 
   // Lets make sure we can assert both original and generated file locations when needed
@@ -1644,8 +1667,6 @@ const selectors = {
     '.sources-list .tree-node[aria-level="1"] > .node > span:nth-child(1)',
   sourceTreeFiles: ".sources-list .tree-node[data-expandable=false]",
   threadSourceTree: i => `.threads-list .sources-pane:nth-child(${i})`,
-  threadSourceTreeHeader: i =>
-    `${selectors.threadSourceTree(i)} .thread-header`,
   threadSourceTreeSourceNode: (i, j) =>
     `${selectors.threadSourceTree(i)} .tree-node:nth-child(${j}) .node`,
   sourceDirectoryLabel: i => `.sources-list .tree-node:nth-child(${i}) .label`,

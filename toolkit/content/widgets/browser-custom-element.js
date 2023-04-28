@@ -431,10 +431,6 @@
       return document.getElementById(this.getAttribute("autocompletepopup"));
     }
 
-    get dateTimePicker() {
-      return document.getElementById(this.getAttribute("datetimepicker"));
-    }
-
     set suspendMediaWhenInactive(val) {
       this.browsingContext.suspendMediaWhenInactive = val;
     }

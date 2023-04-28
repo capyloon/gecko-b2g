@@ -257,8 +257,14 @@ describe("TelemetryFeed", () => {
           "browser.newtabpage.activity-stream.topSitesRows",
           3
         );
+        FAKE_GLOBAL_PREFS.set(
+          "browser.topsites.blockedSponsors",
+          '["mozilla"]'
+        );
+
         sandbox.spy(Glean.topsites.enabled, "set");
         sandbox.spy(Glean.topsites.rows, "set");
+        sandbox.spy(Glean.newtab.blockedSponsors, "set");
 
         instance = new TelemetryFeed();
         instance.init();
@@ -267,13 +273,29 @@ describe("TelemetryFeed", () => {
         assert.calledWith(Glean.topsites.enabled.set, true);
         assert.calledOnce(Glean.topsites.rows.set);
         assert.calledWith(Glean.topsites.rows.set, 3);
+        assert.calledOnce(Glean.newtab.blockedSponsors.set);
+        assert.calledWith(Glean.newtab.blockedSponsors.set, ["mozilla"]);
       });
+
+      it("should not record blocked sponsor metrics when bad json string is passed", () => {
+        FAKE_GLOBAL_PREFS.set("browser.topsites.blockedSponsors", "BAD[JSON]");
+
+        sandbox.spy(Glean.newtab.blockedSponsors, "set");
+
+        instance = new TelemetryFeed();
+        instance.init();
+
+        assert.notCalled(Glean.newtab.blockedSponsors.set);
+      });
+
       it("should record new metrics for newtab pref changes", () => {
         FAKE_GLOBAL_PREFS.set(
           "browser.newtabpage.activity-stream.topSitesRows",
           3
         );
+        FAKE_GLOBAL_PREFS.set("browser.topsites.blockedSponsors", "[]");
         sandbox.spy(Glean.topsites.rows, "set");
+        sandbox.spy(Glean.newtab.blockedSponsors, "set");
 
         instance = new TelemetryFeed();
         instance.init();
@@ -283,9 +305,18 @@ describe("TelemetryFeed", () => {
           2
         );
 
+        Services.prefs.setStringPref(
+          "browser.topsites.blockedSponsors",
+          '["mozilla"]'
+        );
+
         assert.calledTwice(Glean.topsites.rows.set);
         assert.calledWith(Glean.topsites.rows.set.firstCall, 3);
         assert.calledWith(Glean.topsites.rows.set.secondCall, 2);
+        assert.calledWith(Glean.newtab.blockedSponsors.set.firstCall, []);
+        assert.calledWith(Glean.newtab.blockedSponsors.set.secondCall, [
+          "mozilla",
+        ]);
       });
       it("should ignore changes to other prefs", () => {
         FAKE_GLOBAL_PREFS.set("some.other.pref", 123);
@@ -2190,6 +2221,8 @@ describe("TelemetryFeed", () => {
       // Event should be recorded
       assert.calledOnce(Glean.topsites.impression.record);
       assert.calledWith(Glean.topsites.impression.record, {
+        advertiser_name: "adnoid ads",
+        tile_id: "42",
         newtab_visit_id: session_id,
         is_sponsored: true,
         position: 1,
@@ -2198,6 +2231,7 @@ describe("TelemetryFeed", () => {
     it("should record a Glean topsites.click event on a click event", async () => {
       const data = {
         type: "click",
+        advertiser: "test advertiser",
         tile_id: 42,
         source: "newtab",
         position: 0,
@@ -2213,6 +2247,8 @@ describe("TelemetryFeed", () => {
       // Event should be recorded
       assert.calledOnce(Glean.topsites.click.record);
       assert.calledWith(Glean.topsites.click.record, {
+        advertiser_name: "test advertiser",
+        tile_id: "42",
         newtab_visit_id: session_id,
         is_sponsored: true,
         position: 0,

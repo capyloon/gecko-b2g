@@ -12357,6 +12357,7 @@
     "alert_emails": ["seceng-telemetry@mozilla.com"],
     "expires_in_version": "never",
     "kind": "categorical",
+    "releaseChannelCollection": "opt-out",
     "labels": ["ImgUpSuccess", "ImgUpFailure", "ImgNoUpSuccess", "ImgNoUpFailure"],
     "description": "How often image loads fail in regular mode and in upgrading mode?"
   },
@@ -12367,6 +12368,7 @@
     "alert_emails": ["seceng-telemetry@mozilla.com"],
     "expires_in_version": "never",
     "kind": "categorical",
+    "releaseChannelCollection": "opt-out",
     "labels": ["VideoUpSuccess", "VideoUpFailure", "VideoNoUpSuccess", "VideoNoUpFailure"],
     "description": "How often video loads fail in regular mode and in upgrading mode?"
   },
@@ -12377,6 +12379,7 @@
     "alert_emails": ["seceng-telemetry@mozilla.com"],
     "expires_in_version": "never",
     "kind": "categorical",
+    "releaseChannelCollection": "opt-out",
     "labels": ["AudioUpSuccess", "AudioUpFailure", "AudioNoUpSuccess", "AudioNoUpFailure"],
     "description": "How often audio loads fail in regular mode and in upgrading mode?"
   },
@@ -14184,6 +14187,18 @@
     "bug_numbers": [1708455],
     "alert_emails": ["passwords-dev@mozilla.org"],
     "releaseChannelCollection": "opt-out"
+  },
+  "PWMGR_SIGNUP_FORM_DETECTION_MS": {
+    "record_in_processes": ["content"],
+    "products": ["firefox"],
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high":10000,
+    "n_buckets": 70,
+    "bug_numbers": [1815449],
+    "alert_emails": ["passwords-dev@mozilla.org"],
+    "releaseChannelCollection": "opt-out",
+    "description": "Elapsed time to detect whether a <form> element is a signup form."
   },
   "PWMGR_USERNAME_PRESENT": {
     "record_in_processes": ["main"],
@@ -17353,5 +17368,17 @@
     "kind": "boolean",
     "bug_numbers": [1812051],
     "description": "If any opaque response was blocked for a given top-level window context."
+  },
+  "EVENT_LONGTASK": {
+    "record_in_processes": ["main", "content"],
+    "products": ["firefox", "fennec"],
+    "expires_in_version": "never",
+    "alert_emails": ["rjesup@mozilla.com", "perf-telemetry-alerts@mozilla.com"],
+    "bug_numbers": [12345678],
+    "kind": "exponential",
+    "high": 10000,
+    "n_buckets": 50,
+    "keyed": true,
+    "description": "LongTask events for parent process (keys: event name): time the event ran in ms"
   }
 }

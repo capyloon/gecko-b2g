@@ -60,14 +60,15 @@ Please note that some targeting attributes require stricter controls on the tele
 * [isBackgroundTaskMode](#isbackgroundtaskmode)
 * [backgroundTaskName](#backgroundtaskname)
 * [userPrefersReducedMotion](#userprefersreducedmotion)
-* [colorwaysActive](#colorwaysactive)
-* [userEnabledActiveColorway](#userenabledactivecolorway)
 * [inMr2022Holdback](#inmr2022holdback)
 * [distributionId](#distributionid)
 * [fxViewButtonAreaType](#fxviewbuttonareatype)
 * [hasMigratedBookmarks](#hasmigratedbookmarks)
 * [hasMigratedHistory](#hasmigratedhistory)
 * [hasMigratedPasswords](#hasmigratedpasswords)
+* [useEmbeddedMigrationWizard][#useembeddedmigrationwizard]
+* [isRTAMO](#isrtamo)
+* [isDeviceMigration](#isdevicemigration)
 
 ## Detailed usage
 
@@ -936,14 +937,6 @@ mode, or `null` if this invocation is not running in background task mode.
 
 Checks if user prefers reduced motion as indicated by the value of a media query for `prefers-reduced-motion`.
 
-### `colorwaysActive`
-
-A boolean. `true` when there are Colorways available.
-
-### `userEnabledActiveColorway`
-
-A boolean. `true` when user has an active Colorway theme enabled.
-
 ### `inMr2022Holdback`
 
 A boolean. `true` when the user is in the Major Release 2022 holdback study.
@@ -968,3 +961,15 @@ A boolean. `true` if the user ever used the Migration Wizard to migrate history.
 ### `hasMigratedPasswords`
 
 A boolean. `true` if the user ever used the Migration Wizard to migrate passwords.
+
+### `useEmbeddedMigrationWizard`
+
+A boolean. `true` if the user is configured to use the embedded Migration Wizard in about:welcome.
+
+### `isRTAMO`
+
+A boolean. `true` when [RTAMO](first-run.md#return-to-amo-rtamo) has been used to download Firefox, `false` otherwise.
+
+### `isDeviceMigration`
+
+A boolean. `true` when [support.mozilla.org](https://support.mozilla.org) has been used to download the browser as part of a "migration" campaign, for device migration guidance, `false` otherwise.

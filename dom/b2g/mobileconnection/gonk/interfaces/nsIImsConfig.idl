@@ -1,0 +1,102 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "nsISupports.idl"
+
+interface nsIImsConfigCallback;
+
+[scriptable, uuid(e23ab15d-710b-4c34-83c1-38d383a415d3)]
+interface nsIImsConfigCallback : nsISupports
+{
+
+  /**
+   * The query result of IImsConfig.getConfigInt().
+   */
+  void onQueryConfigInt(in long item, in long value, in long status);
+
+  /**
+   * @param item Please check item possible values for detail.
+   * @param value Please check item's possible values for detail.
+   * @param status The chante status. Possible values: IImsConfig.OPERATION_STATUS_*.
+   */
+  void onSetConfigInt(in long item, in long value, in long status);
+};
+
+[scriptable, uuid(f22c4ddc-84db-42a3-80c4-d578e7269c35)]
+interface nsIImsConfig : nsISupports
+{
+
+
+  /**
+   * Item for queryConfigInt/setConfigInt api.
+  */
+  /**
+   * Voice over wifi roaming setting
+   * Possible values: VOICE_OVER_WIFI_ROAMING_*
+   */
+  const long VOICE_OVER_WIFI_ROAMING = 26;
+
+  /**
+   * Voice over wifi mode setting.
+   * Possible values: VOICE_OVER_WIFI_MODE_WIFI_*.
+   */
+  const long VOICE_OVER_WIFI_MODE = 27;
+
+  /**
+   * RTT setting.
+   * Possible values: 0: diabled, 1: enabled.
+   */
+  const long RTT_SETTING_ENABLED = 66;
+
+  /**
+   * Possible values of item VOICE_OVER_WIFI_ROAMING = 26.
+   */
+  const long VOICE_OVER_WIFI_ROAMING_DISASBLED = 0;
+  const long VOICE_OVER_WIFI_ROAMING_ENABLED= 1;
+
+  /**
+   * Possible values of item VOICE_OVER_WIFI_MODE = 27.
+   */
+  const long VOICE_OVER_WIFI_MODE_WIFI_ONLY = 0;
+  const long VOICE_OVER_WIFI_MODE_CELLULAR_PREFERRED = 1;
+  const long VOICE_OVER_WIFI_MODE_WIFI_PREFERRED = 2;
+
+  /**
+   * nsIImsConfigCallback status.
+   */
+  const long OPERATION_STATUS_UNKNOWN = -1;
+  const long OPERATION_STATUS_SUCCESS = 0;
+  const long OPERATION_STATUS_FAILED =  1;
+  const long OPERATION_STATUS_UNSUPPORTED_CAUSE_NONE = 2;
+  const long OPERATION_STATUS_UNSUPPORTED_CAUSE_RAT = 3;
+  const long OPERATION_STATUS_UNSUPPORTED_CAUSE_DISABLED = 4;
+
+  /**
+   * To get integer configuration.
+   * @param item
+   *        The item identifier.
+   *   VOICE_OVER_WIFI_ROAMING = 26.
+   *     possible result values: VOICE_OVER_WIFI_ROAMING_*.
+
+   *   VOICE_OVER_WIFI_MODE = 27.
+   *     possible result values: VOICE_OVER_WIFI_MODE_*.
+   * @param callback To receive query result.
+   */
+  void queryConfigInt(in long item, in nsIImsConfigCallback callback);
+
+  /**
+   * To setup configuration
+   * @param item
+   *        The item identifier.
+   *   VOICE_OVER_WIFI_ROAMING = 26.
+   *     @param value: VOICE_OVER_WIFI_ROAMING_*.
+   *
+   *   VOICE_OVER_WIFI_MODE = 27.
+   *     @param value: WIFI_MODE_WIFI_*.
+   *
+   *   VOICE_OVER_WIFI_SETTING_ENABLED = 28.
+   *     @param value: VOICE_OVER_WIFI_*.
+   */
+  void setConfigInt(in long item, in long value, in nsIImsConfigCallback callback);
+};

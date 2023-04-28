@@ -9,12 +9,23 @@ import "./moz-label.mjs";
 MozXULElement.insertFTLIfNeeded("locales-preview/moz-label.storybook.ftl");
 
 export default {
-  title: "Design System/Experiments/MozLabel",
+  title: "Label",
   component: "moz-label",
   argTypes: {
     inputType: {
       options: ["checkbox", "radio"],
       control: { type: "select" },
+    },
+  },
+  parameters: {
+    status: {
+      type: "unstable",
+      links: [
+        {
+          title: "Learn more",
+          href: "?path=/docs/ui-widgets-label-readme--page#component-status",
+        },
+      ],
     },
   },
 };

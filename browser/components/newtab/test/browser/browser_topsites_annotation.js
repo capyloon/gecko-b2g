@@ -51,13 +51,32 @@ const {
   VISIT_SOURCE_BOOKMARKED,
 } = PlacesUtils.history;
 
+/**
+ * To be used before checking database contents when they depend on a visit
+ * being added to History.
+ * @param {string} href the page to await notifications for.
+ */
+async function waitForVisitNotification(href) {
+  PlacesTestUtils.waitForNotification("page-visited", events =>
+    events.some(e => e.url === href)
+  );
+}
+
 async function assertDatabase({ targetURL, expected }) {
-  const frecency = await PlacesTestUtils.fieldInDB(targetURL, "frecency");
+  const frecency = await PlacesTestUtils.getDatabaseValue(
+    "moz_places",
+    "frecency",
+    { url: targetURL }
+  );
   Assert.equal(frecency, expected.frecency, "Frecency is correct");
 
-  const placesId = await PlacesTestUtils.fieldInDB(targetURL, "id");
+  const placesId = await PlacesTestUtils.getDatabaseValue("moz_places", "id", {
+    url: targetURL,
+  });
   const expectedTriggeringPlaceId = expected.triggerURL
-    ? await PlacesTestUtils.fieldInDB(expected.triggerURL, "id")
+    ? await PlacesTestUtils.getDatabaseValue("moz_places", "id", {
+        url: expected.triggerURL,
+      })
     : null;
   const db = await PlacesUtils.promiseDBConnection();
   const rows = await db.execute(
@@ -116,6 +135,7 @@ async function openAndTest({
   );
 
   info("Open specific link by type and wait for loading.");
+  let promiseVisited = await waitForVisitNotification(destinationURL);
   if (openType === OPEN_TYPE.CURRENT_BY_CLICK) {
     const onLoad = BrowserTestUtils.browserLoaded(
       gBrowser.selectedBrowser,
@@ -227,6 +247,7 @@ async function openAndTest({
     const win = await onLoad;
     await BrowserTestUtils.closeWindow(win);
   }
+  await promiseVisited;
 
   info("Check database for the destination.");
   await assertDatabase({ targetURL: destinationURL, expected });
@@ -549,6 +570,7 @@ add_task(async function redirection() {
     await pin(link);
 
     // Test with new tab.
+    let promiseVisited = await waitForVisitNotification(link.url);
     await openAndTest({
       linkSelector: ".top-site-button",
       linkURL: link.url,
@@ -560,6 +582,7 @@ add_task(async function redirection() {
         triggerURL: link.url,
       },
     });
+    await promiseVisited;
 
     // Check for URL causes the redirection.
     await assertDatabase({
@@ -572,6 +595,7 @@ add_task(async function redirection() {
     await clearHistoryAndBookmarks();
 
     // Test with same tab.
+    promiseVisited = await waitForVisitNotification(link.url);
     await openAndTest({
       linkSelector: ".top-site-button",
       linkURL: link.url,
@@ -583,6 +607,8 @@ add_task(async function redirection() {
         triggerURL: link.url,
       },
     });
+    await promiseVisited;
+
     // Check for URL causes the redirection.
     await assertDatabase({
       targetURL: link.url,
@@ -757,8 +783,11 @@ add_task(async function inherit() {
       value: host,
       waitForFocus: SimpleTest.waitForFocus,
     });
+    let promiseVisited = await waitForVisitNotification(host);
     EventUtils.synthesizeKey("KEY_Enter");
     await onLoad;
+    await promiseVisited;
+
     await assertDatabase({
       targetURL: host,
       expected: {
@@ -882,6 +911,7 @@ add_task(async function fixup() {
     await pin(link);
 
     info("Click sponsored tile");
+    let promiseVisited = await waitForVisitNotification(destinationURL);
     const onLoad = BrowserTestUtils.browserLoaded(
       gBrowser.selectedBrowser,
       false,
@@ -895,6 +925,7 @@ add_task(async function fixup() {
     );
     await onLoad;
     await onLocationChanged;
+    await promiseVisited;
 
     info("Check the DB");
     await assertDatabase({
@@ -924,6 +955,7 @@ add_task(async function noTriggeringURL() {
     browser.setAttribute("triggeringSponsoredURLVisitTimeMS", Date.now());
 
     info("Open URL whose host is the same as dummy triggering sponsored URL");
+    let promiseVisited = await waitForVisitNotification(targetURL);
     await UrlbarTestUtils.promiseAutocompleteResultPopup({
       window,
       value: targetURL,
@@ -936,6 +968,7 @@ add_task(async function noTriggeringURL() {
     );
     EventUtils.synthesizeKey("KEY_Enter");
     await onLoad;
+    await promiseVisited;
 
     info("Check DB");
     await assertDatabase({

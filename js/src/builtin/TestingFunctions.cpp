@@ -3358,6 +3358,10 @@ static bool NewString(JSContext* cx, unsigned argc, Value* vp) {
       if (capacity < len) {
         capacity = len;
       }
+      if (len == 0) {
+        JS_ReportErrorASCII(cx, "Cannot set capacity of empty string");
+        return false;
+      }
       if (stable.isLatin1()) {
         auto news = cx->make_pod_arena_array<JS::Latin1Char>(
             js::StringBufferArena, capacity);
@@ -6808,8 +6812,7 @@ static bool EvalStencilXDR(JSContext* cx, uint32_t argc, Value* vp) {
   /* Deserialize the stencil from XDR. */
   JS::TranscodeRange xdrRange(xdrObj->buffer(), xdrObj->bufferLength());
   bool succeeded = false;
-  if (!stencil.deserializeStencils(cx, &fc, input.get(), xdrRange,
-                                   &succeeded)) {
+  if (!stencil.deserializeStencils(&fc, input.get(), xdrRange, &succeeded)) {
     return false;
   }
   if (!succeeded) {

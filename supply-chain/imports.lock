@@ -1,6 +1,13 @@
 
 # cargo-vet imports lock
 
+[[publisher.audio_thread_priority]]
+version = "0.26.1"
+when = "2022-03-22"
+user-id = 1258
+user-login = "padenot"
+user-name = "Paul Adenot"
+
 [[publisher.bhttp]]
 version = "0.3.1"
 when = "2023-02-23"
@@ -8,19 +15,47 @@ user-id = 128763
 user-login = "martinthomson"
 user-name = "Martin Thomson"
 
+[[publisher.cexpr]]
+version = "0.6.0"
+when = "2021-10-11"
+user-id = 3788
+user-login = "emilio"
+user-name = "Emilio Cobos Álvarez"
+
+[[publisher.etagere]]
+version = "0.2.7"
+when = "2022-05-04"
+user-id = 1281
+user-login = "nical"
+user-name = "Nicolas Silva"
+
+[[publisher.euclid]]
+version = "0.22.7"
+when = "2022-04-04"
+user-id = 1281
+user-login = "nical"
+user-name = "Nicolas Silva"
+
 [[publisher.glean]]
-version = "52.4.2"
-when = "2023-03-15"
+version = "52.6.0"
+when = "2023-04-20"
 user-id = 48
 user-login = "badboy"
 user-name = "Jan-Erik Rediger"
 
 [[publisher.glean-core]]
-version = "52.4.2"
-when = "2023-03-15"
+version = "52.6.0"
+when = "2023-04-20"
 user-id = 48
 user-login = "badboy"
 user-name = "Jan-Erik Rediger"
+
+[[publisher.glslopt]]
+version = "0.1.9"
+when = "2021-03-17"
+user-id = 84794
+user-login = "jamienicol"
+user-name = "Jamie Nicol"
 
 [[publisher.ohttp]]
 version = "0.3.1"
@@ -28,6 +63,13 @@ when = "2023-02-23"
 user-id = 128763
 user-login = "martinthomson"
 user-name = "Martin Thomson"
+
+[[publisher.rust_cascade]]
+version = "1.5.0"
+when = "2023-04-05"
+user-id = 57462
+user-login = "mozkeeler"
+user-name = "Dana Keeler"
 
 [[audits.bytecode-alliance.audits.arbitrary]]
 who = "Nick Fitzgerald <fitzgen@gmail.com>"
@@ -62,6 +104,12 @@ Contains only unsafe code for what this crate's purpose is and only accesses
 the environment's terminal information when asked. Does its stated purpose and
 no more.
 """
+
+[[audits.bytecode-alliance.audits.base64]]
+who = "Pat Hickey <phickey@fastly.com>"
+criteria = "safe-to-deploy"
+version = "0.21.0"
+notes = "This crate has no dependencies, no build.rs, and contains no unsafe code."
 
 [[audits.bytecode-alliance.audits.block-buffer]]
 who = "Benjamin Bouvier <public@benj.me>"
@@ -130,6 +178,34 @@ more than what it says on the tin. Contains one `unsafe` block related to
 performance around utf-8 validation which is fairly easy to verify as correct.
 """
 
+[[audits.bytecode-alliance.audits.futures-channel]]
+who = "Pat Hickey <phickey@fastly.com>"
+criteria = "safe-to-deploy"
+version = "0.3.27"
+notes = "build.rs is just detecting the target and setting cfg. unsafety is for implementing a concurrency primitives using atomics and unsafecell, and is not obviously incorrect (this is the sort of thing I wouldn't certify as correct without formal methods)"
+
+[[audits.bytecode-alliance.audits.futures-core]]
+who = "Pat Hickey <phickey@fastly.com>"
+criteria = "safe-to-deploy"
+version = "0.3.27"
+notes = "Unsafe used to implement a concurrency primitive AtomicWaker. Well-commented and not obviously incorrect. Like my other audits of these concurrency primitives inside the futures family, I couldn't certify that it is correct without formal methods, but that is out of scope for this vetting."
+
+[[audits.bytecode-alliance.audits.futures-executor]]
+who = "Pat Hickey <phickey@fastly.com>"
+criteria = "safe-to-deploy"
+version = "0.3.27"
+notes = "Unsafe used to implement the unpark mutex, which is well commented and not obviously incorrect. Like with futures-channel I wouldn't be able to certify it as correct without formal methods."
+
+[[audits.bytecode-alliance.audits.futures-io]]
+who = "Pat Hickey <phickey@fastly.com>"
+criteria = "safe-to-deploy"
+version = "0.3.27"
+
+[[audits.bytecode-alliance.audits.futures-sink]]
+who = "Pat Hickey <phickey@fastly.com>"
+criteria = "safe-to-deploy"
+version = "0.3.27"
+
 [[audits.bytecode-alliance.audits.heck]]
 who = "Alex Crichton <alex@alexcrichton.com>"
 criteria = "safe-to-deploy"
@@ -197,6 +273,12 @@ who = "Alex Crichton <alex@alexcrichton.com>"
 criteria = "safe-to-deploy"
 version = "0.1.21"
 notes = "I am the author of this crate."
+
+[[audits.bytecode-alliance.audits.semver]]
+who = "Pat Hickey <phickey@fastly.com>"
+criteria = "safe-to-deploy"
+version = "1.0.17"
+notes = "plenty of unsafe pointer and vec tricks, but in well-structured and commented code that appears to be correct"
 
 [[audits.bytecode-alliance.audits.slab]]
 who = "Pat Hickey <phickey@fastly.com>"

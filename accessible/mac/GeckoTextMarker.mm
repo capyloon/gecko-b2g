@@ -9,6 +9,8 @@
 
 #import "MacUtils.h"
 
+#include "nsAccUtils.h"
+#include "DocAccessible.h"
 #include "DocAccessibleParent.h"
 #include "mozilla/StaticPrefs_accessibility.h"
 
@@ -138,6 +140,15 @@ GeckoTextMarkerRange GeckoTextMarker::RightWordRange() const {
         mLegacyTextMarker.Range(EWhichRange::eRightWord));
   } else {
     return GeckoTextMarkerRange(mCachedTextMarker.RightWordRange());
+  }
+}
+
+GeckoTextMarkerRange GeckoTextMarker::LineRange() const {
+  if (mLegacy) {
+    return GeckoTextMarkerRange(
+        mLegacyTextMarker.Range(EWhichRange::eLeftLine));
+  } else {
+    return GeckoTextMarkerRange(mCachedTextMarker.LineRange());
   }
 }
 

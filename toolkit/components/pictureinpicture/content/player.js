@@ -273,8 +273,7 @@ let Player = {
     }
 
     if (Services.prefs.getBoolPref(CAPTIONS_ENABLED_PREF, false)) {
-      const closedCaptionButton = document.getElementById("closed-caption");
-      closedCaptionButton.hidden = false;
+      this.closedCaptionButton.hidden = false;
     }
 
     if (Services.prefs.getBoolPref(IMPROVED_CONTROLS_ENABLED_PREF, false)) {
@@ -359,14 +358,27 @@ let Player = {
           this.controls.setAttribute("keying", true);
           this.showVideoControls();
         } else if (event.keyCode == KeyEvent.DOM_VK_ESCAPE) {
+          let isSettingsPanelInFocus = this.settingsPanel.contains(
+            document.activeElement
+          );
+
           event.preventDefault();
-          if (this.isFullscreen) {
+
+          if (!this.settingsPanel.classList.contains("hide")) {
+            // If the subtitles settings panel is open, let the ESC key close it
+            this.toggleSubtitlesSettingsPanel({ forceHide: true });
+            if (isSettingsPanelInFocus) {
+              document.getElementById("closed-caption").focus();
+            }
+          } else if (this.isFullscreen) {
             // We handle the ESC key, in fullscreen modus as intent to leave only the fullscreen mode
             document.exitFullscreen();
           } else {
             // We handle the ESC key, as an intent to leave the picture-in-picture modus
             this.onClose();
           }
+        } else if (event.keyCode == KeyEvent.DOM_VK_F) {
+          this.fullscreenModeToggle();
         } else if (
           Services.prefs.getBoolPref(KEYBOARD_CONTROLS_ENABLED_PREF, false) &&
           (event.keyCode != KeyEvent.DOM_VK_SPACE || !event.target.id)
@@ -424,8 +436,9 @@ let Player = {
           : `pictureinpicture-fullscreen-btn`;
         document.l10n.setAttributes(fullscreenButton, strId);
 
+        window.focus();
+
         if (this.isFullscreen) {
-          window.focus();
           this.actor.sendAsyncMessage("PictureInPicture:EnterFullscreen", {
             isFullscreen: true,
             isVideoControlsShowing: null,
@@ -633,7 +646,11 @@ let Player = {
       }
 
       case "closed-caption": {
-        this.toggleSubtitlesSettingsPanel();
+        let options = {};
+        if (event.mozInputSource == MouseEvent.MOZ_SOURCE_KEYBOARD) {
+          options.isKeyboard = true;
+        }
+        this.toggleSubtitlesSettingsPanel(options);
         // Early return to prevent hiding the panel below
         return;
       }
@@ -643,6 +660,21 @@ let Player = {
         this.recordEvent("fullscreen", {
           enter: (!this.isFullscreen).toString(),
         });
+        break;
+      }
+
+      case "font-size-selection-radio-small": {
+        document.getElementById("small").click();
+        break;
+      }
+
+      case "font-size-selection-radio-medium": {
+        document.getElementById("medium").click();
+        break;
+      }
+
+      case "font-size-selection-radio-large": {
+        document.getElementById("large").click();
         break;
       }
     }
@@ -657,11 +689,14 @@ let Player = {
    * Function to toggle the visibility of the subtitles settings panel
    * @param {Object} options [optional] Object containing options for the function
    *   - forceHide: true to force hide the subtitles settings panel
+   *   - isKeyboard: true if the subtitles button was activated using the keyboard
+   *     to show or hide the subtitles settings panel
    */
   toggleSubtitlesSettingsPanel(options) {
     let settingsPanelVisible = !this.settingsPanel.classList.contains("hide");
     if (options?.forceHide || settingsPanelVisible) {
       this.settingsPanel.classList.add("hide");
+      this.closedCaptionButton.setAttribute("aria-expanded", false);
       this.controls.removeAttribute("donthide");
 
       if (
@@ -679,8 +714,13 @@ let Player = {
       });
     } else {
       this.settingsPanel.classList.remove("hide");
+      this.closedCaptionButton.setAttribute("aria-expanded", true);
       this.controls.setAttribute("donthide", true);
       this.showVideoControls();
+
+      if (options?.isKeyboard) {
+        document.querySelector("#subtitles-toggle").focus();
+      }
     }
   },
 
@@ -999,8 +1039,7 @@ let Player = {
   },
 
   enableSubtitlesButton() {
-    let closedCaptionButton = document.getElementById("closed-caption");
-    closedCaptionButton.disabled = false;
+    this.closedCaptionButton.disabled = false;
 
     this.alignEndControlsButtonTooltips();
     this.captionsToggleEnabled = true;
@@ -1013,8 +1052,7 @@ let Player = {
   },
 
   disableSubtitlesButton() {
-    let closedCaptionButton = document.getElementById("closed-caption");
-    closedCaptionButton.disabled = true;
+    this.closedCaptionButton.disabled = true;
 
     this.alignEndControlsButtonTooltips();
   },
@@ -1083,6 +1121,13 @@ let Player = {
   get seekForward() {
     delete this.seekForward;
     return (this.seekForward = document.getElementById("seekForward"));
+  },
+
+  get closedCaptionButton() {
+    delete this.closedCaptionButton;
+    return (this.closedCaptionButton = document.getElementById(
+      "closed-caption"
+    ));
   },
 
   get settingsPanel() {
@@ -1204,6 +1249,12 @@ let Player = {
 
     if (!revealIndefinitely) {
       this.showingTimeout = setTimeout(() => {
+        const isHoverOverControlItem = this.controls.querySelector(
+          ".control-item:hover"
+        );
+        if (this.isFullscreen && isHoverOverControlItem) {
+          return;
+        }
         this.controls.removeAttribute("showing");
 
         if (

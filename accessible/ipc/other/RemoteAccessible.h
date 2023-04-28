@@ -73,7 +73,9 @@ class RemoteAccessible : public RemoteAccessibleBase<RemoteAccessible> {
   virtual bool SelectAll() override;
   virtual bool UnselectAll() override;
 
-  virtual nsAtom* LandmarkRole() const override;
+  virtual nsStaticAtom* LandmarkRole() const override;
+
+  virtual bool IsSearchbox() const override;
 
   virtual int32_t SelectionCount() override;
 

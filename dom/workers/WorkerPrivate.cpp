@@ -5364,6 +5364,10 @@ void WorkerPrivate::SetCCCollectedAnything(bool collectedAnything) {
   mWorkerThreadAccessible.Access()->mCCCollectedAnything = collectedAnything;
 }
 
+bool WorkerPrivate::isLastCCCollectedAnything() {
+  return mWorkerThreadAccessible.Access()->mCCCollectedAnything;
+}
+
 void WorkerPrivate::GarbageCollectInternal(JSContext* aCx, bool aShrinking,
                                            bool aCollectChildren) {
   // Perform GC followed by CC (the CC is triggered by
@@ -5955,7 +5959,8 @@ WorkerPrivate::EventTarget::IsOnCurrentThread(bool* aIsOnCurrentThread) {
   MutexAutoLock lock(mMutex);
 
   if (mShutdown) {
-    NS_WARNING("A worker's event target was used after the worker has !");
+    NS_WARNING(
+        "A worker's event target was used after the worker has shutdown!");
     return NS_ERROR_UNEXPECTED;
   }
 
@@ -5972,7 +5977,8 @@ WorkerPrivate::EventTarget::IsOnCurrentThreadInfallible() {
   MutexAutoLock lock(mMutex);
 
   if (mShutdown) {
-    NS_WARNING("A worker's event target was used after the worker has !");
+    NS_WARNING(
+        "A worker's event target was used after the worker has shutdown!");
     return false;
   }
 

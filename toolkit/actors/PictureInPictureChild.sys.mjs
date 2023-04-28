@@ -16,7 +16,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
     "resource://gre/modules/PictureInPictureControls.sys.mjs",
 });
 
-const { WebVTT } = ChromeUtils.import("resource://gre/modules/vtt.jsm");
+import { WebVTT } from "resource://gre/modules/vtt.sys.mjs";
 import { setTimeout, clearTimeout } from "resource://gre/modules/Timer.sys.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
@@ -67,7 +67,7 @@ const TEXT_TRACK_FONT_SIZE =
   "media.videocontrols.picture-in-picture.display-text-tracks.size";
 
 const MOUSEMOVE_PROCESSING_DELAY_MS = 50;
-const TOGGLE_HIDING_TIMEOUT_MS = 2000;
+const TOGGLE_HIDING_TIMEOUT_MS = 3000;
 // If you change this, also change VideoControlsWidget.SEEK_TIME_SECS:
 const SEEK_TIME_SECS = 5;
 const EMPTIED_TIMEOUT_MS = 1000;
@@ -2347,6 +2347,13 @@ export class PictureInPictureChild extends JSWindowActorChild {
 
     this.onCueChange = this.onCueChange.bind(this);
     this.trackOriginatingVideo(originatingVideo);
+
+    // A request to open PIP implies that the user intends to be interacting
+    // with the page, even if they open PIP by some means outside of the page
+    // itself (e.g., the keyboard shortcut or the page action button). So we
+    // manually record that the document has been activated via user gesture
+    // to make sure the video can be played regardless of autoplay permissions.
+    originatingVideo.ownerDocument.notifyUserGestureActivation();
 
     this.contentWindow.addEventListener(
       "unload",

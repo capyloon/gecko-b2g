@@ -2922,29 +2922,24 @@ bool nsWindow::UpdateNonClientMargins(bool aReflowWindow) {
     mNonClientOffset.left = 0;
     mNonClientOffset.right = 0;
 
-    APPBARDATA appBarData;
-    appBarData.cbSize = sizeof(appBarData);
-    UINT taskbarState = SHAppBarMessage(ABM_GETSTATE, &appBarData);
-    if (ABS_AUTOHIDE & taskbarState) {
-      UINT edge = -1;
-      appBarData.hWnd = FindWindow(L"Shell_TrayWnd", nullptr);
-      if (appBarData.hWnd) {
-        HMONITOR taskbarMonitor =
-            ::MonitorFromWindow(appBarData.hWnd, MONITOR_DEFAULTTOPRIMARY);
-        HMONITOR windowMonitor =
-            ::MonitorFromWindow(mWnd, MONITOR_DEFAULTTONEAREST);
-        if (taskbarMonitor == windowMonitor) {
-          SHAppBarMessage(ABM_GETTASKBARPOS, &appBarData);
-          edge = appBarData.uEdge;
-        }
+    mozilla::Maybe<UINT> maybeEdge = GetHiddenTaskbarEdge();
+    if (maybeEdge) {
+      auto edge = maybeEdge.value();
+      if (ABE_LEFT == edge) {
+        mNonClientOffset.left -= kHiddenTaskbarSize;
+      } else if (ABE_RIGHT == edge) {
+        mNonClientOffset.right -= kHiddenTaskbarSize;
+      } else if (ABE_BOTTOM == edge || ABE_TOP == edge) {
+        mNonClientOffset.bottom -= kHiddenTaskbarSize;
       }
 
-      if (ABE_LEFT == edge) {
-        mNonClientOffset.left -= 1;
-      } else if (ABE_RIGHT == edge) {
-        mNonClientOffset.right -= 1;
-      } else if (ABE_BOTTOM == edge || ABE_TOP == edge) {
-        mNonClientOffset.bottom -= 1;
+      // On Windows 10+, when we are drawing the non-client region, we need
+      // to clear the portion of the NC region that is exposed by the
+      // hidden taskbar.  As above, we clear the bottom of the NC region
+      // when the taskbar is at the top of the screen.
+      if (IsWin10OrLater()) {
+        UINT clearEdge = (edge == ABE_TOP) ? ABE_BOTTOM : edge;
+        mClearNCEdge = Some(clearEdge);
       }
     }
   } else {
@@ -3652,12 +3647,6 @@ void nsWindow::CleanupFullscreenTransition() {
   mTransitionWnd = nullptr;
 }
 
-void nsWindow::OnFullscreenWillChange(bool aFullScreen) {
-  if (mWidgetListener) {
-    mWidgetListener->FullscreenWillChange(aFullScreen);
-  }
-}
-
 void nsWindow::OnFullscreenChanged(nsSizeMode aOldSizeMode, bool aFullScreen) {
   // Hide chrome and reposition window. Note this will also cache dimensions for
   // restoration, so it should only be called once per fullscreen request.
@@ -3669,10 +3658,6 @@ void nsWindow::OnFullscreenChanged(nsSizeMode aOldSizeMode, bool aFullScreen) {
       aOldSizeMode == nsSizeMode_Minimized;
   if (!toOrFromMinimized) {
     InfallibleMakeFullScreen(aFullScreen);
-  }
-
-  if (mWidgetListener) {
-    mWidgetListener->FullscreenChanged(aFullScreen);
   }
 
   // Possibly notify the taskbar that we have changed our fullscreen mode.
@@ -5140,33 +5125,29 @@ bool nsWindow::ProcessMessageInternal(UINT msg, WPARAM& wParam, LPARAM& lParam,
   // effect immediately.
   static const bool sSwitchKeyboardLayout =
       Preferences::GetBool("intl.keyboard.per_window_layout", false);
-  static Maybe<bool> sCanQuit;
+  AppShutdownReason shutdownReason = AppShutdownReason::Unknown;
 
   // (Large blocks of code should be broken out into OnEvent handlers.)
   switch (msg) {
     // WM_QUERYENDSESSION must be handled by all windows.
     // Otherwise Windows thinks the window can just be killed at will.
-    case WM_QUERYENDSESSION:
-      if (sCanQuit.isNothing()) {
-        // Ask if it's ok to quit, and store the answer until we
-        // get WM_ENDSESSION signaling the round is complete.
-        nsCOMPtr<nsIObserverService> obsServ =
-            mozilla::services::GetObserverService();
-        nsCOMPtr<nsISupportsPRBool> cancelQuitWrapper =
-            do_CreateInstance(NS_SUPPORTS_PRBOOL_CONTRACTID);
-        cancelQuitWrapper->SetData(false);
+    case WM_QUERYENDSESSION: {
+      // Ask around if it's ok to quit.
+      nsCOMPtr<nsIObserverService> obsServ =
+          mozilla::services::GetObserverService();
+      nsCOMPtr<nsISupportsPRBool> cancelQuitWrapper =
+          do_CreateInstance(NS_SUPPORTS_PRBOOL_CONTRACTID);
+      cancelQuitWrapper->SetData(false);
 
-        const char16_t* quitType = GetQuitType();
-        obsServ->NotifyObservers(cancelQuitWrapper,
-                                 "quit-application-requested", quitType);
+      const char16_t* quitType = GetQuitType();
+      obsServ->NotifyObservers(cancelQuitWrapper, "quit-application-requested",
+                               quitType);
 
-        bool shouldCancelQuit;
-        cancelQuitWrapper->GetData(&shouldCancelQuit);
-        sCanQuit.emplace(!shouldCancelQuit);
-      }
-      *aRetValue = *sCanQuit;
+      bool shouldCancelQuit;
+      cancelQuitWrapper->GetData(&shouldCancelQuit);
+      *aRetValue = !shouldCancelQuit;
       result = true;
-      break;
+    } break;
 
     case MOZ_WM_STARTA11Y:
 #if defined(ACCESSIBILITY)
@@ -5177,45 +5158,69 @@ bool nsWindow::ProcessMessageInternal(UINT msg, WPARAM& wParam, LPARAM& lParam,
 #endif
       break;
 
-    case WM_ENDSESSION:
-    case MOZ_WM_APP_QUIT:
-      // For WM_ENDSESSION, wParam indicates whether the session is being ended
-      // (TRUE) or not (FALSE)
-      if (msg == MOZ_WM_APP_QUIT || (wParam && sCanQuit.valueOr(false))) {
-        // Let's fake a shutdown sequence without actually closing windows etc.
-        // to avoid Windows killing us in the middle. A proper shutdown would
-        // require having a chance to pump some messages. Unfortunately
-        // Windows won't let us do that. Bug 212316.
-        nsCOMPtr<nsIObserverService> obsServ =
-            mozilla::services::GetObserverService();
-        const char16_t* syncShutdown = u"syncShutdown";
-        const char16_t* quitType = GetQuitType();
-
-        AppShutdown::Init(AppShutdownMode::Normal, 0);
-
-        obsServ->NotifyObservers(nullptr, "quit-application-granted",
-                                 syncShutdown);
-        obsServ->NotifyObservers(nullptr, "quit-application-forced", nullptr);
-
-        AppShutdown::OnShutdownConfirmed();
-
-        AppShutdown::AdvanceShutdownPhase(ShutdownPhase::AppShutdownConfirmed,
-                                          quitType);
-        AppShutdown::AdvanceShutdownPhase(ShutdownPhase::AppShutdownNetTeardown,
-                                          nullptr);
-        AppShutdown::AdvanceShutdownPhase(ShutdownPhase::AppShutdownTeardown,
-                                          nullptr);
-        AppShutdown::AdvanceShutdownPhase(ShutdownPhase::AppShutdown, nullptr);
-        AppShutdown::AdvanceShutdownPhase(ShutdownPhase::AppShutdownQM,
-                                          nullptr);
-        AppShutdown::AdvanceShutdownPhase(ShutdownPhase::AppShutdownTelemetry,
-                                          nullptr);
-
-        AppShutdown::DoImmediateExit();
+    case WM_ENDSESSION: {
+      // For WM_ENDSESSION, wParam indicates whether we need to shutdown
+      // (TRUE) or not (FALSE).
+      if (!wParam) {
+        result = true;
+        break;
       }
-      sCanQuit.reset();
-      result = true;
-      break;
+      // According to WM_ENDSESSION lParam documentation:
+      //   0 -> OS shutdown or restart (no way to distinguish)
+      //   ENDSESSION_LOGOFF -> User is logging off
+      //   ENDSESSION_CLOSEAPP -> Application must shutdown
+      //   ENDSESSION_CRITICAL -> Application is forced to shutdown
+      // The difference of the last two is not very clear.
+      if (lParam == 0) {
+        shutdownReason = AppShutdownReason::OSShutdown;
+      } else if (lParam & ENDSESSION_LOGOFF) {
+        shutdownReason = AppShutdownReason::OSSessionEnd;
+      } else if (lParam & (ENDSESSION_CLOSEAPP | ENDSESSION_CRITICAL)) {
+        shutdownReason = AppShutdownReason::OSForceClose;
+      } else {
+        MOZ_DIAGNOSTIC_ASSERT(false,
+                              "Received WM_ENDSESSION with unknown flags.");
+        shutdownReason = AppShutdownReason::OSForceClose;
+      }
+    }
+      [[fallthrough]];
+    case MOZ_WM_APP_QUIT: {
+      if (shutdownReason == AppShutdownReason::Unknown) {
+        // TODO: We do not expect that these days anybody sends us
+        // MOZ_WM_APP_QUIT, see bug 1827807.
+        shutdownReason = AppShutdownReason::WinUnexpectedMozQuit;
+      }
+      // Let's fake a shutdown sequence without actually closing windows etc.
+      // to avoid Windows killing us in the middle. A proper shutdown would
+      // require having a chance to pump some messages. Unfortunately
+      // Windows won't let us do that. Bug 212316.
+      nsCOMPtr<nsIObserverService> obsServ =
+          mozilla::services::GetObserverService();
+      const char16_t* syncShutdown = u"syncShutdown";
+      const char16_t* quitType = GetQuitType();
+
+      AppShutdown::Init(AppShutdownMode::Normal, 0, shutdownReason);
+
+      obsServ->NotifyObservers(nullptr, "quit-application-granted",
+                               syncShutdown);
+      obsServ->NotifyObservers(nullptr, "quit-application-forced", nullptr);
+
+      AppShutdown::OnShutdownConfirmed();
+
+      AppShutdown::AdvanceShutdownPhase(ShutdownPhase::AppShutdownConfirmed,
+                                        quitType);
+      AppShutdown::AdvanceShutdownPhase(ShutdownPhase::AppShutdownNetTeardown,
+                                        nullptr);
+      AppShutdown::AdvanceShutdownPhase(ShutdownPhase::AppShutdownTeardown,
+                                        nullptr);
+      AppShutdown::AdvanceShutdownPhase(ShutdownPhase::AppShutdown, nullptr);
+      AppShutdown::AdvanceShutdownPhase(ShutdownPhase::AppShutdownQM, nullptr);
+      AppShutdown::AdvanceShutdownPhase(ShutdownPhase::AppShutdownTelemetry,
+                                        nullptr);
+
+      AppShutdown::DoImmediateExit();
+      MOZ_ASSERT_UNREACHABLE("Our process was supposed to exit.");
+    } break;
 
     case WM_SYSCOLORCHANGE:
       // No need to invalidate layout for system color changes, but we need to
@@ -9205,6 +9210,57 @@ nsresult nsWindow::SetHiDPIMode(bool aHiDPI) {
 nsresult nsWindow::RestoreHiDPIMode() { return WinUtils::RestoreHiDPIMode(); }
 #endif
 
+mozilla::Maybe<UINT> nsWindow::GetHiddenTaskbarEdge() {
+  HMONITOR windowMonitor = ::MonitorFromWindow(mWnd, MONITOR_DEFAULTTONEAREST);
+
+  if (!IsWin8OrLater()) {
+    // Per-monitor taskbar information is not available.
+    APPBARDATA appBarData;
+    appBarData.cbSize = sizeof(appBarData);
+    UINT taskbarState = SHAppBarMessage(ABM_GETSTATE, &appBarData);
+    if (ABS_AUTOHIDE & taskbarState) {
+      appBarData.hWnd = FindWindow(L"Shell_TrayWnd", nullptr);
+      if (appBarData.hWnd) {
+        HMONITOR taskbarMonitor =
+            ::MonitorFromWindow(appBarData.hWnd, MONITOR_DEFAULTTOPRIMARY);
+        if (taskbarMonitor == windowMonitor) {
+          SHAppBarMessage(ABM_GETTASKBARPOS, &appBarData);
+          return Some(appBarData.uEdge);
+        }
+      }
+    }
+    return Nothing();
+  }
+
+  // Check all four sides of our monitor for an appbar.  Skip any that aren't
+  // the system taskbar.
+  MONITORINFO mi;
+  mi.cbSize = sizeof(MONITORINFO);
+  ::GetMonitorInfo(windowMonitor, &mi);
+
+  APPBARDATA appBarData;
+  appBarData.cbSize = sizeof(appBarData);
+  appBarData.rc = mi.rcMonitor;
+  const auto kEdges = {ABE_BOTTOM, ABE_TOP, ABE_LEFT, ABE_RIGHT};
+  for (auto edge : kEdges) {
+    appBarData.uEdge = edge;
+    // ABM_GETAUTOHIDEBAREX is not defined before Windows 8.
+    static constexpr DWORD ABM_GETAUTOHIDEBAREX = 0x000b;
+    HWND appBarHwnd = (HWND)SHAppBarMessage(ABM_GETAUTOHIDEBAREX, &appBarData);
+    if (appBarHwnd) {
+      nsAutoString className;
+      if (WinUtils::GetClassName(appBarHwnd, className)) {
+        if (className.Equals(L"Shell_TrayWnd") ||
+            className.Equals(L"Shell_SecondaryTrayWnd")) {
+          return Some(edge);
+        }
+      }
+    }
+  }
+
+  return Nothing();
+}
+
 static nsSizeMode GetSizeModeForWindowFrame(HWND aWnd, bool aFullscreenMode) {
   WINDOWPLACEMENT pl;
   pl.length = sizeof(pl);
@@ -9354,10 +9410,6 @@ void nsWindow::FrameState::SetSizeModeInternal(nsSizeMode aMode,
       mSizeMode == nsSizeMode_Fullscreen || aMode == nsSizeMode_Fullscreen;
   const bool fullscreen = aMode == nsSizeMode_Fullscreen;
 
-  if (fullscreenChange) {
-    mWindow->OnFullscreenWillChange(fullscreen);
-  }
-
   mLastSizeMode = mSizeMode;
   mSizeMode = aMode;
 
@@ -9367,11 +9419,11 @@ void nsWindow::FrameState::SetSizeModeInternal(nsSizeMode aMode,
     ShowWindowWithMode(mWindow->mWnd, aMode);
   }
 
-  mWindow->OnSizeModeChange();
-
   if (fullscreenChange) {
     mWindow->OnFullscreenChanged(oldSizeMode, fullscreen);
   }
+
+  mWindow->OnSizeModeChange();
 }
 
 void nsWindow::ContextMenuPreventer::Update(

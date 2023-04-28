@@ -72,6 +72,8 @@
 #include "vm/StringObject.h"
 #include "vm/StringType.h"
 #include "vm/TypedArrayObject.h"
+#include "wasm/WasmCodegenConstants.h"
+#include "wasm/WasmValType.h"
 #ifdef MOZ_VTUNE
 #  include "vtune/VTuneWrapper.h"
 #endif
@@ -842,8 +844,8 @@ void CodeGenerator::visitOutOfLineICFallback(OutOfLineICFallback* ool) {
       icInfo_[cacheInfoIndex].icOffsetForPush = pushArgWithPatch(ImmWord(-1));
       pushArg(ImmGCPtr(gen->outerInfo().script()));
 
-      using Fn = bool (*)(JSContext * cx, HandleScript outerScript,
-                          IonUnaryArithIC * stub, HandleValue val,
+      using Fn = bool (*)(JSContext* cx, HandleScript outerScript,
+                          IonUnaryArithIC* stub, HandleValue val,
                           MutableHandleValue res);
       callVM<Fn, IonUnaryArithIC::update>(lir);
 
@@ -862,8 +864,8 @@ void CodeGenerator::visitOutOfLineICFallback(OutOfLineICFallback* ool) {
       icInfo_[cacheInfoIndex].icOffsetForPush = pushArgWithPatch(ImmWord(-1));
       pushArg(ImmGCPtr(gen->outerInfo().script()));
 
-      using Fn = bool (*)(JSContext * cx, HandleScript outerScript,
-                          IonToPropertyKeyIC * ic, HandleValue val,
+      using Fn = bool (*)(JSContext* cx, HandleScript outerScript,
+                          IonToPropertyKeyIC* ic, HandleValue val,
                           MutableHandleValue res);
       callVM<Fn, IonToPropertyKeyIC::update>(lir);
 
@@ -884,8 +886,8 @@ void CodeGenerator::visitOutOfLineICFallback(OutOfLineICFallback* ool) {
       icInfo_[cacheInfoIndex].icOffsetForPush = pushArgWithPatch(ImmWord(-1));
       pushArg(ImmGCPtr(gen->outerInfo().script()));
 
-      using Fn = bool (*)(JSContext * cx, HandleScript outerScript,
-                          IonBinaryArithIC * stub, HandleValue lhs,
+      using Fn = bool (*)(JSContext* cx, HandleScript outerScript,
+                          IonBinaryArithIC* stub, HandleValue lhs,
                           HandleValue rhs, MutableHandleValue res);
       callVM<Fn, IonBinaryArithIC::update>(lir);
 
@@ -905,9 +907,9 @@ void CodeGenerator::visitOutOfLineICFallback(OutOfLineICFallback* ool) {
       icInfo_[cacheInfoIndex].icOffsetForPush = pushArgWithPatch(ImmWord(-1));
       pushArg(ImmGCPtr(gen->outerInfo().script()));
 
-      using Fn = bool (*)(JSContext * cx, HandleScript outerScript,
-                          IonCompareIC * stub, HandleValue lhs, HandleValue rhs,
-                          bool* res);
+      using Fn =
+          bool (*)(JSContext* cx, HandleScript outerScript, IonCompareIC* stub,
+                   HandleValue lhs, HandleValue rhs, bool* res);
       callVM<Fn, IonCompareIC::update>(lir);
 
       StoreRegisterTo(compareIC->output()).generate(this);
@@ -1248,7 +1250,7 @@ void CodeGenerator::emitOOLTestObject(Register objreg,
                                       Label* ifDoesntEmulateUndefined,
                                       Register scratch) {
   saveVolatile(scratch);
-  using Fn = bool (*)(JSObject * obj);
+  using Fn = bool (*)(JSObject* obj);
   masm.setupAlignedABICall();
   masm.passABIArg(objreg);
   masm.callWithABI<Fn, js::EmulatesUndefined>();
@@ -2043,8 +2045,8 @@ static bool PrepareAndExecuteRegExp(JSContext* cx, MacroAssembler& masm,
     masm.computeEffectiveAddress(matchPairsAddress, temp3);
 
     masm.PushRegsInMask(regsToSave);
-    using Fn = RegExpRunStatus (*)(RegExpShared * re, JSLinearString * input,
-                                   size_t start, MatchPairs * matchPairs);
+    using Fn = RegExpRunStatus (*)(RegExpShared* re, JSLinearString* input,
+                                   size_t start, MatchPairs* matchPairs);
     masm.setupUnalignedABICall(temp2);
     masm.passABIArg(regexpReg);
     masm.passABIArg(input);
@@ -2362,7 +2364,7 @@ void CreateDependentString::generate(MacroAssembler& masm,
 
     masm.mov(ImmPtr(runtime), temp1_);
 
-    using Fn = void (*)(JSRuntime * rt, js::gc::Cell * cell);
+    using Fn = void (*)(JSRuntime* rt, js::gc::Cell* cell);
     masm.setupUnalignedABICall(temp2_);
     masm.passABIArg(temp1_);
     masm.passABIArg(string_);
@@ -2388,7 +2390,7 @@ void CreateDependentString::generateFallback(MacroAssembler& masm) {
 
     masm.PushRegsInMask(regsToSave);
 
-    using Fn = void* (*)(JSContext * cx);
+    using Fn = void* (*)(JSContext* cx);
     masm.setupUnalignedABICall(string_);
     masm.loadJSContext(string_);
     masm.passABIArg(string_);
@@ -2422,8 +2424,7 @@ static void CreateMatchResultFallback(MacroAssembler& masm, Register object,
 
   masm.PushRegsInMask(regsToSave);
 
-  using Fn =
-      void* (*)(JSContext * cx, gc::AllocKind kind, size_t nDynamicSlots);
+  using Fn = void* (*)(JSContext* cx, gc::AllocKind kind, size_t nDynamicSlots);
   masm.setupUnalignedABICall(object);
 
   masm.loadJSContext(object);
@@ -2802,9 +2803,9 @@ void CodeGenerator::visitOutOfLineRegExpMatcher(OutOfLineRegExpMatcher* ool) {
 
   // We are not using oolCallVM because we are in a Call, and that live
   // registers are already saved by the the register allocator.
-  using Fn = bool (*)(JSContext*, HandleObject regexp, HandleString input,
-                      int32_t lastIndex, MatchPairs * pairs,
-                      MutableHandleValue output);
+  using Fn =
+      bool (*)(JSContext*, HandleObject regexp, HandleString input,
+               int32_t lastIndex, MatchPairs* pairs, MutableHandleValue output);
   callVM<Fn, RegExpMatcherRaw>(lir);
 
   masm.jump(ool->rejoin());
@@ -2995,8 +2996,8 @@ void CodeGenerator::visitOutOfLineRegExpSearcher(OutOfLineRegExpSearcher* ool) {
 
   // We are not using oolCallVM because we are in a Call, and that live
   // registers are already saved by the the register allocator.
-  using Fn = bool (*)(JSContext * cx, HandleObject regexp, HandleString input,
-                      int32_t lastIndex, MatchPairs * pairs, int32_t * result);
+  using Fn = bool (*)(JSContext* cx, HandleObject regexp, HandleString input,
+                      int32_t lastIndex, MatchPairs* pairs, int32_t* result);
   callVM<Fn, RegExpSearcherRaw>(lir);
 
   masm.jump(ool->rejoin());
@@ -3144,8 +3145,8 @@ void CodeGenerator::visitOutOfLineRegExpTester(OutOfLineRegExpTester* ool) {
 
   // We are not using oolCallVM because we are in a Call, and that live
   // registers are already saved by the the register allocator.
-  using Fn = bool (*)(JSContext * cx, HandleObject regexp, HandleString input,
-                      int32_t lastIndex, int32_t * result);
+  using Fn = bool (*)(JSContext* cx, HandleObject regexp, HandleString input,
+                      int32_t lastIndex, int32_t* result);
   callVM<Fn, RegExpTesterRaw>(lir);
 
   masm.jump(ool->rejoin());
@@ -3212,7 +3213,7 @@ void CodeGenerator::visitOutOfLineRegExpPrototypeOptimizable(
 
   saveVolatile(output);
 
-  using Fn = bool (*)(JSContext * cx, JSObject * proto);
+  using Fn = bool (*)(JSContext* cx, JSObject* proto);
   masm.setupAlignedABICall();
   masm.loadJSContext(output);
   masm.passABIArg(output);
@@ -3264,7 +3265,7 @@ void CodeGenerator::visitOutOfLineRegExpInstanceOptimizable(
 
   saveVolatile(output);
 
-  using Fn = bool (*)(JSContext * cx, JSObject * obj, JSObject * proto);
+  using Fn = bool (*)(JSContext* cx, JSObject* obj, JSObject* proto);
   masm.setupAlignedABICall();
   masm.loadJSContext(output);
   masm.passABIArg(output);
@@ -4227,8 +4228,8 @@ void CodeGenerator::visitMegamorphicLoadSlot(LMegamorphicLoadSlot* lir) {
   masm.Push(UndefinedValue());
   masm.moveStackPtrTo(temp3);
 
-  using Fn = bool (*)(JSContext * cx, JSObject * obj, PropertyKey id,
-                      MegamorphicCache::Entry * cacheEntry, Value * vp);
+  using Fn = bool (*)(JSContext* cx, JSObject* obj, PropertyKey id,
+                      MegamorphicCache::Entry* cacheEntry, Value* vp);
   masm.setupAlignedABICall();
   masm.loadJSContext(temp0);
   masm.passABIArg(temp0);
@@ -4273,8 +4274,8 @@ void CodeGenerator::visitMegamorphicLoadSlotByValue(
   masm.Push(idVal);
   masm.moveStackPtrTo(temp0);
 
-  using Fn = bool (*)(JSContext * cx, JSObject * obj,
-                      MegamorphicCache::Entry * cacheEntry, Value * vp);
+  using Fn = bool (*)(JSContext* cx, JSObject* obj,
+                      MegamorphicCache::Entry* cacheEntry, Value* vp);
   masm.setupAlignedABICall();
   masm.loadJSContext(temp1);
   masm.passABIArg(temp1);
@@ -4311,8 +4312,8 @@ void CodeGenerator::visitMegamorphicStoreSlot(LMegamorphicStoreSlot* lir) {
   masm.Push(rhs);
   masm.moveStackPtrTo(temp0);
 
-  using Fn = bool (*)(JSContext * cx, JSObject * obj, PropertyName * name,
-                      Value * val);
+  using Fn =
+      bool (*)(JSContext* cx, JSObject* obj, PropertyName* name, Value* val);
   masm.setupAlignedABICall();
   masm.loadJSContext(temp1);
   masm.passABIArg(temp1);
@@ -4353,8 +4354,8 @@ void CodeGenerator::visitMegamorphicHasProp(LMegamorphicHasProp* lir) {
   masm.Push(idVal);
   masm.moveStackPtrTo(temp0);
 
-  using Fn = bool (*)(JSContext * cx, JSObject * obj,
-                      MegamorphicCache::Entry * cacheEntry, Value * vp);
+  using Fn = bool (*)(JSContext* cx, JSObject* obj,
+                      MegamorphicCache::Entry* cacheEntry, Value* vp);
   masm.setupAlignedABICall();
   masm.loadJSContext(temp1);
   masm.passABIArg(temp1);
@@ -4468,7 +4469,7 @@ void CodeGenerator::visitGuardStringToIndex(LGuardStringToIndex* lir) {
     volatileRegs.takeUnchecked(output);
     masm.PushRegsInMask(volatileRegs);
 
-    using Fn = int32_t (*)(JSString * str);
+    using Fn = int32_t (*)(JSString* str);
     masm.setupAlignedABICall();
     masm.passABIArg(str);
     masm.callWithABI<Fn, GetIndexFromString>();
@@ -4518,7 +4519,7 @@ void CodeGenerator::visitGuardStringToDouble(LGuardStringToDouble* lir) {
     volatileRegs.takeUnchecked(temp1);
     masm.PushRegsInMask(volatileRegs);
 
-    using Fn = bool (*)(JSContext * cx, JSString * str, double* result);
+    using Fn = bool (*)(JSContext* cx, JSString* str, double* result);
     masm.setupAlignedABICall();
     masm.loadJSContext(temp1);
     masm.passABIArg(temp1);
@@ -4872,10 +4873,10 @@ static void EmitPostWriteBarrier(MacroAssembler& masm, CompileRuntime* runtime,
   masm.passABIArg(runtimereg);
   masm.passABIArg(objreg);
   if (isGlobal) {
-    using Fn = void (*)(JSRuntime * rt, GlobalObject * obj);
+    using Fn = void (*)(JSRuntime* rt, GlobalObject* obj);
     masm.callWithABI<Fn, PostGlobalWriteBarrier>();
   } else {
-    using Fn = void (*)(JSRuntime * rt, js::gc::Cell * obj);
+    using Fn = void (*)(JSRuntime* rt, js::gc::Cell* obj);
     masm.callWithABI<Fn, PostWriteBarrier>();
   }
 
@@ -5079,7 +5080,7 @@ void CodeGenerator::visitOutOfLineCallPostWriteElementBarrier(
   }
 
   Register runtimereg = regs.takeAny();
-  using Fn = void (*)(JSRuntime * rt, JSObject * obj, int32_t index);
+  using Fn = void (*)(JSRuntime* rt, JSObject* obj, int32_t index);
   masm.setupAlignedABICall();
   masm.mov(ImmPtr(gen->runtime), runtimereg);
   masm.passABIArg(runtimereg);
@@ -5430,8 +5431,7 @@ void CodeGenerator::visitCallDOMNative(LCallDOMNative* call) {
 void CodeGenerator::visitCallGetIntrinsicValue(LCallGetIntrinsicValue* lir) {
   pushArg(ImmGCPtr(lir->mir()->name()));
 
-  using Fn =
-      bool (*)(JSContext * cx, Handle<PropertyName*>, MutableHandleValue);
+  using Fn = bool (*)(JSContext* cx, Handle<PropertyName*>, MutableHandleValue);
   callVM<Fn, GetIntrinsicValue>(lir);
 }
 
@@ -6459,22 +6459,22 @@ void CodeGenerator::emitAssertGCThingResult(Register input,
 
     switch (type) {
       case MIRType::Object: {
-        using Fn = void (*)(JSContext * cx, JSObject * obj);
+        using Fn = void (*)(JSContext* cx, JSObject* obj);
         masm.callWithABI<Fn, AssertValidObjectPtr>();
         break;
       }
       case MIRType::String: {
-        using Fn = void (*)(JSContext * cx, JSString * str);
+        using Fn = void (*)(JSContext* cx, JSString* str);
         masm.callWithABI<Fn, AssertValidStringPtr>();
         break;
       }
       case MIRType::Symbol: {
-        using Fn = void (*)(JSContext * cx, JS::Symbol * sym);
+        using Fn = void (*)(JSContext* cx, JS::Symbol* sym);
         masm.callWithABI<Fn, AssertValidSymbolPtr>();
         break;
       }
       case MIRType::BigInt: {
-        using Fn = void (*)(JSContext * cx, JS::BigInt * bi);
+        using Fn = void (*)(JSContext* cx, JS::BigInt* bi);
         masm.callWithABI<Fn, AssertValidBigIntPtr>();
         break;
       }
@@ -6512,7 +6512,7 @@ void CodeGenerator::emitAssertResultV(const ValueOperand input,
     masm.pushValue(input);
     masm.moveStackPtrTo(temp1);
 
-    using Fn = void (*)(JSContext * cx, Value * v);
+    using Fn = void (*)(JSContext* cx, Value* v);
     masm.setupUnalignedABICall(temp2);
     masm.loadJSContext(temp2);
     masm.passABIArg(temp2);
@@ -7397,7 +7397,7 @@ void CodeGenerator::visitMutateProto(LMutateProto* lir) {
   pushArg(objReg);
 
   using Fn =
-      bool (*)(JSContext * cx, Handle<PlainObject*> obj, HandleValue value);
+      bool (*)(JSContext* cx, Handle<PlainObject*> obj, HandleValue value);
   callVM<Fn, MutatePrototype>(lir);
 }
 
@@ -7431,7 +7431,7 @@ void CodeGenerator::visitCreateThis(LCreateThis* lir) {
     pushArg(ToRegister(callee));
   }
 
-  using Fn = bool (*)(JSContext * cx, HandleObject callee,
+  using Fn = bool (*)(JSContext* cx, HandleObject callee,
                       HandleObject newTarget, MutableHandleValue rval);
   callVM<Fn, jit::CreateThisFromIon>(lir);
 }
@@ -7463,9 +7463,8 @@ void CodeGenerator::visitCreateArgumentsObject(LCreateArgumentsObject* lir) {
     masm.moveStackPtrTo(temp0);
     masm.addPtr(Imm32(masm.framePushed()), temp0);
 
-    using Fn =
-        ArgumentsObject* (*)(JSContext * cx, jit::JitFrameLayout * frame,
-                             JSObject * scopeChain, ArgumentsObject * obj);
+    using Fn = ArgumentsObject* (*)(JSContext* cx, jit::JitFrameLayout* frame,
+                                    JSObject* scopeChain, ArgumentsObject* obj);
     masm.setupAlignedABICall();
     masm.loadJSContext(cxTemp);
     masm.passABIArg(cxTemp);
@@ -10896,8 +10895,6 @@ static void ConcatInlineString(MacroAssembler& masm, Register lhs, Register rhs,
 
   // Copy rhs chars. Clobbers the rhs register.
   copyChars(rhs);
-
-  masm.ret();
 }
 
 void CodeGenerator::visitSubstr(LSubstr* lir) {
@@ -10920,7 +10917,7 @@ void CodeGenerator::visitSubstr(LSubstr* lir) {
   // newGCFatInlineString. To squeeze out even more performance those failures
   // can be handled by allocate in ool code and returning to jit code to fill
   // in all data.
-  using Fn = JSString* (*)(JSContext * cx, HandleString str, int32_t begin,
+  using Fn = JSString* (*)(JSContext* cx, HandleString str, int32_t begin,
                            int32_t len);
   OutOfLineCode* ool = oolCallVM<Fn, SubstringKernel>(
       lir, ArgList(string, begin, length), StoreRegisterTo(output));
@@ -11069,6 +11066,9 @@ JitCode* JitRealm::generateStringConcatStub(JSContext* cx) {
 #ifdef JS_USE_LINK_REGISTER
   masm.pushReturnAddress();
 #endif
+  masm.Push(FramePointer);
+  masm.moveStackPtrTo(FramePointer);
+
   // If lhs is empty, return rhs.
   Label leftEmpty;
   masm.loadStringLength(lhs, temp1);
@@ -11123,29 +11123,37 @@ JitCode* JitRealm::generateStringConcatStub(JSContext* cx) {
 
   // Store left and right nodes.
   masm.storeRopeChildren(lhs, rhs, output);
+  masm.pop(FramePointer);
   masm.ret();
 
   masm.bind(&leftEmpty);
   masm.mov(rhs, output);
+  masm.pop(FramePointer);
   masm.ret();
 
   masm.bind(&rightEmpty);
   masm.mov(lhs, output);
+  masm.pop(FramePointer);
   masm.ret();
 
   masm.bind(&isInlineTwoByte);
   ConcatInlineString(masm, lhs, rhs, output, temp1, temp2, temp3,
                      initialStringHeap, &failure, CharEncoding::TwoByte);
+  masm.pop(FramePointer);
+  masm.ret();
 
   masm.bind(&isInlineLatin1);
   ConcatInlineString(masm, lhs, rhs, output, temp1, temp2, temp3,
                      initialStringHeap, &failure, CharEncoding::Latin1);
+  masm.pop(FramePointer);
+  masm.ret();
 
   masm.pop(temp2);
   masm.pop(temp1);
 
   masm.bind(&failure);
   masm.movePtr(ImmPtr(nullptr), output);
+  masm.pop(FramePointer);
   masm.ret();
 
   Linker linker(masm);
@@ -11208,7 +11216,7 @@ void JitRuntime::generateLazyLinkStub(MacroAssembler& masm) {
   masm.enterFakeExitFrame(temp0, temp2, ExitFrameType::LazyLink);
   masm.moveStackPtrTo(temp1);
 
-  using Fn = uint8_t* (*)(JSContext * cx, LazyLinkExitFrameLayout * frame);
+  using Fn = uint8_t* (*)(JSContext* cx, LazyLinkExitFrameLayout* frame);
   masm.setupUnalignedABICall(temp2);
   masm.passABIArg(temp0);
   masm.passABIArg(temp1);
@@ -11247,7 +11255,7 @@ void JitRuntime::generateInterpreterStub(MacroAssembler& masm) {
   masm.enterFakeExitFrame(temp0, temp2, ExitFrameType::InterpreterStub);
   masm.moveStackPtrTo(temp1);
 
-  using Fn = bool (*)(JSContext * cx, InterpreterStubExitFrameLayout * frame);
+  using Fn = bool (*)(JSContext* cx, InterpreterStubExitFrameLayout* frame);
   masm.setupUnalignedABICall(temp2);
   masm.passABIArg(temp0);
   masm.passABIArg(temp1);
@@ -13829,7 +13837,7 @@ void CodeGenerator::visitMegamorphicSetElement(LMegamorphicSetElement* lir) {
 
   using Fn = bool (*)(JSContext*, HandleObject, HandleValue, HandleValue,
                       HandleValue, bool);
-  callVM<Fn, js::jit::SetElementMegamorphic>(lir);
+  callVM<Fn, js::jit::SetElementMegamorphicCached>(lir);
 
   masm.jump(&done);
   masm.bind(&cacheHit);
@@ -13986,7 +13994,7 @@ void CodeGenerator::visitAllocateAndStoreSlot(LAllocateAndStoreSlot* ins) {
   masm.Push(obj);
   masm.Push(value);
 
-  using Fn = bool (*)(JSContext * cx, NativeObject * obj, uint32_t newCount);
+  using Fn = bool (*)(JSContext* cx, NativeObject* obj, uint32_t newCount);
   masm.setupAlignedABICall();
   masm.loadJSContext(temp0);
   masm.passABIArg(temp0);
@@ -16092,7 +16100,7 @@ void CodeGenerator::visitOutOfLineIsCallable(OutOfLineIsCallable* ool) {
   Register output = ool->output();
 
   saveVolatile(output);
-  using Fn = bool (*)(JSObject * obj);
+  using Fn = bool (*)(JSObject* obj);
   masm.setupAlignedABICall();
   masm.passABIArg(object);
   masm.callWithABI<Fn, ObjectIsCallable>();
@@ -16131,7 +16139,7 @@ void CodeGenerator::visitOutOfLineIsConstructor(OutOfLineIsConstructor* ool) {
   Register output = ToRegister(ins->output());
 
   saveVolatile(output);
-  using Fn = bool (*)(JSObject * obj);
+  using Fn = bool (*)(JSObject* obj);
   masm.setupAlignedABICall();
   masm.passABIArg(object);
   masm.callWithABI<Fn, ObjectIsConstructor>();
@@ -16660,27 +16668,52 @@ void CodeGenerator::visitWasmTrapIfNull(LWasmTrapIfNull* lir) {
   masm.bind(&nonNull);
 }
 
-void CodeGenerator::visitWasmGcObjectIsSubtypeOf(
-    LWasmGcObjectIsSubtypeOf* ins) {
+void CodeGenerator::visitWasmGcObjectIsSubtypeOfAbstract(
+    LWasmGcObjectIsSubtypeOfAbstract* ins) {
   MOZ_ASSERT(gen->compilingWasm());
-  const MWasmGcObjectIsSubtypeOf* mir = ins->mir();
+
+  const MWasmGcObjectIsSubtypeOfAbstract* mir = ins->mir();
+  MOZ_ASSERT(!mir->type().isTypeRef());
+
   Register object = ToRegister(ins->object());
-  Register superSuperTypeVector = ToRegister(ins->superSuperTypeVector());
+  Register scratch1 = ins->temp0()->isBogusTemp() ? Register::Invalid()
+                                                  : ToRegister(ins->temp0());
+  Register superSuperTypeVector = Register::Invalid();
+  Register scratch2 = Register::Invalid();
+  Register result = ToRegister(ins->output());
+  Label failed;
+  Label success;
+  Label join;
+  masm.branchWasmGcObjectIsRefType(object, mir->type(), &success,
+                                   /*onSuccess=*/true, superSuperTypeVector,
+                                   scratch1, scratch2);
+  masm.bind(&failed);
+  masm.xor32(result, result);
+  masm.jump(&join);
+  masm.bind(&success);
+  masm.move32(Imm32(1), result);
+  masm.bind(&join);
+}
+
+void CodeGenerator::visitWasmGcObjectIsSubtypeOfConcrete(
+    LWasmGcObjectIsSubtypeOfConcrete* ins) {
+  MOZ_ASSERT(gen->compilingWasm());
+
+  const MWasmGcObjectIsSubtypeOfConcrete* mir = ins->mir();
+  MOZ_ASSERT(mir->type().isTypeRef());
+
+  Register object = ToRegister(ins->object());
   Register scratch1 = ToRegister(ins->temp0());
+  Register superSuperTypeVector = ToRegister(ins->superSuperTypeVector());
   Register scratch2 = ins->temp1()->isBogusTemp() ? Register::Invalid()
                                                   : ToRegister(ins->temp1());
   Register result = ToRegister(ins->output());
   Label failed;
   Label success;
   Label join;
-  masm.branchTestPtr(Assembler::Zero, object, object,
-                     mir->succeedOnNull() ? &success : &failed);
-  masm.branchTestObjectIsWasmGcObject(false, object, scratch1, &failed);
-  masm.loadPtr(Address(object, WasmGcObject::offsetOfSuperTypeVector()),
-               scratch1);
-  masm.branchWasmSuperTypeVectorIsSubtype(scratch1, superSuperTypeVector,
-                                          scratch2, mir->subTypingDepth(),
-                                          &success, true);
+  masm.branchWasmGcObjectIsRefType(object, mir->type(), &success,
+                                   /*onSuccess=*/true, superSuperTypeVector,
+                                   scratch1, scratch2);
   masm.bind(&failed);
   masm.xor32(result, result);
   masm.jump(&join);
@@ -16860,7 +16893,7 @@ void CodeGenerator::visitDebugger(LDebugger* ins) {
   Register cx = ToRegister(ins->temp0());
 
   masm.loadJSContext(cx);
-  using Fn = bool (*)(JSContext * cx);
+  using Fn = bool (*)(JSContext* cx);
   masm.setupAlignedABICall();
   masm.passABIArg(cx);
   masm.callWithABI<Fn, GlobalHasLiveOnDebuggerStatement>();
@@ -17000,7 +17033,7 @@ void CodeGenerator::visitGenerator(LGenerator* lir) {
   pushArg(ImmGCPtr(current->mir()->info().script()));
   pushArg(callee);
 
-  using Fn = JSObject* (*)(JSContext * cx, HandleFunction, HandleScript,
+  using Fn = JSObject* (*)(JSContext* cx, HandleFunction, HandleScript,
                            HandleObject, HandleObject);
   callVM<Fn, CreateGenerator>(lir);
 }
@@ -17026,9 +17059,9 @@ void CodeGenerator::visitAsyncAwait(LAsyncAwait* lir) {
   pushArg(value);
   pushArg(generator);
 
-  using Fn = JSObject* (*)(JSContext * cx,
-                           Handle<AsyncFunctionGeneratorObject*> genObj,
-                           HandleValue value);
+  using Fn =
+      JSObject* (*)(JSContext* cx, Handle<AsyncFunctionGeneratorObject*> genObj,
+                    HandleValue value);
   callVM<Fn, js::AsyncFunctionAwait>(lir);
 }
 
@@ -17340,8 +17373,8 @@ void CodeGenerator::visitGuardHasGetterSetter(LGuardHasGetterSetter* lir) {
   masm.movePropertyKey(lir->mir()->propId(), temp1);
   masm.movePtr(ImmGCPtr(lir->mir()->getterSetter()), temp2);
 
-  using Fn = bool (*)(JSContext * cx, JSObject * obj, jsid id,
-                      GetterSetter * getterSetter);
+  using Fn = bool (*)(JSContext* cx, JSObject* obj, jsid id,
+                      GetterSetter* getterSetter);
   masm.setupAlignedABICall();
   masm.loadJSContext(temp0);
   masm.passABIArg(temp0);
@@ -18135,7 +18168,7 @@ void CodeGenerator::emitFuzzilliHashDouble(FloatRegister floatDouble,
 
 void CodeGenerator::emitFuzzilliHashObject(LInstruction* lir, Register obj,
                                            Register output) {
-  using Fn = void (*)(JSContext * cx, JSObject * obj, uint32_t * out);
+  using Fn = void (*)(JSContext* cx, JSObject* obj, uint32_t* out);
   OutOfLineCode* ool = oolCallVM<Fn, FuzzilliHashObjectInl>(
       lir, ArgList(obj), StoreRegisterTo(output));
 
@@ -18149,7 +18182,7 @@ void CodeGenerator::emitFuzzilliHashBigInt(Register bigInt, Register output) {
   volatileRegs.takeUnchecked(output);
   masm.PushRegsInMask(volatileRegs);
 
-  using Fn = uint32_t (*)(BigInt * bigInt);
+  using Fn = uint32_t (*)(BigInt* bigInt);
   masm.setupUnalignedABICall(output);
   masm.passABIArg(bigInt);
   masm.callWithABI<Fn, js::FuzzilliHashBigInt>();

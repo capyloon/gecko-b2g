@@ -151,6 +151,21 @@ static inline int32_t RoundDown(double aDouble) {
                        : static_cast<int32_t>(ceil(aDouble));
 }
 
+static bool IsSelectingLink(nsIFrame* aTargetFrame) {
+  if (!aTargetFrame) {
+    return false;
+  }
+  const nsFrameSelection* frameSel = aTargetFrame->GetConstFrameSelection();
+  if (!frameSel || !frameSel->GetDragState()) {
+    return false;
+  }
+
+  if (!nsContentUtils::GetClosestLinkInFlatTree(aTargetFrame->GetContent())) {
+    return false;
+  }
+  return true;
+}
+
 static UniquePtr<WidgetMouseEvent> CreateMouseOrPointerWidgetEvent(
     WidgetMouseEvent* aMouseEvent, EventMessage aMessage,
     EventTarget* aRelatedTarget);
@@ -3753,7 +3768,8 @@ nsresult EventStateManager::PostHandleEvent(nsPresContext* aPresContext,
         case WheelPrefs::ACTION_NONE:
         default:
           bool allDeltaOverflown = false;
-          if (wheelEvent->mDeltaX != 0.0 || wheelEvent->mDeltaY != 0.0) {
+          if (StaticPrefs::dom_event_wheel_event_groups_enabled() &&
+              (wheelEvent->mDeltaX != 0.0 || wheelEvent->mDeltaY != 0.0)) {
             if (frameToScroll) {
               WheelTransaction::WillHandleDefaultAction(
                   wheelEvent, frameToScroll, mCurrentTarget);
@@ -4278,6 +4294,11 @@ void EventStateManager::UpdateCursor(nsPresContext* aPresContext,
   }
 
   if (aTargetFrame) {
+    if (cursor == StyleCursorKind::Pointer && IsSelectingLink(aTargetFrame)) {
+      cursor = aTargetFrame->GetWritingMode().IsVertical()
+                   ? StyleCursorKind::VerticalText
+                   : StyleCursorKind::Text;
+    }
     SetCursor(cursor, container, resolution, hotspot,
               aTargetFrame->GetNearestWidget(), false);
     gLastCursorSourceFrame = aTargetFrame;

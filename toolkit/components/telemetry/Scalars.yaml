@@ -2957,6 +2957,22 @@ dom.parentprocess:
     record_in_processes:
       - 'main'
 
+  process_launch_errors:
+    bug_numbers:
+      - 1819311
+    description: >
+      Collect precise set of error code and calling site upon process creation failure path.
+    expires: "never"
+    kind: uint
+    keyed: true
+    notification_emails:
+      - alissy@mozilla.com
+    products:
+      - 'firefox'
+    record_in_processes:
+      - 'main'
+    release_channel_collection: opt-out
+
 devtools.toolbar.eyedropper:
   opened:
     bug_numbers:
@@ -3672,22 +3688,6 @@ dom.event:
       - 'fennec'
     record_in_processes:
       - 'content'
-
-dom.midi:
-  has_devices:
-    bug_numbers:
-      - 1797019
-    description: >
-      Records if the user machine has connected MIDI devices.
-    expires: "120"
-    kind: boolean
-    notification_emails:
-      - bholley@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
 
 navigator.storage:
   estimate_count:
@@ -7887,6 +7887,22 @@ urlbar.searchmode:
       - 'firefox'
     record_in_processes:
       - main
+  historymenu:
+    bug_numbers:
+      - 1736939
+    description: >
+      A keyed uint recording how many times the user entered a particular search
+      mode after selecing the Search History menu item in a History menu.
+    expires: never
+    kind: uint
+    keyed: true
+    notification_emails:
+      - fx-search-telemetry@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - main
   other:
     bug_numbers:
       - 1654680
@@ -8099,6 +8115,23 @@ urlbar.picked.searchmode:
     description: >
       A keyed uint recording how many times the user picked a particular kind of
       result while in search mode after entering search mode by typing an alias.
+    expires: never
+    kind: uint
+    keyed: true
+    notification_emails:
+      - fx-search-telemetry@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - main
+  historymenu:
+    bug_numbers:
+      - 1736939
+    description: >
+      A keyed uint recording how many times the user picked a particular kind of
+      result while in search mode after entering search mode from the Search
+      History menu item in a History menu.
     expires: never
     kind: uint
     keyed: true
@@ -9767,6 +9800,21 @@ places:
     kind: uint
     notification_emails:
       - fx-search-telemetry@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - main
+
+  previousday_visits:
+    bug_numbers:
+      - 1824380
+    description: >
+      Number of history entries for the previous day.
+    expires: never
+    kind: uint
+    notification_emails:
+      - firefox-view-engineers@mozilla.com
     release_channel_collection: opt-out
     products:
       - 'firefox'

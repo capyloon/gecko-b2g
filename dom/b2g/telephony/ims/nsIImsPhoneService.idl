@@ -1,0 +1,160 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "nsISupports.idl"
+
+%{C++
+#define IMSPHONE_SERVICE_ID \
+  { 0xacb11ddb, 0x151e, 0x4881, \
+    { 0xb4, 0xac, 0xf5, 0x28, 0x52, 0x25, 0x5d, 0x9e } }
+#define IMSPHONE_SERVICE_CONTRACTID \
+  "@b2g/telephony/ims/imsphoneservice;1"
+%}
+
+[scriptable, uuid(2224134d-596a-4e74-b5c6-5b48a2621f45)]
+interface nsIImsGetFailCauseCallback : nsISupports {
+  void notifyFailCause(in AString cause);
+};
+
+[scriptable, uuid(3655a752-69f9-44e3-a4c8-74b5c159085e)]
+interface nsIImsPhoneCallback : nsISupports {
+  /**
+   * Invokes when request success.
+   */
+  void notifySuccess();
+
+  /**
+   * Invokes when request get an error.
+   *
+   * @param error the error message
+   */
+  void notifyError(in AString error);
+};
+
+[scriptable, uuid(5e208dfd-e5cc-4b56-9e8d-549ae6cbf718)]
+interface nsIImsPhoneDialRequest : nsISupports {
+  readonly attribute unsigned short serviceId;
+  readonly attribute AString number;
+  readonly attribute boolean isEmergency;
+  readonly attribute unsigned short type;
+  readonly attribute unsigned short rttMode;
+  /**
+   * CLIR mode. Please refer nsIMobileConnection.CLIR_*.
+   */
+  readonly attribute unsigned short clirMode;
+};
+
+[scriptable, uuid(1202dd60-3701-4f30-8c0b-a770d25fa913)]
+interface nsIImsPhone : nsISupports {
+  /**
+   * To make a MO call.
+   * @param dialRequest the destination you are going to make call to.
+   * @param callback request result will be notified via callback.
+   */
+  void dial(in nsIImsPhoneDialRequest dialRequest,
+            in nsIImsPhoneCallback callback);
+
+  /**
+   * To answer a incoming call.
+   *
+   * @param callIndex The incoming call index you are going to answer.
+   * @param type The call type you are going to answer with.
+   * @param rttMode the rtt mode you are going to answer with.
+   * @param calblack request result will be notified via callback.
+   */
+  void answerCall(in unsigned long callIndex,
+                  in unsigned long type,
+                  in unsigned short rttMode,
+                  in nsIImsPhoneCallback callback);
+
+  /**
+   * To reject an incoming call.
+   *
+   * @param callIndex The incoming call index you are going to reject
+   * @param reason The hangup reason.
+   *               Possible values: nsITelephonyService#CALL_FAIL_*.
+   * @param callback The reject result will be notified via this callback.
+   */
+  void rejectCall(in unsigned long callIndex,
+                  in unsigned long reason,
+                  in nsIImsPhoneCallback callback);
+
+  /**
+   * To hangup specific call.
+   *
+   * @param callIndex To call index you are going to hangup.
+   * @param reason The hangup reason.
+   *               Possible values: nsITelephonyService#CALL_FAIL_*.
+   * @param callback request resut will be notified via callback.
+   */
+  void hangupCall(in unsigned long callIndex,
+                  in unsigned long reason,
+                  in nsIImsPhoneCallback callback);
+
+  void getFailCause(in nsIImsGetFailCauseCallback callback);
+
+  void switchActiveCall(in unsigned long type,
+                        in unsigned short rttMode,
+                        in nsIImsPhoneCallback callback);
+
+  void sendDtmf(in AString dtmfChar, in nsIImsPhoneCallback callback);
+
+  void startDtmf(in AString c);
+
+  void stopDtmf();
+
+  /**
+   * ECT, to transfer active call to held call.
+   * @callback the transfer result will be notified via callback.
+   */
+  void consultativeTransfer(in nsIImsPhoneCallback callback);
+
+  /**
+   * To hangup all held calls or waiting call.
+   */
+  void hangupBackground(in nsIImsPhoneCallback callback);
+
+  /**
+   * To hangup all active calls and accept other (held or waiting) call.
+   */
+  void hangupForeground(in nsIImsPhoneCallback callback);
+
+  /**
+   * send RTT mode modify request to remote.
+   * @param callindex
+   * @param rttMode
+   * @param callback
+   */
+  void sendRttModifyRequest(in unsigned long callIndex,
+                            in unsigned short rttMode,
+                            in nsIImsPhoneCallback callback);
+
+  void sendRttModifyResponse(in unsigned long callIndex,
+                             in boolean status,
+                             in nsIImsPhoneCallback callback);
+
+  void sendRttMessage(in unsigned long callIndex,
+                      in AString message,
+                      in nsIImsPhoneCallback callback);
+
+  /**
+   * To make a conference call.
+   * If there are 2 single call, always use active as host and held as peer.
+   * If there are 1 conference and 1 single call, always merge single into conference.
+   *
+   * To merge 2 conference is not allowed.
+   */
+  void conferenceCall(in nsIImsPhoneCallback callback);
+};
+
+[scriptable, uuid(cd47df53-ac11-40f2-8c7f-f4ea47499721)]
+interface nsIImsPhoneService : nsISupports {
+  /**
+   * To get Ims Phone instance.
+   *
+   * @param aServiceId The ims phone service id.
+   * @return the ImsPhone instance
+   */
+  nsIImsPhone getPhoneByServiceId(in unsigned long aServiceId);
+};

@@ -4799,6 +4799,8 @@ class QuotaClient final : public mozilla::dom::quota::Client {
   void OnOriginClearCompleted(PersistenceType aPersistenceType,
                               const nsACString& aOrigin) override;
 
+  void OnRepositoryClearCompleted(PersistenceType aPersistenceType) override;
+
   void ReleaseIOThreadObjects() override;
 
   void AbortOperationsForLocks(
@@ -12402,6 +12404,14 @@ void QuotaClient::OnOriginClearCompleted(PersistenceType aPersistenceType,
   }
 }
 
+void QuotaClient::OnRepositoryClearCompleted(PersistenceType aPersistenceType) {
+  AssertIsOnIOThread();
+
+  if (IndexedDatabaseManager* mgr = IndexedDatabaseManager::Get()) {
+    mgr->InvalidateFileManagers(aPersistenceType);
+  }
+}
+
 void QuotaClient::ReleaseIOThreadObjects() {
   AssertIsOnIOThread();
 
@@ -13020,7 +13030,7 @@ nsresult Maintenance::DirectoryWork() {
   // in this order:
   static const PersistenceType kPersistenceTypes[] = {
       PERSISTENCE_TYPE_PERSISTENT, PERSISTENCE_TYPE_DEFAULT,
-      PERSISTENCE_TYPE_TEMPORARY};
+      PERSISTENCE_TYPE_TEMPORARY, PERSISTENCE_TYPE_PRIVATE};
 
   static_assert(
       ArrayLength(kPersistenceTypes) == size_t(PERSISTENCE_TYPE_INVALID),

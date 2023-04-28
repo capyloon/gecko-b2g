@@ -8,9 +8,9 @@
 #define SoftapEventService_H
 
 #if ANDROID_VERSION >= 30
-#include <android/net/wifi/nl80211/BnApInterfaceEventCallback.h>
+#  include <android/net/wifi/nl80211/BnApInterfaceEventCallback.h>
 #else
-#include <android/net/wifi/BnApInterfaceEventCallback.h>
+#  include <android/net/wifi/BnApInterfaceEventCallback.h>
 #endif
 #include <binder/BinderService.h>
 
@@ -58,8 +58,8 @@ class SoftapEventService
   android::binder::Status onSoftApChannelSwitched(int32_t frequency,
                                                   int32_t bandwidth) override;
 
-  android::binder::Status onConnectedClientsChanged(const Wifi::NativeWifiClient& client,
-                                                    bool isConnected) override;
+  android::binder::Status onConnectedClientsChanged(
+      const Wifi::NativeWifiClient& client, bool isConnected) override;
 #endif
 };
 

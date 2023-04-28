@@ -1,0 +1,45 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "nsISupports.idl"
+#include "nsIImsRegistration.idl"
+#include "nsIImsConfig.idl"
+#include "nsIImsMMTelFeature.idl"
+#include "nsIImsEcbm.idl"
+
+interface nsIImsRegistration;
+interface nsIImsConfig;
+interface nsIImsMMTelFeature;
+interface nsIImsFeatureStatusListener;
+interface nsIImsEcbm;
+
+[scriptable, uuid(7c3398f3-0407-4ba3-ba98-693a47ec4ab8)]
+interface nsIImsFeatureStatusListener : nsISupports
+{
+  void notifyImsFeatureStatus(in long featureStatus);
+};
+
+[scriptable, uuid(893bea28-7cc3-44b9-bc1c-ed83dcc262c3)]
+interface nsIImsServiceManager : nsISupports
+{
+  void getBinderImsServiceManager();
+
+  void turnOnIms(in unsigned long aSlotId, in boolean aEnabled);
+
+  nsIImsRegistration getRegistration(in unsigned long aSlotId);
+
+  nsIImsConfig getConfig(in unsigned long aSlotId);
+
+  nsIImsMMTelFeature createMmTelFeature(in unsigned long aSlotId, in nsIImsFeatureStatusListener aListener);
+
+  nsIImsEcbm getEcbm(in unsigned long aSlotId);
+
+  bool isBinderReady();
+};
+
+%{C++
+#define NS_IMS_SERVICE_MANAGER_CID \
+  { 0x9896511d, 0x7a63, 0x4c1d, { 0x90, 0x2d, 0x45, 0x57, 0xde, 0x8d, 0xf8, 0x22 } }
+#define NS_IMS_SERVICE_MANAGER_CONTRACTID "@mozilla.org/b2g/imsservicemanager;1"
+%}

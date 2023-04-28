@@ -375,7 +375,7 @@ void SVGImageFrame::PaintSVG(gfxContext& aContext, const gfxMatrix& aTransform,
       // of the SVG image's internal document that is visible, in combination
       // with preserveAspectRatio and viewBox.
       const SVGImageContext context(
-          Some(CSSIntSize::Truncate(width, height)),
+          Some(CSSIntSize::Ceil(width, height)),
           Some(imgElem->mPreserveAspectRatio.GetAnimValue()));
 
       // For the actual draw operation to draw crisply (and at the right size),
@@ -421,6 +421,17 @@ void SVGImageFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
 
   DisplayOutline(aBuilder, aLists);
   aLists.Content()->AppendNewToTop<DisplaySVGGeometry>(aBuilder, this);
+}
+
+bool SVGImageFrame::IsInvisible() const {
+  if (!StyleVisibility()->IsVisible()) {
+    return true;
+  }
+
+  // Anything below will round to zero later down the pipeline.
+  constexpr float opacity_threshold = 1.0 / 128.0;
+
+  return StyleEffects()->mOpacity <= opacity_threshold;
 }
 
 bool SVGImageFrame::CreateWebRenderCommands(
@@ -606,7 +617,7 @@ bool SVGImageFrame::CreateWebRenderCommands(
       flags |= imgIContainer::FLAG_RECORD_BLOB;
     }
     // Forward preserveAspectRatio to inner SVGs
-    svgContext.SetViewportSize(Some(CSSIntSize::Truncate(width, height)));
+    svgContext.SetViewportSize(Some(CSSIntSize::Ceil(width, height)));
     svgContext.SetPreserveAspectRatio(
         Some(imgElem->mPreserveAspectRatio.GetAnimValue()));
   }
