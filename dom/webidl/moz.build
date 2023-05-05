@@ -1439,14 +1439,17 @@ if CONFIG["MOZ_B2G_RIL"]:
 
 if CONFIG["MOZ_B2G_CAMERA"]:
     WEBIDL_FILES += [
-        "CameraClosedEvent.webidl",
-        "CameraConfigurationEvent.webidl",
-        "CameraFacesDetectedEvent.webidl",
-        "CameraStateChangeEvent.webidl",
         "CameraCapabilities.webidl",
         "CameraControl.webidl",
         "CameraManager.webidl",
         "CameraUtil.webidl",
+    ]
+
+    GENERATED_EVENTS_WEBIDL_FILES += [
+        "CameraClosedEvent.webidl",
+        "CameraConfigurationEvent.webidl",
+        "CameraFacesDetectedEvent.webidl",
+        "CameraStateChangeEvent.webidl",
     ]
 
 if CONFIG["MOZ_B2G_FM"]:

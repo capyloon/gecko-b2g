@@ -111,7 +111,7 @@ void GonkCameraHardware::postData(int32_t aMsgType, const sp<IMemory>& aDataPtr,
     case CAMERA_MSG_COMPRESSED_IMAGE:
       if (aDataPtr != nullptr) {
         OnTakePictureComplete(mTarget,
-                              static_cast<uint8_t*>(aDataPtr->pointer()),
+                              static_cast<uint8_t*>(aDataPtr->MEM_POINTER),
                               aDataPtr->size());
       } else {
         OnTakePictureError(mTarget);
@@ -294,12 +294,15 @@ sp<GonkCameraHardware> GonkCameraHardware::Connect(
         String16(String8::format("%d", aCameraId)),
         hardware::ICameraService::API_VERSION_2, &isCameraAPI2Supported);
 
+// TODO: probably should use a better switch here.
+#  if ANDROID_VERSION <= 33
     // tmp solution to force using connect_legacy for QCOM platform.
     char value[PROPERTY_VALUE_MAX];
     property_get("ro.product.manufacturer", value, "");
     if (strncmp(value, "QUALCOMM", 9) == 0) {
       isCameraAPI2Supported = false;
     }
+#  endif
 
     int32_t event = EVENT_USER_SWITCHED;
     std::vector<int32_t> args;
@@ -309,14 +312,23 @@ sp<GonkCameraHardware> GonkCameraHardware::Connect(
 
     ProcessState::self()->startThreadPool();
     if (isCameraAPI2Supported) {
-      camera =
-          Camera::connect(aCameraId,
-                          /* clientPackageName */ String16("gonk.camera"),
-                          Camera::USE_CALLING_UID, Camera::USE_CALLING_PID);
+      camera = Camera::connect(aCameraId,
+                               /* clientPackageName */ String16("gonk.camera"),
+                               Camera::USE_CALLING_UID, Camera::USE_CALLING_PID
+#  if ANDROID_VERSION >= 33
+                               ,
+                               ANDROID_VERSION
+#  endif
+      );
     } else {
+#  if ANDROID_VERSION >= 33
+      DOM_CAMERA_LOGE("Camera API is not supported!\n");
+      return nullptr;
+#  else
       Camera::connectLegacy(aCameraId, 0x100,
                             /* clientPackageName */ String16("gonk.camera"),
                             Camera::USE_CALLING_UID, camera);
+#  endif
     }
     /* bug-82626: Retry Camera::connect each 2 ms delay since there is a chance
      * that EVENT_USER_SWITCHED being handled after Camera::connect. */
@@ -327,11 +339,22 @@ sp<GonkCameraHardware> GonkCameraHardware::Connect(
         camera =
             Camera::connect(aCameraId,
                             /* clientPackageName */ String16("gonk.camera"),
-                            Camera::USE_CALLING_UID, Camera::USE_CALLING_PID);
+                            Camera::USE_CALLING_UID, Camera::USE_CALLING_PID
+#  if ANDROID_VERSION >= 33
+                            ,
+                            ANDROID_VERSION
+#  endif
+            );
       } else {
+#  if ANDROID_VERSION >= 33
+        // Should never end up here.
+        DOM_CAMERA_LOGE("Camera API is not supported!\n");
+        return nullptr;
+#  else
         Camera::connectLegacy(aCameraId, 0x100,
                               /* clientPackageName */ String16("gonk.camera"),
                               Camera::USE_CALLING_UID, camera);
+#  endif
       }
     }
 #endif

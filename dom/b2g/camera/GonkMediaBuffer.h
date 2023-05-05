@@ -28,6 +28,12 @@
 #include <utils/RefBase.h>
 #include <media/stagefright/MediaBufferBase.h>
 
+#if ANDROID_VERSION >= 33
+#  define MEM_POINTER unsecurePointer()
+#else
+#  define MEM_POINTER pointer()
+#endif
+
 namespace android {
 
 struct ABuffer;
@@ -48,7 +54,7 @@ class GonkMediaBuffer : public MediaBufferBase {
   explicit GonkMediaBuffer(const sp<ABuffer>& buffer);
 #ifndef NO_IMEMORY
   GonkMediaBuffer(const sp<IMemory>& mem)
-      : GonkMediaBuffer((uint8_t*)mem->pointer() + sizeof(SharedControl),
+      : GonkMediaBuffer((uint8_t*)mem->MEM_POINTER + sizeof(SharedControl),
                         mem->size()) {
     // delegate and override mMemory
     mMemory = mem;
@@ -95,9 +101,9 @@ class GonkMediaBuffer : public MediaBufferBase {
 
   virtual int remoteRefcount() const {
 #ifndef NO_IMEMORY
-    if (mMemory.get() == nullptr || mMemory->pointer() == nullptr) return 0;
+    if (mMemory.get() == nullptr || mMemory->MEM_POINTER == nullptr) return 0;
     int32_t remoteRefcount =
-        reinterpret_cast<SharedControl*>(mMemory->pointer())
+        reinterpret_cast<SharedControl*>(mMemory->MEM_POINTER)
             ->getRemoteRefcount();
     // Sanity check so that remoteRefCount() is non-negative.
     return remoteRefcount >= 0 ? remoteRefcount
@@ -110,8 +116,8 @@ class GonkMediaBuffer : public MediaBufferBase {
   // returns old value
   int addRemoteRefcount(int32_t value) {
 #ifndef NO_IMEMORY
-    if (mMemory.get() == nullptr || mMemory->pointer() == nullptr) return 0;
-    return reinterpret_cast<SharedControl*>(mMemory->pointer())
+    if (mMemory.get() == nullptr || mMemory->MEM_POINTER == nullptr) return 0;
+    return reinterpret_cast<SharedControl*>(mMemory->MEM_POINTER)
         ->addRemoteRefcount(value);
 #else
     (void)value;
@@ -123,8 +129,9 @@ class GonkMediaBuffer : public MediaBufferBase {
 
   static bool isDeadObject(const sp<IMemory>& memory) {
 #ifndef NO_IMEMORY
-    if (memory.get() == nullptr || memory->pointer() == nullptr) return false;
-    return reinterpret_cast<SharedControl*>(memory->pointer())->isDeadObject();
+    if (memory.get() == nullptr || memory->MEM_POINTER == nullptr) return false;
+    return reinterpret_cast<SharedControl*>(memory->MEM_POINTER)
+        ->isDeadObject();
 #else
     (void)memory;
     return false;
@@ -221,7 +228,7 @@ class GonkMediaBuffer : public MediaBufferBase {
 
   inline SharedControl* getSharedControl() const {
 #ifndef NO_IMEMORY
-    return reinterpret_cast<SharedControl*>(mMemory->pointer());
+    return reinterpret_cast<SharedControl*>(mMemory->MEM_POINTER);
 #else
     return nullptr;
 #endif
