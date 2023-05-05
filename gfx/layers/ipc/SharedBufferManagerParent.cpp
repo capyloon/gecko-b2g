@@ -474,7 +474,6 @@ int SharedBufferManagerParent::DumpGrallocBuffer(int64_t aKey, char *filename) {
       return BUFFER_TRAVERSAL_FAILURE;
     }
 
-#if 0 // FIXME: creat is not found.
     int fd = creat(filename, O_WRONLY);
     if (fd == -1) {
       printf_stderr("SBMP: error on creating %s", filename);
@@ -486,7 +485,6 @@ int SharedBufferManagerParent::DumpGrallocBuffer(int64_t aKey, char *filename) {
     }
     gb->unlock();
     close(fd);
-#endif
     return BUFFER_TRAVERSAL_STOP;
   });
 
