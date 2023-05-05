@@ -165,6 +165,10 @@ int32_t RemoteAccessible::CaretLineNumber() {
 }
 
 int32_t RemoteAccessible::CaretOffset() const {
+  if (StaticPrefs::accessibility_cache_enabled_AtStartup()) {
+    return RemoteAccessibleBase<RemoteAccessible>::CaretOffset();
+  }
+
   int32_t offset = 0;
   Unused << mDoc->SendCaretOffset(mID, &offset);
   return offset;
@@ -832,12 +836,6 @@ double RemoteAccessible::CurValue() const {
   double val = UnspecifiedNaN<double>();
   Unused << mDoc->SendCurValue(mID, &val);
   return val;
-}
-
-bool RemoteAccessible::SetCurValue(double aValue) {
-  bool success = false;
-  Unused << mDoc->SendSetCurValue(mID, aValue, &success);
-  return success;
 }
 
 double RemoteAccessible::MinValue() const {

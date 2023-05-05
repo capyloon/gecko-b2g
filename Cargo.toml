@@ -168,8 +168,6 @@ warp = { git = "https://github.com/glandium/warp", rev = "4af45fae95bc98b0eba1ef
 fluent-fallback = { path = "b2g/forks/fluent-fallback" }
 glean-core = { path = "b2g/forks/glean-core" }
 
-cssparser = { git = "https://github.com/servo/rust-cssparser", rev = "45bc47e2bcb846f1efb5aea156be5fe7d18624bf" }
-
 # application-services overrides to make updating them all simpler.
 interrupt-support = { git = "https://github.com/mozilla/application-services", rev = "86c84c217036c12283d19368867323a66bf35883" }
 sql-support = { git = "https://github.com/mozilla/application-services", rev = "86c84c217036c12283d19368867323a66bf35883" }

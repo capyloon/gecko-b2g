@@ -898,6 +898,22 @@ export class UrlbarInput {
       return;
     }
 
+    if (
+      result.type == lazy.UrlbarUtils.RESULT_TYPE.TIP &&
+      result.payload.type == "dismissalAcknowledgment"
+    ) {
+      // The user clicked the "Got it" button inside the dismissal
+      // acknowledgment tip. Dismiss the tip.
+      this.controller.engagementEvent.record(event, {
+        result,
+        element,
+        searchString: this._lastSearchString,
+        selType: "dismiss",
+      });
+      this.view.onQueryResultRemoved(result.rowIndex);
+      return;
+    }
+
     urlOverride ||= element?.dataset.url;
     let originalUntrimmedValue = this.untrimmedValue;
     let isCanonized = this.setValueFromResult({ result, event, urlOverride });
@@ -1011,11 +1027,7 @@ export class UrlbarInput {
           false,
           loadOpts
         );
-
-        // Make sure that we don't close the last tab in the browser.
-        let isLastTab = this.window.gBrowser.visibleTabs.length == 1;
-
-        if (switched && prevTab.isEmpty && !isLastTab) {
+        if (switched && prevTab.isEmpty) {
           this.window.gBrowser.removeTab(prevTab);
         }
 

@@ -109,11 +109,6 @@ git = "https://github.com/mozilla/uniffi-rs.git"
 rev = "bc7ff8977bf38d0fdd1a458810b14f434d4dc4de"
 replace-with = "vendored-sources"
 
-[source."git+https://github.com/servo/rust-cssparser?rev=45bc47e2bcb846f1efb5aea156be5fe7d18624bf"]
-git = "https://github.com/servo/rust-cssparser"
-rev = "45bc47e2bcb846f1efb5aea156be5fe7d18624bf"
-replace-with = "vendored-sources"
-
 
 # Take advantage of the fact that cargo will treat lines starting with #
 # as comments to add preprocessing directives. This file can thus by copied

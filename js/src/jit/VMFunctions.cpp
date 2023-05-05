@@ -1482,6 +1482,7 @@ bool CallDOMGetter(JSContext* cx, const JSJitInfo* info, HandleObject obj,
   MOZ_ASSERT(info->type() == JSJitInfo::Getter);
   MOZ_ASSERT(obj->is<NativeObject>());
   MOZ_ASSERT(obj->getClass()->isDOMClass());
+  MOZ_ASSERT(obj->as<NativeObject>().numFixedSlots() > 0);
 
 #ifdef DEBUG
   DOMInstanceClassHasProtoAtDepth instanceChecker =
@@ -1515,6 +1516,7 @@ bool CallDOMSetter(JSContext* cx, const JSJitInfo* info, HandleObject obj,
   MOZ_ASSERT(info->type() == JSJitInfo::Setter);
   MOZ_ASSERT(obj->is<NativeObject>());
   MOZ_ASSERT(obj->getClass()->isDOMClass());
+  MOZ_ASSERT(obj->as<NativeObject>().numFixedSlots() > 0);
 
 #ifdef DEBUG
   DOMInstanceClassHasProtoAtDepth instanceChecker =
@@ -1731,6 +1733,16 @@ static MOZ_ALWAYS_INLINE bool ValueToAtomOrSymbolPure(JSContext* cx,
 
   if (idVal.isSymbol()) {
     *id = PropertyKey::Symbol(idVal.toSymbol());
+    return true;
+  }
+
+  if (idVal.isNull()) {
+    *id = PropertyKey::NonIntAtom(cx->names().null);
+    return true;
+  }
+
+  if (idVal.isUndefined()) {
+    *id = PropertyKey::NonIntAtom(cx->names().undefined);
     return true;
   }
 
