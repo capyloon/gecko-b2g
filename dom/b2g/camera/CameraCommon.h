@@ -9,6 +9,12 @@
 
 #include "mozilla/Logging.h"
 
+#if ANDROID_VERSION >= 33
+#  define MEM_POINTER unsecurePointer()
+#else
+#  define MEM_POINTER pointer()
+#endif
+
 extern mozilla::LogModule* GetCameraLog();
 #define DOM_CAMERA_LOG(type, ...) \
   MOZ_LOG(GetCameraLog(), (mozilla::LogLevel)type, (__VA_ARGS__))
