@@ -1,7 +1,7 @@
 # Compiler
 
 NDK=$HOME/.mozbuild/android-ndk-r25b
-TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/linux-x86_64
+TOOLCHAIN=$HOME/.mozbuild/clang
 
 export CC=$TOOLCHAIN/bin/clang
 export CXX=$TOOLCHAIN/bin/clang++
@@ -30,9 +30,7 @@ if [ "${B2G_DEBUG:-0}" != "0" ]; then
 else
   if [ "${MOZ_DISABLE_LTO:-0}" = "0" ]; then
     ac_add_options --enable-lto
-    # Disable Rustc <-> C++ LTO because rustc 1.66 and the ndk r25b use
-    # incompatible LLVM versions.
-    # export MOZ_LTO=cross
+    export MOZ_LTO=cross
   fi
 fi
 
@@ -111,10 +109,6 @@ if [ "$IME_ENGINE" = "touchpal" ]; then
   ac_add_options --enable-touchpal
 fi
 
-if [ "$TARGET_ARCH" = "x86_64" ]; then
-  ac_add_options --enable-wasm-simd
-fi;
-
 if [ "$ENABLE_RSU" = "true" ]; then
   ac_add_options --enable-rsu
 fi
@@ -149,28 +143,15 @@ if [ -n "$PRODUCTION_OS_NAME" ]; then
   ac_add_options --with-b2g-os-name="$PRODUCTION_OS_NAME"
 fi
 
-# Hack until we update to ndk r21d
-# configure just checks the file exists, and we don't use it afterwards...
-ac_add_options --with-android-lldb-server=$HOME/.mozbuild/clang/bin/clang
-
-if [ -n "$MOZ_SAFE_BROWSING" ]; then
-  ac_add_options --enable-safebrowsing
-fi
+ac_add_options --enable-safebrowsing
 
 ac_add_options --enable-sandbox
 
-# Don't minify because of https://bugzilla.mozilla.org/show_bug.cgi?id=1758568
-ac_add_options --enable-minify=properties
+ac_add_options --enable-minify=js,properties
 
 ac_add_options --with-android-toolchain=$HOME/.mozbuild/android-ndk-r25b/toolchains/llvm/prebuilt/linux-x86_64
 
 ac_add_options --disable-b2g-camera
 ac_add_options --disable-b2g-mediadrm
 ac_add_options --disable-accessibility
-
-ac_add_options --enable-wasm-function-references
-ac_add_options --enable-wasm-gc
-
-# Disable WASM libraries sandboxing for now until we figure out build failures.
-ac_add_options --without-wasm-sandboxed-libraries
 
