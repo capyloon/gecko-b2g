@@ -215,18 +215,6 @@ criteria = "safe-to-deploy"
 version = "4.0.3"
 criteria = "safe-to-deploy"
 
-[[exemptions.atomic]]
-version = "0.4.6"
-criteria = "safe-to-deploy"
-
-[[exemptions.audio-mixer]]
-version = "0.1.2"
-criteria = "safe-to-deploy"
-
-[[exemptions.audio_thread_priority]]
-version = "0.26.1"
-criteria = "safe-to-deploy"
-
 [[exemptions.base-x]]
 version = "0.2.8"
 criteria = "safe-to-deploy"
@@ -261,10 +249,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.block]]
 version = "0.1.6"
-criteria = "safe-to-deploy"
-
-[[exemptions.bytes]]
-version = "1.1.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.cache-padded]]
@@ -439,18 +423,6 @@ criteria = "safe-to-deploy"
 version = "0.8.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.dogear]]
-version = "0.4.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.dtoa-short]]
-version = "0.3.3"
-criteria = "safe-to-deploy"
-
-[[exemptions.dwrote]]
-version = "0.11.0"
-criteria = "safe-to-deploy"
-
 [[exemptions.enumset]]
 version = "1.0.11"
 criteria = "safe-to-deploy"
@@ -483,16 +455,8 @@ criteria = "safe-to-deploy"
 version = "0.4.4"
 criteria = "safe-to-deploy"
 
-[[exemptions.flate2]]
-version = "1.0.24"
-criteria = "safe-to-deploy"
-
 [[exemptions.float-cmp]]
 version = "0.6.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.freetype]]
-version = "0.7.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.fs-err]]
@@ -533,10 +497,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.gl_generator]]
 version = "0.14.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.gleam]]
-version = "0.13.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.glob]]
@@ -583,10 +543,6 @@ criteria = "safe-to-deploy"
 version = "1.0.1"
 criteria = "safe-to-deploy"
 
-[[exemptions.indexmap]]
-version = "1.8.2"
-criteria = "safe-to-deploy"
-
 [[exemptions.instant]]
 version = "0.1.12"
 criteria = "safe-to-deploy"
@@ -595,16 +551,8 @@ criteria = "safe-to-deploy"
 version = "0.7.1"
 criteria = "safe-to-deploy"
 
-[[exemptions.iovec]]
-version = "0.1.4"
-criteria = "safe-to-deploy"
-
 [[exemptions.itertools]]
 version = "0.10.3"
-criteria = "safe-to-deploy"
-
-[[exemptions.jobserver]]
-version = "0.1.24"
 criteria = "safe-to-deploy"
 
 [[exemptions.keccak]]
@@ -621,10 +569,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.lazycell]]
 version = "1.3.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.libc]]
-version = "0.2.126"
 criteria = "safe-to-deploy"
 
 [[exemptions.libdbus-sys]]
@@ -649,17 +593,11 @@ criteria = "safe-to-deploy"
 version = "0.1.1"
 criteria = "safe-to-run"
 
-[[exemptions.lmdb-rkv]]
-version = "0.14.0"
-criteria = "safe-to-deploy"
-
 [[exemptions.lmdb-rkv-sys]]
 version = "0.11.2"
 criteria = "safe-to-deploy"
-
-[[exemptions.lock_api]]
-version = "0.4.7"
-criteria = "safe-to-deploy"
+suggest = false
+notes = "This crate is forked from another crate and not developed in-house. Given that LMDB-backed RKV is going away, we will probably never bother auditing this"
 
 [[exemptions.mach]]
 version = "0.3.2"
@@ -698,10 +636,6 @@ version = "0.5.3"
 criteria = "safe-to-deploy"
 
 [[exemptions.mio]]
-version = "0.6.23"
-criteria = "safe-to-run"
-
-[[exemptions.mio]]
 version = "0.8.0"
 criteria = "safe-to-deploy"
 
@@ -711,10 +645,6 @@ criteria = "safe-to-run"
 
 [[exemptions.miow]]
 version = "0.3.7"
-criteria = "safe-to-deploy"
-
-[[exemptions.moz_cbor]]
-version = "0.1.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.multibase]]
@@ -765,10 +695,6 @@ criteria = "safe-to-deploy"
 version = "1.12.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.ordered-float]]
-version = "3.0.0"
-criteria = "safe-to-deploy"
-
 [[exemptions.os_str_bytes]]
 version = "6.1.0"
 criteria = "safe-to-deploy"
@@ -783,14 +709,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.packed_simd_2]]
 version = "0.3.7"
-criteria = "safe-to-deploy"
-
-[[exemptions.parking_lot]]
-version = "0.11.2"
-criteria = "safe-to-deploy"
-
-[[exemptions.parking_lot_core]]
-version = "0.8.5"
 criteria = "safe-to-deploy"
 
 [[exemptions.phf]]
@@ -869,10 +787,6 @@ criteria = "safe-to-deploy"
 version = "0.6.3"
 criteria = "safe-to-deploy"
 
-[[exemptions.range-alloc]]
-version = "0.1.2"
-criteria = "safe-to-deploy"
-
 [[exemptions.redox_syscall]]
 version = "0.2.13"
 criteria = "safe-to-deploy"
@@ -907,10 +821,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.rust_decimal]]
 version = "1.24.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.scopeguard]]
-version = "1.1.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.scroll]]
@@ -961,14 +871,6 @@ criteria = "safe-to-run"
 version = "0.3.10"
 criteria = "safe-to-deploy"
 
-[[exemptions.smallbitvec]]
-version = "2.5.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.smallvec]]
-version = "1.8.0"
-criteria = "safe-to-deploy"
-
 [[exemptions.socket2]]
 version = "0.4.4"
 criteria = "safe-to-deploy"
@@ -1017,18 +919,6 @@ criteria = "safe-to-run"
 version = "1.17.0"
 criteria = "safe-to-run"
 
-[[exemptions.tokio-macros]]
-version = "1.8.0"
-criteria = "safe-to-run"
-
-[[exemptions.tokio-util]]
-version = "0.7.2"
-criteria = "safe-to-run"
-
-[[exemptions.toml]]
-version = "0.5.9"
-criteria = "safe-to-deploy"
-
 [[exemptions.triple_buffer]]
 version = "5.0.6"
 criteria = "safe-to-deploy"
@@ -1059,14 +949,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.uuid]]
 version = "0.8.2"
-criteria = "safe-to-deploy"
-
-[[exemptions.warp]]
-version = "0.3.2"
-criteria = "safe-to-run"
-
-[[exemptions.wasi]]
-version = "0.11.0+wasi-snapshot-preview1"
 criteria = "safe-to-deploy"
 
 [[exemptions.webrtc-sdp]]
