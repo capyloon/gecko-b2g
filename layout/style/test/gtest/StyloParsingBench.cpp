@@ -42,7 +42,7 @@ static void ServoParsingBench(const StyleUseCounters* aCounters) {
       new URLExtraData(uri.forget(), referrerInfo.forget(),
                        NullPrincipal::CreateWithoutOriginAttributes());
   for (int i = 0; i < PARSING_REPETITIONS; i++) {
-    RefPtr<RawServoStyleSheetContents> stylesheet =
+    RefPtr<StyleStylesheetContents> stylesheet =
         Servo_StyleSheet_FromUTF8Bytes(
             nullptr, nullptr, nullptr, &cssStr, eAuthorSheetFeatures, data, 0,
             eCompatibility_FullStandards, nullptr, aCounters,
@@ -54,7 +54,7 @@ static void ServoParsingBench(const StyleUseCounters* aCounters) {
 static constexpr auto STYLE_RULE = StyleCssRuleType::Style;
 
 static void ServoSetPropertyByIdBench(const nsACString& css) {
-  RefPtr<RawServoDeclarationBlock> block =
+  RefPtr<StyleLockedDeclarationBlock> block =
       Servo_DeclarationBlock_CreateEmpty().Consume();
   RefPtr<nsIURI> uri = NullPrincipal::CreateURI();
   nsCOMPtr<nsIReferrerInfo> referrerInfo = new ReferrerInfo(nullptr);
@@ -72,7 +72,7 @@ static void ServoSetPropertyByIdBench(const nsACString& css) {
 }
 
 static void ServoGetPropertyValueById() {
-  RefPtr<RawServoDeclarationBlock> block =
+  RefPtr<StyleLockedDeclarationBlock> block =
       Servo_DeclarationBlock_CreateEmpty().Consume();
 
   RefPtr<nsIURI> uri = NullPrincipal::CreateURI();

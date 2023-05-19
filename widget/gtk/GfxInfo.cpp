@@ -639,13 +639,13 @@ bool GfxInfo::FireGLXTestProcess() {
   return true;
 }
 
-#ifdef MOZ_WAYLAND
 void GfxInfo::GetDataVAAPI() {
   if (mIsVAAPISupported.isSome()) {
     return;
   }
   mIsVAAPISupported = Some(false);
 
+#ifdef MOZ_WAYLAND
   char* vaapiData = nullptr;
   auto free = mozilla::MakeScopeExit([&] { g_free((void*)vaapiData); });
 
@@ -679,21 +679,21 @@ void GfxInfo::GetDataVAAPI() {
         gfxCriticalNote << "vaapitest: Failed to get VAAPI codecs\n";
         return;
       }
-      int codecs = 0;
-      std::istringstream(line) >> codecs;
-      if (codecs & CODEC_HW_H264) {
+
+      std::istringstream(line) >> mVAAPISupportedCodecs;
+      if (mVAAPISupportedCodecs & CODEC_HW_H264) {
         media::MCSInfo::AddSupport(
             media::MediaCodecsSupport::H264HardwareDecode);
       }
-      if (codecs & CODEC_HW_VP8) {
+      if (mVAAPISupportedCodecs & CODEC_HW_VP8) {
         media::MCSInfo::AddSupport(
             media::MediaCodecsSupport::VP8HardwareDecode);
       }
-      if (codecs & CODEC_HW_VP9) {
+      if (mVAAPISupportedCodecs & CODEC_HW_VP9) {
         media::MCSInfo::AddSupport(
             media::MediaCodecsSupport::VP9HardwareDecode);
       }
-      if (codecs & CODEC_HW_AV1) {
+      if (mVAAPISupportedCodecs & CODEC_HW_AV1) {
         media::MCSInfo::AddSupport(
             media::MediaCodecsSupport::AV1HardwareDecode);
       }
@@ -706,8 +706,8 @@ void GfxInfo::GetDataVAAPI() {
       return;
     }
   }
-}
 #endif
+}
 
 const nsTArray<GfxDriverInfo>& GfxInfo::GetGfxDriverInfo() {
   if (!sDriverInfo->Length()) {
@@ -1129,15 +1129,34 @@ nsresult GfxInfo::GetFeatureStatusImpl(
     }
   }
 
+  const struct {
+    int32_t mFeature;
+    int32_t mCodec;
+  } kFeatureToCodecs[] = {{nsIGfxInfo::FEATURE_H264_HW_DECODE, CODEC_HW_H264},
+                          {nsIGfxInfo::FEATURE_VP8_HW_DECODE, CODEC_HW_VP8},
+                          {nsIGfxInfo::FEATURE_VP9_HW_DECODE, CODEC_HW_VP9},
+                          {nsIGfxInfo::FEATURE_AV1_HW_DECODE, CODEC_HW_AV1}};
+
+  for (const auto& pair : kFeatureToCodecs) {
+    if (aFeature != pair.mFeature) {
+      continue;
+    }
+    if (mVAAPISupportedCodecs & pair.mCodec) {
+      *aStatus = nsIGfxInfo::FEATURE_STATUS_OK;
+    } else {
+      *aStatus = nsIGfxInfo::FEATURE_BLOCKED_PLATFORM_TEST;
+      aFailureId = "FEATURE_FAILURE_VIDEO_DECODING_MISSING";
+    }
+    return NS_OK;
+  }
+
   auto ret = GfxInfoBase::GetFeatureStatusImpl(
       aFeature, aStatus, aSuggestedDriverVersion, aDriverInfo, aFailureId, &os);
 
   // Probe VA-API on supported devices only
   if (aFeature == nsIGfxInfo::FEATURE_HARDWARE_VIDEO_DECODING &&
       *aStatus == nsIGfxInfo::FEATURE_STATUS_OK) {
-#ifdef MOZ_WAYLAND
     GetDataVAAPI();
-#endif
     if (!mIsVAAPISupported.value()) {
       *aStatus = nsIGfxInfo::FEATURE_BLOCKED_PLATFORM_TEST;
       aFailureId = "FEATURE_FAILURE_VIDEO_DECODING_TEST_FAILED";

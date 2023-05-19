@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
@@ -841,7 +842,26 @@ export class UrlbarView {
 
   openResultMenu(result, anchor) {
     this.#resultMenuResult = result;
-    this.resultMenu.openPopup(anchor, "bottomright topright");
+
+    if (AppConstants.platform == "macosx") {
+      // `openPopup(anchor)` doesn't use a native context menu, which is very
+      // noticeable on Mac. Use `openPopup()` with x and y coords instead. See
+      // bug 1831760 and bug 1710459.
+      let rect = getBoundsWithoutFlushing(anchor);
+      rect = this.window.windowUtils.toScreenRectInCSSUnits(
+        rect.x,
+        rect.y,
+        rect.width,
+        rect.height
+      );
+      this.resultMenu.openPopup(null, {
+        x: rect.x,
+        y: rect.y + rect.height,
+      });
+    } else {
+      this.resultMenu.openPopup(anchor, "bottomright topright");
+    }
+
     anchor.toggleAttribute("open", true);
     let listener = event => {
       if (event.target == this.resultMenu) {
@@ -850,6 +870,15 @@ export class UrlbarView {
       }
     };
     this.resultMenu.addEventListener("popuphidden", listener);
+  }
+
+  /**
+   * Clears the result menu commands cache, removing the cached commands for all
+   * results. This is useful when the commands for one or more results change
+   * while the results remain in the view.
+   */
+  invalidateResultMenuCommands() {
+    this.#resultMenuCommands = new WeakMap();
   }
 
   /**
@@ -1406,6 +1435,44 @@ export class UrlbarView {
     item._elements.set("bottom", bottom);
   }
 
+  #createRowContentForRichSuggestion(item, result) {
+    item._content.toggleAttribute("selectable", true);
+
+    let favicon = this.#createElement("img");
+    favicon.className = "urlbarView-favicon";
+    item._content.appendChild(favicon);
+    item._elements.set("favicon", favicon);
+
+    let body = this.#createElement("span");
+    body.className = "urlbarView-no-wrap";
+    item._content.appendChild(body);
+
+    let title = this.#createElement("span");
+    title.classList.add("urlbarView-title", "urlbarView-overflowable");
+    body.appendChild(title);
+    item._elements.set("title", title);
+
+    let description = this.#createElement("small");
+    description.className = "urlbarView-description";
+    body.appendChild(description);
+    item._elements.set("description", description);
+
+    let titleSeparator = this.#createElement("span");
+    titleSeparator.className = "urlbarView-title-separator";
+    body.appendChild(titleSeparator);
+    item._elements.set("titleSeparator", titleSeparator);
+
+    let action = this.#createElement("span");
+    action.className = "urlbarView-action";
+    body.appendChild(action);
+    item._elements.set("action", action);
+
+    let url = this.#createElement("span");
+    url.className = "urlbarView-url";
+    item._content.appendChild(url);
+    item._elements.set("url", url);
+  }
+
   #addRowButtons(item, result) {
     for (let i = 0; i < result.payload.buttons?.length; i++) {
       this.#addRowButton(item, {
@@ -1497,6 +1564,7 @@ export class UrlbarView {
       // always need updating.
       provider?.getViewTemplate ||
       oldResult.isBestMatch != result.isBestMatch ||
+      oldResult.payload.isRichSuggestion != result.payload.isRichSuggestion ||
       (!lazy.UrlbarPrefs.get("resultMenu") &&
         (!!result.payload.helpUrl != item._buttons.has("help") ||
           !!result.payload.isBlockable != item._buttons.has("block"))) ||
@@ -1522,6 +1590,8 @@ export class UrlbarView {
         this.#createRowContentForDynamicType(item, result);
       } else if (item.result.isBestMatch) {
         this.#createRowContentForBestMatch(item, result);
+      } else if (result.payload.isRichSuggestion) {
+        this.#createRowContentForRichSuggestion(item, result);
       } else {
         this.#createRowContent(item, result);
       }
@@ -1603,20 +1673,22 @@ export class UrlbarView {
     this.#updateOverflowTooltip(title, result.title);
 
     let tagsContainer = item._elements.get("tagsContainer");
-    tagsContainer.textContent = "";
-    if (result.payload.tags && result.payload.tags.length) {
-      tagsContainer.append(
-        ...result.payload.tags.map((tag, i) => {
-          const element = this.#createElement("span");
-          element.className = "urlbarView-tag";
-          this.#addTextContentWithHighlights(
-            element,
-            tag,
-            result.payloadHighlights.tags[i]
-          );
-          return element;
-        })
-      );
+    if (tagsContainer) {
+      tagsContainer.textContent = "";
+      if (result.payload.tags && result.payload.tags.length) {
+        tagsContainer.append(
+          ...result.payload.tags.map((tag, i) => {
+            const element = this.#createElement("span");
+            element.className = "urlbarView-tag";
+            this.#addTextContentWithHighlights(
+              element,
+              tag,
+              result.payloadHighlights.tags[i]
+            );
+            return element;
+          })
+        );
+      }
     }
 
     let action = item._elements.get("action");
@@ -1730,6 +1802,18 @@ export class UrlbarView {
       item.toggleAttribute("firefox-suggest-sponsored", true);
     } else {
       item.removeAttribute("firefox-suggest-sponsored");
+    }
+
+    if (result.payload.isRichSuggestion) {
+      let description = item._elements.get("description");
+      description.textContent = result.payload.description;
+      item.setAttribute("rich-suggestion", "with-icon");
+    } else if (lazy.UrlbarPrefs.get("richSuggestions.featureGate")) {
+      // We need to modify the layout of standard urlbar results when
+      // richSuggestions are enabled so the titles align.
+      item.setAttribute("rich-suggestion", "no-icon");
+    } else {
+      item.removeAttribute("rich-suggestion");
     }
 
     let url = item._elements.get("url");

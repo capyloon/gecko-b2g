@@ -9,6 +9,7 @@ include protocol PBackgroundStarter;
 include protocol PBluetooth;
 #endif
 include protocol PBrowser;
+include protocol PClipboardWriteRequest;
 include protocol PCompositorManager;
 include protocol PContentPermissionRequest;
 include protocol PCycleCollectWithLogs;
@@ -68,6 +69,7 @@ include DOMTypes;
 include WindowGlobalTypes;
 include IPCBlob;
 include IPCStream;
+include IPCTransferable;
 include PPrintingTypes;
 include PTabContext;
 include ProtocolTypes;
@@ -668,8 +670,8 @@ struct IPCImage {
     ImageIntSize size;
 };
 
-union IPCDataTransferOrError {
-    IPCDataTransfer;
+union IPCTransferableDataOrError {
+    IPCTransferableData;
     nsresult;
 };
 
@@ -685,6 +687,7 @@ sync protocol PContent
     manages PBluetooth;
 #endif
     manages PBrowser;
+    manages PClipboardWriteRequest;
     manages PContentPermissionRequest;
     manages PCycleCollectWithLogs;
     manages PDeviceStorageRequest;
@@ -1073,7 +1076,7 @@ child:
 
     async InvokeDragSession(MaybeDiscardedWindowContext aSourceWindowContext,
                             MaybeDiscardedWindowContext aSourceTopWindowContext,
-                            IPCDataTransfer[] transfers, uint32_t action);
+                            IPCTransferableData[] transfers, uint32_t action);
 
     async EndDragSession(bool aDoneDrag, bool aUserCancelled,
                          LayoutDeviceIntPoint aDragEndPoint,
@@ -1506,25 +1509,20 @@ parent:
                                bool fromChromeContext, ClonedMessageData stack);
 
     // Places the items within dataTransfer on the clipboard.
-    async SetClipboard(IPCDataTransfer aDataTransfer,
-                       bool aIsPrivateData,
-                       nullable nsIPrincipal aRequestingPrincipal,
-                       CookieJarSettingsArgs? cookieJarSettings,
-                       nsContentPolicyType aContentPolicyType,
-                       nullable nsIReferrerInfo aReferrerInfo,
+    async SetClipboard(IPCTransferable aTransferable,
                        int32_t aWhichClipboard);
 
     // Given a list of supported types, returns the clipboard data for the
     // first type that matches.
     sync GetClipboard(nsCString[] aTypes, int32_t aWhichClipboard)
-        returns (IPCDataTransfer dataTransfer);
+        returns (IPCTransferableData transferableData);
 
     // Returns a list of formats supported by the clipboard
     sync GetExternalClipboardFormats(int32_t aWhichClipboard, bool aPlainTextOnly) returns (nsCString[] aTypes);
 
     // Given a list of supported types, returns the clipboard data for the
     // first type that matches.
-    async GetClipboardAsync(nsCString[] aTypes, int32_t aWhichClipboard) returns (IPCDataTransferOrError dataTransfer);
+    async GetClipboardAsync(nsCString[] aTypes, int32_t aWhichClipboard) returns (IPCTransferableDataOrError transferableData);
 
     // Clears the clipboard.
     async EmptyClipboard(int32_t aWhichClipboard);
@@ -1537,6 +1535,14 @@ parent:
     // constains the data for the specified type.
     async ClipboardHasTypesAsync(nsCString [] aTypes, int32_t aWhichClipboard)
         returns (nsCString [] types);
+
+    /**
+     * Notify the parent that the child has started a clipboard write request,
+     * and that the data will be sent over another IPC message once it is ready.
+     * @param  aClipboardType
+     *         The clipboard type defined in nsIClipboard.
+     */
+    async PClipboardWriteRequest(int32_t aClipboardType);
 
     // 'Play', 'Beep' and 'PlayEventSound' are the only nsISound methods used in
     // the content process.

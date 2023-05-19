@@ -32,7 +32,7 @@ export class MigrationWizard extends HTMLElement {
     return `
       <template>
         <link rel="stylesheet" href="chrome://browser/skin/migration/migration-wizard.css">
-        <named-deck id="wizard-deck" selected-view="page-loading" aria-busy="true">
+        <named-deck id="wizard-deck" selected-view="page-loading" aria-busy="true" part="deck">
           <div name="page-loading">
             <h1 data-l10n-id="migration-wizard-selection-header"></h1>
             <div class="loading-block large"></div>
@@ -148,7 +148,7 @@ export class MigrationWizard extends HTMLElement {
                 <span class="success-text deemphasized-text">&nbsp;</span>
               </div>
             </div>
-            <moz-button-group class="buttons">
+            <moz-button-group class="buttons" part="buttons">
               <button class="cancel-close" data-l10n-id="migration-cancel-button-label" disabled></button>
               <button class="primary finish-button done-button" data-l10n-id="migration-done-button-label"></button>
               <button class="primary finish-button continue-button" data-l10n-id="migration-continue-button-label"></button>
@@ -182,7 +182,7 @@ export class MigrationWizard extends HTMLElement {
             </ol>
             <moz-button-group class="buttons" part="buttons">
               <button class="cancel-close" data-l10n-id="migration-cancel-button-label"></button>
-              <button id="safari-request-permissions" class="primary" data-l10n-id="migration-wizard-safari-select-button"></button>
+              <button id="safari-request-permissions" class="primary" data-l10n-id="migration-continue-button-label"></button>
             </moz-button-group>
           </div>
 

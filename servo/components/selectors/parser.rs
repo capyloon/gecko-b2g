@@ -114,6 +114,9 @@ bitflags! {
 
         /// Whether we explicitly disallow pseudo-element-like things.
         const DISALLOW_PSEUDOS = 1 << 6;
+
+        /// Whether we explicitly disallow relative selectors (i.e. `:has()`).
+        const DISALLOW_RELATIVE_SELECTOR = 1 << 7;
     }
 }
 
@@ -376,6 +379,11 @@ enum ParseRelative {
 }
 
 impl<Impl: SelectorImpl> SelectorList<Impl> {
+    /// Returns a selector list with a single `&`
+    pub fn ampersand() -> Self {
+        Self(smallvec::smallvec![Selector::ampersand()])
+    }
+
     /// Parse a comma-separated list of Selectors.
     /// <https://drafts.csswg.org/selectors/#grouping>
     ///
@@ -629,6 +637,18 @@ pub struct Selector<Impl: SelectorImpl>(
 );
 
 impl<Impl: SelectorImpl> Selector<Impl> {
+    /// See Arc::mark_as_intentionally_leaked
+    pub fn mark_as_intentionally_leaked(&self) {
+        self.0.with_arc(|a| a.mark_as_intentionally_leaked())
+    }
+
+    fn ampersand() -> Self {
+        Self(ThinArc::from_header_and_iter(SpecificityAndFlags {
+            specificity: 0,
+            flags: SelectorFlags::HAS_PARENT,
+        }, std::iter::once(Component::ParentSelector)))
+    }
+
     #[inline]
     pub fn specificity(&self) -> u32 {
         self.0.header.header.specificity()
@@ -2924,12 +2944,20 @@ where
     Impl: SelectorImpl,
 {
     debug_assert!(parser.parse_has());
+    if state.intersects(SelectorParsingState::DISALLOW_RELATIVE_SELECTOR) {
+        return Err(input.new_custom_error(SelectorParseErrorKind::InvalidState));
+    }
+    // Nested `:has()` is disallowed, mark it as such.
+    // Note: The spec defines ":has-allowed pseudo-element," but there's no
+    // pseudo-element defined as such at the moment.
+    // https://w3c.github.io/csswg-drafts/selectors-4/#has-allowed-pseudo-element
     let inner = SelectorList::parse_with_state(
         parser,
         input,
         state |
             SelectorParsingState::SKIP_DEFAULT_NAMESPACE |
-            SelectorParsingState::DISALLOW_PSEUDOS,
+            SelectorParsingState::DISALLOW_PSEUDOS |
+            SelectorParsingState::DISALLOW_RELATIVE_SELECTOR,
         ForgivingParsing::No,
         ParseRelative::Yes,
     )?;

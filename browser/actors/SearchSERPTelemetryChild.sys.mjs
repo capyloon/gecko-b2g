@@ -57,23 +57,8 @@ class SearchProviders {
       .filter(p => "extraAdServersRegexps" in p)
       // Pre-build the regular expressions.
       .map(p => {
-        if (p.components) {
-          p.components.forEach(component => {
-            if (component.included?.regexps) {
-              component.included.regexps = component.included.regexps.map(
-                r => new RegExp(r)
-              );
-            }
-            if (component.excluded?.regexps) {
-              component.excluded.regexps = component.excluded.regexps.map(
-                r => new RegExp(r)
-              );
-            }
-            return component;
-          });
-        }
         p.adServerAttributes = p.adServerAttributes ?? [];
-        if (p.shoppingTab?.regexp) {
+        if (p.shoppingTab?.inspectRegexpInSERP) {
           p.shoppingTab.regexp = new RegExp(p.shoppingTab.regexp);
         }
         return {
@@ -148,12 +133,6 @@ class SearchAdImpression {
   }
 
   /**
-   * An array containing RegExps that wouldn't be caught in
-   * lists of ad expressions.
-   */
-  #nonAdRegexps = [];
-
-  /**
    * An array of components to do a top-down search.
    */
   #topDownComponents = [];
@@ -184,18 +163,12 @@ class SearchAdImpression {
     this.#providerInfo = providerInfo;
 
     // Reset values.
-    this.#nonAdRegexps = [];
     this.#topDownComponents = [];
 
     for (let component of this.#providerInfo.components) {
       if (component.default) {
         this.#defaultComponent = component;
         continue;
-      }
-      if (component.nonAd && component.included?.regexps) {
-        this.#nonAdRegexps = this.#nonAdRegexps.concat(
-          component.included.regexps
-        );
       }
       if (component.topDown) {
         this.#topDownComponents.push(component);
@@ -226,19 +199,32 @@ class SearchAdImpression {
       return false;
     }
 
-    let selector = this.#providerInfo.shoppingTab.selector;
-    let regexp = this.#providerInfo.shoppingTab.regexp;
-
-    let elements = document.querySelectorAll(selector);
-    for (let element of elements) {
-      let href = element.getAttribute("href");
-      if (href && regexp.test(href)) {
-        this.#recordElementData(element, {
-          type: "shopping_tab",
-          count: 1,
-        });
-        return true;
+    // If a provider has the inspectRegexpInSERP, we assume there must be an
+    // associated regexp that must be used on any hrefs matched by the elements
+    // found using the selector. If inspectRegexpInSERP is false, then check if
+    // the number of items found using the selector matches exactly one element
+    // to ensure we've used a fine-grained search.
+    let elements = document.querySelectorAll(
+      this.#providerInfo.shoppingTab.selector
+    );
+    if (this.#providerInfo.shoppingTab.inspectRegexpInSERP) {
+      let regexp = this.#providerInfo.shoppingTab.regexp;
+      for (let element of elements) {
+        let href = element.getAttribute("href");
+        if (href && regexp.test(href)) {
+          this.#recordElementData(element, {
+            type: "shopping_tab",
+            count: 1,
+          });
+          return true;
+        }
       }
+    } else if (elements.length == 1) {
+      this.#recordElementData(elements[0], {
+        type: "shopping_tab",
+        count: 1,
+      });
+      return true;
     }
     return false;
   }
@@ -343,10 +329,11 @@ class SearchAdImpression {
 
   /**
    * Given an element, find the href that is most likely to make the request if
-   * the element is clicked. The initial value of the anchor is an href if the
-   * attribute exists, otherwise it is a blank string. Then, if the element
-   * contains a specific data attribute known to contain hrefs, it will be
-   * used instead.
+   * the element is clicked. If the element contains a specific data attribute
+   * known to contain the url used to make the initial request, use it,
+   * otherwise use its href. Specific character conversions are done to mimic
+   * conversions likely to take place when urls are observed in network
+   * activity.
    *
    * @param {Element} element
    *  The element to inspect.
@@ -354,7 +341,10 @@ class SearchAdImpression {
    *   The href of the element.
    */
   #extractHref(element) {
-    let href = element.getAttribute("href") ?? "";
+    let href;
+    // Prioritize the href from a known data attribute value instead of
+    // its href property, as the former is the initial url the page will
+    // navigate to before being re-directed to the href.
     for (let name of this.#providerInfo.adServerAttributes) {
       if (
         element.dataset[name] &&
@@ -366,19 +356,23 @@ class SearchAdImpression {
         break;
       }
     }
-    // Some hrefs might be using relative URLs.
-    if (href?.startsWith("/")) {
+    // If a data attribute value was not found, fallback to the href.
+    href = href ?? element.getAttribute("href");
+    if (!href) {
+      return "";
+    }
+    // Hrefs can be relative.
+    if (!href.startsWith("https://") && !href.startsWith("http://")) {
       href = this.#pageUrl.origin + href;
     }
-    // Some reserved characters are converted into percent-encoded strings by
-    // the time they are observed in the network.
+    // Per Bug 376844, apostrophes in query params are escaped, and thus, are
+    // percent-encoded by the time they are observed in the network. Even
+    // though it's more comprehensive, we avoid using newURI because its more
+    // expensive and conversions should be the exception.
     // e.g. /path'?q=Mozilla's -> /path'?q=Mozilla%27s
-    if (href) {
-      try {
-        href = Services.io.newURI(href)?.spec;
-      } catch {
-        return "";
-      }
+    let arr = href.split("?");
+    if (arr.length == 2 && arr[1].includes("'")) {
+      href = arr[0] + "?" + arr[1].replaceAll("'", "%27");
     }
     return href;
   }
@@ -484,25 +478,29 @@ class SearchAdImpression {
    * @returns {boolean}
    */
   #shouldInspectAnchor(anchor) {
-    if (!anchor.href) {
+    let href = anchor.getAttribute("href");
+    if (!href) {
       return false;
     }
+
+    // Some hrefs might be relative.
+    if (!href.startsWith("https://") && !href.startsWith("http://")) {
+      href = this.#pageUrl.origin + href;
+    }
+
     let regexps = this.#providerInfo.extraAdServersRegexps;
     // Anchors can contain ad links in a data-attribute.
     for (let name of this.#providerInfo.adServerAttributes) {
+      let attributeValue = anchor.dataset[name];
       if (
-        anchor.dataset[name] &&
-        regexps.some(regexp => regexp.test(anchor.dataset[name]))
+        attributeValue &&
+        regexps.some(regexp => regexp.test(attributeValue))
       ) {
         return true;
       }
     }
     // Anchors can contain ad links in a specific href.
-    if (regexps.some(regexp => regexp.test(anchor.href))) {
-      return true;
-    }
-    // Anchors can contain hrefs matching non-ad regular expressions.
-    if (this.#nonAdRegexps.some(regexp => regexp.test(anchor.href))) {
+    if (regexps.some(regexp => regexp.test(href))) {
       return true;
     }
     return false;
@@ -571,32 +569,18 @@ class SearchAdImpression {
         continue;
       }
 
-      // The anchor shouldn't belong to an excluded parent component.
-      if (anchor.closest(component.excluded?.parent?.selector)) {
-        continue;
-      }
-
-      // The anchor should not belong to an excluded regexp (if provided).
-      if (component.excluded?.regexps?.some(r => r.test(anchor.href))) {
-        continue;
-      }
-
-      // The anchor should belong to an included regexp (if provided).
+      // The anchor shouldn't belong to an excluded parent component if one
+      // is provided.
       if (
-        component.included.regexps &&
-        !component.included.regexps.some(r => r.test(anchor.href))
+        component.excluded?.parent?.selector &&
+        anchor.closest(component.excluded.parent.selector)
       ) {
         continue;
       }
 
-      // If no parent was provided, but it passed a previous regular
-      // expression check, return the anchor. This might be because there
-      // was no clear parent for the anchor to match against.
-      if (!component.included.parent && component.included?.regexps) {
-        return {
-          element: anchor,
-          type: component.type,
-        };
+      // All components with included should have a parent entry.
+      if (!component.included.parent) {
+        continue;
       }
 
       // Find the parent of the anchor.
@@ -690,7 +674,9 @@ class SearchAdImpression {
    *  and adsHidden, the number of ads not visible to the user.
    */
   #countVisibleAndHiddenAds(element, adsLoaded, childElements) {
-    let elementRect = element.getBoundingClientRect();
+    let elementRect = element.ownerGlobal.windowUtils.getBoundsWithoutFlushing(
+      element
+    );
 
     // If the element lacks a dimension, assume all ads that
     // were contained within it are hidden.
@@ -719,7 +705,9 @@ class SearchAdImpression {
     let adsVisible = 0;
     let adsHidden = 0;
     for (let child of childElements) {
-      let itemRect = child.getBoundingClientRect();
+      let itemRect = child.ownerGlobal.windowUtils.getBoundsWithoutFlushing(
+        child
+      );
 
       // If the child element we're inspecting has no dimension, it is hidden.
       if (itemRect.height == 0 || itemRect.width == 0) {

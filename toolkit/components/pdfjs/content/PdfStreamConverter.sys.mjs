@@ -376,6 +376,26 @@ class ChromeActions {
     return AppConstants.platform === "android";
   }
 
+  getNimbusExperimentData(_data, sendResponse) {
+    if (!this.isMobile()) {
+      sendResponse(null);
+      return;
+    }
+    const actor = getActor(this.domWindow);
+    actor.sendAsyncMessage("PDFJS:Parent:getNimbus");
+    Services.obs.addObserver(
+      {
+        observe(aSubject, aTopic, aData) {
+          if (aTopic === "pdfjs-getNimbus") {
+            Services.obs.removeObserver(this, aTopic);
+            sendResponse(aSubject && JSON.stringify(aSubject.wrappedJSObject));
+          }
+        },
+      },
+      "pdfjs-getNimbus"
+    );
+  }
+
   reportTelemetry(data) {
     var probeInfo = JSON.parse(data);
     switch (probeInfo.type) {

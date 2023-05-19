@@ -2941,9 +2941,9 @@ GeckoDriver.prototype._handleUserPrompts = async function() {
  * @param {boolean} cmd.parameters.value
  *     True if the server should accept new socket connections.
  */
-GeckoDriver.prototype.acceptConnections = function(cmd) {
+GeckoDriver.prototype.acceptConnections = async function(cmd) {
   lazy.assert.boolean(cmd.parameters.value);
-  this._server.acceptConnections = cmd.parameters.value;
+  await this._server.setAcceptConnections(cmd.parameters.value);
 };
 
 /**
@@ -3029,7 +3029,7 @@ GeckoDriver.prototype.quit = async function(cmd) {
     mode |= Ci.nsIAppStartup.eAttemptQuit;
   }
 
-  this._server.acceptConnections = false;
+  await this._server.setAcceptConnections(false);
   this.deleteSession();
 
   // Notify all windows that an application quit has been requested.

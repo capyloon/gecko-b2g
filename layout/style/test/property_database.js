@@ -1382,8 +1382,6 @@ if (/* mozGradientsEnabled */ true) {
 
 const pathValues = {
   other_values: [
-    "path('')",
-    "path(' ')",
     "path('M 10 10 20 20 H 90 V 90 Z')",
     "path('M10 10 20,20H90V90Z')",
     "path('M 10 10 C 20 20, 40 20, 50 10')",
@@ -2884,7 +2882,7 @@ var gCSSProperties = {
     inherited: false,
     type: CSS_TYPE_LONGHAND,
     initial_values: ["none"],
-    other_values: pathValues.other_values,
+    other_values: ["path('')", "path(' ')"].concat(pathValues.other_values),
     invalid_values: pathValues.invalid_values,
   },
   "-moz-float-edge": {
@@ -8418,6 +8416,17 @@ var gCSSProperties = {
     invalid_values: [],
     quirks_values: { "5": "5px" },
   },
+  "baseline-source": {
+    domProp: "baselineSource",
+    inherited: false,
+    type: CSS_TYPE_LONGHAND,
+    applies_to_first_letter: true,
+    applies_to_first_line: true,
+    applies_to_placeholder: true,
+    initial_values: ["auto"],
+    other_values: ["first", "last"],
+    invalid_values: [],
+  },
   visibility: {
     domProp: "visibility",
     inherited: true,
@@ -8660,7 +8669,6 @@ var gCSSProperties = {
     type: CSS_TYPE_LONGHAND,
     initial_values: ["none"],
     other_values: [
-      "path(evenodd, '')",
       "path(nonzero, 'M 10 10 h 100 v 100 h-100 v-100 z')",
       "path(evenodd, 'M 10 10 h 100 v 100 h-100 v-100 z')",
       "path('M10,30A20,20 0,0,1 50,30A20,20 0,0,1 90,30Q90,60 50,90Q10,60 10,30z')",
@@ -8670,9 +8678,12 @@ var gCSSProperties = {
     ]
       .concat(basicShapeSVGBoxValues)
       .concat(basicShapeOtherValues),
-    invalid_values: ["path(nonzero)", "path(abs, 'M 10 10 L 10 10 z')"].concat(
-      basicShapeInvalidValues
-    ),
+    invalid_values: [
+      "path(nonzero)",
+      "path(abs, 'M 10 10 L 10 10 z')",
+      "path(evenodd, '')",
+      "path('')",
+    ].concat(basicShapeInvalidValues),
     unbalanced_values: basicShapeUnbalancedValues,
   },
   "clip-rule": {
@@ -12023,16 +12034,14 @@ gCSSProperties["touch-action"] = {
   ],
 };
 
-if (IsCSSPropertyPrefEnabled("layout.css.named-pages.enabled")) {
-  gCSSProperties["page"] = {
-    domProp: "page",
-    inherited: false,
-    type: CSS_TYPE_LONGHAND,
-    initial_values: ["auto"],
-    other_values: ["page", "small_page", "large_page", "A4"],
-    invalid_values: ["page1 page2", "auto page", "1cm"],
-  };
-}
+gCSSProperties["page"] = {
+  domProp: "page",
+  inherited: false,
+  type: CSS_TYPE_LONGHAND,
+  initial_values: ["auto"],
+  other_values: ["page", "small_page", "large_page", "A4"],
+  invalid_values: ["page1 page2", "auto page", "1cm"],
+};
 
 gCSSProperties["text-justify"] = {
   domProp: "textJustify",
@@ -13433,7 +13442,7 @@ if (IsCSSPropertyPrefEnabled("layout.css.motion-path.enabled")) {
     type: CSS_TYPE_LONGHAND,
     initial_values: ["none"],
     other_values: [...pathValues.other_values],
-    invalid_values: [...pathValues.invalid_values],
+    invalid_values: ["path('')"].concat(pathValues.invalid_values),
   };
 
   if (IsCSSPropertyPrefEnabled("layout.css.motion-path-ray.enabled")) {

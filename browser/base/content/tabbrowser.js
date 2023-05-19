@@ -3435,9 +3435,6 @@
           let lastRelatedTab =
             openerTab && this._lastRelatedTabMap.get(openerTab);
           let previousTab = lastRelatedTab || openerTab || this.selectedTab;
-          if (previousTab.multiselected) {
-            previousTab = this.selectedTabs.at(-1);
-          }
           if (!previousTab.hidden) {
             index = previousTab._tPos + 1;
           } else if (previousTab == FirefoxViewHandler.tab) {
@@ -4368,6 +4365,30 @@
           window.warnAboutClosingWindow,
           "close-last-tab"
         );
+      }
+    },
+
+    /**
+     * Handles opening a new tab with mouse middleclick.
+     * @param node
+     * @param event
+     *        The click event
+     */
+    handleNewTabMiddleClick(node, event) {
+      // We should be using the disabled property here instead of the attribute,
+      // but some elements that this function is used with don't support it (e.g.
+      // menuitem).
+      if (node.getAttribute("disabled") == "true") {
+        return;
+      } // Do nothing
+
+      if (event.button == 1) {
+        BrowserOpenTab({ event });
+        // Stop the propagation of the click event, to prevent the event from being
+        // handled more than once.
+        // E.g. see https://bugzilla.mozilla.org/show_bug.cgi?id=1657992#c4
+        event.stopPropagation();
+        event.preventDefault();
       }
     },
 

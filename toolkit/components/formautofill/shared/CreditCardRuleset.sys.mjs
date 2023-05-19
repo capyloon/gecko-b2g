@@ -33,6 +33,7 @@ import {
   CreditCard,
   NETWORK_NAMES,
 } from "resource://gre/modules/CreditCard.sys.mjs";
+
 import { FormLikeFactory } from "resource://gre/modules/FormLikeFactory.sys.mjs";
 import { LabelUtils } from "resource://gre/modules/shared/LabelUtils.sys.mjs";
 
@@ -59,7 +60,6 @@ function queriedOrClickedElements(selector) {
 /**
  * START OF CODE PASTED FROM TRAINING REPOSITORY
  */
-
 var FathomHeuristicsRegExp = {
   RULES: {
     "cc-name": undefined,
@@ -85,6 +85,8 @@ var FathomHeuristicsRegExp = {
         "|(titulaire|détenteur).*(carte)" +
         // it-IT
         "|titolare.*carta" +
+        // pl-PL
+        "|posiadacz.*karty" +
         // Rules from Bitwarden
         "|cc-?name" +
         "|card-?name" +
@@ -111,6 +113,8 @@ var FathomHeuristicsRegExp = {
         "|numero.*carta" +
         // fr-FR
         "|(numero|número|numéro).*(carte)" +
+        // pl-PL
+        "|numer.*karty" +
         // Rules from Bitwarden
         "|cc-?number" +
         "|cc-?num" +
@@ -1182,7 +1186,7 @@ const biases = [
 // all the tyoes). When the above case exists, the coefficient of the rule will be
 // overwritten, which means, we can't have different coefficient for the same rule on
 // different types. To workaround this issue, we create a new ruleset for each type.
-export var creditCardRulesets = {
+export var CreditCardRulesets = {
   init() {
     XPCOMUtils.defineLazyPreferenceGetter(
       this,
@@ -1203,6 +1207,6 @@ export var creditCardRulesets = {
   },
 };
 
-creditCardRulesets.init();
+CreditCardRulesets.init();
 
-export default creditCardRulesets;
+export default CreditCardRulesets;

@@ -585,14 +585,6 @@ class DynamicToolbarTest : BaseSessionTest() {
     @WithDisplay(height = SCREEN_HEIGHT, width = SCREEN_WIDTH)
     @Test
     fun zoomedOverflowHidden() {
-        // Set ui.scrollbarFadeBeginDelay value to 0 to hide the overlayed scrollbars
-        // immediately.
-        sessionRule.setPrefsUntilTestEnd(
-            mapOf(
-                "ui.scrollbarFadeBeginDelay" to 0
-            )
-        )
-
         val reference = getComparisonScreenshot(SCREEN_WIDTH, SCREEN_HEIGHT)
 
         val dynamicToolbarMaxHeight = SCREEN_HEIGHT / 2
@@ -606,6 +598,9 @@ class DynamicToolbarTest : BaseSessionTest() {
 
         // Change the body background color to match the reference image's background color.
         mainSession.evaluateJS("document.body.style.background = 'rgb(0, 128, 0)'")
+
+        // Hide the vertical scrollbar.
+        mainSession.evaluateJS("document.documentElement.style.scrollbarWidth = 'none'")
 
         // Zoom in the content so that the content's visual viewport can be scrollable.
         mainSession.setResolutionAndScaleTo(10.0f)
@@ -623,14 +618,6 @@ class DynamicToolbarTest : BaseSessionTest() {
     @WithDisplay(height = SCREEN_HEIGHT, width = SCREEN_WIDTH)
     @Test
     fun zoomedPositionFixedRoot() {
-        // Set ui.scrollbarFadeBeginDelay value to 0 to hide the overlayed scrollbars
-        // immediately.
-        sessionRule.setPrefsUntilTestEnd(
-            mapOf(
-                "ui.scrollbarFadeBeginDelay" to 0
-            )
-        )
-
         val reference = getComparisonScreenshot(SCREEN_WIDTH, SCREEN_HEIGHT)
 
         val dynamicToolbarMaxHeight = SCREEN_HEIGHT / 2
@@ -650,6 +637,9 @@ class DynamicToolbarTest : BaseSessionTest() {
         mainSession.evaluateJS("document.body.style.overflow = 'scroll'")
         mainSession.evaluateJS("document.documentElement.style.position = 'fixed'")
 
+        // Hide the vertical scrollbar.
+        mainSession.evaluateJS("document.documentElement.style.scrollbarWidth = 'none'")
+
         // Zoom in the content so that the content's visual viewport can be scrollable.
         mainSession.setResolutionAndScaleTo(10.0f)
 
@@ -666,14 +656,6 @@ class DynamicToolbarTest : BaseSessionTest() {
     @WithDisplay(height = SCREEN_HEIGHT, width = SCREEN_WIDTH)
     @Test
     fun backgroundImageFixed() {
-        // Set ui.scrollbarFadeBeginDelay value to 0 to hide the overlayed scrollbars
-        // immediately.
-        sessionRule.setPrefsUntilTestEnd(
-            mapOf(
-                "ui.scrollbarFadeBeginDelay" to 0
-            )
-        )
-
         val reference = getComparisonScreenshot(SCREEN_WIDTH, SCREEN_HEIGHT)
 
         val dynamicToolbarMaxHeight = SCREEN_HEIGHT / 2
@@ -691,6 +673,45 @@ class DynamicToolbarTest : BaseSessionTest() {
 
         // Make the root element scrollable.
         mainSession.evaluateJS("document.documentElement.style.height = '100vh'")
+
+        // Hide the vertical scrollbar.
+        mainSession.evaluateJS("document.documentElement.style.scrollbarWidth = 'none'")
+
+        mainSession.flushApzRepaints()
+
+        // Simulate the dynamic toolbar being hidden by the scroll
+        sessionRule.display?.run { setVerticalClipping(-dynamicToolbarMaxHeight) }
+
+        mainSession.flushApzRepaints()
+
+        sessionRule.display?.let {
+            assertScreenshotResult(it.capturePixels(), reference)
+        }
+    }
+
+    @WithDisplay(height = SCREEN_HEIGHT, width = SCREEN_WIDTH)
+    @Test
+    fun backgroundAttachmentFixed() {
+        val reference = getComparisonScreenshot(SCREEN_WIDTH, SCREEN_HEIGHT)
+
+        val dynamicToolbarMaxHeight = SCREEN_HEIGHT / 2
+        sessionRule.display?.run { setDynamicToolbarMaxHeight(dynamicToolbarMaxHeight) }
+
+        // Set active since setVerticalClipping call affects only for forground tab.
+        mainSession.setActive(true)
+
+        mainSession.loadTestPath(BaseSessionTest.TOUCH_ACTION_HTML_PATH)
+        mainSession.waitForPageStop()
+
+        // Specify the root background-color to match the reference image color and specify
+        // `background-attachment: fixed`.
+        mainSession.evaluateJS("document.documentElement.style.background = 'rgb(0, 128, 0) fixed'")
+
+        // Make the root element scrollable.
+        mainSession.evaluateJS("document.documentElement.style.height = '100vh'")
+
+        // Hide the vertical scrollbar.
+        mainSession.evaluateJS("document.documentElement.style.scrollbarWidth = 'none'")
 
         mainSession.flushApzRepaints()
 

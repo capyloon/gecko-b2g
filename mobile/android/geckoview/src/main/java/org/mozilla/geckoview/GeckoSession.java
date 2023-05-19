@@ -258,6 +258,7 @@ public class GeckoSession {
   private boolean mAttachedCompositor;
   private boolean mCompositorReady;
   private SurfaceInfo mSurfaceInfo;
+  private GeckoDisplay.NewSurfaceProvider mNewSurfaceProvider;
 
   // All fields of coordinates are in screen units.
   private int mLeft;
@@ -346,6 +347,16 @@ public class GeckoSession {
     @WrapForJNI(calledFrom = "ui")
     private void recvToolbarAnimatorMessage(final int message) {
       GeckoSession.this.handleCompositorMessage(message);
+    }
+
+    @WrapForJNI(calledFrom = "ui")
+    private void requestNewSurface() {
+      final GeckoDisplay.NewSurfaceProvider provider = GeckoSession.this.mNewSurfaceProvider;
+      if (provider != null) {
+        provider.requestNewSurface();
+      } else {
+        Log.w(LOGTAG, "Cannot request new Surface: No NewSurfaceProvider set.");
+      }
     }
 
     @WrapForJNI(calledFrom = "ui", dispatchTo = "current")
@@ -510,7 +521,8 @@ public class GeckoSession {
             "GeckoView:PreviewImage",
             "GeckoView:CookieBannerEvent:Detected",
             "GeckoView:CookieBannerEvent:Handled",
-            "GeckoView:SavePdf"
+            "GeckoView:SavePdf",
+            "GeckoView:GetNimbusFeature"
           }) {
         @Override
         public void handleMessage(
@@ -583,6 +595,19 @@ public class GeckoSession {
               return;
             }
             delegate.onExternalResponse(GeckoSession.this, response);
+          } else if ("GeckoView:GetNimbusFeature".equals(event)) {
+            final String featureId = message.getString("featureId");
+            final JSONObject res = delegate.onGetNimbusFeature(GeckoSession.this, featureId);
+            if (res == null) {
+              callback.sendError("No Nimbus data for the feature " + featureId);
+              return;
+            }
+            try {
+              callback.sendSuccess(GeckoBundle.fromJSONObject(res));
+            } catch (final JSONException e) {
+              callback.sendError(
+                  "No Nimbus data for the feature " + featureId + ": conversion failed.");
+            }
           }
         }
       };
@@ -750,15 +775,41 @@ public class GeckoSession {
           if ("GeckoView:DotPrintRequest".equals(event)) {
             final Long cbcId = message.getLong("canonicalBrowsingContextId");
             final GeckoResult<InputStream> pdfResult = saveAsPdfByBrowsingContext(cbcId);
+            final GeckoBundle bundle = new GeckoBundle();
             pdfResult
                 .accept(
                     pdfStream -> {
-                      delegate.onPrint(pdfStream);
-                      mEventDispatcher.dispatch("GeckoView:DotPrintFinish", null);
+                      final GeckoResult<Boolean> dialogFinished =
+                          delegate.onPrintWithStatus(pdfStream);
+                      try {
+                        dialogFinished
+                            .accept(
+                                isDialogFinished -> {
+                                  bundle.putBoolean("isPdfSuccessful", true);
+                                  mEventDispatcher.dispatch("GeckoView:DotPrintFinish", bundle);
+                                })
+                            .exceptionally(
+                                e -> {
+                                  bundle.putBoolean("isPdfSuccessful", false);
+                                  if (e instanceof GeckoPrintException) {
+                                    bundle.putInt("errorReason", ((GeckoPrintException) e).code);
+                                  }
+                                  mEventDispatcher.dispatch("GeckoView:DotPrintFinish", bundle);
+                                  return null;
+                                });
+                      } catch (final Exception e) {
+                        bundle.putBoolean("isPdfSuccessful", false);
+                        mEventDispatcher.dispatch("GeckoView:DotPrintFinish", bundle);
+                        Log.e(LOGTAG, "Print delegate needs to be fully implemented to print.", e);
+                      }
                     })
                 .exceptionally(
                     e -> {
-                      mEventDispatcher.dispatch("GeckoView:DotPrintFinish", null);
+                      bundle.putBoolean("isPdfSuccessful", false);
+                      if (e instanceof GeckoPrintException) {
+                        bundle.putInt("errorReason", ((GeckoPrintException) e).code);
+                      }
+                      mEventDispatcher.dispatch("GeckoView:DotPrintFinish", bundle);
                       Log.e(LOGTAG, "Could not complete DotPrintRequest.", e);
                       return null;
                     });
@@ -3584,6 +3635,20 @@ public class GeckoSession {
      */
     @AnyThread
     default void onCookieBannerHandled(@NonNull final GeckoSession session) {}
+
+    /**
+     * This method is called when GeckoView is requesting a specific Nimbus feature in using message
+     * `GeckoView:GetNimbusFeature`.
+     *
+     * @param session GeckoSession that initiated the callback.
+     * @param featureId Nimbus feature id of the collected data.
+     * @return A {@link JSONObject} with the feature.
+     */
+    @AnyThread
+    default @Nullable JSONObject onGetNimbusFeature(
+        @NonNull final GeckoSession session, @NonNull final String featureId) {
+      return null;
+    }
   }
 
   public interface SelectionActionDelegate {
@@ -6260,6 +6325,7 @@ public class GeckoSession {
 
     mWidth = surfaceInfo.mWidth;
     mHeight = surfaceInfo.mHeight;
+    mNewSurfaceProvider = surfaceInfo.mNewSurfaceProvider;
 
     if (mCompositorReady) {
       mCompositor.syncResumeResizeCompositor(
@@ -6283,6 +6349,8 @@ public class GeckoSession {
 
   /* package */ void onSurfaceDestroyed() {
     ThreadUtils.assertOnUiThread();
+
+    mNewSurfaceProvider = null;
 
     if (mCompositorReady) {
       mCompositor.syncPauseCompositor();
@@ -6917,6 +6985,17 @@ public class GeckoSession {
      * @param pdfInputStream an InputStream containing a PDF
      */
     default void onPrint(@NonNull final InputStream pdfInputStream) {}
+
+    /**
+     * Print any provided PDF InputStream.
+     *
+     * @param pdfInputStream an InputStream containing a PDF
+     * @return A GeckoResult if the print dialog has closed
+     */
+    default @Nullable GeckoResult<Boolean> onPrintWithStatus(
+        @NonNull final InputStream pdfInputStream) {
+      return null;
+    }
   }
 
   /**
@@ -6948,6 +7027,10 @@ public class GeckoSession {
     public static final int ERROR_UNABLE_TO_CREATE_PRINT_SETTINGS = -2;
     /** An error happened while trying to find the canonical browing context */
     public static final int ERROR_UNABLE_TO_RETRIEVE_CANONICAL_BROWSING_CONTEXT = -3;
+    /** An error happened while trying to find the activity context delegate */
+    public static final int ERROR_NO_ACTIVITY_CONTEXT_DELEGATE = -4;
+    /** An error happened while trying to find the activity context */
+    public static final int ERROR_NO_ACTIVITY_CONTEXT = -5;
 
     @Retention(RetentionPolicy.SOURCE)
     @IntDef(
@@ -6955,6 +7038,8 @@ public class GeckoSession {
           ERROR_PRINT_SETTINGS_SERVICE_NOT_AVAILABLE,
           ERROR_UNABLE_TO_CREATE_PRINT_SETTINGS,
           ERROR_UNABLE_TO_RETRIEVE_CANONICAL_BROWSING_CONTEXT,
+          ERROR_NO_ACTIVITY_CONTEXT_DELEGATE,
+          ERROR_NO_ACTIVITY_CONTEXT
         })
     public @interface Codes {}
 

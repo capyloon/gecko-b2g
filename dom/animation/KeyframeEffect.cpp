@@ -598,7 +598,7 @@ void KeyframeEffect::EnsureBaseStyle(
     aBaseComputedStyle = aPresContext->StyleSet()->GetBaseContextForElement(
         animatingElement, aComputedStyle);
   }
-  RefPtr<RawServoAnimationValue> baseValue =
+  RefPtr<StyleAnimationValue> baseValue =
       Servo_ComputedValues_ExtractAnimationValue(aBaseComputedStyle,
                                                  aProperty.mProperty)
           .Consume();
@@ -1294,7 +1294,7 @@ void KeyframeEffect::GetKeyframes(JSContext* aCx, nsTArray<JSObject*>& aResult,
       return;
     }
 
-    RefPtr<RawServoDeclarationBlock> customProperties;
+    RefPtr<StyleLockedDeclarationBlock> customProperties;
     // A workaround for CSS Animations in servo backend, custom properties in
     // keyframe are stored in a servo's declaration block. Find the declaration
     // block to resolve CSS variables in the keyframe.
@@ -1322,10 +1322,7 @@ void KeyframeEffect::GetKeyframes(JSContext* aCx, nsTArray<JSObject*>& aResult,
             propertyValue.mServoDeclarationBlock, propertyValue.mProperty,
             &stringValue, computedStyle, customProperties, rawData);
       } else {
-        RawServoAnimationValue* value =
-            mBaseValues.GetWeak(propertyValue.mProperty);
-
-        if (value) {
+        if (auto* value = mBaseValues.GetWeak(propertyValue.mProperty)) {
           Servo_AnimationValue_Serialize(value, propertyValue.mProperty,
                                          rawData, &stringValue);
         }

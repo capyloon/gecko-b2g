@@ -24,7 +24,7 @@
 class nsIGlobalObject;
 class nsINode;
 class nsIPrincipal;
-struct ServoCssRules;
+struct StyleLockedCssRules;
 class nsIReferrerInfo;
 
 namespace mozilla {
@@ -118,7 +118,7 @@ class StyleSheet final : public nsICSSLoaderObserver, public nsWrapperCache {
 
   // Common code that needs to be called after servo finishes parsing. This is
   // shared between the parallel and sequential paths.
-  void FinishAsyncParse(already_AddRefed<RawServoStyleSheetContents>,
+  void FinishAsyncParse(already_AddRefed<StyleStylesheetContents>,
                         UniquePtr<StyleUseCounters>);
 
   // Similar to `ParseSheet`, but guarantees that
@@ -134,7 +134,7 @@ class StyleSheet final : public nsICSSLoaderObserver, public nsWrapperCache {
 
   void ReparseSheet(const nsACString& aInput, ErrorResult& aRv);
 
-  const RawServoStyleSheetContents* RawContents() const {
+  const StyleStylesheetContents* RawContents() const {
     return Inner().mContents;
   }
 
@@ -440,13 +440,13 @@ class StyleSheet final : public nsICSSLoaderObserver, public nsWrapperCache {
   // by aBuilder.  Returns the pointer into the buffer that the sheet contents
   // were stored at.  (The returned pointer is to an Arc<Locked<Rules>> value,
   // or null, with a filled in aErrorMessage, on failure.)
-  const ServoCssRules* ToShared(StyleSharedMemoryBuilder* aBuilder,
-                                nsCString& aErrorMessage);
+  const StyleLockedCssRules* ToShared(StyleSharedMemoryBuilder* aBuilder,
+                                      nsCString& aErrorMessage);
 
   // Sets the contents of this style sheet to the specified aSharedRules
   // pointer, which must be a pointer somewhere in the aSharedMemory buffer
   // as previously returned by a ToShared() call.
-  void SetSharedContents(const ServoCssRules* aSharedRules);
+  void SetSharedContents(const StyleLockedCssRules* aSharedRules);
 
   // Whether this style sheet should not allow any modifications.
   //

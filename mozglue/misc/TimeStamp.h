@@ -32,6 +32,8 @@ struct ParamTraits;
 // defines TimeStampValue as a complex value keeping both
 // GetTickCount and QueryPerformanceCounter values
 #  include "TimeStamp_windows.h"
+
+#  include "mozilla/Maybe.h"  // For TimeStamp::RawQueryPerformanceCounterValue
 #endif
 
 namespace mozilla {
@@ -175,6 +177,10 @@ class BaseTimeDuration {
                               const BaseTimeDuration& aB) {
     return FromTicks(std::min(aA.mValue, aB.mValue));
   }
+
+#if defined(DEBUG)
+  int64_t GetValue() const { return mValue; }
+#endif
 
  private:
   // Block double multiplier (slower, imprecise if long duration) - Bug 853398.
@@ -453,6 +459,24 @@ class TimeStamp {
    */
   static MFBT_API void RecordProcessRestart();
 
+#ifdef XP_LINUX
+  uint64_t RawClockMonotonicNanosecondsSinceBoot() {
+    return static_cast<uint64_t>(mValue);
+  }
+#endif
+
+#ifdef XP_MACOSX
+  uint64_t RawMachAbsoluteTimeValue() { return static_cast<uint64_t>(mValue); }
+#endif
+
+#ifdef XP_WIN
+  Maybe<uint64_t> RawQueryPerformanceCounterValue() {
+    // mQPC is stored in `mt` i.e. QueryPerformanceCounter * 1000
+    // so divide out the 1000
+    return mValue.mHasQPC ? Some(mValue.mQPC / 1000ULL) : Nothing();
+  }
+#endif
+
   /**
    * Compute the difference between two timestamps. Both must be non-null.
    */
@@ -541,6 +565,10 @@ class TimeStamp {
 
   static MFBT_API void Startup();
   static MFBT_API void Shutdown();
+
+#if defined(DEBUG)
+  TimeStampValue GetValue() const { return mValue; }
+#endif
 
  private:
   friend struct IPC::ParamTraits<mozilla::TimeStamp>;

@@ -103,10 +103,6 @@ this.SyncedTabsPanelList = class SyncedTabsPanelList {
       // resolving and now.
       return undefined;
     }
-    const syncPrefsButtonEl = PanelMultiView.getViewNode(
-      document,
-      "PanelUI-fxa-menu-sync-prefs-button"
-    );
     return SyncedTabs.getTabClients()
       .then(clients => {
         let noTabs = !UIState.get().syncEnabled || !clients.length;
@@ -114,9 +110,6 @@ this.SyncedTabsPanelList = class SyncedTabsPanelList {
         if (this.separator) {
           this.separator.hidden = noTabs;
         }
-
-        syncPrefsButtonEl.hidden =
-          !UIState.get().syncEnabled || clients.length <= 1;
 
         // The view may have been hidden while the promise was resolving.
         if (!this.tabsList) {
@@ -346,13 +339,6 @@ var gSync = {
     return this._log;
   },
 
-  get fxaStrings() {
-    delete this.fxaStrings;
-    return (this.fxaStrings = Services.strings.createBundle(
-      "chrome://browser/locale/accounts.properties"
-    ));
-  },
-
   get fluentStrings() {
     delete this.fluentStrings;
     return (this.fluentStrings = new Localization(
@@ -496,12 +482,12 @@ var gSync = {
     // due to a timing error. The fluent label attribute was being applied
     // after we had updated appMenuLabel and thus displayed an incorrect
     // label for signed in users.
-    appMenuHeaderDescription.value = this.fluentStrings.formatValueSync(
-      "appmenu-fxa-signed-in-label"
-    );
-    appMenuHeaderText.textContent = this.fluentStrings.formatValueSync(
-      "appmenu-fxa-sync-and-save-data2"
-    );
+    const [headerDesc, headerText] = this.fluentStrings.formatValuesSync([
+      "appmenu-fxa-signed-in-label",
+      "appmenu-fxa-sync-and-save-data2",
+    ]);
+    appMenuHeaderDescription.value = headerDesc;
+    appMenuHeaderText.textContent = headerText;
 
     for (let topic of this._obs) {
       Services.obs.addObserver(this, topic, true);
@@ -550,6 +536,14 @@ var gSync = {
         : "sync-now-data-l10n-id"
     );
     syncNowBtn.setAttribute("data-l10n-id", l10nId);
+
+    // This needs to exist because if the user is signed in
+    // but the user disabled or disconnected sync we should not show the button
+    const syncPrefsButtonEl = PanelMultiView.getViewNode(
+      document,
+      "PanelUI-fxa-menu-sync-prefs-button"
+    );
+    syncPrefsButtonEl.hidden = !UIState.get().syncEnabled;
 
     panelview.syncedTabsPanelList = new SyncedTabsPanelList(
       panelview,
@@ -643,17 +637,13 @@ var gSync = {
   },
 
   updateSendToDeviceTitle() {
-    let string = gBrowserBundle.GetStringFromName("sendTabsToDevice.label");
-    let title = PluralForm.get(1, string).replace("#1", 1);
-    if (gBrowser.selectedTab.multiselected) {
-      let tabCount = gBrowser.selectedTabs.length;
-      title = PluralForm.get(tabCount, string).replace("#1", tabCount);
-    }
-
-    PanelMultiView.getViewNode(
-      document,
-      "PanelUI-fxa-menu-sendtab-button"
-    ).setAttribute("label", title);
+    const tabCount = gBrowser.selectedTab.multiselected
+      ? gBrowser.selectedTabs.length
+      : 1;
+    document.l10n.setArgs(
+      PanelMultiView.getViewNode(document, "PanelUI-fxa-menu-sendtab-button"),
+      { tabCount }
+    );
   },
 
   showSendToDeviceView(anchor) {
@@ -875,19 +865,14 @@ var gSync = {
       "fxa-manage-account-button"
     );
 
-    let headerTitle = this.fluentStrings.formatValueSync(
-      "appmenuitem-fxa-sign-in"
-    );
-    let headerDescription = this.fluentStrings.formatValueSync(
-      "fxa-menu-turn-on-sync-default"
-    );
-
     cadButtonEl.setAttribute("disabled", true);
     syncNowButtonEl.hidden = true;
     fxaMenuAccountButtonEl.classList.remove("subviewbutton-nav");
     fxaMenuAccountButtonEl.removeAttribute("closemenu");
     syncSetupButtonEl.removeAttribute("hidden");
 
+    let headerTitleL10nId = "appmenuitem-fxa-sign-in";
+    let headerDescription;
     if (state.status === UIState.STATUS_NOT_CONFIGURED) {
       mainWindowEl.style.removeProperty("--avatar-image-url");
       headerDescription = this.fluentStrings.formatValueSync(
@@ -895,14 +880,12 @@ var gSync = {
       );
     } else if (state.status === UIState.STATUS_LOGIN_FAILED) {
       stateValue = "login-failed";
-      headerTitle = this.fluentStrings.formatValueSync("account-disconnected2");
+      headerTitleL10nId = "account-disconnected2";
       headerDescription = state.email;
       mainWindowEl.style.removeProperty("--avatar-image-url");
     } else if (state.status === UIState.STATUS_NOT_VERIFIED) {
       stateValue = "unverified";
-      headerTitle = this.fluentStrings.formatValueSync(
-        "account-finish-account-setup"
-      );
+      headerTitleL10nId = "account-finish-account-setup";
       headerDescription = state.email;
     } else if (state.status === UIState.STATUS_SIGNED_IN) {
       stateValue = "signedin";
@@ -932,15 +915,18 @@ var gSync = {
         syncSetupButtonEl.hidden = true;
       }
 
-      headerTitle = this.fluentStrings.formatValueSync(
-        "appmenuitem-fxa-manage-account"
-      );
-
+      headerTitleL10nId = "appmenuitem-fxa-manage-account";
       headerDescription = state.email;
+    } else {
+      headerDescription = this.fluentStrings.formatValueSync(
+        "fxa-menu-turn-on-sync-default"
+      );
     }
     mainWindowEl.setAttribute("fxastatus", stateValue);
 
-    menuHeaderTitleEl.value = headerTitle;
+    menuHeaderTitleEl.value = this.fluentStrings.formatValueSync(
+      headerTitleL10nId
+    );
     menuHeaderDescriptionEl.value = headerDescription;
     // We remove the data-l10n-id attribute here to prevent the node's value
     // attribute from being overwritten by Fluent when the panel is moved
@@ -996,7 +982,7 @@ var gSync = {
     return false;
   },
 
-  updatePanelPopup(state) {
+  updatePanelPopup({ email, status }) {
     const appMenuStatus = PanelMultiView.getViewNode(
       document,
       "appMenu-fxa-status2"
@@ -1022,7 +1008,6 @@ var gSync = {
     let defaultLabel = this.fluentStrings.formatValueSync(
       "appmenu-fxa-signed-in-label"
     );
-    const status = state.status;
     // Reset the status bar to its original state.
     appMenuLabel.setAttribute("label", defaultLabel);
     appMenuLabel.removeAttribute("aria-labelledby");
@@ -1043,19 +1028,19 @@ var gSync = {
 
     // At this point we consider sync to be configured (but still can be in an error state).
     if (status == UIState.STATUS_LOGIN_FAILED) {
-      let tooltipDescription = this.fxaStrings.formatStringFromName(
-        "reconnectDescription",
-        [state.email]
-      );
+      const [
+        tooltipDescription,
+        errorLabel,
+      ] = this.fluentStrings.formatValuesSync([
+        { id: "account-reconnect", args: { email } },
+        { id: "account-disconnected2" },
+      ]);
       appMenuStatus.setAttribute("fxastatus", "login-failed");
-      let errorLabel = this.fluentStrings.formatValueSync(
-        "account-disconnected2"
-      );
       appMenuStatus.setAttribute("tooltiptext", tooltipDescription);
       appMenuLabel.classList.add("subviewbutton-nav");
       appMenuHeaderTitle.hidden = false;
       appMenuHeaderTitle.value = errorLabel;
-      appMenuHeaderDescription.value = state.email;
+      appMenuHeaderDescription.value = email;
 
       appMenuLabel.removeAttribute("label");
       appMenuLabel.setAttribute(
@@ -1064,19 +1049,19 @@ var gSync = {
       );
       return;
     } else if (status == UIState.STATUS_NOT_VERIFIED) {
-      let tooltipDescription = this.fxaStrings.formatStringFromName(
-        "verifyDescription",
-        [state.email]
-      );
+      const [
+        tooltipDescription,
+        unverifiedLabel,
+      ] = this.fluentStrings.formatValuesSync([
+        { id: "account-verify", args: { email } },
+        { id: "account-finish-account-setup" },
+      ]);
       appMenuStatus.setAttribute("fxastatus", "unverified");
-      let unverifiedLabel = this.fluentStrings.formatValueSync(
-        "account-finish-account-setup"
-      );
       appMenuStatus.setAttribute("tooltiptext", tooltipDescription);
       appMenuLabel.classList.add("subviewbutton-nav");
       appMenuHeaderTitle.hidden = false;
       appMenuHeaderTitle.value = unverifiedLabel;
-      appMenuHeaderDescription.value = state.email;
+      appMenuHeaderDescription.value = email;
 
       appMenuLabel.removeAttribute("label");
       appMenuLabel.setAttribute(
@@ -1088,9 +1073,9 @@ var gSync = {
 
     // At this point we consider sync to be logged-in.
     appMenuHeaderTitle.hidden = true;
-    appMenuHeaderDescription.value = state.email;
+    appMenuHeaderDescription.value = email;
     appMenuStatus.setAttribute("fxastatus", "signedin");
-    appMenuLabel.setAttribute("label", state.email);
+    appMenuLabel.setAttribute("label", email);
     appMenuLabel.classList.add("subviewbutton-nav");
     fxaPanelView.setAttribute(
       "title",
@@ -1456,15 +1441,20 @@ var gSync = {
       const separator = createDeviceNodeFn();
       separator.classList.add("sync-menuitem");
       fragment.appendChild(separator);
-      const allDevicesLabel = isFxaMenu
-        ? this.fluentStrings.formatValueSync("account-send-to-all-devices")
-        : this.fxaStrings.GetStringFromName("sendToAllDevices.menuitem");
+      const [
+        allDevicesLabel,
+        manageDevicesLabel,
+      ] = this.fluentStrings.formatValuesSync(
+        isFxaMenu
+          ? ["account-send-to-all-devices", "account-manage-devices"]
+          : [
+              "account-send-to-all-devices-titlecase",
+              "account-manage-devices-titlecase",
+            ]
+      );
       addTargetDevice("", allDevicesLabel, "");
 
       // "Manage devices" menu item
-      const manageDevicesLabel = isFxaMenu
-        ? this.fluentStrings.formatValueSync("account-manage-devices")
-        : this.fxaStrings.GetStringFromName("manageDevices.menuitem");
       // We piggyback on the createDeviceNodeFn implementation,
       // it's a big disgusting.
       const targetDevice = createDeviceNodeFn(
@@ -1485,15 +1475,15 @@ var gSync = {
   },
 
   _appendSendTabSingleDevice(fragment, createDeviceNodeFn) {
-    const noDevices = this.fxaStrings.GetStringFromName(
-      "sendTabToDevice.singledevice.status"
-    );
-    const learnMore = this.fxaStrings.GetStringFromName(
-      "sendTabToDevice.singledevice"
-    );
-    const connectDevice = this.fxaStrings.GetStringFromName(
-      "sendTabToDevice.connectdevice"
-    );
+    const [
+      noDevices,
+      learnMore,
+      connectDevice,
+    ] = this.fluentStrings.formatValuesSync([
+      "account-send-tab-to-device-singledevice-status",
+      "account-send-tab-to-device-singledevice-learnmore",
+      "account-send-tab-to-device-connectdevice",
+    ]);
     const actions = [
       {
         label: connectDevice,
@@ -1510,12 +1500,10 @@ var gSync = {
   },
 
   _appendSendTabVerify(fragment, createDeviceNodeFn) {
-    const notVerified = this.fxaStrings.GetStringFromName(
-      "sendTabToDevice.verify.status"
-    );
-    const verifyAccount = this.fxaStrings.GetStringFromName(
-      "sendTabToDevice.verify"
-    );
+    const [notVerified, verifyAccount] = this.fluentStrings.formatValuesSync([
+      "account-send-tab-to-device-verify-status",
+      "account-send-tab-to-device-verify",
+    ]);
     const actions = [
       { label: verifyAccount, command: () => this.openPrefs("sendtab") },
     ];
@@ -1901,9 +1889,9 @@ var gSync = {
     let tooltiptext;
     if (status == UIState.STATUS_NOT_VERIFIED) {
       // "needs verification"
-      tooltiptext = this.fxaStrings.formatStringFromName("verifyDescription", [
-        state.email,
-      ]);
+      tooltiptext = this.fluentStrings.formatValueSync("account-verify", {
+        email: state.email,
+      });
     } else if (status == UIState.STATUS_NOT_CONFIGURED) {
       // "needs setup".
       tooltiptext = this.syncStrings.GetStringFromName(
@@ -1911,10 +1899,9 @@ var gSync = {
       );
     } else if (status == UIState.STATUS_LOGIN_FAILED) {
       // "need to reconnect/re-enter your password"
-      tooltiptext = this.fxaStrings.formatStringFromName(
-        "reconnectDescription",
-        [state.email]
-      );
+      tooltiptext = this.fluentStrings.formatValueSync("account-reconnect", {
+        email: state.email,
+      });
     } else {
       // Sync appears configured - format the "last synced at" time.
       let lastSyncDate = this.formatLastSyncDate(state.lastSync);

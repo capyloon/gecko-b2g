@@ -3429,10 +3429,10 @@ void* nsWindow::GetNativeData(uint32_t aDataType) {
 #ifdef MOZ_WAYLAND
       if (GdkIsWaylandDisplay()) {
         if (mCompositorWidgetDelegate &&
-            mCompositorWidgetDelegate->AsGtkCompositorWidget()) {
-          MOZ_DIAGNOSTIC_ASSERT(
-              !mCompositorWidgetDelegate->AsGtkCompositorWidget()->IsHidden(),
-              "We're getting OpenGL window for hidden window!");
+            mCompositorWidgetDelegate->AsGtkCompositorWidget() &&
+            mCompositorWidgetDelegate->AsGtkCompositorWidget()->IsHidden()) {
+          NS_WARNING("Getting OpenGL EGL window for hidden Gtk window!");
+          return nullptr;
         }
         eglWindow = moz_container_wayland_get_egl_window(
             mContainer, FractionalScaleFactor());
@@ -6447,7 +6447,15 @@ nsAutoCString nsWindow::GetDebugTag() const {
 }
 
 void nsWindow::NativeMoveResize(bool aMoved, bool aResized) {
-  GdkPoint topLeft = DevicePixelsToGdkPointRoundDown(mBounds.TopLeft());
+  GdkPoint topLeft = [&] {
+    auto target = mBounds.TopLeft();
+    // gtk_window_move will undo the csd offset, but nothing else, so only add
+    // the client offset if drawing to the csd titlebar.
+    if (DrawsToCSDTitlebar()) {
+      target += mClientOffset;
+    }
+    return DevicePixelsToGdkPointRoundDown(target);
+  }();
   GdkRectangle size = DevicePixelsToGdkSizeRoundUp(mLastSizeRequest);
 
   LOG("nsWindow::NativeMoveResize move %d resize %d to %d,%d -> %d x %d\n",
@@ -9518,7 +9526,7 @@ void nsWindow::LockNativePointer() {
     return;
   }
 
-  auto waylandDisplay = WaylandDisplayGet();
+  auto* waylandDisplay = WaylandDisplayGet();
 
   auto* pointerConstraints = waylandDisplay->GetPointerConstraints();
   if (!pointerConstraints) {

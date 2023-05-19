@@ -640,6 +640,10 @@ package org.mozilla.geckoview {
     method @UiThread public void surfaceDestroyed();
   }
 
+  public static interface GeckoDisplay.NewSurfaceProvider {
+    method @UiThread public void requestNewSurface();
+  }
+
   public static final class GeckoDisplay.ScreenshotBuilder {
     method @AnyThread @NonNull public GeckoDisplay.ScreenshotBuilder aspectPreservingSize(int);
     method @AnyThread @NonNull public GeckoDisplay.ScreenshotBuilder bitmap(@Nullable Bitmap);
@@ -656,6 +660,7 @@ package org.mozilla.geckoview {
   public static class GeckoDisplay.SurfaceInfo.Builder {
     ctor public Builder(@NonNull Surface);
     method @NonNull @UiThread public GeckoDisplay.SurfaceInfo build();
+    method @NonNull @UiThread public GeckoDisplay.SurfaceInfo.Builder newSurfaceProvider(@Nullable GeckoDisplay.NewSurfaceProvider);
     method @NonNull @UiThread public GeckoDisplay.SurfaceInfo.Builder offset(int, int);
     method @NonNull @UiThread public GeckoDisplay.SurfaceInfo.Builder size(int, int);
     method @NonNull @UiThread public GeckoDisplay.SurfaceInfo.Builder surfaceControl(@Nullable SurfaceControl);
@@ -983,6 +988,7 @@ package org.mozilla.geckoview {
     method @UiThread default public void onFirstContentfulPaint(@NonNull GeckoSession);
     method @UiThread default public void onFocusRequest(@NonNull GeckoSession);
     method @UiThread default public void onFullScreen(@NonNull GeckoSession, boolean);
+    method @AnyThread @Nullable default public JSONObject onGetNimbusFeature(@NonNull GeckoSession, @NonNull String);
     method @UiThread default public void onKill(@NonNull GeckoSession);
     method @UiThread default public void onMetaViewportFitChange(@NonNull GeckoSession, @NonNull String);
     method @UiThread default public void onPaintStatusReset(@NonNull GeckoSession);
@@ -1031,6 +1037,8 @@ package org.mozilla.geckoview {
 
   public static class GeckoSession.GeckoPrintException extends Exception {
     ctor protected GeckoPrintException();
+    field public static final int ERROR_NO_ACTIVITY_CONTEXT = -5;
+    field public static final int ERROR_NO_ACTIVITY_CONTEXT_DELEGATE = -4;
     field public static final int ERROR_PRINT_SETTINGS_SERVICE_NOT_AVAILABLE = -1;
     field public static final int ERROR_UNABLE_TO_CREATE_PRINT_SETTINGS = -2;
     field public static final int ERROR_UNABLE_TO_RETRIEVE_CANONICAL_BROWSING_CONTEXT = -3;
@@ -1211,6 +1219,7 @@ package org.mozilla.geckoview {
   @AnyThread public static interface GeckoSession.PrintDelegate {
     method default public void onPrint(@NonNull GeckoSession);
     method default public void onPrint(@NonNull InputStream);
+    method @Nullable default public GeckoResult<Boolean> onPrintWithStatus(@NonNull InputStream);
   }
 
   @Retention(value=RetentionPolicy.SOURCE) public static interface GeckoSession.Priority {
@@ -1655,7 +1664,7 @@ package org.mozilla.geckoview {
     method @AnyThread public static synchronized void setExternalContext(long);
   }
 
-  @UiThread public class GeckoView extends FrameLayout {
+  @UiThread public class GeckoView extends FrameLayout implements GeckoDisplay.NewSurfaceProvider {
     ctor public GeckoView(Context);
     ctor public GeckoView(Context, AttributeSet);
     method @NonNull @UiThread public GeckoResult<Bitmap> capturePixels();
@@ -1693,6 +1702,7 @@ package org.mozilla.geckoview {
 
   public class GeckoViewPrintDocumentAdapter extends PrintDocumentAdapter {
     ctor public GeckoViewPrintDocumentAdapter(@NonNull InputStream, @NonNull Context);
+    ctor public GeckoViewPrintDocumentAdapter(@NonNull InputStream, @NonNull Context, @Nullable GeckoResult<Boolean>);
     ctor public GeckoViewPrintDocumentAdapter(@NonNull File);
     method @AnyThread @Nullable public static File makeTempPdfFile(@NonNull InputStream, @NonNull Context);
   }

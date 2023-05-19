@@ -51,6 +51,7 @@
 #include "js/friend/ErrorMessages.h"  // js::GetErrorMessage, JSMSG_*
 #include "js/HeapAPI.h"               // JS::GCCellPtr
 #include "js/MemoryMetrics.h"
+#include "js/Printer.h"  // js::GenericPrinter, js::Fprinter, js::Sprinter, js::QuoteString
 #include "js/Transcoding.h"
 #include "js/UniquePtr.h"
 #include "js/Utility.h"  // JS::UniqueChars
@@ -69,7 +70,6 @@
 #include "vm/JSObject.h"
 #include "vm/JSONPrinter.h"  // JSONPrinter
 #include "vm/Opcodes.h"
-#include "vm/Printer.h"  // js::GenericPrinter, js::Fprinter, js::Sprinter, js::QuoteString
 #include "vm/Scope.h"  // Scope
 #include "vm/SharedImmutableStringsCache.h"
 #include "vm/StencilEnums.h"  // TryNote, TryNoteKind, ScopeNote
@@ -130,11 +130,6 @@ void js::BaseScript::finalize(JS::GCContext* gcx) {
   // the script itself will not be marked as having bytecode.
   if (hasBytecode()) {
     JSScript* script = this->asJSScript();
-    JSRuntime* rt = gcx->runtime();
-
-    if (rt->hasJitRuntime() && rt->jitRuntime()->hasInterpreterEntryMap()) {
-      rt->jitRuntime()->getInterpreterEntryMap()->remove(script);
-    }
 
     if (coverage::IsLCovEnabled()) {
       coverage::CollectScriptCoverage(script, true);
@@ -143,7 +138,14 @@ void js::BaseScript::finalize(JS::GCContext* gcx) {
     script->destroyScriptCounts();
   }
 
-  gcx->runtime()->geckoProfiler().onScriptFinalized(this);
+  {
+    JSRuntime* rt = gcx->runtime();
+    if (rt->hasJitRuntime() && rt->jitRuntime()->hasInterpreterEntryMap()) {
+      rt->jitRuntime()->getInterpreterEntryMap()->remove(this);
+    }
+
+    rt->geckoProfiler().onScriptFinalized(this);
+  }
 
 #ifdef MOZ_VTUNE
   if (zone()->scriptVTuneIdMap) {

@@ -69,6 +69,7 @@
 
 #include "mozilla/InternalMutationEvent.h"
 #include "nsDOMStringMap.h"
+#include "nsDOMString.h"
 
 #include "nsLayoutUtils.h"
 #include "mozAutoDocUpdate.h"
@@ -184,12 +185,24 @@ nsresult nsGenericHTMLElement::CopyInnerTo(Element* aDst) {
 static const nsAttrValue::EnumTable kDirTable[] = {
     {"ltr", eDir_LTR}, {"rtl", eDir_RTL}, {"auto", eDir_Auto}, {nullptr, 0}};
 
+namespace {
+// See <https://html.spec.whatwg.org/#the-popover-attribute>.
+enum class PopoverAttributeKeyword : uint8_t { Auto, EmptyString, Manual };
+
+static const char* kPopoverAttributeValueAuto = "auto";
+static const char* kPopoverAttributeValueEmptyString = "";
+static const char* kPopoverAttributeValueManual = "manual";
+
 static const nsAttrValue::EnumTable kPopoverTable[] = {
-    {"auto", PopoverState::Auto},
-    {"manual", PopoverState::Manual},
+    {kPopoverAttributeValueAuto, PopoverAttributeKeyword::Auto},
+    {kPopoverAttributeValueEmptyString, PopoverAttributeKeyword::EmptyString},
+    {kPopoverAttributeValueManual, PopoverAttributeKeyword::Manual},
     {nullptr, 0}};
 
-static const nsAttrValue::EnumTable* kPopoverTableDefault = &kPopoverTable[1];
+// See <https://html.spec.whatwg.org/#the-popover-attribute>.
+static const nsAttrValue::EnumTable* kPopoverTableInvalidValueDefault =
+    &kPopoverTable[2];
+}  // namespace
 
 void nsGenericHTMLElement::AddToNameTable(nsAtom* aName) {
   MOZ_ASSERT(HasName(), "Node doesn't have name?");
@@ -653,22 +666,40 @@ void nsGenericHTMLElement::BeforeSetAttr(int32_t aNamespaceID, nsAtom* aName,
                                                  aNotify);
 }
 
+namespace {
+constexpr PopoverState ToPopoverState(
+    PopoverAttributeKeyword aPopoverAttributeKeyword) {
+  // See <https://html.spec.whatwg.org/#the-popover-attribute>.
+  switch (aPopoverAttributeKeyword) {
+    case PopoverAttributeKeyword::Auto:
+      return PopoverState::Auto;
+    case PopoverAttributeKeyword::EmptyString:
+      return PopoverState::Auto;
+    case PopoverAttributeKeyword::Manual:
+      return PopoverState::Manual;
+    default: {
+      MOZ_ASSERT_UNREACHABLE();
+      return PopoverState::None;
+    }
+  }
+}
+}  // namespace
+
 void nsGenericHTMLElement::AfterSetPopoverAttr() {
   const nsAttrValue* newValue = GetParsedAttr(nsGkAtoms::popover);
 
-  // https://html.spec.whatwg.org/multipage/popover.html#attr-popover
   PopoverState newState;
   if (newValue) {
-    if (newValue->Type() == nsAttrValue::eEnum) {
-      newState = static_cast<dom::PopoverState>(newValue->GetEnumValue());
-    } else {
-      // The invalid value default is the manual state
-      newState = PopoverState::Manual;
-    }
+    MOZ_ASSERT(newValue->Type() == nsAttrValue::eEnum);
+    const PopoverAttributeKeyword popoverAttributeKeyword =
+        static_cast<PopoverAttributeKeyword>(newValue->GetEnumValue());
+    newState = ToPopoverState(popoverAttributeKeyword);
   } else {
-    // The missing value default is the no popover state.
+    // The missing value default is the no popover state, see
+    // <https://html.spec.whatwg.org/multipage/popover.html#attr-popover>.
     newState = PopoverState::None;
   }
+
   PopoverState oldState = GetPopoverState();
   if (newState != oldState) {
     if (oldState != PopoverState::None) {
@@ -957,7 +988,7 @@ bool nsGenericHTMLElement::ParseAttribute(int32_t aNamespaceID,
     if (aAttribute == nsGkAtoms::popover &&
         StaticPrefs::dom_element_popover_enabled()) {
       return aResult.ParseEnumValue(aValue, kPopoverTable, false,
-                                    kPopoverTableDefault);
+                                    kPopoverTableInvalidValueDefault);
     }
 
     if (aAttribute == nsGkAtoms::tabindex) {
@@ -2335,6 +2366,17 @@ void nsGenericHTMLElement::HandleKeyboardActivation(
   MOZ_ASSERT(aVisitor.mEvent->HasKeyEventMessage());
   MOZ_ASSERT(aVisitor.mEvent->IsTrusted());
 
+  // If focused element is different from this element, it may be editable.
+  // In that case, associated editor for the element should handle the keyboard
+  // instead.  Therefore, if this is not the focused element, we should not
+  // handle the event here.  Note that this element may be an editing host,
+  // i.e., focused and editable.  In the case, keyboard events should be
+  // handled by the focused element instead of associated editor because
+  // Chrome handles the case so.  For compatibility with Chrome, we follow them.
+  if (nsFocusManager::GetFocusedElementStatic() != this) {
+    return;
+  }
+
   const auto message = aVisitor.mEvent->mMessage;
   const WidgetKeyboardEvent* keyEvent = aVisitor.mEvent->AsKeyboardEvent();
   if (nsEventStatus_eIgnore != aVisitor.mEventStatus) {
@@ -3492,4 +3534,11 @@ bool nsGenericHTMLElement::Translate() const {
     }
   }
   return nsGenericHTMLElementBase::Translate();
+}
+
+void nsGenericHTMLElement::GetPopover(nsString& aPopover) const {
+  GetHTMLEnumAttr(nsGkAtoms::popover, aPopover);
+  if (aPopover.IsEmpty() && !DOMStringIsNull(aPopover)) {
+    aPopover.Assign(NS_ConvertUTF8toUTF16(kPopoverAttributeValueAuto));
+  }
 }

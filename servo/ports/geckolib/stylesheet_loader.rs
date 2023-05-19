@@ -13,7 +13,6 @@ use style::gecko_bindings::structs::{Loader, LoaderReusableStyleSheets};
 use style::gecko_bindings::structs::{
     SheetLoadData, SheetLoadDataHolder, StyleSheet as DomStyleSheet,
 };
-use style::gecko_bindings::sugar::ownership::FFIArcHelpers;
 use style::gecko_bindings::sugar::refptr::RefPtr;
 use style::global_style_data::GLOBAL_STYLE_DATA;
 use style::media_queries::MediaList;
@@ -72,7 +71,7 @@ impl StyleStylesheetLoader for StylesheetLoader {
         // so this raw pointer will still be valid.
 
         let child_sheet = unsafe {
-            Gecko_LoadStyleSheet(self.0, self.1, self.2, self.3, &url, media.into_strong())
+            Gecko_LoadStyleSheet(self.0, self.1, self.2, self.3, &url, media.into())
         };
 
         debug_assert!(
@@ -154,7 +153,7 @@ impl AsyncStylesheetParser {
         unsafe {
             bindings::Gecko_StyleSheet_FinishAsyncParse(
                 self.load_data.get(),
-                sheet.into_strong(),
+                sheet.into(),
                 use_counters.map_or(std::ptr::null_mut(), Box::into_raw),
             );
         }
@@ -196,8 +195,8 @@ impl StyleStylesheetLoader for AsyncStylesheetParser {
             bindings::Gecko_LoadStyleSheetAsync(
                 self.load_data.get(),
                 &url,
-                media.into_strong(),
-                rule.clone().into_strong(),
+                media.into(),
+                rule.clone().into(),
             );
         }
 

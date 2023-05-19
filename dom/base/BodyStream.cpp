@@ -195,9 +195,6 @@ already_AddRefed<Promise> BodyStream::PullCallback(
   MOZ_ASSERT(!mPullPromise);
   mPullPromise = Promise::CreateInfallible(aController.GetParentObject());
 
-  // Reading the stream, let's mark it as such
-  mStreamHolder->MarkAsRead();
-
   if (!mInputStream) {
     // This is the first use of the stream. Let's convert the
     // mOriginalInputStream into an nsIAsyncInputStream.
@@ -281,11 +278,6 @@ void BodyStream::WriteIntoReadRequestBuffer(JSContext* aCx,
 void BodyStream::CloseInputAndReleaseObjects() {
   MOZ_DIAGNOSTIC_ASSERT(mOwningEventTarget->IsOnCurrentThread());
 
-  if (mStreamHolder) {
-    // Being closed means someone touched the stream, let's mark it as read.
-    mStreamHolder->MarkAsRead();
-  }
-
   if (mInputStream) {
     mInputStream->CloseWithStatus(NS_BASE_STREAM_CLOSED);
   }
@@ -345,11 +337,6 @@ void BodyStream::ErrorPropagation(JSContext* aCx, ReadableStream* aStream,
     IgnoredErrorResult rv;
     aStream->ErrorNative(aCx, errorValue, rv);
     NS_WARNING_ASSERTION(!rv.Failed(), "Failed to error BodyStream");
-  }
-
-  if (mStreamHolder) {
-    // Being errored means someone touched the stream, let's mark it as read.
-    mStreamHolder->MarkAsRead();
   }
 
   if (mInputStream) {
@@ -428,12 +415,6 @@ BodyStream::OnInputStreamReady(nsIAsyncInputStream* aStream) {
     return NS_OK;
   }
 
-  // Perform a microtask checkpoint after all actions are completed.  Note that
-  // |mMutex| *must not* be held when the checkpoint occurs -- hence, far down,
-  // the |lock.reset()|.  (|MutexAutoUnlock| as RAII wouldn't work for this task
-  // because its destructor would reacquire |mMutex| before these objects'
-  // destructors run.)
-  nsAutoMicroTask mt;
   AutoEntryScript aes(mGlobal, "fetch body data available");
 
   MOZ_DIAGNOSTIC_ASSERT(mInputStream);
@@ -570,7 +551,6 @@ void BodyStream::ReleaseObjects() {
   mPullPromise = nullptr;
 
   RefPtr<BodyStream> self = mStreamHolder->TakeBodyStream();
-  mStreamHolder->NullifyStream();
   mStreamHolder = nullptr;
 }
 

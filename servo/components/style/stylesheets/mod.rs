@@ -39,6 +39,7 @@ use cssparser::{parse_one_rule, Parser, ParserInput};
 #[cfg(feature = "gecko")]
 use malloc_size_of::{MallocSizeOfOps, MallocUnconditionalShallowSizeOf};
 use servo_arc::Arc;
+use std::borrow::Cow;
 use std::fmt;
 #[cfg(feature = "gecko")]
 use std::mem::{self, ManuallyDrop};
@@ -224,15 +225,11 @@ impl fmt::Debug for UrlExtraData {
             .field("chrome_rules_enabled", &self.chrome_rules_enabled())
             .field(
                 "base",
-                &DebugURI(self.as_ref().mBaseURI.raw::<structs::nsIURI>()),
+                &DebugURI(self.as_ref().mBaseURI.raw()),
             )
             .field(
                 "referrer",
-                &DebugReferrerInfo(
-                    self.as_ref()
-                        .mReferrerInfo
-                        .raw::<structs::nsIReferrerInfo>(),
-                ),
+                &DebugReferrerInfo(self.as_ref().mReferrerInfo.raw()),
             )
             .finish()
     }
@@ -355,6 +352,43 @@ pub enum CssRuleType {
     FontPaletteValues = 19,
 }
 
+impl CssRuleType {
+    /// Returns a bit that identifies this rule type.
+    #[inline]
+    pub const fn bit(self) -> u32 {
+        1 << self as u32
+    }
+}
+
+/// Set of rule types.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct CssRuleTypes(u32);
+
+impl From<CssRuleType> for CssRuleTypes {
+    fn from(ty: CssRuleType) -> Self {
+        Self(ty.bit())
+    }
+}
+
+impl CssRuleTypes {
+    /// Returns whether the rule is in the current set.
+    #[inline]
+    pub fn contains(self, ty: CssRuleType) -> bool {
+        self.0 & ty.bit() != 0
+    }
+
+    /// Returns all the rules specified in the set.
+    pub fn bits(self) -> u32 {
+        self.0
+    }
+
+    /// Inserts a rule type into the set.
+    #[inline]
+    pub fn insert(&mut self, ty: CssRuleType) {
+        self.0 |= ty.bit()
+    }
+}
+
 #[allow(missing_docs)]
 pub enum RulesMutateError {
     Syntax,
@@ -401,20 +435,20 @@ impl CssRule {
         allow_import_rules: AllowImportRules,
     ) -> Result<Self, RulesMutateError> {
         let url_data = parent_stylesheet_contents.url_data.read();
+        let namespaces = parent_stylesheet_contents.namespaces.read();
         let context = ParserContext::new(
             parent_stylesheet_contents.origin,
             &url_data,
             None,
             ParsingMode::DEFAULT,
             parent_stylesheet_contents.quirks_mode,
+            Cow::Borrowed(&*namespaces),
             None,
             None,
         );
 
         let mut input = ParserInput::new(css);
         let mut input = Parser::new(&mut input);
-
-        let mut guard = parent_stylesheet_contents.namespaces.write();
 
         // nested rules are in the body state
         let mut rule_parser = TopLevelRuleParser {
@@ -423,13 +457,14 @@ impl CssRule {
             loader,
             state,
             dom_error: None,
-            namespaces: &mut *guard,
             insert_rule_context: Some(insert_rule_context),
             allow_import_rules,
+            declaration_parser_state: Default::default(),
+            rules: Default::default(),
         };
 
         match parse_one_rule(&mut input, &mut rule_parser) {
-            Ok((_, rule)) => Ok(rule),
+            Ok(_) => Ok(rule_parser.rules.pop().unwrap()),
             Err(_) => Err(rule_parser.dom_error.unwrap_or(RulesMutateError::Syntax)),
         }
     }

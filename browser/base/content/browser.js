@@ -36,6 +36,9 @@ ChromeUtils.defineESModuleGetters(this, {
   MigrationUtils: "resource:///modules/MigrationUtils.sys.mjs",
   NewTabUtils: "resource://gre/modules/NewTabUtils.sys.mjs",
   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
+  PageThumbs: "resource://gre/modules/PageThumbs.sys.mjs",
+  PanelMultiView: "resource:///modules/PanelMultiView.sys.mjs",
+  PanelView: "resource:///modules/PanelMultiView.sys.mjs",
   PictureInPicture: "resource://gre/modules/PictureInPicture.sys.mjs",
   PlacesTransactions: "resource://gre/modules/PlacesTransactions.sys.mjs",
   PlacesUIUtils: "resource:///modules/PlacesUIUtils.sys.mjs",
@@ -46,6 +49,7 @@ ChromeUtils.defineESModuleGetters(this, {
   PromiseUtils: "resource://gre/modules/PromiseUtils.sys.mjs",
   PromptUtils: "resource://gre/modules/PromptUtils.sys.mjs",
   ReaderMode: "resource://gre/modules/ReaderMode.sys.mjs",
+  SafeBrowsing: "resource://gre/modules/SafeBrowsing.sys.mjs",
   Sanitizer: "resource:///modules/Sanitizer.sys.mjs",
   SaveToPocket: "chrome://pocket/content/SaveToPocket.sys.mjs",
   ScreenshotsUtils: "resource:///modules/ScreenshotsUtils.sys.mjs",
@@ -53,6 +57,7 @@ ChromeUtils.defineESModuleGetters(this, {
   SessionStartup: "resource:///modules/sessionstore/SessionStartup.sys.mjs",
   SessionStore: "resource:///modules/sessionstore/SessionStore.sys.mjs",
   ShortcutUtils: "resource://gre/modules/ShortcutUtils.sys.mjs",
+  SitePermissions: "resource:///modules/SitePermissions.sys.mjs",
   SubDialog: "resource://gre/modules/SubDialog.sys.mjs",
   SubDialogManager: "resource://gre/modules/SubDialog.sys.mjs",
   TabModalPrompt: "chrome://global/content/tabprompts.sys.mjs",
@@ -88,13 +93,8 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   NetUtil: "resource://gre/modules/NetUtil.jsm",
   OpenInTabsUtils: "resource:///modules/OpenInTabsUtils.jsm",
   PageActions: "resource:///modules/PageActions.jsm",
-  PageThumbs: "resource://gre/modules/PageThumbs.jsm",
-  PanelMultiView: "resource:///modules/PanelMultiView.jsm",
-  PanelView: "resource:///modules/PanelMultiView.jsm",
   ProcessHangMonitor: "resource:///modules/ProcessHangMonitor.jsm",
-  SafeBrowsing: "resource://gre/modules/SafeBrowsing.jsm",
   SiteDataManager: "resource:///modules/SiteDataManager.jsm",
-  SitePermissions: "resource:///modules/SitePermissions.jsm",
   TabCrashHandler: "resource:///modules/ContentCrashHandlers.jsm",
   Translation: "resource:///modules/translation/TranslationParent.jsm",
   WebNavigationFrames: "resource://gre/modules/WebNavigationFrames.jsm",
@@ -553,6 +553,13 @@ XPCOMUtils.defineLazyPreferenceGetter(
   this,
   "gAlwaysOpenPanel",
   "browser.download.alwaysOpenPanel",
+  true
+);
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
+  "gMiddleClickNewTabUsesPasteboard",
+  "browser.tabs.searchclipboardfor.middleclick",
   true
 );
 
@@ -1066,57 +1073,33 @@ var gPopupBlockerObserver = {
     // it.
     if (gBrowser.selectedBrowser.popupBlocker.shouldShowNotification) {
       if (Services.prefs.getBoolPref("privacy.popups.showBrowserMessage")) {
-        var brandBundle = document.getElementById("bundle_brand");
-        var brandShortName = brandBundle.getString("brandShortName");
-
-        var stringKey =
-          AppConstants.platform == "win"
-            ? "popupWarningButton"
-            : "popupWarningButtonUnix";
-
-        var popupButtonText = gNavigatorBundle.getString(stringKey);
-        var popupButtonAccesskey = gNavigatorBundle.getString(
-          stringKey + ".accesskey"
-        );
-
-        let messageBase;
-        if (popupCount < this.maxReportedPopups) {
-          messageBase = gNavigatorBundle.getString("popupWarning.message");
-        } else {
-          messageBase = gNavigatorBundle.getString(
-            "popupWarning.exceeded.message"
-          );
-        }
-
-        var message = PluralForm.get(popupCount, messageBase)
-          .replace("#1", brandShortName)
-          .replace("#2", popupCount);
+        const label = {
+          "l10n-id":
+            popupCount < this.maxReportedPopups
+              ? "popup-warning-message"
+              : "popup-warning-exceeded-message",
+          "l10n-args": { popupCount },
+        };
 
         let notificationBox = gBrowser.getNotificationBox();
         let notification = notificationBox.getNotificationWithValue(
           "popup-blocked"
         );
         if (notification) {
-          notification.label = message;
+          notification.label = label;
         } else {
-          var buttons = [
-            {
-              label: popupButtonText,
-              accessKey: popupButtonAccesskey,
-              popup: "blockedPopupOptions",
-              callback: null,
-            },
-          ];
-
+          const image = "chrome://browser/skin/notification-icons/popup.svg";
           const priority = notificationBox.PRIORITY_INFO_MEDIUM;
           notificationBox.appendNotification(
             "popup-blocked",
-            {
-              label: message,
-              image: "chrome://browser/skin/notification-icons/popup.svg",
-              priority,
-            },
-            buttons
+            { label, image, priority },
+            [
+              {
+                "l10n-id": "popup-warning-button",
+                popup: "blockedPopupOptions",
+                callback: null,
+              },
+            ]
           );
         }
       }
@@ -1237,11 +1220,9 @@ var gPopupBlockerObserver = {
           foundUsablePopupURI = true;
 
           var menuitem = document.createXULElement("menuitem");
-          var label = gNavigatorBundle.getFormattedString(
-            "popupShowPopupPrefix",
-            [popupURIspec]
-          );
-          menuitem.setAttribute("label", label);
+          document.l10n.setAttributes(menuitem, "popup-show-popup-menuitem", {
+            popupURI: popupURIspec,
+          });
           menuitem.setAttribute(
             "oncommand",
             "gPopupBlockerObserver.showBlockedPopup(event);"
@@ -2853,7 +2834,11 @@ function openLocation(event) {
   );
 }
 
-function BrowserOpenTab({ event, url = BROWSER_NEW_TAB_URL } = {}) {
+function BrowserOpenTab({ event, url } = {}) {
+  let werePassedURL = !!url;
+  url ??= BROWSER_NEW_TAB_URL;
+  let searchClipboard = gMiddleClickNewTabUsesPasteboard && event?.button == 1;
+
   let relatedToCurrent = false;
   let where = "tab";
 
@@ -2886,10 +2871,19 @@ function BrowserOpenTab({ event, url = BROWSER_NEW_TAB_URL } = {}) {
   Services.obs.notifyObservers(
     {
       wrappedJSObject: new Promise(resolve => {
-        openTrustedLinkIn(url, where, {
+        let options = {
           relatedToCurrent,
           resolveOnNewTabCreated: resolve,
-        });
+        };
+        if (!werePassedURL && searchClipboard) {
+          let clipboard = readFromClipboard();
+          clipboard = UrlbarUtils.stripUnsafeProtocolOnPaste(clipboard).trim();
+          if (clipboard) {
+            url = clipboard;
+            options.allowThirdPartyFixup = true;
+          }
+        }
+        openTrustedLinkIn(url, where, options);
       }),
     },
     "browser-open-newtab-start"
@@ -7570,16 +7564,22 @@ var WebAuthnPromptHelper = {
       data.is_ctap2 ? Ci.nsIWebAuthnController : Ci.nsIU2FTokenManager
     );
 
-    if (data.action == "register") {
-      this.register(mgr, data);
+    if (data.action == "presence") {
+      this.presence_required(mgr, data);
     } else if (data.action == "register-direct") {
       this.registerDirect(mgr, data);
-    } else if (data.action == "sign") {
-      this.sign(mgr, data);
     } else if (data.action == "pin-required") {
       this.pin_required(mgr, data);
     } else if (data.action == "select-sign-result") {
       this.select_sign_result(mgr, data);
+    } else if (data.action == "already-registered") {
+      this.show_info(
+        mgr,
+        data.origin,
+        data.tid,
+        "alreadyRegistered",
+        "webauthn.alreadyRegisteredPrompt"
+      );
     } else if (data.action == "select-device") {
       this.show_info(
         mgr,
@@ -7685,23 +7685,14 @@ var WebAuthnPromptHelper = {
     }
   },
 
-  register(mgr, { origin, tid, is_ctap2, device_selected }) {
+  presence_required(mgr, { origin, tid }) {
     let mainAction = this.buildCancelAction(mgr, tid);
     let options = { escAction: "buttoncommand" };
     let secondaryActions = [];
-    let message;
-    if (is_ctap2) {
-      if (device_selected) {
-        message = "webauthn.registerTouchDevice";
-      } else {
-        message = "webauthn.CTAP2registerPrompt";
-      }
-    } else {
-      message = "webauthn.registerPrompt2";
-    }
+    let message = "webauthn.userPresencePrompt";
     this.show(
       tid,
-      "register",
+      "presence",
       message,
       origin,
       mainAction,
@@ -7729,31 +7720,6 @@ var WebAuthnPromptHelper = {
       tid,
       "register-direct",
       "webauthn.registerDirectPrompt3",
-      origin,
-      mainAction,
-      secondaryActions,
-      options
-    );
-  },
-
-  sign(mgr, { origin, tid, is_ctap2, device_selected }) {
-    let mainAction = this.buildCancelAction(mgr, tid);
-    let options = { escAction: "buttoncommand" };
-    let secondaryActions = [];
-    let message;
-    if (is_ctap2) {
-      if (device_selected) {
-        message = "webauthn.signTouchDevice";
-      } else {
-        message = "webauthn.CTAP2signPrompt";
-      }
-    } else {
-      message = "webauthn.signPrompt2";
-    }
-    this.show(
-      tid,
-      "sign",
-      message,
       origin,
       mainAction,
       secondaryActions,

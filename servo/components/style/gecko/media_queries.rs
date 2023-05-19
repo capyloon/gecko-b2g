@@ -74,7 +74,7 @@ impl fmt::Debug for Device {
         let mut doc_uri = nsCString::new();
         unsafe {
             bindings::Gecko_nsIURI_Debug(
-                (*self.document()).mDocumentURI.raw::<structs::nsIURI>(),
+                (*self.document()).mDocumentURI.raw(),
                 &mut doc_uri,
             )
         };
@@ -131,7 +131,7 @@ impl Device {
                 line_height,
                 pres_context.map_or(std::ptr::null(), |pc| pc),
                 vertical,
-                font.gecko(),
+                &**font,
                 element.map_or(std::ptr::null(), |e| e.0)
             )
         });
@@ -231,7 +231,7 @@ impl Device {
             bindings::Gecko_GetFontMetrics(
                 pc,
                 vertical,
-                font.gecko(),
+                &**font,
                 base_size,
                 // we don't use the user font set in a media query
                 !in_media_query,
@@ -511,24 +511,24 @@ impl Device {
 
     /// Returns the current effective text zoom.
     #[inline]
-    fn effective_text_zoom(&self) -> f32 {
+    fn text_zoom(&self) -> f32 {
         let pc = match self.pres_context() {
             Some(pc) => pc,
             None => return 1.,
         };
-        pc.mEffectiveTextZoom
+        pc.mTextZoom
     }
 
     /// Applies text zoom to a font-size or line-height value (see nsStyleFont::ZoomText).
     #[inline]
     pub fn zoom_text(&self, size: Length) -> Length {
-        size.scale_by(self.effective_text_zoom())
+        size.scale_by(self.text_zoom())
     }
 
     /// Un-apply text zoom.
     #[inline]
     pub fn unzoom_text(&self, size: Length) -> Length {
-        size.scale_by(1. / self.effective_text_zoom())
+        size.scale_by(1. / self.text_zoom())
     }
 
     /// Returns safe area insets

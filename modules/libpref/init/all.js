@@ -627,9 +627,6 @@ pref("gfx.use_text_smoothing_setting", false);
 // Number of characters to consider emphasizing for rich autocomplete results
 pref("toolkit.autocomplete.richBoundaryCutoff", 200);
 
-// Variable controlling logging for osfile.
-pref("toolkit.osfile.log", false);
-
 pref("toolkit.scrollbox.smoothScroll", true);
 pref("toolkit.scrollbox.scrollIncrement", 20);
 pref("toolkit.scrollbox.clickToScroll.scrollDelay", 150);
@@ -2058,20 +2055,6 @@ pref("plugins.navigator.hidden_ctp_plugin", "");
 // The default value for nsIPluginTag.enabledState (STATE_ENABLED = 2)
 pref("plugin.default.state", 2);
 
-// This pref can take 3 possible string values:
-// "always"     - always use favor fallback mode
-// "follow-ctp" - activate if ctp is active for the given
-//                plugin object (could be due to a plugin-wide
-//                setting or a site-specific setting)
-// "never"      - never use favor fallback mode
-pref("plugins.favorfallback.mode", "never");
-
-// A comma-separated list of rules to follow when deciding
-// whether an object has been provided with good fallback content.
-// The valid values can be found at nsObjectLoadingContent::HasGoodFallback.
-pref("plugins.favorfallback.rules", "");
-
-
 // Set IPC timeouts for plugins and tabs, except in leak-checking and
 // dynamic analysis builds.  (NS_FREE_PERMANENT_DATA is C++ only, so
 // approximate its definition here.)
@@ -3202,6 +3185,8 @@ pref("signon.showAutoCompleteFooter",             false);
 pref("signon.firefoxRelay.base_url", "https://relay.firefox.com/api/v1/");
 pref("signon.firefoxRelay.learn_more_url", "https://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/firefox-relay-integration");
 pref("signon.firefoxRelay.manage_url", "https://relay.firefox.com");
+pref("signon.firefoxRelay.terms_of_service_url", "https://www.mozilla.org/%LOCALE%/about/legal/terms/subscription-services/");
+pref("signon.firefoxRelay.privacy_policy_url", "https://www.mozilla.org/%LOCALE%/privacy/subscription-services/");
 pref("signon.signupDetection.confidenceThreshold",     "0.75");
 #ifdef NIGHTLY_BUILD
   pref("signon.signupDetection.enabled", true);
@@ -3813,7 +3798,12 @@ pref("browser.translations.autoTranslate", false);
 // Simulate the behavior of using a device that does not support the translations engine.
 // Requires restart.
 pref("browser.translations.simulateUnsupportedEngine", false);
-
+// The translations code relies on asynchronous network request. Chaos mode simulates
+// flaky and slow network connections, so that the UI may be manually tested. The
+// "chaos.errors" makes network requests fail, while "timeoutMS" randomly times out
+// between 0ms and the timeoutMS provided.
+pref("browser.translations.chaos.errors", false);
+pref("browser.translations.chaos.timeoutMS", 0);
 
 // When a user cancels this number of authentication dialogs coming from
 // a single web page in a row, all following authentication dialogs will

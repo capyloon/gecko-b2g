@@ -50,6 +50,7 @@
 #include "jit/TemplateObject-inl.h"
 #include "vm/BytecodeUtil-inl.h"
 #include "vm/Interpreter-inl.h"
+#include "vm/JSObject-inl.h"
 
 using namespace js;
 using namespace js::jit;
@@ -932,7 +933,7 @@ void MacroAssembler::initGCThing(Register obj, Register temp,
 
     // If the object has dynamic slots, the slots member has already been
     // filled in.
-    if (!ntemplate.hasDynamicSlots()) {
+    if (ntemplate.numDynamicSlots() == 0) {
       storePtr(ImmPtr(emptyObjectSlots),
                Address(obj, NativeObject::offsetOfSlots()));
     }
@@ -4253,6 +4254,59 @@ void MacroAssembler::branchIfNotRegExpInstanceOptimizable(Register regexp,
   branchTestObjShapeUnsafe(Assembler::NotEqual, regexp, temp, label);
 }
 
+void MacroAssembler::loadRegExpLastIndex(Register regexp, Register string,
+                                         Register lastIndex,
+                                         Label* notFoundZeroLastIndex) {
+  Address flagsSlot(regexp, RegExpObject::offsetOfFlags());
+  Address lastIndexSlot(regexp, RegExpObject::offsetOfLastIndex());
+  Address stringLength(string, JSString::offsetOfLength());
+
+  Label notGlobalOrSticky, loadedLastIndex;
+
+  branchTest32(Assembler::Zero, flagsSlot,
+               Imm32(JS::RegExpFlag::Global | JS::RegExpFlag::Sticky),
+               &notGlobalOrSticky);
+  {
+    // It's a global or sticky regular expression. Emit the following code:
+    //
+    //   lastIndex = regexp.lastIndex
+    //   if lastIndex > string.length:
+    //     jump to notFoundZeroLastIndex (skip the regexp match/test operation)
+    //
+    // The `notFoundZeroLastIndex` code should set regexp.lastIndex to 0 and
+    // treat this as a not-found result.
+    //
+    // See steps 5-8 in js::RegExpBuiltinExec.
+    //
+    // Earlier guards must have ensured regexp.lastIndex is a non-negative
+    // integer.
+#ifdef DEBUG
+    {
+      Label ok;
+      branchTestInt32(Assembler::Equal, lastIndexSlot, &ok);
+      assumeUnreachable("Expected int32 value for lastIndex");
+      bind(&ok);
+    }
+#endif
+    unboxInt32(lastIndexSlot, lastIndex);
+#ifdef DEBUG
+    {
+      Label ok;
+      branchTest32(Assembler::NotSigned, lastIndex, lastIndex, &ok);
+      assumeUnreachable("Expected non-negative lastIndex");
+      bind(&ok);
+    }
+#endif
+    branch32(Assembler::Below, stringLength, lastIndex, notFoundZeroLastIndex);
+    jump(&loadedLastIndex);
+  }
+
+  bind(&notGlobalOrSticky);
+  move32(Imm32(0), lastIndex);
+
+  bind(&loadedLastIndex);
+}
+
 // ===============================================================
 // Branch functions
 
@@ -4849,12 +4903,15 @@ void MacroAssembler::wasmCallRef(const wasm::CallSiteDesc& desc,
 
 bool MacroAssembler::needScratch1ForBranchWasmGcRefType(
     const wasm::RefType& type) {
-  return !type.isNone() &&
-         wasm::RefType::isSubTypeOf(type, wasm::RefType::eq());
+  MOZ_ASSERT(type.isValid());
+  MOZ_ASSERT(type.isAnyHierarchy());
+  return !type.isNone() && !type.isAny();
 }
 
 bool MacroAssembler::needScratch2ForBranchWasmGcRefType(
     const wasm::RefType& type) {
+  MOZ_ASSERT(type.isValid());
+  MOZ_ASSERT(type.isAnyHierarchy());
   return type.isTypeRef() &&
          type.typeDef()->subTypingDepth() >= wasm::MinSuperTypeVectorLength;
 }
@@ -4868,6 +4925,7 @@ void MacroAssembler::branchWasmGcObjectIsRefType(
     Register object, const wasm::RefType& type, Label* label, bool onSuccess,
     Register superSuperTypeVector, Register scratch1, Register scratch2) {
   MOZ_ASSERT(type.isValid());
+  MOZ_ASSERT(type.isAnyHierarchy());
   MOZ_ASSERT_IF(needScratch1ForBranchWasmGcRefType(type),
                 scratch1 != Register::Invalid());
   MOZ_ASSERT_IF(needScratch2ForBranchWasmGcRefType(type),

@@ -55,16 +55,12 @@ ChromeUtils.defineESModuleGetters(lazy, {
   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
   Region: "resource://gre/modules/Region.sys.mjs",
   RemoteSettings: "resource://services-settings/remote-settings.sys.mjs",
+  PageThumbs: "resource://gre/modules/PageThumbs.sys.mjs",
 });
 ChromeUtils.defineModuleGetter(
   lazy,
   "Screenshots",
   "resource://activity-stream/lib/Screenshots.jsm"
-);
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "PageThumbs",
-  "resource://gre/modules/PageThumbs.jsm"
 );
 
 XPCOMUtils.defineLazyGetter(lazy, "log", () => {
@@ -201,11 +197,15 @@ class ContileIntegration {
       }
       const body = await response.json();
       if (body?.tiles && Array.isArray(body.tiles)) {
+        const useAdditionalTiles = lazy.NimbusFeatures.newtab.getVariable(
+          NIMBUS_VARIABLE_ADDITIONAL_TILES
+        );
+
         let { tiles } = body;
         if (
-          !lazy.NimbusFeatures.newtab.getVariable(
-            NIMBUS_VARIABLE_ADDITIONAL_TILES
-          )
+          useAdditionalTiles !== undefined &&
+          !useAdditionalTiles &&
+          tiles.length > CONTILE_MAX_NUM_SPONSORED
         ) {
           tiles.length = CONTILE_MAX_NUM_SPONSORED;
         }

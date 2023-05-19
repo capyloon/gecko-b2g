@@ -71,12 +71,6 @@ var gExceptionPaths = [
 
   // Localization file added programatically in featureCallout.jsm
   "resource://app/localization/en-US/browser/featureCallout.ftl",
-
-  // Will be removed in bug 1737308
-  "resource://gre/modules/lz4.js",
-  "resource://gre/modules/lz4_internal.js",
-  "resource://gre/modules/osfile.jsm",
-  "resource://gre/modules/osfile/",
 ];
 
 // These are not part of the omni.ja file, so we find them only when running
@@ -244,7 +238,7 @@ var whitelist = [
   // Bug 1348559
   { file: "chrome://pippki/content/resetpassword.xhtml" },
   // Bug 1337345
-  { file: "resource://gre/modules/Manifest.jsm" },
+  { file: "resource://gre/modules/Manifest.sys.mjs" },
   // Bug 1494170
   // (The references to these files are dynamically generated, so the test can't
   // find the references)
@@ -312,11 +306,11 @@ var whitelist = [
   // Bug 1824826 - Implement a view of history in Firefox View
   { file: "resource://gre/modules/PlacesQuery.sys.mjs" },
 
-  // Should be removed in bug 1824826 when moz-tab-list is used in Firefox View
-  { file: "resource://app/localization/en-US/browser/mozTabList.ftl" },
-  { file: "chrome://browser/content/firefoxview/moz-tab-list.css" },
-  { file: "chrome://browser/content/firefoxview/moz-tab-list.mjs" },
-  { file: "chrome://browser/content/firefoxview/moz-tab-row.css" },
+  // Should be removed in bug 1824826 when fxview-tab-list is used in Firefox View
+  { file: "resource://app/localization/en-US/browser/fxviewTabList.ftl" },
+  { file: "chrome://browser/content/firefoxview/fxview-tab-list.css" },
+  { file: "chrome://browser/content/firefoxview/fxview-tab-list.mjs" },
+  { file: "chrome://browser/content/firefoxview/fxview-tab-row.css" },
 ];
 
 if (AppConstants.NIGHTLY_BUILD && AppConstants.platform != "win") {

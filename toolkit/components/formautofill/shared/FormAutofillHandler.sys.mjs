@@ -5,12 +5,18 @@
 import { FormAutofill } from "resource://autofill/FormAutofill.sys.mjs";
 import { FormAutofillUtils } from "resource://gre/modules/shared/FormAutofillUtils.sys.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-import {
-  FormAutofillAddressSection,
-  FormAutofillCreditCardSection,
-} from "resource://autofill/FormAutofillSection.sys.mjs";
-import { FormAutofillHeuristics } from "resource://gre/modules/shared/FormAutofillHeuristics.sys.mjs";
-import { FormLikeFactory } from "resource://gre/modules/FormLikeFactory.sys.mjs";
+
+const lazy = {};
+ChromeUtils.defineESModuleGetters(lazy, {
+  FormAutofillAddressSection:
+    "resource://gre/modules/shared/FormAutofillSection.sys.mjs",
+  FormAutofillCreditCardSection:
+    "resource://gre/modules/shared/FormAutofillSection.sys.mjs",
+  FormAutofillHeuristics:
+    "resource://gre/modules/shared/FormAutofillHeuristics.sys.mjs",
+  FormLikeFactory: "resource://gre/modules/FormLikeFactory.sys.mjs",
+  FormSection: "resource://gre/modules/shared/FieldScanner.sys.mjs",
+});
 
 const { FIELD_STATES } = FormAutofillUtils;
 
@@ -187,7 +193,7 @@ export class FormAutofillHandler {
     let _formLike;
     const getFormLike = () => {
       if (!_formLike) {
-        _formLike = FormLikeFactory.createFromField(element);
+        _formLike = lazy.FormLikeFactory.createFromField(element);
       }
       return _formLike;
     };
@@ -228,28 +234,29 @@ export class FormAutofillHandler {
    *
    * @returns {Array} The valid address and credit card details.
    */
-  collectFormFields() {
-    const sections = FormAutofillHeuristics.getFormInfo(this.form);
+  collectFormFields(ignoreInvalid = true) {
+    const sections = lazy.FormAutofillHeuristics.getFormInfo(this.form);
     const allValidDetails = [];
-    for (const { fieldDetails, type } of sections) {
-      let section;
-      if (type == FormAutofillUtils.SECTION_TYPES.ADDRESS) {
-        section = new FormAutofillAddressSection(
-          fieldDetails,
-          this,
-          this.onAutofillCallback
-        );
-      } else if (type == FormAutofillUtils.SECTION_TYPES.CREDIT_CARD) {
-        section = new FormAutofillCreditCardSection(
-          fieldDetails,
-          this,
-          this.onAutofillCallback
+    for (const section of sections) {
+      let autofillableSection;
+      if (section.type == lazy.FormSection.ADDRESS) {
+        autofillableSection = new lazy.FormAutofillAddressSection(
+          section,
+          this
         );
       } else {
-        throw new Error("Unknown field type.");
+        autofillableSection = new lazy.FormAutofillCreditCardSection(
+          section,
+          this
+        );
       }
-      this.sections.push(section);
-      allValidDetails.push(...section.fieldDetails);
+
+      if (ignoreInvalid && !autofillableSection.isValidSection()) {
+        continue;
+      }
+
+      this.sections.push(autofillableSection);
+      allValidDetails.push(...autofillableSection.fieldDetails);
     }
 
     this.fieldDetails = allValidDetails;
@@ -379,9 +386,9 @@ export class FormAutofillHandler {
       if (!secRecord) {
         continue;
       }
-      if (section instanceof FormAutofillAddressSection) {
+      if (section instanceof lazy.FormAutofillAddressSection) {
         records.address.push(secRecord);
-      } else if (section instanceof FormAutofillCreditCardSection) {
+      } else if (section instanceof lazy.FormAutofillCreditCardSection) {
         records.creditCard.push(secRecord);
       } else {
         throw new Error("Unknown section type");

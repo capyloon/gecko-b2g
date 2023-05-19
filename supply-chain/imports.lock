@@ -36,6 +36,13 @@ user-id = 175410
 user-login = "jschanck"
 user-name = "John Schanck"
 
+[[publisher.authenticator]]
+version = "0.4.0-alpha.15"
+when = "2023-05-15"
+user-id = 175410
+user-login = "jschanck"
+user-name = "John Schanck"
+
 [[publisher.bhttp]]
 version = "0.3.1"
 when = "2023-02-23"
@@ -149,15 +156,15 @@ user-login = "jrmuizel"
 user-name = "Jeff Muizelaar"
 
 [[publisher.glean]]
-version = "52.6.0"
-when = "2023-04-20"
+version = "52.7.0"
+when = "2023-05-10"
 user-id = 48
 user-login = "badboy"
 user-name = "Jan-Erik Rediger"
 
 [[publisher.glean-core]]
-version = "52.6.0"
-when = "2023-04-20"
+version = "52.7.0"
+when = "2023-05-10"
 user-id = 48
 user-login = "badboy"
 user-name = "Jan-Erik Rediger"

@@ -8410,6 +8410,8 @@ const TopicsWidget = (0,external_ReactRedux_namespaceObject.connect)(state => ({
 
 const PREF_ONBOARDING_EXPERIENCE_DISMISSED = "discoverystream.onboardingExperience.dismissed";
 const CardGrid_INTERSECTION_RATIO = 0.5;
+const CardGrid_VISIBLE = "visible";
+const CardGrid_VISIBILITY_CHANGE_EVENT = "visibilitychange";
 const WIDGET_IDS = {
   TOPICS: 1
 };
@@ -8462,9 +8464,21 @@ function OnboardingExperience({
       }
     }, options);
 
-    if (heightElement.current) {
-      resizeObserver.observe(heightElement.current);
+    const onVisibilityChange = () => {
       intersectionObserver.observe(heightElement.current);
+      windowObj.document.removeEventListener(CardGrid_VISIBILITY_CHANGE_EVENT, onVisibilityChange);
+    };
+
+    if (heightElement.current) {
+      resizeObserver.observe(heightElement.current); // Check visibility or setup a visibility event to make
+      // sure we don't fire this for off screen pre loaded tabs.
+
+      if (windowObj.document.visibilityState === CardGrid_VISIBLE) {
+        intersectionObserver.observe(heightElement.current);
+      } else {
+        windowObj.document.addEventListener(CardGrid_VISIBILITY_CHANGE_EVENT, onVisibilityChange);
+      }
+
       setMaxHeight(heightElement.current.offsetHeight);
     } // Return unmount callback to clean up observers.
 
@@ -8472,6 +8486,7 @@ function OnboardingExperience({
     return () => {
       resizeObserver === null || resizeObserver === void 0 ? void 0 : resizeObserver.disconnect();
       intersectionObserver === null || intersectionObserver === void 0 ? void 0 : intersectionObserver.disconnect();
+      windowObj.document.removeEventListener(CardGrid_VISIBILITY_CHANGE_EVENT, onVisibilityChange);
     };
   }, [dispatch, windowObj]);
   const style = {};
@@ -8490,18 +8505,18 @@ function OnboardingExperience({
     className: "ds-onboarding-ref",
     ref: heightElement
   }, /*#__PURE__*/external_React_default().createElement("div", {
-    className: "ds-onboarding"
+    className: "ds-onboarding-container"
   }, /*#__PURE__*/external_React_default().createElement(DSDismiss, {
     onDismissClick: onDismissClick,
-    extraClasses: `ds-onboarding-dismiss`
-  }, /*#__PURE__*/external_React_default().createElement("div", {
-    className: "ds-onboarding-graphic"
-  }), /*#__PURE__*/external_React_default().createElement("header", null, /*#__PURE__*/external_React_default().createElement("span", {
+    extraClasses: `ds-onboarding`
+  }, /*#__PURE__*/external_React_default().createElement("div", null, /*#__PURE__*/external_React_default().createElement("header", null, /*#__PURE__*/external_React_default().createElement("span", {
     className: "icon icon-pocket"
   }), /*#__PURE__*/external_React_default().createElement("span", {
     "data-l10n-id": "newtab-pocket-onboarding-discover"
   })), /*#__PURE__*/external_React_default().createElement("p", {
     "data-l10n-id": "newtab-pocket-onboarding-cta"
+  })), /*#__PURE__*/external_React_default().createElement("div", {
+    className: "ds-onboarding-graphic"
   })))));
 }
 function CardGrid_IntersectionObserver({

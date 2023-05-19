@@ -27,17 +27,17 @@
 #include "gc/Tenuring.h"
 #include "jit/JitFrames.h"
 #include "jit/JitRealm.h"
+#include "js/Printer.h"
 #include "util/DifferentialTesting.h"
 #include "util/GetPidProvider.h"  // getpid()
 #include "util/Poison.h"
 #include "vm/JSONPrinter.h"
-#include "vm/Printer.h"
 #include "vm/Realm.h"
 #include "vm/Time.h"
 
 #include "gc/Heap-inl.h"
 #include "gc/Marking-inl.h"
-#include "gc/Zone-inl.h"
+#include "gc/StableCellHasher-inl.h"
 #include "vm/GeckoProfiler-inl.h"
 
 using namespace js;
@@ -1640,10 +1640,10 @@ void js::Nursery::sweep() {
   for (Cell* cell : cellsWithUid_) {
     auto* obj = static_cast<JSObject*>(cell);
     if (!IsForwarded(obj)) {
-      obj->nurseryZone()->removeUniqueId(obj);
+      gc::RemoveUniqueId(obj);
     } else {
       JSObject* dst = Forwarded(obj);
-      obj->nurseryZone()->transferUniqueId(dst, obj);
+      gc::TransferUniqueId(dst, obj);
     }
   }
   cellsWithUid_.clear();

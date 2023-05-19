@@ -21,7 +21,7 @@ add_task(async function test_showLoginItemErrors() {
     "user2",
     "pass2"
   );
-  LOGIN_TO_UPDATE = Services.logins.addLogin(LOGIN_TO_UPDATE);
+  LOGIN_TO_UPDATE = await Services.logins.addLoginAsync(LOGIN_TO_UPDATE);
   EXPECTED_ERROR_MESSAGE = "This login already exists.";
   const LOGIN_UPDATES = {
     origin: "https://example.com",
@@ -58,6 +58,12 @@ add_task(async function test_showLoginItemErrors() {
         // adds first login
         new content.CustomEvent("AboutLoginsCreateLogin", event)
       );
+
+      await ContentTaskUtils.waitForCondition(() => {
+        return (
+          loginList.shadowRoot.querySelectorAll(".login-list-item").length === 3
+        );
+      }, "Waiting for login item to be created.");
 
       Assert.ok(
         loginItemErrorMessage.hidden,

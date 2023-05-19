@@ -44,18 +44,15 @@ if (isNode()) {
   pref("devtools.debugger.log-actions", true);
   pref("devtools.debugger.log-event-breakpoints", false);
   pref("devtools.debugger.javascript-tracing-log-method", "console");
+  pref("devtools.debugger.hide-ignored-sources", false);
   pref("devtools.debugger.features.wasm", true);
   pref("devtools.debugger.features.map-scopes", true);
   pref("devtools.debugger.features.code-folding", false);
   pref("devtools.debugger.features.command-click", false);
-  pref("devtools.debugger.features.column-breakpoints", true);
   pref("devtools.debugger.features.component-pane", false);
   pref("devtools.debugger.features.autocomplete-expressions", false);
   pref("devtools.debugger.features.map-expression-bindings", true);
   pref("devtools.debugger.features.map-await-expression", true);
-  pref("devtools.debugger.features.xhr-breakpoints", true);
-  pref("devtools.debugger.features.event-listeners-breakpoints", true);
-  pref("devtools.debugger.features.dom-mutation-breakpoints", true);
   pref("devtools.debugger.features.log-points", true);
   pref("devtools.debugger.features.inline-preview", true);
   pref("devtools.debugger.features.blackbox-lines", false);
@@ -108,6 +105,7 @@ export const prefs = new PrefsHelper("devtools", {
     "String",
     "debugger.javascript-tracing-log-method",
   ],
+  hideIgnoredSources: ["Bool", "debugger.hide-ignored-sources"],
 });
 
 // The pref may not be defined. Defaulting to null isn't viable (cursor never blinks).
@@ -117,7 +115,6 @@ prefs.cursorBlinkRate = Services.prefs.getIntPref("ui.caretBlinkTime", 530);
 
 export const features = new PrefsHelper("devtools.debugger.features", {
   wasm: ["Bool", "wasm"],
-  columnBreakpoints: ["Bool", "column-breakpoints"],
   mapScopes: ["Bool", "map-scopes"],
   outline: ["Bool", "outline"],
   codeFolding: ["Bool", "code-folding"],
@@ -125,9 +122,6 @@ export const features = new PrefsHelper("devtools.debugger.features", {
   mapExpressionBindings: ["Bool", "map-expression-bindings"],
   mapAwaitExpression: ["Bool", "map-await-expression"],
   componentPane: ["Bool", "component-pane"],
-  xhrBreakpoints: ["Bool", "xhr-breakpoints"],
-  eventListenersBreakpoints: ["Bool", "event-listeners-breakpoints"],
-  domMutationBreakpoints: ["Bool", "dom-mutation-breakpoints"],
   logPoints: ["Bool", "log-points"],
   commandClick: ["Bool", "command-click"],
   inlinePreview: ["Bool", "inline-preview"],

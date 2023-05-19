@@ -80,6 +80,7 @@ class MediaSourceDecoder : public MediaDecoder,
   MediaDecoderStateMachineBase* CreateStateMachine(
       bool aDisableExternalEngine) override;
 #endif
+
   void DoSetMediaSourceDuration(double aDuration);
   media::TimeInterval ClampIntervalToEnd(const media::TimeInterval& aInterval);
   bool CanPlayThroughImpl() override;

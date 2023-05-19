@@ -1407,8 +1407,6 @@ DWORD nsWindow::WindowStyle() {
     if (mBorderStyle == BorderStyle::None ||
         !(mBorderStyle & BorderStyle::Title)) {
       style &= ~WS_DLGFRAME;
-      style |= WS_POPUP;
-      style &= ~WS_CHILD;
     }
 
     if (mBorderStyle == BorderStyle::None ||
@@ -1911,16 +1909,6 @@ void nsWindow::LockAspectRatio(bool aShouldLock) {
  **************************************************************/
 void nsWindow::SetInputRegion(const InputRegion& aInputRegion) {
   mInputRegion = aInputRegion;
-
-  if (!mWnd) {
-    return;
-  }
-
-  const bool transparent = aInputRegion.mFullyTransparent;
-  LONG_PTR oldStyle = ::GetWindowLongPtrW(mWnd, GWL_EXSTYLE);
-  LONG_PTR newStyle = transparent ? (oldStyle | WS_EX_TRANSPARENT)
-                                  : (oldStyle & ~WS_EX_TRANSPARENT);
-  ::SetWindowLongPtrW(mWnd, GWL_EXSTYLE, newStyle);
 }
 
 /**************************************************************
@@ -3831,12 +3819,6 @@ nsresult nsWindow::MakeFullScreen(bool aFullScreen) {
 // Return some native data according to aDataType
 void* nsWindow::GetNativeData(uint32_t aDataType) {
   switch (aDataType) {
-    case NS_NATIVE_TMP_WINDOW:
-      return (void*)::CreateWindowExW(
-          mIsRTL ? WS_EX_LAYOUTRTL : 0,
-          ChooseWindowClass(mWindowType, /* aForMenupopupFrame = */ false), L"",
-          WS_CHILD, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-          mWnd, nullptr, nsToolkit::mDllInstance, nullptr);
     case NS_NATIVE_WIDGET:
     case NS_NATIVE_WINDOW:
     case NS_NATIVE_WINDOW_WEBRTC_DEVICE_ID:
@@ -3861,10 +3843,6 @@ void* nsWindow::GetNativeData(uint32_t aDataType) {
   }
 
   return nullptr;
-}
-
-void nsWindow::SetNativeData(uint32_t aDataType, uintptr_t aVal) {
-  NS_ERROR("SetNativeData called with unsupported data type.");
 }
 
 // Free some native data according to aDataType
@@ -8337,6 +8315,9 @@ bool nsWindow::DealWithPopups(HWND aWnd, UINT aMessage, WPARAM aWParam,
   bool consumeRollupEvent = false;
   Maybe<POINT> touchPoint;  // In screen coords.
 
+  // If we rollup with animations but get occluded right away, we might not
+  // advance the refresh driver enough for the animation to finish.
+  auto allowAnimations = nsIRollupListener::AllowAnimations::Yes;
   nsWindow* popupWindow = static_cast<nsWindow*>(popup.get());
   UINT nativeMessage = WinUtils::GetNativeMessage(aMessage);
   switch (nativeMessage) {
@@ -8417,6 +8398,7 @@ bool nsWindow::DealWithPopups(HWND aWnd, UINT aMessage, WPARAM aWParam,
       return consumeRollupEvent;
 
     case WM_ACTIVATEAPP:
+      allowAnimations = nsIRollupListener::AllowAnimations::No;
       break;
 
     case WM_ACTIVATE:
@@ -8480,6 +8462,7 @@ bool nsWindow::DealWithPopups(HWND aWnd, UINT aMessage, WPARAM aWParam,
           return false;
         }
       }
+      allowAnimations = nsIRollupListener::AllowAnimations::No;
       break;
 
     case MOZ_WM_REACTIVATE:
@@ -8544,6 +8527,7 @@ bool nsWindow::DealWithPopups(HWND aWnd, UINT aMessage, WPARAM aWParam,
     case WM_SHOWWINDOW:
       // If the window is being minimized, close popups.
       if (aLParam == SW_PARENTCLOSING) {
+        allowAnimations = nsIRollupListener::AllowAnimations::No;
         break;
       }
       return false;
@@ -8552,6 +8536,7 @@ bool nsWindow::DealWithPopups(HWND aWnd, UINT aMessage, WPARAM aWParam,
       // If focus moves to other window created in different process/thread,
       // e.g., a plugin window, popups should be rolled up.
       if (IsDifferentThreadWindow(reinterpret_cast<HWND>(aWParam))) {
+        allowAnimations = nsIRollupListener::AllowAnimations::No;
         break;
       }
       return false;
@@ -8570,6 +8555,8 @@ bool nsWindow::DealWithPopups(HWND aWnd, UINT aMessage, WPARAM aWParam,
   nsIRollupListener::RollupOptions rollupOptions{
       popupsToRollup,
       nsIRollupListener::FlushViews::Yes,
+      /* mPoint = */ nullptr,
+      allowAnimations,
   };
 
   if (nativeMessage == WM_TOUCH || nativeMessage == WM_LBUTTONDOWN ||

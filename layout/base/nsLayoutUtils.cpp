@@ -2359,9 +2359,13 @@ static Rect TransformGfxRectToAncestor(
   }
   const nsIFrame* ancestor = aOutAncestor ? *aOutAncestor : aAncestor.mFrame;
   float factor = ancestor->PresContext()->AppUnitsPerDevPixel();
+  // Caller is expected to properly clamp if the result is to be converted to
+  // app units. Technically, the clipping bound here is infinite, but that
+  // causes clipping to become unpredictable due to floating point errors.
+  const auto boundsAppUnits = Rect::MaxIntRect();
   Rect maxBounds =
-      Rect(float(nscoord_MIN) / factor * 0.5, float(nscoord_MIN) / factor * 0.5,
-           float(nscoord_MAX) / factor, float(nscoord_MAX) / factor);
+      Rect(boundsAppUnits.x / factor, boundsAppUnits.y / factor,
+           boundsAppUnits.width / factor, boundsAppUnits.height / factor);
   return ctm.TransformAndClipBounds(aRect, maxBounds);
 }
 
@@ -2712,7 +2716,7 @@ nsIFrame* nsLayoutUtils::GetFrameForPoint(
   // throught the frame under the frame with mozpasspointerevents
   uint32_t idx = FindIdxForMozPassPointerEvents(outFrames);
 
-  return outFrames.Length() ? outFrames.ElementAt(idx) : nullptr;
+  return outFrames.SafeElementAt(idx);
 }
 
 nsresult nsLayoutUtils::GetFramesForArea(RelativeTo aRelativeTo,
@@ -3190,8 +3194,10 @@ void nsLayoutUtils::PaintFrame(gfxContext* aRenderingContext, nsIFrame* aFrame,
 
   // If the dynamic toolbar is completely collapsed, the visible rect should
   // be expanded to include this area.
-  if (presContext->IsRootContentDocumentCrossProcess() &&
-      presContext->HasDynamicToolbar()) {
+  const bool hasDynamicToolbar =
+      presContext->IsRootContentDocumentCrossProcess() &&
+      presContext->HasDynamicToolbar();
+  if (hasDynamicToolbar) {
     rootInkOverflow.SizeTo(nsLayoutUtils::ExpandHeightForDynamicToolbar(
         presContext, rootInkOverflow.Size()));
   }
@@ -3252,9 +3258,16 @@ void nsLayoutUtils::PaintFrame(gfxContext* aRenderingContext, nsIFrame* aFrame,
     }
   });
 
-  nsRect canvasArea(nsPoint(0, 0), aFrame->GetSize());
+  nsRect canvasArea(nsPoint(0, 0),
+                    aFrame->InkOverflowRectRelativeToSelf().Size());
   bool ignoreViewportScrolling =
       !aFrame->GetParent() && presShell->IgnoringViewportScrolling();
+
+  if (!aFrame->GetParent() && hasDynamicToolbar) {
+    canvasArea.SizeTo(nsLayoutUtils::ExpandHeightForDynamicToolbar(
+        presContext, canvasArea.Size()));
+  }
+
   if (ignoreViewportScrolling && rootScrollFrame) {
     nsIScrollableFrame* rootScrollableFrame =
         presShell->GetRootScrollFrameAsScrollable();
@@ -5986,8 +5999,8 @@ bool nsLayoutUtils::GetLastLineBaseline(WritingMode aWM, const nsIFrame* aFrame,
     // `ColumnSetWrapperFrame` level, but this keeps it symmetric to
     // `GetFirstLinePosition`.
     if (aFrame->IsColumnSetFrame()) {
-      const auto baseline =
-          aFrame->GetNaturalBaselineBOffset(aWM, BaselineSharingGroup::Last);
+      const auto baseline = aFrame->GetNaturalBaselineBOffset(
+          aWM, BaselineSharingGroup::Last, BaselineExportContext::Other);
       if (!baseline) {
         return false;
       }

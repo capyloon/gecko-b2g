@@ -144,6 +144,7 @@
 #include "mozilla/css/Rule.h"
 #include "mozilla/css/SheetParsingMode.h"
 #include "mozilla/dom/AnonymousContent.h"
+#include "mozilla/dom/BlobURLProtocolHandler.h"
 #include "mozilla/dom/BrowserChild.h"
 #include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/BrowsingContextGroup.h"
@@ -3967,6 +3968,13 @@ nsresult Document::InitFeaturePolicy(nsIChannel* aChannel) {
   }
 
   return NS_OK;
+}
+
+void Document::EnsureNotEnteringAndExitFullscreen() {
+  Document::ClearPendingFullscreenRequests(this);
+  if (GetFullscreenElement()) {
+    Document::AsyncExitFullscreen(this);
+  }
 }
 
 void Document::SetReferrerInfo(nsIReferrerInfo* aReferrerInfo) {
@@ -8115,15 +8123,6 @@ void Document::DispatchContentLoadedEvents() {
     }
   }
 
-  // If the document has a manifest attribute, fire a MozApplicationManifest
-  // event.
-  Element* root = GetRootElement();
-  if (root && root->HasAttr(kNameSpaceID_None, nsGkAtoms::manifest)) {
-    nsContentUtils::DispatchChromeEvent(this, ToSupports(this),
-                                        u"MozApplicationManifest"_ns,
-                                        CanBubble::eYes, Cancelable::eYes);
-  }
-
   nsPIDOMWindowInner* inner = GetInnerWindow();
   if (inner) {
     inner->NoteDOMContentLoaded();
@@ -10766,10 +10765,9 @@ void Document::SetMetaViewportData(UniquePtr<ViewportMetaData> aData) {
   // Trigger recomputation of the nsViewportInfo the next time it's queried.
   mViewportType = Unknown;
 
-  RefPtr<AsyncEventDispatcher> asyncDispatcher =
-      new AsyncEventDispatcher(this, u"DOMMetaViewportFitChanged"_ns,
-                               CanBubble::eYes, ChromeOnlyDispatch::eYes);
-  asyncDispatcher->RunDOMEventWhenSafe();
+  AsyncEventDispatcher::RunDOMEventWhenSafe(
+      *this, u"DOMMetaViewportFitChanged"_ns, CanBubble::eYes,
+      ChromeOnlyDispatch::eYes);
 }
 
 EventListenerManager* Document::GetOrCreateListenerManager() {
@@ -11977,9 +11975,10 @@ void Document::MutationEventDispatched(nsINode* aTarget) {
 
   mSubtreeModifiedTargets.Clear();
 
-  for (nsINode* target : realTargets) {
+  for (const nsCOMPtr<nsINode>& target : realTargets) {
     InternalMutationEvent mutation(true, eLegacySubtreeModified);
-    (new AsyncEventDispatcher(target, mutation))->RunDOMEventWhenSafe();
+    // MOZ_KnownLive due to bug 1620312
+    AsyncEventDispatcher::RunDOMEventWhenSafe(MOZ_KnownLive(*target), mutation);
   }
 }
 
@@ -12224,9 +12223,8 @@ void Document::SetReadyStateInternal(ReadyState aReadyState,
     RecordNavigationTiming(aReadyState);
   }
 
-  RefPtr<AsyncEventDispatcher> asyncDispatcher = new AsyncEventDispatcher(
-      this, u"readystatechange"_ns, CanBubble::eNo, ChromeOnlyDispatch::eNo);
-  asyncDispatcher->RunDOMEventWhenSafe();
+  AsyncEventDispatcher::RunDOMEventWhenSafe(
+      *this, u"readystatechange"_ns, CanBubble::eNo, ChromeOnlyDispatch::eNo);
 }
 
 void Document::GetReadyState(nsAString& aReadyState) const {
@@ -14048,9 +14046,9 @@ NS_IMPL_ISUPPORTS(DevToolsMutationObserver, nsIMutationObserver)
 
 void DevToolsMutationObserver::FireEvent(nsINode* aTarget,
                                          const nsAString& aType) {
-  (new AsyncEventDispatcher(aTarget, aType, CanBubble::eNo,
-                            ChromeOnlyDispatch::eYes, Composed::eYes))
-      ->RunDOMEventWhenSafe();
+  AsyncEventDispatcher::RunDOMEventWhenSafe(*aTarget, aType, CanBubble::eNo,
+                                            ChromeOnlyDispatch::eYes,
+                                            Composed::eYes);
 }
 
 void DevToolsMutationObserver::AttributeChanged(Element* aElement,
@@ -15034,6 +15032,11 @@ void Document::HideAllPopoversUntil(nsINode& aEndpoint,
   }
 }
 
+MOZ_CAN_RUN_SCRIPT_BOUNDARY void
+Document::HideAllPopoversWithoutRunningScript() {
+  return HideAllPopoversUntil(*this, false, false);
+}
+
 // https://html.spec.whatwg.org/#dom-hidepopover
 void Document::HidePopover(Element& aPopover, bool aFocusPreviousElement,
                            bool aFireEvents, ErrorResult& aRv) {
@@ -15046,9 +15049,15 @@ void Document::HidePopover(Element& aPopover, bool aFocusPreviousElement,
     return;
   }
 
+  bool wasHiding = popoverHTMLEl->GetPopoverData()->IsHiding();
+  popoverHTMLEl->GetPopoverData()->SetIsHiding(true);
+  auto restoreIsHiding = MakeScopeExit([&]() {
+    if (auto* popoverData = popoverHTMLEl->GetPopoverData()) {
+      popoverData->SetIsHiding(wasHiding);
+    }
+  });
+
   if (popoverHTMLEl->IsAutoPopover()) {
-    // TODO: There might be a circle if show other auto popover while hidding
-    // See, https://github.com/whatwg/html/issues/9196
     HideAllPopoversUntil(*popoverHTMLEl, aFocusPreviousElement, aFireEvents);
     if (!popoverHTMLEl->CheckPopoverValidity(PopoverVisibilityState::Showing,
                                              nullptr, aRv)) {
@@ -15073,7 +15082,7 @@ void Document::HidePopover(Element& aPopover, bool aFocusPreviousElement,
   aPopover.SetHasPopoverInvoker(false);
 
   // Fire beforetoggle event and re-check popover validity.
-  if (aFireEvents) {
+  if (aFireEvents && !wasHiding) {
     // Intentionally ignore the return value here as only on open event for
     // beforetoggle the cancelable attribute is initialized to true.
     popoverHTMLEl->FireToggleEvent(PopoverVisibilityState::Showing,
@@ -15263,6 +15272,10 @@ bool Document::FullscreenElementReadyCheck(FullscreenRequest& aRequest) {
   }
   if (!elem->IsInComposedDoc()) {
     aRequest.Reject("FullscreenDeniedNotInDocument");
+    return false;
+  }
+  if (elem->IsPopoverOpen()) {
+    aRequest.Reject("FullscreenDeniedPopoverOpen");
     return false;
   }
   if (elem->OwnerDoc() != this) {
@@ -15484,6 +15497,9 @@ bool Document::ApplyFullscreen(UniquePtr<FullscreenRequest> aRequest) {
   if (!FullscreenElementReadyCheck(*aRequest)) {
     return false;
   }
+
+  RefPtr<Document> doc = aRequest->Document();
+  doc->HideAllPopoversWithoutRunningScript();
 
   // Stash a reference to any existing fullscreen doc, we'll use this later
   // to detect if the origin which is fullscreen has changed.
@@ -16176,10 +16192,23 @@ void Document::SendPageUseCounters() {
 }
 
 void Document::RecomputeResistFingerprinting() {
-  mShouldResistFingerprinting =
-      !nsContentUtils::IsChromeDoc(this) &&
-      nsContentUtils::ShouldResistFingerprinting(
-          mChannel, RFPTarget::IsAlwaysEnabledForPrecompute);
+  if (mParentDocument &&
+      (NodePrincipal()->Equals(mParentDocument->NodePrincipal()) ||
+       NodePrincipal()->GetIsNullPrincipal())) {
+    // If we have a parent document, defer to it only when we have a null
+    // principal (e.g. a sandboxed iframe or a data: uri) or when the parent
+    // document's principal matches.  This means we will defer about:blank,
+    // about:srcdoc, blob and same-origin iframes to the parent, but not
+    // cross-origin iframes.
+    mShouldResistFingerprinting = !nsContentUtils::IsChromeDoc(this) &&
+                                  mParentDocument->ShouldResistFingerprinting(
+                                      RFPTarget::IsAlwaysEnabledForPrecompute);
+  } else {
+    mShouldResistFingerprinting =
+        !nsContentUtils::IsChromeDoc(this) &&
+        nsContentUtils::ShouldResistFingerprinting(
+            mChannel, RFPTarget::IsAlwaysEnabledForPrecompute);
+  }
 }
 
 bool Document::ShouldResistFingerprinting(
@@ -18156,20 +18185,30 @@ nsICookieJarSettings* Document::CookieJarSettings() {
   if (!mCookieJarSettings) {
     Document* inProcessParent = GetInProcessParentDocument();
 
-    mCookieJarSettings =
-        inProcessParent
-            ? net::CookieJarSettings::Create(
-                  inProcessParent->CookieJarSettings()->GetCookieBehavior(),
-                  mozilla::net::CookieJarSettings::Cast(
-                      inProcessParent->CookieJarSettings())
-                      ->GetPartitionKey(),
-                  inProcessParent->CookieJarSettings()
-                      ->GetIsFirstPartyIsolated(),
-                  inProcessParent->CookieJarSettings()
-                      ->GetIsOnContentBlockingAllowList(),
-                  inProcessParent->CookieJarSettings()
-                      ->GetShouldResistFingerprinting())
-            : net::CookieJarSettings::Create(NodePrincipal());
+    if (inProcessParent) {
+      mCookieJarSettings = net::CookieJarSettings::Create(
+          inProcessParent->CookieJarSettings()->GetCookieBehavior(),
+          mozilla::net::CookieJarSettings::Cast(
+              inProcessParent->CookieJarSettings())
+              ->GetPartitionKey(),
+          inProcessParent->CookieJarSettings()->GetIsFirstPartyIsolated(),
+          inProcessParent->CookieJarSettings()
+              ->GetIsOnContentBlockingAllowList(),
+          inProcessParent->CookieJarSettings()
+              ->GetShouldResistFingerprinting());
+
+      // Inherit the fingerprinting random key from the parent.
+      nsTArray<uint8_t> randomKey;
+      nsresult rv = inProcessParent->CookieJarSettings()
+                        ->GetFingerprintingRandomizationKey(randomKey);
+
+      if (NS_SUCCEEDED(rv)) {
+        net::CookieJarSettings::Cast(mCookieJarSettings)
+            ->SetFingerprintingRandomizationKey(randomKey);
+      }
+    } else {
+      mCookieJarSettings = net::CookieJarSettings::Create(NodePrincipal());
+    }
 
     if (auto* wgc = GetWindowGlobalChild()) {
       net::CookieJarSettingsArgs csArgs;

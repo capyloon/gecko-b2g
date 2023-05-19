@@ -33,7 +33,6 @@
 #include "MotionEvent.h"
 #include "ScopedGLHelpers.h"
 #include "ScreenHelperAndroid.h"
-#include "SurfaceViewWrapperSupport.h"
 #include "TouchResampler.h"
 #include "WidgetUtils.h"
 #include "WindowRenderer.h"
@@ -78,6 +77,7 @@
 #include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/gfx/DataSurfaceHelpers.h"
+#include "mozilla/gfx/Logging.h"
 #include "mozilla/gfx/Swizzle.h"
 #include "mozilla/gfx/Types.h"
 #include "mozilla/ipc/Shmem.h"
@@ -881,9 +881,19 @@ class NPZCSupport final
 
     if (result.GetStatus() == nsEventStatus_eConsumeNoDefault) {
       if (aReturnResult) {
-        aReturnResult->Complete(java::PanZoomController::InputResultDetail::New(
-            INPUT_RESULT_IGNORED, java::PanZoomController::SCROLLABLE_FLAG_NONE,
-            java::PanZoomController::OVERSCROLL_FLAG_NONE));
+        if (result.GetHandledResult() != Nothing()) {
+          aReturnResult->Complete(
+              ConvertAPZHandledResult(result.GetHandledResult().value()));
+        } else {
+          MOZ_ASSERT_UNREACHABLE(
+              "nsEventStatus_eConsumeNoDefault should involve a valid "
+              "APZHandledResult");
+          aReturnResult->Complete(
+              java::PanZoomController::InputResultDetail::New(
+                  INPUT_RESULT_IGNORED,
+                  java::PanZoomController::SCROLLABLE_FLAG_NONE,
+                  java::PanZoomController::OVERSCROLL_FLAG_NONE));
+        }
       }
       return;
     }
@@ -935,6 +945,8 @@ class LayerViewSupport final
   // Set in NotifyCompositorCreated and cleared in
   // NotifyCompositorSessionLost.
   RefPtr<UiCompositorControllerChild> mUiCompositorControllerChild;
+  // Whether we have requested a new Surface from the GeckoSession.
+  bool mRequestedNewSurface = false;
 
   Maybe<uint32_t> mDefaultClearColor;
 
@@ -1073,7 +1085,13 @@ class LayerViewSupport final
         }
       }
 
-      mUiCompositorControllerChild->ResumeAndResize(mX, mY, mWidth, mHeight);
+      bool resumed = mUiCompositorControllerChild->ResumeAndResize(
+          mX, mY, mWidth, mHeight);
+      if (!resumed) {
+        gfxCriticalNote
+            << "Failed to resume compositor from NotifyCompositorCreated";
+        RequestNewSurface();
+      }
     }
   }
 
@@ -1255,7 +1273,12 @@ class LayerViewSupport final
 
     if (mUiCompositorControllerChild) {
       mCompositorPaused = false;
-      mUiCompositorControllerChild->Resume();
+      bool resumed = mUiCompositorControllerChild->Resume();
+      if (!resumed) {
+        gfxCriticalNote
+            << "Failed to resume compositor from SyncResumeCompositor";
+        RequestNewSurface();
+      }
     }
   }
 
@@ -1264,13 +1287,6 @@ class LayerViewSupport final
       int32_t aWidth, int32_t aHeight, jni::Object::Param aSurface,
       jni::Object::Param aSurfaceControl) {
     MOZ_ASSERT(AndroidBridge::IsJavaUiThread());
-
-    // If our Surface is in an abandoned state then we will never succesfully
-    // create an EGL Surface, and will eventually crash. Better to explicitly
-    // crash now.
-    if (SurfaceViewWrapperSupport::IsSurfaceAbandoned(aSurface)) {
-      MOZ_CRASH("Compositor resumed with abandoned Surface");
-    }
 
     mX = aX;
     mY = aY;
@@ -1299,8 +1315,22 @@ class LayerViewSupport final
         }
       }
 
-      mUiCompositorControllerChild->ResumeAndResize(aX, aY, aWidth, aHeight);
+      bool resumed = mUiCompositorControllerChild->ResumeAndResize(
+          aX, aY, aWidth, aHeight);
+      if (!resumed) {
+        gfxCriticalNote
+            << "Failed to resume compositor from SyncResumeResizeCompositor";
+        // Only request a new Surface if this SyncResumeAndResize call is not
+        // response to a previous request, otherwise we will get stuck in an
+        // infinite loop.
+        if (!mRequestedNewSurface) {
+          RequestNewSurface();
+        }
+        return;
+      }
     }
+
+    mRequestedNewSurface = false;
 
     mCompositorPaused = false;
 
@@ -1352,6 +1382,17 @@ class LayerViewSupport final
     // Use priority queue for timing-sensitive event.
     nsAppShell::PostEvent(
         MakeUnique<LayerViewEvent>(MakeUnique<OnResumedEvent>(aObj)));
+  }
+
+  void RequestNewSurface() {
+    if (const auto& compositor = GetJavaCompositor()) {
+      mRequestedNewSurface = true;
+      if (mSurfaceControl) {
+        java::SurfaceControlManager::GetInstance()->RemoveSurface(
+            mSurfaceControl);
+      }
+      compositor->RequestNewSurface();
+    }
   }
 
   mozilla::jni::Object::LocalRef GetMagnifiableSurface() {
@@ -2626,10 +2667,6 @@ void* nsWindow::GetNativeData(uint32_t aDataType) {
   }
 
   return nullptr;
-}
-
-void nsWindow::SetNativeData(uint32_t aDataType, uintptr_t aVal) {
-  switch (aDataType) {}
 }
 
 void nsWindow::DispatchHitTest(const WidgetTouchEvent& aEvent) {

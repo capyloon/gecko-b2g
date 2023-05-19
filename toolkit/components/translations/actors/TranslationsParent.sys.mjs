@@ -25,6 +25,7 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 ChromeUtils.defineESModuleGetters(lazy, {
   RemoteSettings: "resource://services-settings/remote-settings.sys.mjs",
+  setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
 XPCOMUtils.defineLazyGetter(lazy, "console", () => {
@@ -68,6 +69,7 @@ const VERIFY_SIGNATURES_FROM_FS = false;
  * @typedef {import("../translations").LanguagePair} LanguagePair
  * @typedef {import("../translations").SupportedLanguages} SupportedLanguages
  * @typedef {import("../translations").LanguageIdModelRecord} LanguageIdModelRecord
+ * @typedef {import("../translations").TranslationErrors} TranslationErrors
  */
 
 /**
@@ -96,15 +98,29 @@ export class TranslationsParent extends JSWindowActorParent {
 
   actorCreated() {
     this.languageState = new TranslationsLanguageState(this);
+
+    if (TranslationsParent.#translateOnPageReload) {
+      // The actor was recreated after a page reload, start the translation.
+      const {
+        fromLanguage,
+        toLanguage,
+      } = TranslationsParent.#translateOnPageReload;
+      TranslationsParent.#translateOnPageReload = null;
+
+      lazy.console.log(
+        `Translating on a page reload from "${fromLanguage}" to "${toLanguage}".`
+      );
+
+      this.translate(fromLanguage, toLanguage);
+    }
   }
 
   /**
    * The remote settings client that retrieves the language-identification model binary.
-   * This is public so that tests can provide a mocked RemoteSettingsClient.
    *
    * @type {RemoteSettingsClient | null}
    */
-  static languageIdModelsRemoteClient = null;
+  static #languageIdModelsRemoteClient = null;
 
   /**
    * A map of the TranslationModelRecord["id"] to the record of the model in Remote Settings.
@@ -115,20 +131,18 @@ export class TranslationsParent extends JSWindowActorParent {
   #translationModelRecords = new Map();
 
   /**
-   * The RemoteSettingsClient that downloads the translation models. This is public so
-   * that tests can provide a mocked RemoteSettingsClient.
+   * The RemoteSettingsClient that downloads the translation models.
    *
    * @type {RemoteSettingsClient | null}
    */
-  static translationModelsRemoteClient = null;
+  static #translationModelsRemoteClient = null;
 
   /**
-   * The RemoteSettingsClient that downloads the wasm binaries. This is public so that
-   * tests can provide a mocked RemoteSettingsClient.
+   * The RemoteSettingsClient that downloads the wasm binaries.
    *
    * @type {RemoteSettingsClient | null}
    */
-  static translationsWasmRemoteClient = null;
+  static #translationsWasmRemoteClient = null;
 
   /**
    * If "browser.translations.autoTranslate" is set to "true" then the page will
@@ -138,11 +152,12 @@ export class TranslationsParent extends JSWindowActorParent {
   static #isPageRestoredForAutoTranslate = false;
 
   /**
-   * The translation engine can be mocked for testing.
+   * Allows the actor's behavior to be changed when the translations engine is mocked via
+   * a dummy RemoteSettingsClient.
    *
-   * @type {LanguagePair[]>}
+   * @type {bool}
    */
-  static #mockedLanguagePairs = null;
+  static #isTranslationsEngineMocked = false;
 
   /**
    * The language identification engine can be mocked for testing
@@ -161,17 +176,16 @@ export class TranslationsParent extends JSWindowActorParent {
   static #mockedLanguageIdConfidence = null;
 
   /**
-   * The RemoteSettings client can be mocked for testing to ensure
-   * that logic for filtering records is behaving correctly.
-   *
-   * @type {RemoteSettingsClient | null}
-   */
-  static #mockedRemoteSettingsClient = null;
-
-  /**
    * @type {null | Promise<boolean>}
    */
   static #isTranslationsEngineSupported = null;
+
+  /**
+   * When reloading the page, store the translation pair that needs translating.
+   *
+   * @type {null | TranslationPair}
+   */
+  static #translateOnPageReload = null;
 
   // On a fast connection, 10 concurrent downloads were measured to be the fastest when
   // downloading all of the language files.
@@ -199,7 +213,7 @@ export class TranslationsParent extends JSWindowActorParent {
       return Promise.resolve(false);
     }
 
-    if (TranslationsParent.#mockedLanguagePairs) {
+    if (TranslationsParent.#isTranslationsEngineMocked) {
       // A mocked translations engine is always supported.
       return Promise.resolve(true);
     }
@@ -226,50 +240,59 @@ export class TranslationsParent extends JSWindowActorParent {
 
   async receiveMessage({ name, data }) {
     switch (name) {
-      case "Translations:GetBergamotWasmArrayBuffer": {
-        return this.#getBergamotWasmArrayBuffer();
+      case "Translations:GetTranslationsEnginePayload": {
+        const { fromLanguage, toLanguage } = data;
+        const bergamotWasmArrayBuffer = this.#getBergamotWasmArrayBuffer();
+
+        let files = await this.getLanguageTranslationModelFiles(
+          fromLanguage,
+          toLanguage
+        );
+
+        let languageModelFiles;
+        if (files) {
+          languageModelFiles = [files];
+        } else {
+          // No matching model was found, try to pivot between English.
+          const [files1, files2] = await Promise.all([
+            this.getLanguageTranslationModelFiles(fromLanguage, PIVOT_LANGUAGE),
+            this.getLanguageTranslationModelFiles(PIVOT_LANGUAGE, toLanguage),
+          ]);
+          if (!files1 || !files2) {
+            throw new Error(
+              `No language models were found for ${fromLanguage} to ${toLanguage}`
+            );
+          }
+          languageModelFiles = [files1, files2];
+        }
+
+        return {
+          bergamotWasmArrayBuffer: await bergamotWasmArrayBuffer,
+          languageModelFiles,
+          isMocked: TranslationsParent.#isTranslationsEngineMocked,
+        };
       }
-      case "Translations:GetLanguageIdModelArrayBuffer": {
-        return this.#getLanguageIdModelArrayBuffer();
-      }
-      case "Translations:GetLanguageIdWasmArrayBuffer": {
-        return this.#getLanguageIdWasmArrayBuffer();
-      }
-      case "Translations:GetLanguageIdEngineMockedPayload": {
-        return this.#getLanguageIdEngineMockedPayload();
+      case "Translations:GetLanguageIdEnginePayload": {
+        const [modelBuffer, wasmBuffer] = await Promise.all([
+          this.#getLanguageIdModelArrayBuffer(),
+          this.#getLanguageIdWasmArrayBuffer(),
+        ]);
+        return {
+          modelBuffer,
+          wasmBuffer,
+          mockedConfidence: TranslationsParent.#mockedLanguageIdConfidence,
+          mockedLangTag: TranslationsParent.#mockedLangTag,
+        };
       }
       case "Translations:GetIsTranslationsEngineMocked": {
-        return Boolean(TranslationsParent.#mockedLanguagePairs);
+        return TranslationsParent.#isTranslationsEngineMocked;
       }
       case "Translations:GetIsTranslationsEngineSupported": {
         return TranslationsParent.getIsTranslationsEngineSupported();
       }
       case "Translations:FullPageTranslationFailed": {
-        // Reset the TranslationsLanguageState in case of an engine failure.
-        this.languageState.requestedTranslationPair = null;
+        this.languageState.error = data.reason;
         break;
-      }
-      case "Translations:GetLanguageTranslationModelFiles": {
-        const { fromLanguage, toLanguage } = data;
-        const files = await this.getLanguageTranslationModelFiles(
-          fromLanguage,
-          toLanguage
-        );
-        if (files) {
-          // No pivoting is required.
-          return [files];
-        }
-        // No matching model was found, try to pivot between English.
-        const [files1, files2] = await Promise.all([
-          this.getLanguageTranslationModelFiles(fromLanguage, PIVOT_LANGUAGE),
-          this.getLanguageTranslationModelFiles(PIVOT_LANGUAGE, toLanguage),
-        ]);
-        if (!files1 || !files2) {
-          throw new Error(
-            `No language models were found for ${fromLanguage} to ${toLanguage}`
-          );
-        }
-        return [files1, files2];
       }
       case "Translations:GetSupportedLanguages": {
         return this.getSupportedLanguages();
@@ -332,7 +355,7 @@ export class TranslationsParent extends JSWindowActorParent {
     const client = this.#getLanguageIdModelRemoteClient();
 
     /** @type {LanguageIdModelRecord[]} */
-    const modelRecords = await TranslationsParent.getMaxVersionRecords(client);
+    let modelRecords = await TranslationsParent.getMaxVersionRecords(client);
 
     if (modelRecords.length === 0) {
       throw new Error(
@@ -349,6 +372,8 @@ export class TranslationsParent extends JSWindowActorParent {
       );
     }
     const [modelRecord] = modelRecords;
+
+    await chaosModeError(1 / 3);
 
     /** @type {{buffer: ArrayBuffer}} */
     const { buffer } = await client.attachments.download(modelRecord);
@@ -367,15 +392,15 @@ export class TranslationsParent extends JSWindowActorParent {
    * @returns {RemoteSettingsClient}
    */
   #getLanguageIdModelRemoteClient() {
-    if (TranslationsParent.languageIdModelsRemoteClient) {
-      return TranslationsParent.languageIdModelsRemoteClient;
+    if (TranslationsParent.#languageIdModelsRemoteClient) {
+      return TranslationsParent.#languageIdModelsRemoteClient;
     }
 
     /** @type {RemoteSettingsClient} */
     const client = lazy.RemoteSettings("translations-identification-models");
     bypassSignatureVerificationIfDev(client);
 
-    TranslationsParent.languageIdModelsRemoteClient = client;
+    TranslationsParent.#languageIdModelsRemoteClient = client;
     return client;
   }
 
@@ -392,7 +417,7 @@ export class TranslationsParent extends JSWindowActorParent {
     lazy.console.log(`Getting remote language-identification wasm binary.`);
 
     /** @type {WasmRecord[]} */
-    const wasmRecords = await TranslationsParent.getMaxVersionRecords(client, {
+    let wasmRecords = await TranslationsParent.getMaxVersionRecords(client, {
       filters: { name: "fasttext-wasm" },
     });
 
@@ -417,6 +442,8 @@ export class TranslationsParent extends JSWindowActorParent {
     // cache on disk if it's already been downloaded. Do not retain a copy, as
     // this will be running in the parent process. It's not worth holding onto
     // this much memory, so reload it every time it is needed.
+
+    await chaosModeError(1 / 3);
 
     /** @type {{buffer: ArrayBuffer}} */
     const { buffer } = await client.attachments.download(wasmRecords[0]);
@@ -465,10 +492,6 @@ export class TranslationsParent extends JSWindowActorParent {
    * @returns {Promise<Array<LanguagePair>>}
    */
   async getLanguagePairs() {
-    if (TranslationsParent.#mockedLanguagePairs) {
-      return TranslationsParent.#mockedLanguagePairs;
-    }
-
     const records = await this.#getTranslationModelRecords();
     const languagePairMap = new Map();
 
@@ -562,13 +585,13 @@ export class TranslationsParent extends JSWindowActorParent {
    * @returns {RemoteSettingsClient}
    */
   #getTranslationModelsRemoteClient() {
-    if (TranslationsParent.translationModelsRemoteClient) {
-      return TranslationsParent.translationModelsRemoteClient;
+    if (TranslationsParent.#translationModelsRemoteClient) {
+      return TranslationsParent.#translationModelsRemoteClient;
     }
 
     /** @type {RemoteSettingsClient} */
     const client = lazy.RemoteSettings("translations-models");
-    TranslationsParent.translationModelsRemoteClient = client;
+    TranslationsParent.#translationModelsRemoteClient = client;
 
     bypassSignatureVerificationIfDev(client);
 
@@ -631,13 +654,17 @@ export class TranslationsParent extends JSWindowActorParent {
     remoteSettingsClient,
     { filters = {}, lookupKey = record => record.name } = {}
   ) {
+    try {
+      await chaosMode(1 / 4);
+    } catch (_error) {
+      // Simulate an error by providing empty records.
+      return [];
+    }
     const retrievedRecords = await remoteSettingsClient.get({
       // Pull the records from the network.
       syncIfEmpty: true,
       // Don't verify the signature if the client is mocked.
-      verifySignature: TranslationsParent.#mockedRemoteSettingsClient
-        ? false
-        : VERIFY_SIGNATURES_FROM_FS,
+      verifySignature: VERIFY_SIGNATURES_FROM_FS,
       // Apply any filters for retrieving the records.
       filters,
     });
@@ -691,6 +718,10 @@ export class TranslationsParent extends JSWindowActorParent {
           )}`,
       }
     );
+
+    if (translationModelRecords.length === 0) {
+      throw new Error("Unable to retrieve the translation models.");
+    }
 
     for (const record of TranslationsParent.ensureLanguagePairsHavePivots(
       translationModelRecords
@@ -790,14 +821,14 @@ export class TranslationsParent extends JSWindowActorParent {
    * @returns {RemoteSettingsClient}
    */
   #getTranslationsWasmRemoteClient() {
-    if (TranslationsParent.translationsWasmRemoteClient) {
-      return TranslationsParent.translationsWasmRemoteClient;
+    if (TranslationsParent.#translationsWasmRemoteClient) {
+      return TranslationsParent.#translationsWasmRemoteClient;
     }
 
     /** @type {RemoteSettingsClient} */
     const client = lazy.RemoteSettings("translations-wasm");
 
-    TranslationsParent.translationsWasmRemoteClient = client;
+    TranslationsParent.#translationsWasmRemoteClient = client;
 
     bypassSignatureVerificationIfDev(client);
 
@@ -864,6 +895,8 @@ export class TranslationsParent extends JSWindowActorParent {
     // cache on disk if it's already been downloaded. Do not retain a copy, as
     // this will be running in the parent process. It's not worth holding onto
     // this much memory, so reload it every time it is needed.
+
+    await chaosModeError(1 / 3);
 
     /** @type {{buffer: ArrayBuffer}} */
     const { buffer } = await client.attachments.download(wasmRecords[0]);
@@ -956,6 +989,7 @@ export class TranslationsParent extends JSWindowActorParent {
    */
   async deleteAllLanguageFiles() {
     const client = this.#getTranslationModelsRemoteClient();
+    await chaosMode();
     await client.attachments.deleteAll();
     return [...(await this.#getTranslationModelRecords()).keys()];
   }
@@ -1096,6 +1130,8 @@ export class TranslationsParent extends JSWindowActorParent {
 
         // Download or retrieve from the local cache:
 
+        await chaosModeError(1 / 3);
+
         /** @type {{buffer: ArrayBuffer }} */
         const { buffer } = await client.attachments.download(record);
 
@@ -1164,42 +1200,29 @@ export class TranslationsParent extends JSWindowActorParent {
    * For testing purposes, allow the Translations Engine to be mocked. If called
    * with `null` the mock is removed.
    *
-   * @param {null | Array<{ fromLang: string, toLang: string }>} languagePairs
+   * @param {null | RemoteSettingsClient} [translationModelsRemoteClient]
+   * @param {null | RemoteSettingsClient} [translationsWasmRemoteClient]
    */
-  static mockLanguagePairs(languagePairs) {
-    if (languagePairs) {
-      // Apply the same pivot logic to mocked language pairs so that this behavior
-      // gets tested.
-      TranslationsParent.#mockedLanguagePairs = TranslationsParent.ensureLanguagePairsHavePivots(
-        languagePairs
-      );
-    } else {
-      TranslationsParent.#mockedLanguagePairs = null;
-    }
-
-    if (languagePairs) {
-      lazy.console.log(
-        "Mocking language pairs",
-        TranslationsParent.#mockedLanguagePairs
-      );
-    } else {
-      lazy.console.log("Removing language pair mocks");
-    }
+  static mockTranslationsEngine(
+    translationModelsRemoteClient,
+    translationsWasmRemoteClient
+  ) {
+    lazy.console.log("Mocking RemoteSettings for the translations engine.");
+    TranslationsParent.#translationModelsRemoteClient = translationModelsRemoteClient;
+    TranslationsParent.#translationsWasmRemoteClient = translationsWasmRemoteClient;
+    TranslationsParent.#isTranslationsEngineMocked = true;
   }
 
   /**
-   * For testing purposes, allow the RemoteSettingsClient to be mocked. If called
-   * with `null` the mock is removed.
-   *
-   * @param {null | RemoteSettingsClient>} client
+   * Remove the mocks.
    */
-  static mockRemoteSettingsClient(client) {
-    TranslationsParent.#mockedRemoteSettingsClient = client;
-    if (client) {
-      console.log("Mocking RemoteSettings client");
-    } else {
-      console.log("Removing RemoteSettings client mock");
-    }
+  static unmockTranslationsEngine() {
+    lazy.console.log(
+      "Removing RemoteSettings mock for the translations engine."
+    );
+    TranslationsParent.#translationModelsRemoteClient = null;
+    TranslationsParent.#translationsWasmRemoteClient = null;
+    TranslationsParent.#isTranslationsEngineMocked = false;
   }
 
   /**
@@ -1208,22 +1231,27 @@ export class TranslationsParent extends JSWindowActorParent {
    *
    * @param {string} langTag - The BCP 47 language tag.
    * @param {number} confidence  - The confidence score of the detected language.
+   * @param {RemoteSettingsClient} client
    */
-  static mockLanguageIdentification(langTag, confidence) {
+  static mockLanguageIdentification(langTag, confidence, client) {
+    lazy.console.log("Mocking language identification.", {
+      langTag,
+      confidence,
+    });
     TranslationsParent.#mockedLangTag = langTag;
     TranslationsParent.#mockedLanguageIdConfidence = confidence;
-    if (langTag) {
-      lazy.console.log("Mocking detected language tag", langTag);
-    } else {
-      lazy.console.log("Removing detected language tag mock");
-    }
-    if (langTag) {
-      lazy.console.log("Mocking detected language confidence", confidence);
-    } else {
-      lazy.console.log("Removing detected-language confidence mock");
-    }
+    TranslationsParent.#languageIdModelsRemoteClient = client;
   }
 
+  /**
+   * Remove the mocks
+   */
+  static unmockLanguageIdentification() {
+    lazy.console.log("Removing language identification mock.");
+    TranslationsParent.#mockedLangTag = null;
+    TranslationsParent.#mockedLanguageIdConfidence = null;
+    TranslationsParent.#languageIdModelsRemoteClient = null;
+  }
   /**
    * Report an error. Having this as a method allows tests to check that an error
    * was properly reported.
@@ -1240,15 +1268,21 @@ export class TranslationsParent extends JSWindowActorParent {
    * @param {string} toLanguage
    */
   translate(fromLanguage, toLanguage) {
-    this.languageState.requestedTranslationPair = {
-      fromLanguage,
-      toLanguage,
-    };
-
-    this.sendAsyncMessage("Translations:TranslatePage", {
-      fromLanguage,
-      toLanguage,
-    });
+    if (this.languageState.requestedTranslationPair) {
+      // This page has already been translated, restore it and translate it
+      // again once the actor has been recreated.
+      TranslationsParent.#translateOnPageReload = { fromLanguage, toLanguage };
+      this.restorePage();
+    } else {
+      this.languageState.requestedTranslationPair = {
+        fromLanguage,
+        toLanguage,
+      };
+      this.sendAsyncMessage("Translations:TranslatePage", {
+        fromLanguage,
+        toLanguage,
+      });
+    }
   }
 
   /**
@@ -1350,67 +1384,33 @@ function detectSimdSupport() {
  * the UI.
  */
 class TranslationsLanguageState {
-  #actor;
+  /**
+   * @param {TranslationsParent} actor
+   */
   constructor(actor) {
     this.#actor = actor;
     this.dispatch();
   }
 
+  /**
+   * The data members for TranslationsLanguageState, see the getters for their
+   * documentation.
+   */
+
+  /** @type {TranslationsParent} */
+  #actor;
+
   /** @type {TranslationPair | null} */
   #requestedTranslationPair = null;
-
-  /**
-   * When a translation is requested, this contains the translation pair. This means
-   * that the TranslationsChild should be creating a TranslationsDocument and keep
-   * the page updated with the target language.
-   *
-   * @returns {TranslationPair | null}
-   */
-  get requestedTranslationPair() {
-    return this.#requestedTranslationPair;
-  }
-
-  set requestedTranslationPair(requestedTranslationPair) {
-    this.#requestedTranslationPair = requestedTranslationPair;
-    this.dispatch();
-  }
 
   /** @type {DetectedLanguages | null} */
   #detectedLanguages = null;
 
-  /**
-   * The TranslationsChild will detect languages and offer them up for translation.
-   * The results are stored here.
-   *
-   * @returns {DetectedLanguages | null}
-   */
-  get detectedLanguages() {
-    return this.#detectedLanguages;
-  }
-
-  set detectedLanguages(detectedLanguages) {
-    this.#detectedLanguages = detectedLanguages;
-    this.dispatch();
-  }
-
   /** @type {number} */
   #locationChangeId = -1;
 
-  /**
-   * This id represents the last location change that happened for this actor. This
-   * allows the UI to disambiguate when there are races and out of order events that
-   * are dispatched. Only the most up to date `locationChangeId` is used.
-   *
-   * @returns {number}
-   */
-  get locationChangeId() {
-    return this.#locationChangeId;
-  }
-
-  set locationChangeId(locationChangeId) {
-    this.#locationChangeId = locationChangeId;
-    this.dispatch();
-  }
+  /** @type {null | TranslationErrors} */
+  #error = null;
 
   /**
    * Dispatch anytime the language details change, so that any UI can react to it.
@@ -1432,9 +1432,76 @@ class TranslationsLanguageState {
         detail: {
           detectedLanguages: this.#detectedLanguages,
           requestedTranslationPair: this.#requestedTranslationPair,
+          error: this.#error,
         },
       })
     );
+  }
+
+  /**
+   * When a translation is requested, this contains the translation pair. This means
+   * that the TranslationsChild should be creating a TranslationsDocument and keep
+   * the page updated with the target language.
+   *
+   * @returns {TranslationPair | null}
+   */
+  get requestedTranslationPair() {
+    return this.#requestedTranslationPair;
+  }
+
+  set requestedTranslationPair(requestedTranslationPair) {
+    this.#error = null;
+    this.#requestedTranslationPair = requestedTranslationPair;
+    this.dispatch();
+  }
+
+  /**
+   * The TranslationsChild will detect languages and offer them up for translation.
+   * The results are stored here.
+   *
+   * @returns {DetectedLanguages | null}
+   */
+  get detectedLanguages() {
+    return this.#detectedLanguages;
+  }
+
+  set detectedLanguages(detectedLanguages) {
+    this.#detectedLanguages = detectedLanguages;
+    this.dispatch();
+  }
+
+  /**
+   * This id represents the last location change that happened for this actor. This
+   * allows the UI to disambiguate when there are races and out of order events that
+   * are dispatched. Only the most up to date `locationChangeId` is used.
+   *
+   * @returns {number}
+   */
+  get locationChangeId() {
+    return this.#locationChangeId;
+  }
+
+  set locationChangeId(locationChangeId) {
+    this.#locationChangeId = locationChangeId;
+
+    // When the location changes remove the previous error.
+    this.#error = null;
+
+    this.dispatch();
+  }
+
+  /**
+   * The last error that occured during translation.
+   */
+  get error() {
+    return this.#error;
+  }
+
+  set error(error) {
+    this.#error = error;
+    // Setting an error invalidates the requested translation pair.
+    this.#requestedTranslationPair = null;
+    this.dispatch();
   }
 }
 
@@ -1533,4 +1600,57 @@ async function downloadManager(queue) {
   lazy.console.log(
     `Finished ${originalQueueLength} downloads in ${duration} seconds.`
   );
+}
+
+/**
+ * The translations code has lots of async code and fallible network requests. To test
+ * this manually while using the feature, enable chaos mode by setting "errors" to true
+ * and "timeoutMS" to a positive number of milliseconds.
+ * prefs to true:
+ *
+ *  - browser.translations.chaos.timeoutMS
+ *  - browser.translations.chaos.errors
+ */
+async function chaosMode(probability = 0.5) {
+  await chaosModeTimer();
+  await chaosModeError(probability);
+}
+
+/**
+ * The translations code has lots of async code that relies on the network. To test
+ * this manually while using the feature, enable chaos mode by setting the following pref
+ * to a positive number of milliseconds.
+ *
+ *  - browser.translations.chaos.timeoutMS
+ */
+async function chaosModeTimer() {
+  /** @type {number} */
+  const timeoutLimit = Services.prefs.getIntPref(
+    "browser.translations.chaos.timeoutMS"
+  );
+  if (timeoutLimit) {
+    const timeout = Math.random() * timeoutLimit;
+    lazy.console.log(
+      `Chaos mode timer started for ${(timeout / 1000).toFixed(1)} seconds.`
+    );
+    await new Promise(resolve => lazy.setTimeout(resolve, timeout));
+  }
+}
+
+/**
+ * The translations code has lots of async code that is fallible. To test this manually
+ * while using the feature, enable chaos mode by setting the following pref to true.
+ *
+ *  - browser.translations.chaos.errors
+ */
+async function chaosModeError(probability = 0.5) {
+  if (
+    Services.prefs.getBoolPref("browser.translations.chaos.errors") &&
+    Math.random() < probability
+  ) {
+    lazy.console.trace(`Chaos mode error generated.`);
+    throw new Error(
+      `Chaos Mode error from the pref "browser.translations.chaos.errors".`
+    );
+  }
 }

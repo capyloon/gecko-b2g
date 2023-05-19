@@ -1750,6 +1750,29 @@
   value: @IS_EARLY_BETA_OR_EARLIER@
   mirror: always
 
+# This pref controls how filtering of opaque responses for calls to `Window.fetch`.
+# (and similar) is performed in the parent process. This is intended to make sure
+# that data that would be filtered in a content process never actually reaches that
+# content process.
+# See https://fetch.spec.whatwg.org/#concept-filtered-response-opaque
+#   0) Don't filter in the parent process at all, and let content processes handle
+#      opaque filtering. Regardless of if ORB is enabled or not. N.B. that if ORB
+#      is enabled opaque responses will be blocked.
+#   1) If ORB is enabled, in the parent process, filter the responses that ORB allows.
+#      N.B. any responses ORB doesn't allow will not send data to a content process
+#      since they will return a NetworkError. If the request is allowed by ORB, the
+#      internal response will be intact and sent to the content process as is.
+#   2) If ORB is enabled, in the parent process, filter the responses that ORB blocks,
+#      when they were issued by `Window.fetch` (and similar).
+#   3) Filter all responses in the parent, regardless of if ORB is enabled or not.
+#      This means that opaque responses coming from `Window.fetch` won't even be
+#      considered for being blocked by ORB.
+- name: browser.opaqueResponseBlocking.filterFetchResponse
+  type: uint32_t
+  value: 2
+  mirror: always
+  do_not_use_directly: true
+
 # When this pref is enabled, <object> and <embed> elements will create
 # synthetic documents when the resource type they're loading is an image.
 - name: browser.opaqueResponseBlocking.syntheticBrowsingContext
@@ -2322,7 +2345,7 @@
   mirror: always
 
 # Whether window.location.reload() and window.history.go(0) should be blocked
-# if called directly from a window resize event handler.
+# when called directly from a window resize event handler.
 #
 # This used to be necessary long ago to prevent terrible UX when using stuff
 # like TypeAheadFind (bug 258917), but it also causes compat issues on mobile
@@ -2877,7 +2900,7 @@
 # Enable indexedDB in private browsing mode with encryption
 - name: dom.indexedDB.privateBrowsing.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: true
   mirror: always
 
 # Whether or not indexedDB test mode is enabled.
@@ -3247,7 +3270,7 @@
 # Whether HTMLMediaElement.mozPreservesPitch is enabled.
 - name: dom.media.mozPreservesPitch.enabled
   type: bool
-  value: @IS_NOT_EARLY_BETA_OR_EARLIER@
+  value: false
   mirror: always
 
 # WebCodecs API
@@ -4490,7 +4513,7 @@
 # Whether to shim a Components object on untrusted windows.
 - name: dom.use_components_shim
   type: bool
-  value: @IS_NOT_NIGHTLY_BUILD@
+  value: false
   mirror: always
 
 - name: dom.vibrator.enabled
@@ -5162,7 +5185,7 @@
 # true:  Right node will be created (at splitting) and deleted (at joinining)
 - name: editor.join_split_direction.compatible_with_the_other_browsers
   type: bool
-  value: @IS_EARLY_BETA_OR_EARLIER@
+  value: true
   mirror: always
 
 # Delay to mask last input character in password fields.
@@ -5355,7 +5378,7 @@
 # `useRemoteSubframes` flag set.
 # Callers which cannot use `useRemoteSubframes` must use
 # `Services.appinfo.fissionAutostart` or `mozilla::FissionAutostart()` to check
-# if fission is enabled by default.
+# whether fission is enabled by default.
 - name: fission.autostart
   type: bool
   value: @IS_NOT_ANDROID@
@@ -5572,18 +5595,6 @@
 - name: font.size.inflation.maxRatio
   type: uint32_t
   value: 0
-  mirror: always
-
-# This setting corresponds to a global text zoom setting affecting
-# all content that is not already subject to font size inflation.
-# It is interpreted as a percentage value that is applied on top
-# of the document's current text zoom setting.
-#
-# The resulting total zoom factor (text zoom * system font scale)
-# will be limited by zoom.minPercent and maxPercent.
-- name: font.size.systemFontScale
-  type: uint32_t
-  value: 100
   mirror: always
 
 #---------------------------------------------------------------------------
@@ -5827,11 +5838,6 @@
   value: 1000
   mirror: always
 
-- name: general.utility-process.startup_timeout_ms
-  type: RelaxedAtomicInt32
-  value: 5000
-  mirror: always
-
 #---------------------------------------------------------------------------
 # Prefs starting with "geo."
 #---------------------------------------------------------------------------
@@ -6061,7 +6067,7 @@
 
 - name: gfx.color_management.native_srgb
   type: RelaxedAtomicBool
-#if defined(XP_MACOSX) || defined(XP_WIN)
+#if defined(XP_MACOSX)
   value: true
 #else
   value: false
@@ -7452,25 +7458,6 @@
 # Prefs starting with "intl."
 #---------------------------------------------------------------------------
 
-# If true, dispatch the keydown and keyup events on any web apps even during
-# composition.
-- name: intl.ime.hack.on_any_apps.fire_key_events_for_composition
-  type: bool
-  value: @IS_ANDROID@
-  mirror: always
-
-# Android-specific pref to control if keydown and keyup events are fired even
-# during composition.  Note that those prefs are ignored if
-# dom.keyboardevent.dispatch_during_composition is false.
-- name: intl.ime.hack.on_ime_unaware_apps.fire_key_events_for_composition
-  type: bool
-# If true and intl.ime.hack.on_any_apps.fire_key_events_for_composition is
-# false, dispatch the keydown and keyup events only on IME-unaware web apps.
-# So, this supports web apps which listen to only keydown or keyup events
-# to get a change to do something at every text input.
-  value: @IS_ANDROID@
-  mirror: always
-
 #ifdef XP_WIN
   # Whether making Gecko TSF-aware or only working with IMM.  TSF is a modern
   # IME API set of Windows which replaces IMM APIs.  Unless you can avoid the
@@ -7493,8 +7480,8 @@
 
   # Whether Gecko returns available composition string rect or TS_E_NOLAYOUT
   # from ITextStoreACP::GetTextExt() when the specified range is same as the
-  # range of composition string but some character rects in it are still dirty
-  # if and only if ATOK is active TIP.
+  # range of composition string but some character rects in it are still
+  # dirty if and only if ATOK is active TIP.
   # Note that this is ignored if active ATOK is or older than 2016 and
   # create_native_caret is true.
 -   name: intl.tsf.hack.atok.do_not_return_no_layout_error_of_composition_string
@@ -7523,8 +7510,8 @@
 
   # Whether Gecko returns available composition string rect or TS_E_NOLAYOUT
   # from ITextStoreACP::GetTextExt() when the specified range is same as the
-  # range of composition string but some character rects in it are still dirty
-  # if and only if Japanist 10 is active TIP.
+  # range of composition string but some character rects in it are still
+  # dirty if and only if Japanist 10 is active TIP.
 -   name: intl.tsf.hack.japanist10.do_not_return_no_layout_error_of_composition_string
     type: bool
     value: true
@@ -8566,6 +8553,13 @@
   mirror: always
   rust: true
 
+# Whether CSS nesting is enabled.
+- name: layout.css.nesting.enabled
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+  rust: true
+
 # Should we look for counter ancestor scopes first?
 - name: layout.css.counter-ancestor-scope.enabled
   type: bool
@@ -9071,13 +9065,6 @@
 
 # Enables support for the size property inside of CSS @page rules.
 - name: layout.css.page-size.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-  rust: true
-
-# Enables support for the named pages
-- name: layout.css.named-pages.enabled
   type: RelaxedAtomicBool
   value: true
   mirror: always
@@ -9623,7 +9610,7 @@
 # Whether supports() conditions in @import is enabled
 - name: layout.css.import-supports.enabled
   type: RelaxedAtomicBool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
   rust: true
 
@@ -10428,6 +10415,14 @@
     mirror: always
 #endif  # MOZ_FFMPEG
 
+#if defined(MOZ_FFMPEG) || defined(MOZ_FFVPX)
+# Allow using openh264 decoding with ffmpeg
+-   name: media.ffmpeg.allow-openh264
+    type: RelaxedAtomicBool
+    value: @IS_NOT_NIGHTLY_BUILD@
+    mirror: always
+#endif  # MOZ_FFMPEG || MOZ_FFVPX
+
 #ifdef MOZ_WIDGET_GTK
 # Use VA-API for ffmpeg video playback on Linux
 - name: media.ffmpeg.vaapi.enabled
@@ -10560,19 +10555,15 @@
     mirror: always
 
 # Using Windows Media Foundation Media Engine for encrypted playback
+# 0 : disable, 1 : enable for encrypted and clear,
+# 2 : enable for encrypted only, 3 : enable for clear only
 -   name: media.wmf.media-engine.enabled
-    type: RelaxedAtomicBool
-    value: false
+    type: RelaxedAtomicUint32
+    value: 0
     mirror: always
 
 # Testing purpose, enable media engine on channel decoder as well.
 -   name: media.wmf.media-engine.channel-decoder.enabled
-    type: RelaxedAtomicBool
-    value: false
-    mirror: always
-
-# This allows playing DRM video via the media engine pipeline.
--   name: media.wmf.media-engine.drm-playback
     type: RelaxedAtomicBool
     value: false
     mirror: always
@@ -10657,7 +10648,7 @@
 # True if we allow use of any decoders found in GMP plugins.
 - name: media.gmp.decoder.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
 
 # True if we want to request the multithreaded GMP decoder.
@@ -10670,6 +10661,12 @@
 - name: media.gmp.decoder.preferred
   type: RelaxedAtomicBool
   value: false
+  mirror: always
+
+# True if we want to reorder frames from the decoder based on the timestamp.
+- name: media.gmp.decoder.reorder_frames
+  type: RelaxedAtomicBool
+  value: true
   mirror: always
 
 # Whether to suspend decoding of videos in background tabs.
@@ -11069,6 +11066,13 @@
   #endif
     mirror: always
 
+#if defined(MOZ_WIDGET_GTK)
+  # Use hardware acceleration for VP8 decoding on Linux.
+-   name: media.navigator.mediadatadecoder_vp8_hardware_enabled
+    type: RelaxedAtomicBool
+    value: false
+    mirror: always
+#endif
 #endif  # MOZ_WEBRTC
 
 # HTMLMediaElement.allowedToPlay should be exposed to web content when
@@ -11167,7 +11171,16 @@
 #if defined(MOZ_WIDGET_ANDROID)
   value: true
 #else
+  value: @IS_EARLY_BETA_OR_EARLIER@
+#endif
+  mirror: always
+
+- name: media.webrtc.platformencoder.sw_only
+  type: RelaxedAtomicBool
+#if defined(MOZ_WIDGET_ANDROID)
   value: false
+#else
+  value: true
 #endif
   mirror: always
 
@@ -11178,11 +11191,6 @@
 #else
   value: false
 #endif
-  mirror: always
-
-- name: media.webrtc.platformencoder.sw_mft
-  type: RelaxedAtomicBool
-  value: @IS_EARLY_BETA_OR_EARLIER@
   mirror: always
 
 #if defined(XP_MACOSX)
@@ -12960,6 +12968,13 @@
   value: @IS_EARLY_BETA_OR_EARLIER@
   mirror: always
 
+# nsJARInputStream::Available returns the size indicated by the archived entry
+# so we need a limit so we don't OOM if the archive is corrupted.
+- name: network.jar.max_available_size
+  type: RelaxedAtomicUint32
+  value: 256*1024*1024 # 256 Mb
+  mirror: always
+
 # When this pref is true we clear the Content-Encoding header for
 # application/x-gzip Content-Type responses, see bug 1030660.
 #
@@ -13051,6 +13066,13 @@
 - name: network.webtransport.redirect.enabled
   type: RelaxedAtomicBool
   value: false
+  mirror: always
+
+# Wifi-scan polling period, in ms, when on a mobile network.
+# A value of 0 indicates that no polling should be done.
+- name: network.wifi.scanning_period
+  type: RelaxedAtomicUint32
+  value: 60000
   mirror: always
 
 #---------------------------------------------------------------------------
@@ -13245,8 +13267,8 @@
 #    (both in the output, and the images we select via srcset, for example).
 #
 # Therefore, using a high DPI is preferable. For now, we use 144dpi to match
-# physical printer output on Windows, but higher (e.g. 300dpi) might be better
-# if it does not lead to issues such as excessive memory use.
+# physical printer output on Windows, but higher (e.g. 300dpi) might be better,
+# but only if it does not lead to issues such as excessive memory use.
 - name: print.default_dpi
   type: float
   value: 144.0f
@@ -13737,6 +13759,13 @@
   value: true
   mirror: always
 
+# Enables / disables the strip on share feature which strips query parameters
+# when copying/sharing in-content links or from the url bar.
+- name: privacy.query_stripping.strip_on_share.enabled
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
 # Enables / disables the URL query string stripping in normal browsing mode
 # which strips query parameters from loading URIs to prevent bounce (redirect)
 # tracking.
@@ -13996,7 +14025,7 @@
     value: true
     mirror: always
 
-#  ifdef MOZ_WMF
+#ifdef MOZ_WMF
   # Whether Arbitrary Code Guard is enabled for the utility WMF audio decoder
   # process.
 
@@ -14004,7 +14033,7 @@
     type: RelaxedAtomicBool
     value: true
     mirror: always
-#  endif  // MOZ_WMF
+#endif  // MOZ_WMF
 
   # This controls the depth of stack trace that is logged when Windows sandbox
   # logging is turned on. This is only currently available for the content
@@ -14238,9 +14267,9 @@
   mirror: once
 
 # On Windows 8.1, if the following preference is 2, we will attempt to detect
-# if the Family Safety TLS interception feature has been enabled. If so, we
-# will behave as if the enterprise roots feature has been enabled (i.e. import
-# and trust third party root certificates from the OS).
+# whether the Family Safety TLS interception feature has been enabled.
+# If so, we will behave as if the enterprise roots feature has been enabled
+# (i.e. import and trust third party root certificates from the OS).
 # With any other value of the pref or on any other platform, this does nothing.
 # This preference takes precedence over "security.enterprise_roots.enabled".
 - name: security.family_safety.mode
@@ -14720,7 +14749,7 @@
 # Currently off by default.
 - name: threads.lower_mainthread_priority_in_background.enabled
   type: bool
-  value: false
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
 
 #---------------------------------------------------------------------------
@@ -15397,7 +15426,7 @@
 # Forces async present to wait for a sync, even while using remote textures.
 - name: webgl.out-of-process.async-present.force-sync
   type: RelaxedAtomicBool
-#if !defined(MOZ_WIDGET_ANDROID) && defined(EARLY_BETA_OR_EARLIER)
+#if defined(EARLY_BETA_OR_EARLIER)
   value: false
 #else
   value: true
@@ -15550,13 +15579,6 @@
   type: bool
   value: false
   mirror: always
-
-# Whether GTK should use non-native menu styling.
-- name: widget.gtk.non-native-menu-styling
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-  rust: true
 
 # The amount of space that the thumb should fill the scrollbar, from zero to
 # one.

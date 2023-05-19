@@ -320,9 +320,9 @@ dependencies = [
 
 [[package]]
 name = "authenticator"
-version = "0.4.0-alpha.14"
+version = "0.4.0-alpha.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f3aaf9a8213bf1a4cfafca1a38befe0873a2a4d8013136d2dd12227e14bb2ba"
+checksum = "aa0e182b77b6b19eaf9c7b69fddf3be970169ec6d34eca3f5d682ab948727e57"
 dependencies = [
  "base64 0.13.999",
  "bitflags 1.3.2",
@@ -1111,8 +1111,7 @@ dependencies = [
 [[package]]
 name = "cssparser"
 version = "0.31.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c18bf42b9ab91d1d7ce0192f5b432c9ab6a5728206f25ab6cb0eb61fea25bccc"
+source = "git+https://github.com/servo/rust-cssparser?rev=6ce91afdf292c4290118843e7421e146f0a4c48b#6ce91afdf292c4290118843e7421e146f0a4c48b"
 dependencies = [
  "cssparser-macros",
  "dtoa-short",
@@ -1127,8 +1126,7 @@ dependencies = [
 [[package]]
 name = "cssparser-macros"
 version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dfae75de57f2b2e85e8768c3ea840fd159c8f33e2b6522c7835b7abac81be16e"
+source = "git+https://github.com/servo/rust-cssparser?rev=6ce91afdf292c4290118843e7421e146f0a4c48b#6ce91afdf292c4290118843e7421e146f0a4c48b"
 dependencies = [
  "quote",
  "syn",
@@ -2169,6 +2167,7 @@ dependencies = [
  "smallvec",
  "style",
  "style_traits",
+ "thin-vec",
  "to_shmem",
 ]
 
@@ -2276,6 +2275,7 @@ dependencies = [
  "mapped_hyph",
  "mdns_service",
  "midir_impl",
+ "mime-guess-ffi",
  "mio 0.8.0",
  "moz_asserts",
  "mozglue-static",
@@ -2347,9 +2347,9 @@ dependencies = [
 
 [[package]]
 name = "glean"
-version = "52.6.0"
+version = "52.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ca7a95d864d1302298573c801cb926d7bc4bbf4112545a1e24a0a27c384368b"
+checksum = "cb5fc2dc8615ab49bfa879d64a02565b459881b72023ff39aca75e5581825695"
 dependencies = [
  "chrono",
  "crossbeam-channel",
@@ -2367,7 +2367,7 @@ dependencies = [
 
 [[package]]
 name = "glean-core"
-version = "52.6.0"
+version = "52.7.0"
 dependencies = [
  "android_logger",
  "bincode",
@@ -3370,6 +3370,14 @@ name = "mime"
 version = "0.3.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a60c7ce501c71e03a9c9c0d35b861413ae925bd979cc7a4e30d060069aaac8d"
+
+[[package]]
+name = "mime-guess-ffi"
+version = "0.1.0"
+dependencies = [
+ "mime_guess",
+ "nsstring",
+]
 
 [[package]]
 name = "mime_guess"

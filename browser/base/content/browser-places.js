@@ -24,11 +24,11 @@ XPCOMUtils.defineLazyPreferenceGetter(
       ?._placesView?.updateNodesVisibility();
   }
 );
-ChromeUtils.defineModuleGetter(
-  this,
-  "PanelMultiView",
-  "resource:///modules/PanelMultiView.jsm"
-);
+ChromeUtils.defineESModuleGetters(this, {
+  PanelMultiView: "resource:///modules/PanelMultiView.sys.mjs",
+  RecentlyClosedTabsAndWindowsMenuUtils:
+    "resource:///modules/sessionstore/RecentlyClosedTabsAndWindowsMenuUtils.sys.mjs",
+});
 
 var StarUI = {
   _itemGuids: null,
@@ -575,11 +575,6 @@ var PlacesCommandHook = {
   },
 };
 
-ChromeUtils.defineESModuleGetters(this, {
-  RecentlyClosedTabsAndWindowsMenuUtils:
-    "resource:///modules/sessionstore/RecentlyClosedTabsAndWindowsMenuUtils.sys.mjs",
-});
-
 // View for the history menu.
 class HistoryMenu extends PlacesMenu {
   constructor(aPopupShowingEvent) {
@@ -651,8 +646,7 @@ class HistoryMenu extends PlacesMenu {
     let tabsFragment = RecentlyClosedTabsAndWindowsMenuUtils.getTabsFragment(
       window,
       "menuitem",
-      /* aPrefixRestoreAll = */ false,
-      "menu-history-reopen-all-tabs"
+      /* aPrefixRestoreAll = */ false
     );
     undoPopup.appendChild(tabsFragment);
   }
@@ -691,8 +685,7 @@ class HistoryMenu extends PlacesMenu {
     let windowsFragment = RecentlyClosedTabsAndWindowsMenuUtils.getWindowsFragment(
       window,
       "menuitem",
-      /* aPrefixRestoreAll = */ false,
-      "menu-history-reopen-all-windows"
+      /* aPrefixRestoreAll = */ false
     );
     undoPopup.appendChild(windowsFragment);
   }

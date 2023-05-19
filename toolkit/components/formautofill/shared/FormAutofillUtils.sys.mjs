@@ -4,9 +4,14 @@
 
 import { FormAutofill } from "resource://autofill/FormAutofill.sys.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-import { CreditCard } from "resource://gre/modules/CreditCard.sys.mjs";
-import { FormAutofillNameUtils } from "resource://gre/modules/shared/FormAutofillNameUtils.sys.mjs";
-import { OSKeyStore } from "resource://gre/modules/OSKeyStore.sys.mjs";
+
+const lazy = {};
+ChromeUtils.defineESModuleGetters(lazy, {
+  CreditCard: "resource://gre/modules/CreditCard.sys.mjs",
+  FormAutofillNameUtils:
+    "resource://gre/modules/shared/FormAutofillNameUtils.sys.mjs",
+  OSKeyStore: "resource://gre/modules/OSKeyStore.sys.mjs",
+});
 
 export let FormAutofillUtils;
 
@@ -50,10 +55,6 @@ const FIELD_STATES = {
   NORMAL: "NORMAL",
   AUTO_FILLED: "AUTO_FILLED",
   PREVIEW: "PREVIEW",
-};
-const SECTION_TYPES = {
-  ADDRESS: "address",
-  CREDIT_CARD: "creditCard",
 };
 
 const ELIGIBLE_INPUT_TYPES = ["text", "email", "tel", "number", "month"];
@@ -218,7 +219,6 @@ FormAutofillUtils = {
   EDIT_CREDITCARD_L10N_IDS,
   MAX_FIELD_VALUE_LENGTH,
   FIELD_STATES,
-  SECTION_TYPES,
 
   _fieldNameInfo: {
     name: "name",
@@ -269,11 +269,11 @@ FormAutofillUtils = {
   },
 
   isCCNumber(ccNumber) {
-    return CreditCard.isValidNumber(ccNumber);
+    return lazy.CreditCard.isValidNumber(ccNumber);
   },
 
   ensureLoggedIn(promptMessage) {
-    return OSKeyStore.ensureLoggedIn(
+    return lazy.OSKeyStore.ensureLoggedIn(
       this._reauthEnabledByUser && promptMessage ? promptMessage : false
     );
   },
@@ -284,7 +284,7 @@ FormAutofillUtils = {
    * @returns {Array}
    */
   getCreditCardNetworks() {
-    return CreditCard.getSupportedNetworks();
+    return lazy.CreditCard.getSupportedNetworks();
   },
 
   getCategoryFromFieldName(fieldName) {
@@ -341,7 +341,7 @@ FormAutofillUtils = {
     }
 
     if (!("name" in address)) {
-      address.name = FormAutofillNameUtils.joinNameParts({
+      address.name = lazy.FormAutofillNameUtils.joinNameParts({
         given: address["given-name"],
         middle: address["additional-name"],
         family: address["family-name"],
@@ -572,10 +572,17 @@ FormAutofillUtils = {
   /**
    * Get the collators based on the specified country.
    *
-   * @param   {string} country The specified country.
+   * @param {string}  country The specified country.
+   * @param {object}  [options = {}] a list of options for this method
+   * @param {boolean} [options.ignorePunctuation = true] Whether punctuation should be ignored.
+   * @param {string}  [options.sensitivity = 'base'] Which differences in the strings should lead to non-zero result values
+   * @param {string}  [options.usage = 'search'] Whether the comparison is for sorting or for searching for matching strings
    * @returns {Array} An array containing several collator objects.
    */
-  getSearchCollators(country) {
+  getSearchCollators(
+    country,
+    { ignorePunctuation = true, sensitivity = "base", usage = "search" } = {}
+  ) {
     // TODO: Only one language should be used at a time per country. The locale
     //       of the page should be taken into account to do this properly.
     //       We are going to support more countries in bug 1370193 and this
@@ -585,9 +592,9 @@ FormAutofillUtils = {
       let dataset = this.getCountryAddressData(country);
       let languages = dataset.languages || [dataset.lang];
       let options = {
-        ignorePunctuation: true,
-        sensitivity: "base",
-        usage: "search",
+        ignorePunctuation,
+        sensitivity,
+        usage,
       };
       this._collators[country] = languages.map(
         lang => new Intl.Collator(lang, options)
@@ -701,7 +708,7 @@ FormAutofillUtils = {
   },
 
   /**
-   * Use alternative country name list to identify a country code from a
+   * Use address data and alternative country name list to identify a country code from a
    * specified country name.
    *
    * @param   {string} countryName A country name to be identified
@@ -710,11 +717,19 @@ FormAutofillUtils = {
    * @returns {string} The matching country code.
    */
   identifyCountryCode(countryName, countrySpecified) {
-    let countries = countrySpecified
+    if (!countryName) {
+      return null;
+    }
+
+    if (AddressDataLoader.getData(countryName)) {
+      return countryName;
+    }
+
+    const countries = countrySpecified
       ? [countrySpecified]
       : [...FormAutofill.countries.keys()];
 
-    for (let country of countries) {
+    for (const country of countries) {
       let collators = this.getSearchCollators(country);
       let metadata = this.getCountryAddressData(country);
       if (country != metadata.key) {
@@ -734,6 +749,12 @@ FormAutofillUtils = {
         reAlternativeCountryNames = this._reAlternativeCountryNames[
           country
         ] = [];
+      }
+
+      if (countryName.length == 3) {
+        if (this.strCompare(metadata.alpha_3_code, countryName, collators)) {
+          return country;
+        }
       }
 
       for (let i = 0; i < alternativeCountryNames.length; i++) {
@@ -1008,7 +1029,7 @@ FormAutofillUtils = {
         for (let option of options) {
           if (
             [option.text, option.label, option.value].some(
-              s => CreditCard.getNetworkFromName(s) == network
+              s => lazy.CreditCard.getNetworkFromName(s) == network
             )
           ) {
             return option;
@@ -1226,4 +1247,12 @@ XPCOMUtils.defineLazyPreferenceGetter(
   null,
   null,
   pref => parseFloat(pref)
+);
+
+// This is only used in iOS
+XPCOMUtils.defineLazyPreferenceGetter(
+  FormAutofillUtils,
+  "focusOnAutofill",
+  "extensions.formautofill.focusOnAutofill",
+  true
 );

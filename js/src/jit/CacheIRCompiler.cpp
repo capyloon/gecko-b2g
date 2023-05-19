@@ -8150,25 +8150,45 @@ bool CacheIRCompiler::emitCallRegExpSearcherResult(ObjOperandId regexpId,
   return true;
 }
 
-bool CacheIRCompiler::emitCallRegExpTesterResult(ObjOperandId regexpId,
-                                                 StringOperandId inputId,
-                                                 Int32OperandId lastIndexId) {
+bool CacheIRCompiler::emitRegExpBuiltinExecMatchResult(
+    ObjOperandId regexpId, StringOperandId inputId) {
   JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
 
   AutoCallVM callvm(masm, this, allocator);
 
   Register regexp = allocator.useRegister(masm, regexpId);
   Register input = allocator.useRegister(masm, inputId);
-  Register lastIndex = allocator.useRegister(masm, lastIndexId);
+  AutoScratchRegister lastIndex(allocator, masm);
 
   callvm.prepare();
-  masm.Push(lastIndex);
+  masm.Push(ImmWord(0));  // nullptr MatchPairs.
   masm.Push(input);
   masm.Push(regexp);
 
-  using Fn = bool (*)(JSContext*, HandleObject regexp, HandleString input,
-                      int32_t lastIndex, int32_t* result);
-  callvm.call<Fn, RegExpTesterRaw>();
+  using Fn =
+      bool (*)(JSContext*, Handle<RegExpObject*> regexp, HandleString input,
+               MatchPairs* pairs, MutableHandleValue output);
+  callvm.call<Fn, RegExpBuiltinExecMatchFromJit>();
+  return true;
+}
+
+bool CacheIRCompiler::emitRegExpBuiltinExecTestResult(ObjOperandId regexpId,
+                                                      StringOperandId inputId) {
+  JitSpew(JitSpew_Codegen, "%s", __FUNCTION__);
+
+  AutoCallVM callvm(masm, this, allocator);
+
+  Register regexp = allocator.useRegister(masm, regexpId);
+  Register input = allocator.useRegister(masm, inputId);
+  AutoScratchRegister lastIndex(allocator, masm);
+
+  callvm.prepare();
+  masm.Push(input);
+  masm.Push(regexp);
+
+  using Fn = bool (*)(JSContext*, Handle<RegExpObject*> regexp,
+                      HandleString input, bool* result);
+  callvm.call<Fn, RegExpBuiltinExecTestFromJit>();
   return true;
 }
 

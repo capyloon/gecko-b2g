@@ -28,6 +28,7 @@
 #include "gc/Tracer.h"  // for TraceManuallyBarrieredCrossCompartmentEdge
 #include "js/CompilationAndEvaluation.h"  //  for Compile
 #include "js/Conversions.h"               // for ToObject
+#include "js/experimental/JitInfo.h"      // for JSJitInfo
 #include "js/friend/ErrorMessages.h"      // for GetErrorMessage, JSMSG_*
 #include "js/friend/WindowProxy.h"  // for IsWindow, IsWindowProxy, ToWindowIfWindowProxy
 #include "js/HeapAPI.h"             // for IsInsideNursery
@@ -70,6 +71,7 @@
 #include "vm/WellKnownAtom.h"            // for js_apply_str
 #include "vm/WrapperObject.h"            // for JSObject::is, WrapperObject
 
+#include "gc/StableCellHasher-inl.h"
 #include "vm/Compartment-inl.h"  // for Compartment::wrap
 #include "vm/JSObject-inl.h"  // for GetObjectClassName, InitClass, NewObjectWithGivenProtoAndKind, ToPropertyKey
 #include "vm/NativeObject-inl.h"      // for NativeObject::global
@@ -209,6 +211,7 @@ struct MOZ_STACK_CLASS DebuggerObject::CallData {
   bool makeDebuggeeNativeFunctionMethod();
   bool isSameNativeMethod();
   bool isSameNativeWithJitInfoMethod();
+  bool isNativeGetterWithJitInfo();
   bool unsafeDereferenceMethod();
   bool unwrapMethod();
   bool getPromiseReactionsMethod();
@@ -1351,6 +1354,10 @@ bool DebuggerObject::CallData::isSameNativeWithJitInfoMethod() {
                                       args.rval());
 }
 
+bool DebuggerObject::CallData::isNativeGetterWithJitInfo() {
+  return DebuggerObject::isNativeGetterWithJitInfo(cx, object, args.rval());
+}
+
 bool DebuggerObject::CallData::unsafeDereferenceMethod() {
   RootedObject result(cx);
   if (!DebuggerObject::unsafeDereference(cx, object, &result)) {
@@ -1544,6 +1551,7 @@ const JSFunctionSpec DebuggerObject::methods_[] = {
                 1),
     JS_DEBUG_FN("isSameNative", isSameNativeMethod, 1),
     JS_DEBUG_FN("isSameNativeWithJitInfo", isSameNativeWithJitInfoMethod, 1),
+    JS_DEBUG_FN("isNativeGetterWithJitInfo", isNativeGetterWithJitInfo, 1),
     JS_DEBUG_FN("unsafeDereference", unsafeDereferenceMethod, 0),
     JS_DEBUG_FN("unwrap", unwrapMethod, 0),
     JS_DEBUG_FN("getPromiseReactions", getPromiseReactionsMethod, 0),
@@ -2657,6 +2665,21 @@ bool DebuggerObject::isSameNative(JSContext* cx, Handle<DebuggerObject*> object,
 
   result.setBoolean(referentFun &&
                     IsSameNative(referentFun, fun, checkJitInfo));
+  return true;
+}
+
+static bool IsNativeGetterWithJitInfo(JSFunction* fun) {
+  return fun->isNativeFun() && fun->hasJitInfo() &&
+         fun->jitInfo()->type() == JSJitInfo::Getter;
+}
+
+/* static */
+bool DebuggerObject::isNativeGetterWithJitInfo(JSContext* cx,
+                                               Handle<DebuggerObject*> object,
+                                               MutableHandleValue result) {
+  RootedValue referentValue(cx, ObjectValue(*object->referent()));
+  RootedFunction referentFun(cx, EnsureNativeFunction(referentValue));
+  result.setBoolean(referentFun && IsNativeGetterWithJitInfo(referentFun));
   return true;
 }
 
