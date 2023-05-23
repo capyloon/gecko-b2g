@@ -38,7 +38,7 @@ ChromeUtils.defineModuleGetter(lazy, "OS", "resource://gre/modules/osfile.jsm");
 
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
-XPCOMUtils.defineLazyGetter(lazy, "libcutils", function() {
+XPCOMUtils.defineLazyGetter(lazy, "libcutils", function () {
   const { libcutils } = ChromeUtils.import(
     "resource://gre/modules/systemlibs.js"
   );
@@ -49,7 +49,7 @@ var inParent =
   Services.appinfo.processType === Ci.nsIXULRuntime.PROCESS_TYPE_DEFAULT;
 
 function log(str) {
-  dump("PersistentDataBlock.jsm: " + str + "\n");
+  dump("PersistentDataBlock.sys.mjs: " + str + "\n");
 }
 
 function debug(str) {
@@ -141,8 +141,8 @@ export const PersistentDataBlock = {
     }
 
     if (!this.ctypes) {
-      const { ctypes } = ChromeUtils.import(
-        "resource://gre/modules/ctypes.jsm"
+      const { ctypes } = ChromeUtils.importESModule(
+        "resource://gre/modules/ctypes.sys.mjs"
       );
       this.ctypes = ctypes;
     }

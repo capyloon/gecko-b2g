@@ -21,7 +21,7 @@ XPCOMUtils.defineLazyServiceGetter(
 );
 
 function debug(str) {
-  dump("=*= AlertsHelper.jsm : " + str + "\n");
+  dump("=*= AlertsHelper.sys.js : " + str + "\n");
 }
 
 // const kNotificationIconSize = 128;
@@ -130,9 +130,8 @@ var AlertsHelper = {
           detail.type !== kDesktopNotificationShow
         ) {
           const scope = listener.serviceWorkerRegistrationScope;
-          const originAttr = ChromeUtils.createOriginAttributesFromOrigin(
-            scope
-          );
+          const originAttr =
+            ChromeUtils.createOriginAttributesFromOrigin(scope);
           const originSuffix = ChromeUtils.originAttributesToSuffix(originAttr);
           let eventName;
 

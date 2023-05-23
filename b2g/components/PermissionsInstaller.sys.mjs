@@ -170,9 +170,10 @@ export const PermissionsInstaller = {
       });
 
       if (isCore) {
-        let appPrincipal = Services.scriptSecurityManager.createContentPrincipalFromOrigin(
-          aManifestURL
-        );
+        let appPrincipal =
+          Services.scriptSecurityManager.createContentPrincipalFromOrigin(
+            aManifestURL
+          );
         PermissionsHelper.addCoreApp(appPrincipal.origin);
       }
 

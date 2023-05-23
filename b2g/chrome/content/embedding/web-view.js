@@ -7,13 +7,13 @@
 
 // A <web-view> custom element, wrapping a <xul:browser>
 
-const { AboutReaderParent } = ChromeUtils.import(
-  "resource://gre/actors/AboutReaderParent.jsm"
+const { AboutReaderParent } = ChromeUtils.importESModule(
+  "resource://gre/actors/AboutReaderParent.sys.mjs"
 );
 
 (function() {
-  const { XPCOMUtils } = ChromeUtils.import(
-    "resource://gre/modules/XPCOMUtils.jsm"
+  const { XPCOMUtils } = ChromeUtils.importESModule(
+    "resource://gre/modules/XPCOMUtils.sys.mjs"
   );
 
   const lazy = {};
@@ -25,7 +25,7 @@ const { AboutReaderParent } = ChromeUtils.import(
     "nsIKeyboardAppProxy"
   );
 
-  XPCOMUtils.defineLazyGetter(lazy, "DataControlService", function() {
+  XPCOMUtils.defineLazyGetter(lazy, "DataControlService", function () {
     try {
       return Cc["@kaiostech.com/datacontrolservice;1"].getService(
         Ci.nsIDataControlService

@@ -1701,7 +1701,7 @@ var AddonManagerInternal = {
 
     if (aOptions.icons) {
       if (typeof aOptions.icons == "string") {
-        aOptions.icons = { "32": aOptions.icons };
+        aOptions.icons = { 32: aOptions.icons };
       } else if (typeof aOptions.icons != "object") {
         throw Components.Exception(
           "icons must be a string, an object or null",
@@ -2253,11 +2253,12 @@ var AddonManagerInternal = {
     aInstallingPrincipal,
     aPermission
   ) {
-    const synthAddonInstall = await AddonManagerInternal.getSitePermsAddonInstallForWebpage(
-      aBrowser,
-      aInstallingPrincipal,
-      aPermission
-    );
+    const synthAddonInstall =
+      await AddonManagerInternal.getSitePermsAddonInstallForWebpage(
+        aBrowser,
+        aInstallingPrincipal,
+        aPermission
+      );
     const promiseInstall = new Promise((resolve, reject) => {
       const installListener = {
         onInstallFailed() {
@@ -2992,10 +2993,8 @@ var AddonManagerInternal = {
     for (let provider of this.providers) {
       let providerAddons, providerFullData;
       if ("getActiveAddons" in provider) {
-        ({
-          addons: providerAddons,
-          fullData: providerFullData,
-        } = await callProvider(provider, "getActiveAddons", null, aTypes));
+        ({ addons: providerAddons, fullData: providerFullData } =
+          await callProvider(provider, "getActiveAddons", null, aTypes));
       } else {
         providerAddons = await promiseCallProvider(
           provider,

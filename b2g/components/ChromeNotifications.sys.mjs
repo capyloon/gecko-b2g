@@ -15,7 +15,7 @@ XPCOMUtils.defineLazyServiceGetter(
 const DEBUG = false;
 
 function debug(s) {
-  dump("-*- ChromeNotifications.jsm: " + s + "\n");
+  dump("-*- ChromeNotifications.sys.mjs: " + s + "\n");
 }
 
 export const ChromeNotifications = {
@@ -30,7 +30,7 @@ export const ChromeNotifications = {
   performResend(notifications) {
     let resentNotifications = 0;
 
-    notifications.forEach(function(notification) {
+    notifications.forEach(function (notification) {
       let behavior;
       try {
         behavior = JSON.parse(notification.mozbehavior);

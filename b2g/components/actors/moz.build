@@ -7,8 +7,8 @@
 JAR_MANIFESTS += ["jar.mn"]
 
 FINAL_TARGET_FILES.actors += [
-    "AboutReaderChild.jsm",
-    "AboutReaderParent.jsm",
+    "AboutReaderChild.sys.mjs",
+    "AboutReaderParent.sys.mjs",
     "AudioVolumeControlOverrideChild.sys.mjs",
     "AudioVolumeControlOverrideParent.sys.mjs",
     "EncryptedMediaChild.sys.mjs",

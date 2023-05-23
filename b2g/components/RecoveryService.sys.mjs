@@ -6,7 +6,7 @@
 
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
-const { ctypes } = ChromeUtils.import("resource://gre/modules/ctypes.jsm");
+import { ctypes } from "resource://gre/modules/ctypes.sys.mjs";
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
 const RECOVERYSERVICE_CID = Components.ID(
@@ -21,7 +21,7 @@ function log(msg) {
 const isGonk = AppConstants.platform === "gonk";
 
 if (isGonk) {
-  var librecovery = (function() {
+  var librecovery = (function () {
     let library;
     try {
       library = ctypes.open("librecovery.so");

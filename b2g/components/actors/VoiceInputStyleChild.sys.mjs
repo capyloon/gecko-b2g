@@ -55,7 +55,7 @@ export class VoiceInputStyleChild extends JSWindowActorChild {
   }
 
   log(msg) {
-    this.debug && console.log("VoiceInputStyleChild.jsm " + msg);
+    this.debug && console.log("VoiceInputStyleChild.sys.mjs " + msg);
   }
 
   handleEvent(event) {
@@ -177,8 +177,9 @@ export class VoiceInputStyleChild extends JSWindowActorChild {
     element.style.backgroundImage = `url(${this.iconUrl})`;
     element.style.backgroundRepeat = "no-repeat";
     element.style.backgroundSize = `${iconHeight}px ${iconHeight}px`;
-    element.style.backgroundPosition = `${dir} ${iconPadding +
-      inputPaddingRight}px center`;
+    element.style.backgroundPosition = `${dir} ${
+      iconPadding + inputPaddingRight
+    }px center`;
 
     element.voiceInputStyleApplied = true;
   }

@@ -485,8 +485,6 @@ class ContentParent final : public PContentParent,
   bool DeallocPContentPermissionRequestParent(
       PContentPermissionRequestParent* actor);
 
-  virtual bool HandleWindowsMessages(const Message& aMsg) const override;
-
   void ForkNewProcess(bool aBlocking);
 
   mozilla::ipc::IPCResult RecvCreateWindow(
@@ -522,11 +520,6 @@ class ContentParent final : public PContentParent,
 
   mozilla::ipc::IPCResult RecvUnstoreAndBroadcastBlobURLUnregistration(
       const nsACString& aURI, nsIPrincipal* aPrincipal);
-
-  mozilla::ipc::IPCResult RecvGetA11yContentId(uint32_t* aContentId);
-
-  mozilla::ipc::IPCResult RecvA11yHandlerControl(
-      const uint32_t& aPid, const IHandlerControlHolder& aHandlerControl);
 
   virtual int32_t Pid() const override;
 
