@@ -2056,7 +2056,7 @@ test-pref(layout.css.prefers-color-scheme.content-override,0) != 1551040.txt 155
 test-pref(layout.css.prefers-color-scheme.content-override,0) == 1551040.html 1551040.html
 != 1552789-1.html 1552789-ref-1.html
 pref(image.downscale-during-decode.enabled,true) skip-if(((gtkWidget&&isDebugBuild)||(gtkWidget&&AddressSanitizer)||Android||ThreadSanitizer)||(Android&&isDebugBuild)) random-if(useDrawSnapshot) fuzzy(0-2,0-188) == 1553571-1.html 1553571-1-ref.html
-pref(image.downscale-during-decode.enabled,true) fuzzy(0-2,0-2002) skip-if(((gtkWidget&&isDebugBuild)||(gtkWidget&&AddressSanitizer)||Android||ThreadSanitizer)||(Android&&isDebugBuild)) random-if(useDrawSnapshot) == 1553571-2.html 1553571-2-ref.html
+pref(image.downscale-during-decode.enabled,true) fuzzy(0-2,0-2004) skip-if(((gtkWidget&&isDebugBuild)||(gtkWidget&&AddressSanitizer)||Android||ThreadSanitizer)||(Android&&isDebugBuild)) random-if(useDrawSnapshot) == 1553571-2.html 1553571-2-ref.html
 == 1558937-1.html 1558937-1-ref.html
 != 1563484.html 1563484-notref.html
 == 1563484.html 1563484-ref.html
@@ -2140,3 +2140,4 @@ pref(image.downscale-during-decode.enabled,true) == 1804872-3.html 1804872-3-ref
 == 1827009-1.html 1827009-1-ref.html
 pref(layout.testing.overlay-scrollbars.always-visible,true) pref(ui.useOverlayScrollbars,1) == 1827337-1.html 1827337-1-ref.html
 pref(layout.testing.overlay-scrollbars.always-visible,true) pref(ui.useOverlayScrollbars,1) fuzzy-if(winWidget,0-21,0-134) fuzzy-if(cocoaWidget,0-2,0-12) == 1828879-1.html 1828879-1-ref.html
+skip-if(!OSX) != 1834316-1.html 1834316-1-notref.html

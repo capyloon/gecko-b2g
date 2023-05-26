@@ -400,9 +400,11 @@ nsresult nsHttpChannel::AddSecurityMessage(const nsAString& aMessageTag,
 
 NS_IMETHODIMP
 nsHttpChannel::LogBlockedCORSRequest(const nsAString& aMessage,
-                                     const nsACString& aCategory) {
+                                     const nsACString& aCategory,
+                                     bool aIsWarning) {
   if (mWarningReporter) {
-    return mWarningReporter->LogBlockedCORSRequest(aMessage, aCategory);
+    return mWarningReporter->LogBlockedCORSRequest(aMessage, aCategory,
+                                                   aIsWarning);
   }
   return NS_ERROR_UNEXPECTED;
 }
@@ -9872,14 +9874,16 @@ void nsHttpChannel::DisableIsOpaqueResponseAllowedAfterSniffCheck(
         if (!isInitialRequest) {
           // Step 8.1
           BlockOpaqueResponseAfterSniff(
-              u"media request after sniffing, but not initial request"_ns);
+              u"media request after sniffing, but not initial request"_ns,
+              OpaqueResponseBlockedTelemetryReason::MEDIA_NOT_INITIAL);
           return;
         }
 
         if (mResponseHead->Status() != 200 && mResponseHead->Status() != 206) {
           // Step 8.2
           BlockOpaqueResponseAfterSniff(
-              u"media request's response status is neither 200 nor 206"_ns);
+              u"media request's response status is neither 200 nor 206"_ns,
+              OpaqueResponseBlockedTelemetryReason::MEDIA_INCORRECT_RESP);
           return;
         }
       }

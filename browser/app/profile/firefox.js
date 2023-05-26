@@ -1636,7 +1636,7 @@ pref("browser.newtabpage.activity-stream.discoverystream.region-stories-config",
 // List of regions that support the new recommendations BFF, also requires region-stories-config
 pref("browser.newtabpage.activity-stream.discoverystream.region-bff-config", "FR,IT,ES");
 // List of regions that get spocs by default.
-pref("browser.newtabpage.activity-stream.discoverystream.region-spocs-config", "US,CA,DE,GB");
+pref("browser.newtabpage.activity-stream.discoverystream.region-spocs-config", "US,CA,DE,GB,FR,IT,ES");
 // List of regions that don't get the 7 row layout.
 pref("browser.newtabpage.activity-stream.discoverystream.region-basic-config", "");
 
@@ -2165,6 +2165,7 @@ pref("browser.migrate.canary.enabled", true);
 pref("browser.migrate.chrome.enabled", true);
 // See comments in bug 1340115 on how we got to this number.
 pref("browser.migrate.chrome.history.limit", 2000);
+pref("browser.migrate.chrome.payment_methods.enabled", true);
 
 pref("browser.migrate.chrome-beta.enabled", true);
 pref("browser.migrate.chrome-dev.enabled", true);
@@ -2783,6 +2784,11 @@ pref("first-startup.timeout", 30000);
   pref("browser.menu.showViewImageInfo", true);
 #else
   pref("browser.menu.showViewImageInfo", false);
+#endif
+
+// Handing URLs to external apps via the "Share URL" menu item could allow a proxy bypass
+#ifdef MOZ_PROXY_BYPASS_PROTECTION
+  pref("browser.menu.share_url.allow", false);
 #endif
 
 // Mozilla-controlled domains that are allowed to use non-standard

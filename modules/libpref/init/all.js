@@ -3187,11 +3187,7 @@ pref("signon.firefoxRelay.manage_url", "https://relay.firefox.com");
 pref("signon.firefoxRelay.terms_of_service_url", "https://www.mozilla.org/%LOCALE%/about/legal/terms/subscription-services/");
 pref("signon.firefoxRelay.privacy_policy_url", "https://www.mozilla.org/%LOCALE%/privacy/subscription-services/");
 pref("signon.signupDetection.confidenceThreshold",     "0.75");
-#ifdef NIGHTLY_BUILD
-  pref("signon.signupDetection.enabled", true);
-#else
-  pref("signon.signupDetection.enabled", false);
-#endif
+pref("signon.signupDetection.enabled", true);
 
 // Satchel (Form Manager) prefs
 pref("browser.formfill.debug",            false);
@@ -3306,6 +3302,10 @@ pref("extensions.webextensions.keepUuidOnUninstall", false);
 // Redirect basedomain used by identity api
 pref("extensions.webextensions.identity.redirectDomain", "extensions.allizom.org");
 pref("extensions.webextensions.restrictedDomains", "accounts-static.cdn.mozilla.net,accounts.firefox.com,addons.cdn.mozilla.net,addons.mozilla.org,api.accounts.firefox.com,content.cdn.mozilla.net,discovery.addons.mozilla.org,install.mozilla.org,oauth.accounts.firefox.com,profile.accounts.firefox.com,support.mozilla.org,sync.services.mozilla.com");
+
+// Extensions are prevented from accessing Quarantined Domains by default.
+pref("extensions.quarantinedDomains.enabled", true);
+pref("extensions.quarantinedDomains.list", "");
 
 // Whether or not the moz-extension resource loads are remoted. For debugging
 // purposes only. Setting this to false will break moz-extension URI loading
@@ -3786,6 +3786,13 @@ pref("browser.translations.enable", false);
 // the application logic logs, and not all of the translated messages, which can be
 // slow and overwhelming.
 pref("browser.translations.logLevel", "Error");
+// A comma-separated list of BCP-47 language tags that affect the behavior of translations.
+// Languages listed in the alwaysTranslateLanguages list will trigger auto-translate on page load.
+pref("browser.translations.alwaysTranslateLanguages", "");
+// A comma-separated list of BCP-47 language tags that affect the behavior of translations.
+// Languages listed in the neverTranslateLanguages list will signal that the translations button
+// and menus should not be displayed automatically when visiting pages in those languages.
+pref("browser.translations.neverTranslateLanguages", "");
 // By default the translations engine on about:translations uses text for translation,
 // and the full page translations uses HTML. Set this pref to true to use the HTML
 // translation behavior on about:translations. Requires a page refresh.

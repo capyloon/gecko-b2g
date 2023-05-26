@@ -755,11 +755,7 @@ static void RecomputeResistFingerprintingAllDocs(const char*, void*) {
     bcGroup->GetDocGroups(docGroups);
     for (auto* docGroup : docGroups) {
       for (Document* doc : *docGroup) {
-        const bool old = doc->ShouldResistFingerprinting(
-            RFPTarget::IgnoreTargetAndReturnCachedValue);
-        doc->RecomputeResistFingerprinting();
-        if (old != doc->ShouldResistFingerprinting(
-                       RFPTarget::IsAlwaysEnabledForPrecompute)) {
+        if (doc->RecomputeResistFingerprinting()) {
           if (auto* pc = doc->GetPresContext()) {
             pc->MediaFeatureValuesChanged(
                 {MediaFeatureChangeReason::PreferenceChange},
@@ -3874,19 +3870,6 @@ imgLoader* nsContentUtils::GetImgLoaderForChannel(nsIChannel* aChannel,
   return context && context->UsePrivateBrowsing()
              ? imgLoader::PrivateBrowsingLoader()
              : imgLoader::NormalLoader();
-}
-
-// static
-bool nsContentUtils::IsImageInCache(nsIURI* aURI, Document* aDocument) {
-  imgILoader* loader = GetImgLoaderForDocument(aDocument);
-  nsCOMPtr<imgICache> cache = do_QueryInterface(loader);
-
-  // If something unexpected happened we return false, otherwise if props
-  // is set, the image is cached and we return true
-  nsCOMPtr<nsIProperties> props;
-  nsresult rv =
-      cache->FindEntryProperties(aURI, aDocument, getter_AddRefs(props));
-  return (NS_SUCCEEDED(rv) && props);
 }
 
 // static
@@ -10083,8 +10066,15 @@ bool nsContentUtils::IsImageAvailable(nsIContent* aLoadingNode, nsIURI* aURI,
   MOZ_ASSERT(triggeringPrincipal);
 
   Document* doc = aLoadingNode->OwnerDoc();
-  imgLoader* imgLoader = GetImgLoaderForDocument(doc);
-  return imgLoader->IsImageAvailable(aURI, triggeringPrincipal, aCORSMode, doc);
+  return IsImageAvailable(aURI, triggeringPrincipal, aCORSMode, doc);
+}
+
+bool nsContentUtils::IsImageAvailable(nsIURI* aURI,
+                                      nsIPrincipal* aTriggeringPrincipal,
+                                      CORSMode aCORSMode, Document* aDoc) {
+  imgLoader* imgLoader = GetImgLoaderForDocument(aDoc);
+  return imgLoader->IsImageAvailable(aURI, aTriggeringPrincipal, aCORSMode,
+                                     aDoc);
 }
 
 /* static */

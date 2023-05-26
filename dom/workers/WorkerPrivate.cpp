@@ -1022,11 +1022,11 @@ struct WorkerPrivate::TimeoutInfo {
 
   ~TimeoutInfo() { MOZ_COUNT_DTOR(mozilla::dom::WorkerPrivate::TimeoutInfo); }
 
-  bool operator==(const TimeoutInfo& aOther) {
+  bool operator==(const TimeoutInfo& aOther) const {
     return mTargetTime == aOther.mTargetTime;
   }
 
-  bool operator<(const TimeoutInfo& aOther) {
+  bool operator<(const TimeoutInfo& aOther) const {
     return mTargetTime < aOther.mTargetTime;
   }
 
@@ -2802,7 +2802,8 @@ nsresult WorkerPrivate::GetLoadInfo(
     loadInfo.mIsThirdPartyContextToTopWindow =
         aParent->IsThirdPartyContextToTopWindow();
     loadInfo.mShouldResistFingerprinting =
-        aParent->GlobalScope()->ShouldResistFingerprinting();
+        aParent->GlobalScope()->ShouldResistFingerprinting(
+            RFPTarget::IsAlwaysEnabledForPrecompute);
     loadInfo.mParentController = aParent->GlobalScope()->GetController();
     loadInfo.mWatchedByDevTools = aParent->IsWatchedByDevTools();
   } else {
@@ -2944,7 +2945,8 @@ nsresult WorkerPrivate::GetLoadInfo(
       loadInfo.mHasStorageAccessPermissionGranted =
           document->HasStorageAccessPermissionGranted();
       loadInfo.mShouldResistFingerprinting =
-          document->ShouldResistFingerprinting();
+          document->ShouldResistFingerprinting(
+              RFPTarget::IsAlwaysEnabledForPrecompute);
 
       // This is an hack to deny the storage-access-permission for workers of
       // sub-iframes.
@@ -3012,7 +3014,8 @@ nsresult WorkerPrivate::GetLoadInfo(
       loadInfo.mShouldResistFingerprinting =
           nsContentUtils::ShouldResistFingerprinting_dangerous(
               loadInfo.mLoadingPrincipal,
-              "Unusual situation - we have no document or CookieJarSettings");
+              "Unusual situation - we have no document or CookieJarSettings",
+              RFPTarget::IsAlwaysEnabledForPrecompute);
       MOZ_ASSERT(loadInfo.mCookieJarSettings);
       auto* cookieJarSettings =
           net::CookieJarSettings::Cast(loadInfo.mCookieJarSettings);

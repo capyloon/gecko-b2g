@@ -2334,12 +2334,6 @@ class Document : public nsINode,
                                  ErrorResult& aRv);
 
   /**
-   * Controls whether or not we allow TLS 1.0/1.1. Only exposed to error pages.
-   */
-  bool AllowDeprecatedTls();
-  void SetAllowDeprecatedTls(bool aResult);
-
-  /**
    * Set the channel that failed to load and resulted in an error page.
    * This is only relevant to error pages.
    */
@@ -4186,7 +4180,9 @@ class Document : public nsINode,
 
   bool ShouldResistFingerprinting(RFPTarget aTarget = RFPTarget::Unknown) const;
 
-  void RecomputeResistFingerprinting();
+  // Recompute the current resist fingerprinting state. Returns true when
+  // the state was changed.
+  bool RecomputeResistFingerprinting();
 
  protected:
   // Returns the WindowContext for the document that we will contribute

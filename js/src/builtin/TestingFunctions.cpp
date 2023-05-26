@@ -202,14 +202,12 @@ static bool GetRealmConfiguration(JSContext* cx, unsigned argc, Value* vp) {
   }
 #endif
 
-#ifdef ENABLE_CHANGE_ARRAY_BY_COPY
   bool changeArrayByCopy =
       cx->realm()->creationOptions().getChangeArrayByCopyEnabled();
   if (!JS_SetProperty(cx, info, "enableChangeArrayByCopy",
                       changeArrayByCopy ? TrueHandleValue : FalseHandleValue)) {
     return false;
   }
-#endif
 
 #ifdef ENABLE_NEW_SET_METHODS
   bool newSetMethods = cx->realm()->creationOptions().getNewSetMethodsEnabled();
@@ -563,15 +561,6 @@ static bool GetBuildConfiguration(JSContext* cx, unsigned argc, Value* vp) {
 
   value.setInt32(sizeof(void*));
   if (!JS_SetProperty(cx, info, "pointer-byte-size", value)) {
-    return false;
-  }
-
-#ifdef ENABLE_CHANGE_ARRAY_BY_COPY
-  value = BooleanValue(true);
-#else
-  value = BooleanValue(false);
-#endif
-  if (!JS_SetProperty(cx, info, "change-array-by-copy", value)) {
     return false;
   }
 
@@ -3727,7 +3716,7 @@ bool IterativeFailureTest::testThread(unsigned thread) {
         fprintf(stderr, "  error while trying to print exception, giving up\n");
         return false;
       }
-      UniqueChars bytes(JS_EncodeStringToLatin1(cx, str));
+      UniqueChars bytes(JS_EncodeStringToUTF8(cx, str));
       if (!bytes) {
         return false;
       }
@@ -4173,6 +4162,11 @@ static bool DumpHeap(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
 
   FILE* dumpFile = stdout;
+  auto closeFile = mozilla::MakeScopeExit([&dumpFile] {
+    if (dumpFile != stdout) {
+      fclose(dumpFile);
+    }
+  });
 
   if (args.length() > 1) {
     RootedObject callee(cx, &args.callee());
@@ -4186,27 +4180,33 @@ static bool DumpHeap(JSContext* cx, unsigned argc, Value* vp) {
       return false;
     }
     if (!fuzzingSafe) {
-      UniqueChars fileNameBytes = JS_EncodeStringToLatin1(cx, str);
+      UniqueChars fileNameBytes = JS_EncodeStringToUTF8(cx, str);
       if (!fileNameBytes) {
         return false;
       }
-      dumpFile = fopen(fileNameBytes.get(), "w");
+#ifdef XP_WIN
+      UniqueWideChars wideFileNameBytes =
+          JS::EncodeUtf8ToWide(cx, fileNameBytes.get());
+      if (!wideFileNameBytes) {
+        return false;
+      }
+      dumpFile = _wfopen(wideFileNameBytes.get(), L"w");
+#else
+      UniqueChars narrowFileNameBytes =
+          JS::EncodeUtf8ToNarrow(cx, fileNameBytes.get());
+      if (!narrowFileNameBytes) {
+        return false;
+      }
+      dumpFile = fopen(narrowFileNameBytes.get(), "w");
+#endif
       if (!dumpFile) {
-        fileNameBytes = JS_EncodeStringToLatin1(cx, str);
-        if (!fileNameBytes) {
-          return false;
-        }
-        JS_ReportErrorLatin1(cx, "can't open %s", fileNameBytes.get());
+        JS_ReportErrorUTF8(cx, "can't open %s", fileNameBytes.get());
         return false;
       }
     }
   }
 
   js::DumpHeap(cx, dumpFile, js::IgnoreNurseryObjects);
-
-  if (dumpFile != stdout) {
-    fclose(dumpFile);
-  }
 
   args.rval().setUndefined();
   return true;
@@ -4391,7 +4391,8 @@ static bool ReadGeckoInterpProfilingStack(JSContext* cx, unsigned argc,
     }
 
     // Skip fake JS frame pushed for js::RunScript by GeckoProfilerEntryMarker.
-    if (!frame.dynamicString()) {
+    const char* dynamicStr = frame.dynamicString();
+    if (!dynamicStr) {
       continue;
     }
 
@@ -4401,7 +4402,8 @@ static bool ReadGeckoInterpProfilingStack(JSContext* cx, unsigned argc,
     }
 
     Rooted<JSString*> dynamicString(
-        cx, JS_NewStringCopyZ(cx, frame.dynamicString()));
+        cx, JS_NewStringCopyUTF8Z(
+                cx, JS::ConstUTF8CharsZ(dynamicStr, strlen(dynamicStr))));
     if (!dynamicString) {
       return false;
     }
@@ -7519,7 +7521,8 @@ static bool GetLcovInfo(JSContext* cx, unsigned argc, Value* vp) {
     return false;
   }
 
-  JSString* str = JS_NewStringCopyN(cx, content.get(), length);
+  JSString* str =
+      JS_NewStringCopyUTF8N(cx, JS::UTF8Chars(content.get(), length));
   if (!str) {
     return false;
   }
@@ -9339,17 +9342,6 @@ JS_FOR_WASM_FEATURES(WASM_FEATURE, WASM_FEATURE, WASM_FEATURE)
 "  element's edge is the node of the i+1'th array element; the destination of\n"
 "  the last array element is implicitly |target|.\n"),
 
-    JS_FN_HELP("shortestPaths", ShortestPaths, 3, 0,
-"shortestPaths(targets, options)",
-"  Return an array of arrays of shortest retaining paths. There is an array of\n"
-"  shortest retaining paths for each object in |targets|. Each element in a path\n"
-"  is of the form |{ predecessor, edge }|. |options| may contain:\n"
-"  \n"
-"    maxNumPaths: The maximum number of paths returned in each of those arrays\n"
-"      (default 3).\n"
-"    start: The object to start all paths from. If not given, then\n"
-"      the starting point will be the set of GC roots."),
-
 #if defined(DEBUG) || defined(JS_JITSPEW)
     JS_FN_HELP("dumpObject", DumpObject, 1, 0,
 "dumpObject()",
@@ -9673,6 +9665,18 @@ JS_FN_HELP("getEnclosingEnvironmentObject", GetEnclosingEnvironmentObject, 1, 0,
 JS_FN_HELP("getEnvironmentObjectType", GetEnvironmentObjectType, 1, 0,
 "getEnvironmentObjectType(env)",
 "  Return a string represents the type of given environment object."),
+
+    JS_FN_HELP("shortestPaths", ShortestPaths, 3, 0,
+"shortestPaths(targets, options)",
+"  Return an array of arrays of shortest retaining paths. There is an array of\n"
+      "  shortest retaining paths for each object in |targets|. Each element in a path\n"
+      "  is of the form |{ predecessor, edge }|. |options| may contain:\n"
+      "  \n"
+      "    maxNumPaths: The maximum number of paths returned in each of those arrays\n"
+      "      (default 3).\n"
+      "    start: The object to start all paths from. If not given, then\n"
+      "      the starting point will be the set of GC roots."),
+
 
     JS_FS_HELP_END
 };

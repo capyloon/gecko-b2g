@@ -888,6 +888,7 @@ export const LoginHelper = {
         aNewLoginData.usernameField,
         aNewLoginData.passwordField
       );
+      newLogin.unknownFields = aNewLoginData.unknownFields;
       newLogin.QueryInterface(Ci.nsILoginMetaInfo);
 
       // Automatically update metainfo when password is changed.
@@ -919,6 +920,7 @@ export const LoginHelper = {
           case "password":
           case "usernameField":
           case "passwordField":
+          case "unknownFields":
           // nsILoginMetaInfo (fall through)
           case "guid":
           case "timeCreated":
@@ -1845,6 +1847,14 @@ export class OptInFeature {
 
   get isEnabled() {
     return this.#currentPrefValue == OptInFeature.PREF_ENABLED_VALUE;
+  }
+
+  get isDisabled() {
+    return this.#currentPrefValue == OptInFeature.PREF_DISABLED_VALUE;
+  }
+
+  markAsAvailable() {
+    this.#markAs(OptInFeature.PREF_AVAILABLE_VALUE);
   }
 
   markAsOffered() {

@@ -1922,31 +1922,8 @@ void Document::GetFailedCertSecurityInfo(FailedCertSecurityInfo& aInfo,
   Unused << NS_WARN_IF(NS_FAILED(pkps->HostHasPins(aURI, &aInfo.mHasHPKP)));
 }
 
-bool Document::AllowDeprecatedTls() {
-  return Preferences::GetBool("security.tls.version.enable-deprecated", false);
-}
-
-void Document::SetAllowDeprecatedTls(bool value) {
-  if (!IsErrorPage()) {
-    return;
-  }
-
-  auto docShell = GetDocShell();
-  if (!docShell) {
-    return;
-  }
-
-  auto child = BrowserChild::GetFrom(docShell);
-  if (!child) {
-    return;
-  }
-
-  child->SendSetAllowDeprecatedTls(value);
-}
-
 bool Document::IsAboutPage() const {
-  nsCOMPtr<nsIPrincipal> principal = NodePrincipal();
-  return principal->SchemeIs("about");
+  return NodePrincipal()->SchemeIs("about");
 }
 
 void Document::ConstructUbiNode(void* storage) {
@@ -12414,12 +12391,12 @@ void Document::MaybePreLoadImage(nsIURI* aUri,
                                  ReferrerPolicyEnum aReferrerPolicy,
                                  bool aIsImgSet, bool aLinkPreload,
                                  const TimeStamp& aInitTimestamp) {
+  const CORSMode corsMode = dom::Element::StringToCORSMode(aCrossOriginAttr);
   if (aLinkPreload) {
     // Check if the image was already preloaded in this document to avoid
     // duplicate preloading.
-    PreloadHashKey key = PreloadHashKey::CreateAsImage(
-        aUri, NodePrincipal(),
-        dom::Element::StringToCORSMode(aCrossOriginAttr));
+    PreloadHashKey key =
+        PreloadHashKey::CreateAsImage(aUri, NodePrincipal(), corsMode);
     if (!mPreloadService.PreloadExists(key)) {
       PreLoadImage(aUri, aCrossOriginAttr, aReferrerPolicy, aIsImgSet,
                    aLinkPreload, 0);
@@ -12430,7 +12407,7 @@ void Document::MaybePreLoadImage(nsIURI* aUri,
   // Early exit if the img is already present in the img-cache
   // which indicates that the "real" load has already started and
   // that we shouldn't preload it.
-  if (nsContentUtils::IsImageInCache(aUri, this)) {
+  if (nsContentUtils::IsImageAvailable(aUri, NodePrincipal(), corsMode, this)) {
     return;
   }
 
@@ -15037,7 +15014,6 @@ Document::HideAllPopoversWithoutRunningScript() {
   return HideAllPopoversUntil(*this, false, false);
 }
 
-// https://html.spec.whatwg.org/#dom-hidepopover
 void Document::HidePopover(Element& aPopover, bool aFocusPreviousElement,
                            bool aFireEvents, ErrorResult& aRv) {
   RefPtr<nsGenericHTMLElement> popoverHTMLEl =
@@ -15296,15 +15272,6 @@ bool Document::FullscreenElementReadyCheck(FullscreenRequest& aRequest) {
   }
   if (elem->IsHTMLElement(nsGkAtoms::dialog)) {
     aRequest.Reject("FullscreenDeniedHTMLDialog");
-    return false;
-  }
-  // XXXsmaug Note, we don't follow the latest fullscreen spec here.
-  //         This whole check could be probably removed.
-  if (fullscreenElement && !nsContentUtils::ContentIsHostIncludingDescendantOf(
-                               elem, fullscreenElement)) {
-    // If this document is fullscreen, only grant fullscreen requests from
-    // a descendant of the current fullscreen element.
-    aRequest.Reject("FullscreenDeniedNotDescendant");
     return false;
   }
   if (!nsContentUtils::IsChromeDoc(this) && !IsInFocusedTab(this)) {
@@ -16191,7 +16158,9 @@ void Document::SendPageUseCounters() {
   wgc->SendAccumulatePageUseCounters(counters);
 }
 
-void Document::RecomputeResistFingerprinting() {
+bool Document::RecomputeResistFingerprinting() {
+  const bool previous = mShouldResistFingerprinting;
+
   if (mParentDocument &&
       (NodePrincipal()->Equals(mParentDocument->NodePrincipal()) ||
        NodePrincipal()->GetIsNullPrincipal())) {
@@ -16209,13 +16178,12 @@ void Document::RecomputeResistFingerprinting() {
         nsContentUtils::ShouldResistFingerprinting(
             mChannel, RFPTarget::IsAlwaysEnabledForPrecompute);
   }
+
+  return previous != mShouldResistFingerprinting;
 }
 
 bool Document::ShouldResistFingerprinting(
     RFPTarget aTarget /* = RFPTarget::Unknown */) const {
-  if (aTarget == RFPTarget::IgnoreTargetAndReturnCachedValue) {
-    return mShouldResistFingerprinting;
-  }
   return mShouldResistFingerprinting && nsRFPService::IsRFPEnabledFor(aTarget);
 }
 

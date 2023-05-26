@@ -15,6 +15,10 @@ ChromeUtils.defineESModuleGetters(lazy, {
   LabelUtils: "resource://gre/modules/shared/LabelUtils.sys.mjs",
 });
 
+XPCOMUtils.defineLazyGetter(lazy, "log", () =>
+  FormAutofill.defineLogGetter(lazy, "FormAutofillHeuristics")
+);
+
 /**
  * To help us classify sections, we want to know what fields can appear
  * multiple times in a row.
@@ -40,7 +44,7 @@ const MULTI_N_FIELD_NAMES = {
   "cc-number": 4,
 };
 
-class Section {
+export class FormSection {
   static ADDRESS = "address";
   static CREDIT_CARD = "creditCard";
 
@@ -57,9 +61,9 @@ class Section {
 
     const fieldName = fieldDetails[0].fieldName;
     if (lazy.FormAutofillUtils.isAddressField(fieldName)) {
-      this.type = Section.ADDRESS;
+      this.type = FormSection.ADDRESS;
     } else if (lazy.FormAutofillUtils.isCreditCardField(fieldName)) {
-      this.type = Section.CREDIT_CARD;
+      this.type = FormSection.CREDIT_CARD;
     } else {
       throw new Error("Unknown field type to create a section.");
     }
@@ -297,12 +301,14 @@ export const FormAutofillHeuristics = {
    *          otherwise false.
    */
   _parseAddressFields(fieldScanner) {
-    let parsedFields = false;
-    const addressLines = ["address-line1", "address-line2", "address-line3"];
+    if (fieldScanner.parsingFinished) {
+      return false;
+    }
 
     // TODO: These address-line* regexps are for the lines with numbers, and
     // they are the subset of the regexps in `heuristicsRegexp.js`. We have to
     // find a better way to make them consistent.
+    const addressLines = ["address-line1", "address-line2", "address-line3"];
     const addressLineRegexps = {
       "address-line1": new RegExp(
         "address[_-]?line(1|one)|address1|addr1" +
@@ -332,6 +338,9 @@ export const FormAutofillHeuristics = {
         "iu"
       ),
     };
+
+    let parsedFields = false;
+    const startIndex = fieldScanner.parsingIndex;
     while (!fieldScanner.parsingFinished) {
       let detail = fieldScanner.getFieldDetailByIndex(
         fieldScanner.parsingIndex
@@ -358,6 +367,23 @@ export const FormAutofillHeuristics = {
         break;
       }
       fieldScanner.parsingIndex++;
+    }
+
+    // If "address-line2" is found but the previous field is "street-address",
+    // then we assume what the website actually wants is "address-line1" instead
+    // of "street-address".
+    if (
+      startIndex > 0 &&
+      fieldScanner.getFieldDetailByIndex(startIndex)?.fieldName ==
+        "address-line2" &&
+      fieldScanner.getFieldDetailByIndex(startIndex - 1)?.fieldName ==
+        "street-address"
+    ) {
+      fieldScanner.updateFieldName(
+        startIndex - 1,
+        "address-line1",
+        "regexp-heuristic"
+      );
     }
 
     return parsedFields;
@@ -552,19 +578,34 @@ export const FormAutofillHeuristics = {
    *
    * @param {HTMLFormElement} form
    *        the elements in this form to be predicted the field info.
-   * @returns {Array<Array<object>>}
+   * @returns {Array<FormSection>}
    *        all sections within its field details in the form.
    */
   getFormInfo(form) {
-    const eligibleFields = Array.from(form.elements).filter(elem =>
-      lazy.FormAutofillUtils.isCreditCardOrAddressFieldType(elem)
+    let elements = Array.from(form.elements).filter(element =>
+      lazy.FormAutofillUtils.isCreditCardOrAddressFieldType(element)
     );
 
-    if (eligibleFields.length <= 0) {
-      return [];
+    // Due to potential performance impact while running visibility check on
+    // a large amount of elements, a comprehensive visibility check
+    // (considering opacity and CSS visibility) is only applied when the number
+    // of eligible elements is below a certain threshold.
+    const runVisiblityCheck =
+      elements.length < lazy.FormAutofillUtils.visibilityCheckThreshold;
+    if (!runVisiblityCheck) {
+      lazy.log.debug(
+        `Skip running visibility check, because of too many elements (${elements.length})`
+      );
     }
 
-    let fieldScanner = new lazy.FieldScanner(eligibleFields);
+    elements = elements.filter(element =>
+      lazy.FormAutofillUtils.isFieldVisible(element, runVisiblityCheck)
+    );
+
+    const fieldScanner = new lazy.FieldScanner(elements, element =>
+      this.inferFieldInfo(element, elements)
+    );
+
     while (!fieldScanner.parsingFinished) {
       let parsedPhoneFields = this._parsePhoneFields(fieldScanner);
       let parsedAddressFields = this._parseAddressFields(fieldScanner);
@@ -606,7 +647,7 @@ export const FormAutofillHeuristics = {
    * The result is an array contains the sections with its belonging field details.
    *
    * @param   {Array<FieldDetails>} fieldDetails field detail array to be classified
-   * @returns {Array<Section>} The array with the sections.
+   * @returns {Array<FormSection>} The array with the sections.
    */
   _classifySections(fieldDetails) {
     let sections = [];
@@ -683,7 +724,7 @@ export const FormAutofillHeuristics = {
       }
 
       // Create a new section
-      sections.push(new Section([fieldDetails[i]]));
+      sections.push(new FormSection([fieldDetails[i]]));
     }
 
     return sections;
@@ -728,13 +769,13 @@ export const FormAutofillHeuristics = {
    * Get inferred information about an input element using autocomplete info, fathom and regex-based heuristics.
    *
    * @param {HTMLElement} element - The input element to infer information about.
-   * @param {object} scanner - Scanner object used to analyze elements with fathom.
+   * @param {Array<HTMLElement>} elements - See `getFathomField` for details
    * @returns {Array} - An array containing:
    *                    [0]the inferred field name
    *                    [1]autocomplete information if the element has autocompelte attribute, null otherwise.
    *                    [2]fathom confidence if fathom considers it a cc field, null otherwise.
    */
-  getInferredInfo(element, scanner) {
+  inferFieldInfo(element, elements = []) {
     const autocompleteInfo = element.getAutocompleteInfo();
 
     // An input[autocomplete="on"] will not be early return here since it stll
@@ -761,9 +802,10 @@ export const FormAutofillHeuristics = {
       const fathomFields = fields.filter(r =>
         lazy.CreditCardRulesets.types.includes(r)
       );
-      const [matchedFieldName, confidence] = scanner.getFathomField(
+      const [matchedFieldName, confidence] = this.getFathomField(
         element,
-        fathomFields
+        fathomFields,
+        elements
       );
       // At this point, use fathom's recommendation if it has one
       if (matchedFieldName) {
@@ -788,6 +830,120 @@ export const FormAutofillHeuristics = {
     }
 
     return [null, null, null];
+  },
+
+  /**
+   * Using Fathom, say what kind of CC field an element is most likely to be.
+   * This function deoesn't only run fathom on the passed elements. It also
+   * runs fathom for all elements in the FieldScanner for optimization purpose.
+   *
+   * @param {HTMLElement} element
+   * @param {Array} fields
+   * @param {Array<HTMLElement>} elements - All other eligible elements in the same form. This is mainly used as an
+   *                                        optimization approach to run fathom model on all eligible elements
+   *                                        once instead of one by one
+   * @returns {Array} A tuple of [field name, probability] describing the
+   *   highest-confidence classification
+   */
+  getFathomField(element, fields, elements = []) {
+    if (!fields.length) {
+      return [null, null];
+    }
+
+    if (!this._fathomConfidences?.get(element)) {
+      this._fathomConfidences = new Map();
+
+      // This should not throw unless we run into an OOM situation, at which
+      // point we have worse problems and this failing is not a big deal.
+      elements = elements.includes(element) ? elements : [element];
+      const confidences = this.getFormAutofillConfidences(elements);
+
+      for (let i = 0; i < elements.length; i++) {
+        this._fathomConfidences.set(elements[i], confidences[i]);
+      }
+    }
+
+    const elementConfidences = this._fathomConfidences.get(element);
+    if (!elementConfidences) {
+      return [null, null];
+    }
+
+    let highestField = null;
+    let highestConfidence = lazy.FormAutofillUtils.ccFathomConfidenceThreshold; // Start with a threshold of 0.5
+    for (let [key, value] of Object.entries(elementConfidences)) {
+      if (!fields.includes(key)) {
+        // ignore field that we don't care
+        continue;
+      }
+
+      if (value > highestConfidence) {
+        highestConfidence = value;
+        highestField = key;
+      }
+    }
+
+    if (!highestField) {
+      return [null, null];
+    }
+
+    // Used by test ONLY! This ensure testcases always get the same confidence
+    if (lazy.FormAutofillUtils.ccFathomTestConfidence > 0) {
+      highestConfidence = lazy.FormAutofillUtils.ccFathomTestConfidence;
+    }
+
+    return [highestField, highestConfidence];
+  },
+
+  /**
+   * @param {Array} elements Array of elements that we want to get result from fathom cc rules
+   * @returns {object} Fathom confidence keyed by field-type.
+   */
+  getFormAutofillConfidences(elements) {
+    if (
+      lazy.FormAutofillUtils.ccHeuristicsMode ==
+      lazy.FormAutofillUtils.CC_FATHOM_NATIVE
+    ) {
+      const confidences = ChromeUtils.getFormAutofillConfidences(elements);
+      return confidences.map(c => {
+        let result = {};
+        for (let [fieldName, confidence] of Object.entries(c)) {
+          let type =
+            lazy.FormAutofillUtils.formAutofillConfidencesKeyToCCFieldType(
+              fieldName
+            );
+          result[type] = confidence;
+        }
+        return result;
+      });
+    }
+
+    return elements.map(element => {
+      /**
+       * Return how confident our ML model is that `element` is a field of the
+       * given type.
+       *
+       * @param {string} fieldName The Fathom type to check against. This is
+       *   conveniently the same as the autocomplete attribute value that means
+       *   the same thing.
+       * @returns {number} Confidence in range [0, 1]
+       */
+      function confidence(fieldName) {
+        const ruleset = lazy.CreditCardRulesets[fieldName];
+        const fnodes = ruleset.against(element).get(fieldName);
+
+        // fnodes is either 0 or 1 item long, since we ran the ruleset
+        // against a single element:
+        return fnodes.length ? fnodes[0].scoreFor(fieldName) : 0;
+      }
+
+      // Bang the element against the ruleset for every type of field:
+      const confidences = {};
+      lazy.CreditCardRulesets.types.map(fieldName => {
+        confidences[fieldName] = confidence(fieldName);
+      });
+
+      return confidences;
+    });
   },
 
   /**
