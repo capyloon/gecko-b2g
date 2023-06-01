@@ -12,12 +12,13 @@
 namespace stats = aidl::android::frameworks::stats;
 
 class GonkStats : public stats::BnStats {
-public:
-    GonkStats();
+ public:
+  GonkStats();
 
-    ndk::ScopedAStatus reportVendorAtom(const stats::VendorAtom& vendorAtom) override;
+  ndk::ScopedAStatus reportVendorAtom(
+      const stats::VendorAtom& vendorAtom) override;
 
-    static void init();
+  static void init();
 };
 
-#endif // GONKSTATSERVICE_H
+#endif  // GONKSTATSERVICE_H

@@ -12,20 +12,22 @@ static std::shared_ptr<GonkStats> gGonkStats = nullptr;
 
 GonkStats::GonkStats() {}
 
-ndk::ScopedAStatus GonkStats::reportVendorAtom(const stats::VendorAtom& vendorAtom) {
-    return ndk::ScopedAStatus::ok();
+ndk::ScopedAStatus GonkStats::reportVendorAtom(
+    const stats::VendorAtom& vendorAtom) {
+  return ndk::ScopedAStatus::ok();
 }
 
 /* static */
 void GonkStats::init() {
-    if (gGonkStats) {
-        return;
-    }
+  if (gGonkStats) {
+    return;
+  }
 
-    gGonkStats = ndk::SharedRefBase::make<GonkStats>();
-    const std::string serviceName = std::string() + stats::IStats::descriptor + "/default";
-    binder_status_t status = AServiceManager_addService(
-        gGonkStats->asBinder().get(), serviceName.c_str());
-    printf_stderr("GonkStats: Adding AIDL service %s : %d",
-                  serviceName.c_str(), status == STATUS_OK);
+  gGonkStats = ndk::SharedRefBase::make<GonkStats>();
+  const std::string serviceName =
+      std::string() + stats::IStats::descriptor + "/default";
+  binder_status_t status = AServiceManager_addService(
+      gGonkStats->asBinder().get(), serviceName.c_str());
+  printf_stderr("GonkStats: Adding AIDL service %s : %s", serviceName.c_str(),
+                status == STATUS_OK ? "success" : "failure");
 }
