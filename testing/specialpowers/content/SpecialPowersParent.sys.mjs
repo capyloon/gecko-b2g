@@ -3,21 +3,18 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  ExtensionData: "resource://gre/modules/Extension.sys.mjs",
+  ExtensionTestCommon: "resource://testing-common/ExtensionTestCommon.sys.mjs",
   HiddenFrame: "resource://gre/modules/HiddenFrame.sys.mjs",
   PerTestCoverageUtils:
     "resource://testing-common/PerTestCoverageUtils.sys.mjs",
-  SpecialPowersSandbox: "resource://specialpowers/SpecialPowersSandbox.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  ExtensionData: "resource://gre/modules/Extension.jsm",
-  ExtensionTestCommon: "resource://testing-common/ExtensionTestCommon.jsm",
-  ServiceWorkerCleanUp: "resource://gre/modules/ServiceWorkerCleanUp.jsm",
+  ServiceWorkerCleanUp: "resource://gre/modules/ServiceWorkerCleanUp.sys.mjs",
+  SpecialPowersSandbox:
+    "resource://testing-common/SpecialPowersSandbox.sys.mjs",
 });
 
 class SpecialPowersError extends Error {
@@ -59,8 +56,8 @@ function doPrefEnvOp(fn) {
 
 async function createWindowlessBrowser({ isPrivate = false } = {}) {
   const { promiseDocumentLoaded, promiseEvent, promiseObserved } =
-    ChromeUtils.import(
-      "resource://gre/modules/ExtensionUtils.jsm"
+    ChromeUtils.importESModule(
+      "resource://gre/modules/ExtensionUtils.sys.mjs"
     ).ExtensionUtils;
 
   let windowlessBrowser = Services.appShell.createWindowlessBrowser(true);
@@ -180,6 +177,27 @@ export class SpecialPowersParent extends JSWindowActorParent {
     this._chromeScriptListeners = [];
     this._extensions = new Map();
     this._taskActors = new Map();
+  }
+
+  static registerActor() {
+    ChromeUtils.registerWindowActor("SpecialPowers", {
+      allFrames: true,
+      includeChrome: true,
+      child: {
+        esModuleURI: "resource://testing-common/SpecialPowersChild.sys.mjs",
+        observers: [
+          "chrome-document-global-created",
+          "content-document-global-created",
+        ],
+      },
+      parent: {
+        esModuleURI: "resource://testing-common/SpecialPowersParent.sys.mjs",
+      },
+    });
+  }
+
+  static unregisterActor() {
+    ChromeUtils.unregisterWindowActor("SpecialPowers");
   }
 
   init() {

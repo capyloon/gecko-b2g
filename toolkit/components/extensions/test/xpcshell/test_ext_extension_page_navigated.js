@@ -56,9 +56,9 @@ function createTestExtPageScript(name) {
   }})("${name}");`;
 }
 
-const getExtensionContextIdAndURL = ([extensionId]) => {
-  const { ExtensionProcessScript } = ChromeUtils.import(
-    "resource://gre/modules/ExtensionProcessScript.jsm"
+const getExtensionContextIdAndURL = extensionId => {
+  const { ExtensionProcessScript } = ChromeUtils.importESModule(
+    "resource://gre/modules/ExtensionProcessScript.sys.mjs"
   );
   let extWindow = this.content.window;
   let extChild = ExtensionProcessScript.getExtensionChild(extensionId);
@@ -78,12 +78,12 @@ const getExtensionContextIdAndURL = ([extensionId]) => {
   return { contextIds, contextURLs };
 };
 
-const getExtensionContextStatusByContextId = ([
+const getExtensionContextStatusByContextId = (
   extensionId,
-  extPageContextId,
-]) => {
-  const { ExtensionProcessScript } = ChromeUtils.import(
-    "resource://gre/modules/ExtensionProcessScript.jsm"
+  extPageContextId
+) => {
+  const { ExtensionProcessScript } = ChromeUtils.importESModule(
+    "resource://gre/modules/ExtensionProcessScript.sys.mjs"
   );
   let extChild = ExtensionProcessScript.getExtensionChild(extensionId);
 

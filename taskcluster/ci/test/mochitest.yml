@@ -64,18 +64,21 @@ mochitest-plain:
         - headless+socketprocess_networking
         - http3
         - editor-legacy-direction
+    worker-type:
+        by-test-platform:
+            linux2204-64-wayland.*: t-linux-wayland
+            default: default
     run-on-projects:
         by-variant:
             conditioned_profile:
                 by-test-platform:
-                    .*asan.*: []
-                    .*ccov.*: []
+                    .*(asan|ccov|wayland).*: []
                     linux1804-64(-shippable)?-qr/opt: ['trunk']
                     windows11-64.*(-shippable)?-qr/opt: ['trunk']
                     default: []
             xorigin:
                 by-test-platform:
-                    .*asan.*: []
+                    .*(asan|wayland).*: []
                     windows.*ccov.*: []
                     (linux.*64|macosx.*64|windows11.*)(-shippable)?-qr/(opt|debug): ['trunk']
                     windows.*64-ccov-qr/opt: ['mozilla-central']
@@ -83,8 +86,7 @@ mochitest-plain:
                     default: []
             socketprocess_networking:
                 by-test-platform:
-                    .*asan.*: []
-                    .*ccov.*: []
+                    .*(asan|ccov|wayland).*: []
                     (linux.*64|macosx.*64|windows11-64.*)(-shippable)?-qr/(opt|debug): ['autoland', 'mozilla-central']
                     default: []
             webrender-sw+no-fission:
@@ -103,10 +105,12 @@ mochitest-plain:
                     default: []
             headless:
                 by-test-platform:
+                    .*wayland.*: []
                     linux1804-64.*: ['mozilla-central']
                     default: []
             headless+socketprocess_networking:
                 by-test-platform:
+                    .*wayland.*: []
                     linux1804-64.*: ['mozilla-central']
                     default: []
             no-fission:
@@ -128,6 +132,7 @@ mochitest-plain:
                 by-test-platform:
                     android-em-7.0-x86_64-qr/debug-isolated-process: []
                     android.*: built-projects
+                    .*wayland.*: []
                     default: built-projects
     chunks:
         by-test-platform:
@@ -640,7 +645,7 @@ mochitest-media:
                 by-test-platform:
                     android.*: []
                     windows.*ccov.*: []
-                    linux.*64(-shippable|-asan|-tsan)?-qr/opt: ['autoland', 'mozilla-central']
+                    linux.*64(-shippable|-asan)?-qr/opt: ['autoland', 'mozilla-central']  # linux.*-tsan disabled until Bug 1835935
                     macosx.*64(-shippable)?-qr/(opt|debug): ['autoland', 'mozilla-central']
                     windows1.*(-shippable)?-qr/(opt|debug): ['autoland', 'mozilla-central']
                     windows.*-asan-qr/opt: ['autoland', 'mozilla-central']
@@ -657,7 +662,7 @@ mochitest-media:
                     android.*: []
                     windows.*ccov.*: []
                     linux.*64(-asan|-devedition|-shippable)?-qr/(opt|debug): built-projects
-                    linux.*64-tsan-qr/opt: ['autoland', 'mozilla-central']
+                    linux.*64-tsan-qr/opt: []  # Linux TSAN disabled until Bug 1835935
                     macosx.*-64(-devedition|-shippable)?-qr/(opt|debug): built-projects
                     windows1.*(-devedition|-shippable)?-qr/(opt|debug): built-projects
                     windows.*-asan-qr/opt: ['autoland', 'mozilla-central']
@@ -699,6 +704,7 @@ mochitest-media:
                     android.*: built-projects
                     linux.*(asan|ccov)/opt: []
                     .*(ccov/|asan/|-32).*: built-projects
+                    linux.*64-tsan.*: []  # linux.*-tsan disabled until Bug 1835935
                     (android|linux|windows10-64-2009|windows11-64-2009|macos)(?!.*-qr).*: []
                     default: built-projects
     loopback-video: true

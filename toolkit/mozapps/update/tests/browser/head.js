@@ -804,8 +804,16 @@ function runAboutDialogUpdateTest(params, steps) {
               expectedText,
               "Sanity check: Expected download status text should be non-empty"
             );
+            if (aboutDialog.document.hasPendingL10nMutations) {
+              await BrowserTestUtils.waitForEvent(
+                aboutDialog.document,
+                "L10nMutationsFinished"
+              );
+            }
             Assert.equal(
-              aboutDialog.document.getElementById("downloadStatus").textContent,
+              aboutDialog.document.querySelector(
+                `#downloading label[data-l10n-name="download-status"]`
+              ).textContent,
               expectedText,
               "Download status text should be correct"
             );
@@ -815,16 +823,42 @@ function runAboutDialogUpdateTest(params, steps) {
         await continueFileHandler(continueFile);
       }
 
-      let linkPanels = ["downloadFailed", "manualUpdate", "unsupportedSystem"];
+      let linkPanels = [
+        "downloadFailed",
+        "manualUpdate",
+        "unsupportedSystem",
+        "internalError",
+      ];
       if (linkPanels.includes(panelId)) {
         // The unsupportedSystem panel uses the update's detailsURL and the
         // downloadFailed and manualUpdate panels use the app.update.url.manual
         // preference.
-        let link = selectedPanel.querySelector("label.text-link");
+        let selector = "label.text-link";
+        if (selectedPanel.ownerDocument.hasPendingL10nMutations) {
+          await BrowserTestUtils.waitForEvent(
+            selectedPanel.ownerDocument,
+            "L10nMutationsFinished"
+          );
+        }
+        let link = selectedPanel.querySelector(selector);
         is(
           link.href,
           gDetailsURL,
           `The panel's link href should equal ${gDetailsURL}`
+        );
+        const assertNonEmptyText = (node, description) => {
+          let textContent = node.textContent.trim();
+          ok(textContent, `${description}, got "${textContent}"`);
+        };
+        assertNonEmptyText(
+          link,
+          `The panel's link should have non-empty textContent`
+        );
+        let linkWrapperClone = link.parentNode.cloneNode(true);
+        linkWrapperClone.querySelector(selector).remove();
+        assertNonEmptyText(
+          linkWrapperClone,
+          `The panel's link should have text around the link`
         );
       }
 
@@ -1104,6 +1138,7 @@ function runAboutPrefsUpdateTest(params, steps) {
             "downloadFailed",
             "manualUpdate",
             "unsupportedSystem",
+            "internalError",
           ];
           if (linkPanels.includes(panelId)) {
             let { selectedPanel } = content.gAppUpdater;
@@ -1122,11 +1157,31 @@ function runAboutPrefsUpdateTest(params, steps) {
             if (selectedPanel.id == "manualUpdate") {
               selector = "a.manualLink";
             }
+            if (selectedPanel.ownerDocument.hasPendingL10nMutations) {
+              await BrowserTestUtils.waitForEvent(
+                selectedPanel.ownerDocument,
+                "L10nMutationsFinished"
+              );
+            }
             let link = selectedPanel.querySelector(selector);
             is(
               link.href,
               gDetailsURL,
               `The panel's link href should equal ${gDetailsURL}`
+            );
+            const assertNonEmptyText = (node, description) => {
+              let textContent = node.textContent.trim();
+              ok(textContent, `${description}, got "${textContent}"`);
+            };
+            assertNonEmptyText(
+              link,
+              `The panel's link should have non-empty textContent`
+            );
+            let linkWrapperClone = link.parentNode.cloneNode(true);
+            linkWrapperClone.querySelector(selector).remove();
+            assertNonEmptyText(
+              linkWrapperClone,
+              `The panel's link should have text around the link`
             );
           }
 

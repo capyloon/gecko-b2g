@@ -280,6 +280,9 @@ pref("browser.shell.setDefaultPDFHandler", true);
 // is a known browser, and not when existing handler is another PDF handler such
 // as Acrobat Reader or Nitro PDF.
 pref("browser.shell.setDefaultPDFHandler.onlyReplaceBrowsers", true);
+// URL to navigate to when launching Firefox after accepting the Windows Default
+// Browser Agent "Set Firefox as default" call to action.
+pref("browser.shell.defaultBrowserAgent.thanksURL", "https://www.mozilla.org/%LOCALE%/firefox/set-as-default/thanks/");
 #endif
 
 
@@ -1533,6 +1536,13 @@ pref("browser.topsites.useRemoteSetting", true);
 pref("browser.topsites.contile.enabled", true);
 pref("browser.topsites.contile.endpoint", "https://contile.services.mozilla.com/v1/tiles");
 
+// Whether to enable the Share-of-Voice feature for Sponsored Topsites via Contile.
+#if defined(EARLY_BETA_OR_EARLIER)
+  pref("browser.topsites.contile.sov.enabled", true);
+#else
+  pref("browser.topsites.contile.sov.enabled", false);
+#endif
+
 // The base URL for the Quick Suggest anonymizing proxy. To make a request to
 // the proxy, include a campaign ID in the path.
 pref("browser.partnerlink.attributionURL", "https://topsites.services.mozilla.com/cid/");
@@ -2159,6 +2169,7 @@ pref("dom.ipc.processPrelaunch.enabled", false);
 pref("dom.ipc.processPrelaunch.enabled", true);
 #endif
 
+pref("browser.migrate.bookmarks-file.enabled", true);
 pref("browser.migrate.brave.enabled", true);
 pref("browser.migrate.canary.enabled", true);
 
@@ -2457,7 +2468,11 @@ pref("devtools.inspector.showUserAgentStyles", false);
 // Show native anonymous content and user agent shadow roots
 pref("devtools.inspector.showAllAnonymousContent", false);
 // Enable the inline CSS compatiblity warning in inspector rule view
-pref("devtools.inspector.ruleview.inline-compatibility-warning.enabled", false);
+#ifdef NIGHTLY_BUILD
+  pref("devtools.inspector.ruleview.inline-compatibility-warning.enabled", true);
+#else
+  pref("devtools.inspector.ruleview.inline-compatibility-warning.enabled", false);
+#endif
 // Enable the compatibility tool in the inspector.
 pref("devtools.inspector.compatibility.enabled", true);
 // Enable overflow debugging in the inspector.
@@ -2580,6 +2595,7 @@ pref("devtools.netmonitor.har.compress", false);
 pref("devtools.netmonitor.har.forceExport", false);
 pref("devtools.netmonitor.har.pageLoadedTimeout", 1500);
 pref("devtools.netmonitor.har.enableAutoExportToFile", false);
+pref("devtools.netmonitor.har.multiple-pages", false);
 
 // netmonitor audit
 pref("devtools.netmonitor.audits.slow", 500);

@@ -90,6 +90,7 @@ const { PromiseUtils } = ChromeUtils.importESModule(
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  Extension: "resource://gre/modules/Extension.sys.mjs",
   RemoteSettings: "resource://services-settings/remote-settings.sys.mjs",
   TelemetryTimestamps: "resource://gre/modules/TelemetryTimestamps.sys.mjs",
   isGatedPermissionType:
@@ -103,7 +104,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
 XPCOMUtils.defineLazyModuleGetters(lazy, {
   AddonRepository: "resource://gre/modules/addons/AddonRepository.jsm",
   AbuseReporter: "resource://gre/modules/AbuseReporter.jsm",
-  Extension: "resource://gre/modules/Extension.jsm",
 });
 
 XPCOMUtils.defineLazyPreferenceGetter(
@@ -784,6 +784,23 @@ var AddonManagerInternal = {
       logger.error("startup failed", e);
       AddonManagerPrivate.recordException("AMI", "startup failed", e);
       gStartedPromise.reject("startup failed");
+    }
+
+    // Disable the quarantined domains feature if the system add-on has been
+    // disabled in a previous version.
+    if (
+      Services.prefs.getBoolPref(
+        "extensions.webextensions.addons-restricted-domains@mozilla.com.disabled",
+        false
+      )
+    ) {
+      Services.prefs.setBoolPref(
+        "extensions.quarantinedDomains.enabled",
+        false
+      );
+      logger.debug(
+        "Disabled quarantined domains because the system add-on was disabled"
+      );
     }
 
     logger.debug("Completed startup sequence");
@@ -4560,6 +4577,7 @@ AMRemoteSettings = {
       "extensions.InstallTriggerImpl.enabled",
       "extensions.InstallTrigger.enabled",
     ],
+    quarantinedDomains: ["extensions.quarantinedDomains.list"],
   },
 
   client: null,
@@ -4630,6 +4648,31 @@ AMRemoteSettings = {
       return [];
     });
 
+    const processEntryPref = (entryId, groupName, prefName, prefValue) => {
+      try {
+        logger.debug(
+          `Process AddonManager RemoteSettings "${entryId}" - "${groupName}": ${prefName}`
+        );
+
+        // Support for controlling boolean and string AddonManager settings.
+        switch (typeof prefValue) {
+          case "boolean":
+            Services.prefs.setBoolPref(prefName, prefValue);
+            break;
+          case "string":
+            Services.prefs.setStringPref(prefName, prefValue);
+            break;
+          default:
+            throw new Error(`Unexpected type ${typeof prefValue}`);
+        }
+      } catch (e) {
+        logger.error(
+          `Failed to process AddonManager RemoteSettings "${entryId}" - "${groupName}": ${prefName}`,
+          e
+        );
+      }
+    };
+
     for (const entry of entries) {
       logger.debug(`Processing AddonManager RemoteSettings "${entry.id}"`);
 
@@ -4645,20 +4688,7 @@ AMRemoteSettings = {
             continue;
           }
 
-          try {
-            // Support for controlling boolean AddonManager settings.
-            if (typeof data[pref] == "boolean") {
-              logger.debug(
-                `Process AddonManager RemoteSettings "${entry.id}" - "${groupName}": ${pref}=${data[pref]}`
-              );
-              Services.prefs.setBoolPref(pref, data[pref]);
-            }
-          } catch (e) {
-            logger.error(
-              `Failed to process AddonManager RemoteSettings "${entry.id}" - "${groupName}": ${pref}`,
-              e
-            );
-          }
+          processEntryPref(entry.id, groupName, pref, data[pref]);
         }
       }
     }

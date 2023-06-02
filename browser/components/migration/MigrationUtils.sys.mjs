@@ -112,6 +112,9 @@ const FILE_MIGRATOR_MODULES = Object.freeze({
   PasswordFileMigrator: {
     moduleURI: "resource:///modules/FileMigrators.sys.mjs",
   },
+  BookmarksFileMigrator: {
+    moduleURI: "resource:///modules/FileMigrators.sys.mjs",
+  },
 });
 
 /**
@@ -898,8 +901,8 @@ class MigrationUtils {
 
   async insertCreditCardsWrapper(cards) {
     this._importQuantities.cards += cards.length;
-    let { formAutofillStorage } = ChromeUtils.import(
-      "resource://autofill/FormAutofillStorage.jsm"
+    let { formAutofillStorage } = ChromeUtils.importESModule(
+      "resource://autofill/FormAutofillStorage.sys.mjs"
     );
 
     await formAutofillStorage.initialize();

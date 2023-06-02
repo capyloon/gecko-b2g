@@ -10,6 +10,8 @@ const lazy = {};
 // Ignore unused lazy property for PluginManager.
 // eslint-disable-next-line mozilla/valid-lazy
 ChromeUtils.defineESModuleGetters(lazy, {
+  ASRouterNewTabHook:
+    "resource://activity-stream/lib/ASRouterNewTabHook.sys.mjs",
   ActorManagerParent: "resource://gre/modules/ActorManagerParent.sys.mjs",
   AppMenuNotifications: "resource://gre/modules/AppMenuNotifications.sys.mjs",
   AsyncShutdown: "resource://gre/modules/AsyncShutdown.sys.mjs",
@@ -55,6 +57,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
     "resource://gre/modules/psm/RemoteSecuritySettings.sys.mjs",
   RemoteSettings: "resource://services-settings/remote-settings.sys.mjs",
   SafeBrowsing: "resource://gre/modules/SafeBrowsing.sys.mjs",
+  Sanitizer: "resource:///modules/Sanitizer.sys.mjs",
   SaveToPocket: "chrome://pocket/content/SaveToPocket.sys.mjs",
   ScreenshotsUtils: "resource:///modules/ScreenshotsUtils.sys.mjs",
   SearchSERPTelemetry: "resource:///modules/SearchSERPTelemetry.sys.mjs",
@@ -79,7 +82,6 @@ XPCOMUtils.defineLazyModuleGetters(lazy, {
   AddonManager: "resource://gre/modules/AddonManager.jsm",
   ASRouterDefaultConfig:
     "resource://activity-stream/lib/ASRouterDefaultConfig.jsm",
-  ASRouterNewTabHook: "resource://activity-stream/lib/ASRouterNewTabHook.jsm",
   ASRouter: "resource://activity-stream/lib/ASRouter.jsm",
   Blocklist: "resource://gre/modules/Blocklist.jsm",
   BrowserUsageTelemetry: "resource:///modules/BrowserUsageTelemetry.jsm",
@@ -93,7 +95,6 @@ XPCOMUtils.defineLazyModuleGetters(lazy, {
     "resource://activity-stream/lib/OnboardingMessageProvider.jsm",
   PageActions: "resource:///modules/PageActions.jsm",
   ProcessHangMonitor: "resource:///modules/ProcessHangMonitor.jsm",
-  Sanitizer: "resource:///modules/Sanitizer.jsm",
   TabCrashHandler: "resource:///modules/ContentCrashHandlers.jsm",
   TabUnloader: "resource:///modules/TabUnloader.jsm",
 });
@@ -610,6 +611,7 @@ let JSWINDOWACTORS = {
         "MigrationWizard:RequestState": { wantUntrusted: true },
         "MigrationWizard:BeginMigration": { wantUntrusted: true },
         "MigrationWizard:RequestSafariPermissions": { wantUntrusted: true },
+        "MigrationWizard:SelectSafariPasswordFile": { wantUntrusted: true },
       },
     },
 

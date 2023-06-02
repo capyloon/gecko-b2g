@@ -215,8 +215,6 @@ void js::NurseryDecommitTask::run(AutoLockHelperThreadState& lock) {
 js::Nursery::Nursery(GCRuntime* gc)
     : position_(0),
       currentEnd_(0),
-      currentStringEnd_(0),
-      currentBigIntEnd_(0),
       gc(gc),
       currentChunk_(0),
       currentStartChunk_(0),
@@ -380,8 +378,6 @@ void js::Nursery::disable() {
   // We must reset currentEnd_ so that there is no space for anything in the
   // nursery. JIT'd code uses this even if the nursery is disabled.
   currentEnd_ = 0;
-  currentStringEnd_ = 0;
-  currentBigIntEnd_ = 0;
   position_ = 0;
   gc->storeBuffer().disable();
 
@@ -391,28 +387,24 @@ void js::Nursery::disable() {
 void js::Nursery::enableStrings() {
   MOZ_ASSERT(isEmpty());
   canAllocateStrings_ = true;
-  currentStringEnd_ = currentEnd_;
   updateAllZoneAllocFlags();
 }
 
 void js::Nursery::disableStrings() {
   MOZ_ASSERT(isEmpty());
   canAllocateStrings_ = false;
-  currentStringEnd_ = 0;
   updateAllZoneAllocFlags();
 }
 
 void js::Nursery::enableBigInts() {
   MOZ_ASSERT(isEmpty());
   canAllocateBigInts_ = true;
-  currentBigIntEnd_ = currentEnd_;
   updateAllZoneAllocFlags();
 }
 
 void js::Nursery::disableBigInts() {
   MOZ_ASSERT(isEmpty());
   canAllocateBigInts_ = false;
-  currentBigIntEnd_ = 0;
   updateAllZoneAllocFlags();
 }
 
@@ -515,6 +507,8 @@ void* js::Nursery::allocateCell(gc::AllocSite* site, size_t size,
   MOZ_ASSERT(size >= sizeof(RelocationOverlay));
   MOZ_ASSERT(size % CellAlignBytes == 0);
   MOZ_ASSERT(size_t(kind) < NurseryTraceKinds);
+  MOZ_ASSERT_IF(kind == JS::TraceKind::String, canAllocateStrings());
+  MOZ_ASSERT_IF(kind == JS::TraceKind::BigInt, canAllocateBigInts());
 
   void* ptr = allocate(sizeof(NurseryCellHeader) + size);
   if (!ptr) {
@@ -1368,6 +1362,12 @@ void js::Nursery::freeTrailerBlocks(void) {
   mallocedBlockCache_.preen(0.05 * float(capacity() / (1024 * 1024)));
 }
 
+size_t Nursery::sizeOfTrailerBlockSets(
+    mozilla::MallocSizeOf mallocSizeOf) const {
+  return trailersAdded_.sizeOfExcludingThis(mallocSizeOf) +
+         trailersRemoved_.sizeOfExcludingThis(mallocSizeOf);
+}
+
 js::Nursery::CollectionResult js::Nursery::doCollection(AutoGCSession& session,
                                                         JS::GCOptions options,
                                                         JS::GCReason reason) {
@@ -1584,6 +1584,16 @@ bool js::Nursery::registerMallocedBuffer(void* buffer, size_t nbytes) {
   return true;
 }
 
+size_t Nursery::sizeOfMallocedBuffers(
+    mozilla::MallocSizeOf mallocSizeOf) const {
+  size_t total = 0;
+  for (BufferSet::Range r = mallocedBuffers.all(); !r.empty(); r.popFront()) {
+    total += mallocSizeOf(r.front());
+  }
+  total += mallocedBuffers.shallowSizeOfExcludingThis(mallocSizeOf);
+  return total;
+}
+
 void js::Nursery::sweep() {
   // It's important that the context's GCUse is not Finalizing at this point,
   // otherwise we will miscount memory attached to nursery objects with
@@ -1706,12 +1716,6 @@ MOZ_ALWAYS_INLINE void js::Nursery::setCurrentEnd() {
                 currentChunk_ == 0 && currentEnd_ <= chunk(0).end());
   currentEnd_ =
       uintptr_t(&chunk(currentChunk_)) + std::min(capacity_, ChunkSize);
-  if (canAllocateStrings_) {
-    currentStringEnd_ = currentEnd_;
-  }
-  if (canAllocateBigInts_) {
-    currentBigIntEnd_ = currentEnd_;
-  }
 }
 
 bool js::Nursery::allocateNextChunk(const unsigned chunkno,

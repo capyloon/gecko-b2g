@@ -1883,15 +1883,8 @@ RefPtr<MediaManager::DeviceSetPromise> MediaManager::EnumerateRawDevices(
         Maybe<MediaDeviceSet> speakers;
         RefPtr devices = new MediaDeviceSetRefCnt();
 
-        if (hasVideo) {
-          videoBackend = hasFakeCams ? fakeBackend : realBackend;
-          MediaDeviceSet videos;
-          LOG("EnumerateRawDevices Task: Getting video sources with %s backend",
-              videoBackend == fakeBackend ? "fake" : "real");
-          GetMediaDevices(videoBackend, aVideoInputType, videos,
-                          videoLoopDev.get());
-          devices->AppendElements(videos);
-        }
+        // Enumerate microphones first, then cameras, then speakers, since the
+        // enumerateDevices() algorithm expects them listed in that order.
         if (hasAudio) {
           audioBackend = hasFakeMics ? fakeBackend : realBackend;
           MediaDeviceSet audios;
@@ -1905,6 +1898,15 @@ RefPtr<MediaManager::DeviceSetPromise> MediaManager::EnumerateRawDevices(
             micsOfVideoBackend->AppendElements(audios);
           }
           devices->AppendElements(audios);
+        }
+        if (hasVideo) {
+          videoBackend = hasFakeCams ? fakeBackend : realBackend;
+          MediaDeviceSet videos;
+          LOG("EnumerateRawDevices Task: Getting video sources with %s backend",
+              videoBackend == fakeBackend ? "fake" : "real");
+          GetMediaDevices(videoBackend, aVideoInputType, videos,
+                          videoLoopDev.get());
+          devices->AppendElements(videos);
         }
         if (hasAudioOutput) {
           MediaDeviceSet outputs;
@@ -2643,7 +2645,7 @@ RefPtr<MediaManager::StreamPromise> MediaManager::GetUserMedia(
   }
 
   const bool resistFingerprinting =
-      !isChrome && doc->ShouldResistFingerprinting();
+      !isChrome && doc->ShouldResistFingerprinting(RFPTarget::Unknown);
   if (resistFingerprinting) {
     ReduceConstraint(c.mVideo);
     ReduceConstraint(c.mAudio);
@@ -3143,7 +3145,8 @@ RefPtr<LocalDevicePromise> MediaManager::SelectAudioOutput(
   }
   uint64_t windowID = aWindow->WindowID();
   const bool resistFingerprinting =
-      aWindow->AsGlobal()->ShouldResistFingerprinting(aCallerType);
+      aWindow->AsGlobal()->ShouldResistFingerprinting(aCallerType,
+                                                      RFPTarget::Unknown);
   return EnumerateDevicesImpl(aWindow, MediaSourceEnum::Other,
                               MediaSourceEnum::Other,
                               {EnumerationFlag::EnumerateAudioOutputs,

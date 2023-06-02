@@ -12,8 +12,8 @@ const { XPCOMUtils } = ChromeUtils.importESModule(
 const lazy = {};
 
 XPCOMUtils.defineLazyGetter(lazy, "makeRange", () => {
-  const { ExtensionParent } = ChromeUtils.import(
-    "resource://gre/modules/ExtensionParent.jsm"
+  const { ExtensionParent } = ChromeUtils.importESModule(
+    "resource://gre/modules/ExtensionParent.sys.mjs"
   );
   // Defined in ext-browsingData.js
   return ExtensionParent.apiManager.global.makeRange;
@@ -21,10 +21,7 @@ XPCOMUtils.defineLazyGetter(lazy, "makeRange", () => {
 
 ChromeUtils.defineESModuleGetters(lazy, {
   Preferences: "resource://gre/modules/Preferences.sys.mjs",
-});
-
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  Sanitizer: "resource:///modules/Sanitizer.jsm",
+  Sanitizer: "resource:///modules/Sanitizer.sys.mjs",
 });
 
 class BrowsingDataDelegate {

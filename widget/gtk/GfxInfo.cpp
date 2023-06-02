@@ -645,7 +645,7 @@ void GfxInfo::GetDataVAAPI() {
   }
   mIsVAAPISupported = Some(false);
 
-#ifdef MOZ_WAYLAND
+#ifdef MOZ_ENABLE_VAAPI
   char* vaapiData = nullptr;
   auto free = mozilla::MakeScopeExit([&] { g_free((void*)vaapiData); });
 
@@ -822,12 +822,13 @@ const nsTArray<GfxDriverInfo>& GfxInfo::GetGfxDriverInfo() {
         DRIVER_COMPARISON_IGNORED, V(0, 0, 0, 0),
         "FEATURE_FAILURE_WEBRENDER_NO_LINUX_ATI", "");
 
+    // Disable R600 GPUs with Mesa drivers.
     // Bug 1673939 - Garbled text on RS880 GPUs with Mesa drivers.
     APPEND_TO_DRIVER_BLOCKLIST_EXT(
         OperatingSystem::Linux, ScreenSizeStatus::All, BatteryStatus::All,
         WindowProtocol::All, DriverVendor::MesaAll, DeviceFamily::AmdR600,
         nsIGfxInfo::FEATURE_WEBRENDER, nsIGfxInfo::FEATURE_BLOCKED_DEVICE,
-        DRIVER_LESS_THAN, V(22, 2, 0, 0),
+        DRIVER_COMPARISON_IGNORED, V(0, 0, 0, 0),
         "FEATURE_FAILURE_WEBRENDER_BUG_1673939",
         "https://gitlab.freedesktop.org/mesa/mesa/-/issues/3720");
 
@@ -956,9 +957,9 @@ const nsTArray<GfxDriverInfo>& GfxInfo::GetGfxDriverInfo() {
         nsIGfxInfo::FEATURE_BLOCKED_DEVICE, DRIVER_COMPARISON_IGNORED,
         V(0, 0, 0, 0), "FEATURE_HARDWARE_VIDEO_DECODING_NO_R600", "");
 
-    // Disable on Release/late Beta
+    // Disable on Release/late Beta on AMD
 #if !defined(EARLY_BETA_OR_EARLIER)
-    APPEND_TO_DRIVER_BLOCKLIST(OperatingSystem::Linux, DeviceFamily::All,
+    APPEND_TO_DRIVER_BLOCKLIST(OperatingSystem::Linux, DeviceFamily::AtiAll,
                                nsIGfxInfo::FEATURE_HARDWARE_VIDEO_DECODING,
                                nsIGfxInfo::FEATURE_BLOCKED_DEVICE,
                                DRIVER_COMPARISON_IGNORED, V(0, 0, 0, 0),
@@ -1156,7 +1157,11 @@ nsresult GfxInfo::GetFeatureStatusImpl(
   // Probe VA-API on supported devices only
   if (aFeature == nsIGfxInfo::FEATURE_HARDWARE_VIDEO_DECODING &&
       *aStatus == nsIGfxInfo::FEATURE_STATUS_OK) {
-    GetDataVAAPI();
+    if (mIsAccelerated) {
+      GetDataVAAPI();
+    } else {
+      mIsVAAPISupported = Some(false);
+    }
     if (!mIsVAAPISupported.value()) {
       *aStatus = nsIGfxInfo::FEATURE_BLOCKED_PLATFORM_TEST;
       aFailureId = "FEATURE_FAILURE_VIDEO_DECODING_TEST_FAILED";

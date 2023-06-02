@@ -58,13 +58,11 @@ void RemoteAccessibleBase<Derived>::Shutdown() {
     CachedTableAccessible::Invalidate(this);
   }
 
-  if (a11y::IsCacheActive()) {
-    // Remove this acc's relation map from the doc's map of
-    // reverse relations. Prune forward relations associated with this
-    // acc's reverse relations. This also removes the acc's map of reverse
-    // rels from the mDoc's mReverseRelations.
-    PruneRelationsOnShutdown();
-  }
+  // Remove this acc's relation map from the doc's map of
+  // reverse relations. Prune forward relations associated with this
+  // acc's reverse relations. This also removes the acc's map of reverse
+  // rels from the mDoc's mReverseRelations.
+  PruneRelationsOnShutdown();
 
   // XXX Ideally  this wouldn't be necessary, but it seems OuterDoc
   // accessibles can be destroyed before the doc they own.
@@ -335,24 +333,19 @@ bool RemoteAccessibleBase<Derived>::SetCurValue(double aValue) {
     return false;
   }
 
-  if (a11y::IsCacheActive()) {
-    // XXX: If cache is disabled there is a slight regression
-    // where we don't check the readonly/unavailable state or the min/max
-    // values. This will go away once cache is enabled by default.
-    const uint32_t kValueCannotChange = states::READONLY | states::UNAVAILABLE;
-    if (State() & kValueCannotChange) {
-      return false;
-    }
+  const uint32_t kValueCannotChange = states::READONLY | states::UNAVAILABLE;
+  if (State() & kValueCannotChange) {
+    return false;
+  }
 
-    double checkValue = MinValue();
-    if (!std::isnan(checkValue) && aValue < checkValue) {
-      return false;
-    }
+  double checkValue = MinValue();
+  if (!std::isnan(checkValue) && aValue < checkValue) {
+    return false;
+  }
 
-    checkValue = MaxValue();
-    if (!std::isnan(checkValue) && aValue > checkValue) {
-      return false;
-    }
+  checkValue = MaxValue();
+  if (!std::isnan(checkValue) && aValue > checkValue) {
+    return false;
   }
 
   Unused << mDoc->SendSetCurValue(mID, aValue);
@@ -499,6 +492,22 @@ Accessible* RemoteAccessibleBase<Derived>::ChildAtPoint(
           // first match we encounter is guaranteed to be the
           // deepest match.
           lastMatch = acc;
+          if (lastMatch->Role() == roles::TEXT_CONTAINER) {
+            // We've matched on a generic, we probably want its
+            // inner text leaf (if one exists). Drill down through
+            // subsequent generics, regardless of whether the point
+            // we want is actually contained therein."
+            while (lastMatch->ChildCount() == 1) {
+              if (lastMatch->Role() == roles::TEXT_CONTAINER) {
+                lastMatch = lastMatch->RemoteChildAt(0);
+              } else {
+                break;
+              }
+            }
+            // If we failed to find a text leaf, fall back to the
+            // original generic match.
+            lastMatch = lastMatch->IsTextLeaf() ? lastMatch : acc;
+          }
           break;
         }
       }
@@ -1887,7 +1896,6 @@ void RemoteAccessibleBase<Derived>::SetSelected(bool aSelect) {
 
 template <class Derived>
 TableAccessibleBase* RemoteAccessibleBase<Derived>::AsTableBase() {
-  MOZ_ASSERT(a11y::IsCacheActive());
   if (IsTable()) {
     return CachedTableAccessible::GetFrom(this);
   }
@@ -1896,7 +1904,6 @@ TableAccessibleBase* RemoteAccessibleBase<Derived>::AsTableBase() {
 
 template <class Derived>
 TableCellAccessibleBase* RemoteAccessibleBase<Derived>::AsTableCellBase() {
-  MOZ_ASSERT(a11y::IsCacheActive());
   if (IsTableCell()) {
     return CachedTableCellAccessible::GetFrom(this);
   }
@@ -1905,7 +1912,6 @@ TableCellAccessibleBase* RemoteAccessibleBase<Derived>::AsTableCellBase() {
 
 template <class Derived>
 bool RemoteAccessibleBase<Derived>::TableIsProbablyForLayout() {
-  MOZ_ASSERT(a11y::IsCacheActive());
   if (mCachedFields) {
     if (auto layoutGuess =
             mCachedFields->GetAttribute<bool>(nsGkAtoms::layout_guess)) {
@@ -1956,6 +1962,40 @@ void RemoteAccessibleBase<Derived>::Language(nsAString& aLocale) {
   if (auto attrs = GetCachedTextAttributes()) {
     attrs->GetAttribute(nsGkAtoms::language, aLocale);
   }
+}
+
+template <class Derived>
+void RemoteAccessibleBase<Derived>::ReplaceText(const nsAString& aText) {
+  Unused << mDoc->SendReplaceText(mID, aText);
+}
+
+template <class Derived>
+void RemoteAccessibleBase<Derived>::InsertText(const nsAString& aText,
+                                               int32_t aPosition) {
+  Unused << mDoc->SendInsertText(mID, aText, aPosition);
+}
+
+template <class Derived>
+void RemoteAccessibleBase<Derived>::CopyText(int32_t aStartPos,
+                                             int32_t aEndPos) {
+  Unused << mDoc->SendCopyText(mID, aStartPos, aEndPos);
+}
+
+template <class Derived>
+void RemoteAccessibleBase<Derived>::CutText(int32_t aStartPos,
+                                            int32_t aEndPos) {
+  Unused << mDoc->SendCutText(mID, aStartPos, aEndPos);
+}
+
+template <class Derived>
+void RemoteAccessibleBase<Derived>::DeleteText(int32_t aStartPos,
+                                               int32_t aEndPos) {
+  Unused << mDoc->SendDeleteText(mID, aStartPos, aEndPos);
+}
+
+template <class Derived>
+void RemoteAccessibleBase<Derived>::PasteText(int32_t aPosition) {
+  Unused << mDoc->SendPasteText(mID, aPosition);
 }
 
 template <class Derived>

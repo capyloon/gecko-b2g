@@ -12,22 +12,10 @@ var { XPCOMUtils } = ChromeUtils.importESModule(
 
 const lazy = {};
 
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "ExtensionParent",
-  "resource://gre/modules/ExtensionParent.jsm"
-);
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "OriginControls",
-  "resource://gre/modules/ExtensionPermissions.jsm"
-);
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "ExtensionPermissions",
-  "resource://gre/modules/ExtensionPermissions.jsm"
-);
 ChromeUtils.defineESModuleGetters(lazy, {
+  ExtensionParent: "resource://gre/modules/ExtensionParent.sys.mjs",
+  ExtensionPermissions: "resource://gre/modules/ExtensionPermissions.sys.mjs",
+  OriginControls: "resource://gre/modules/ExtensionPermissions.sys.mjs",
   SITEPERMS_ADDON_TYPE:
     "resource://gre/modules/addons/siteperms-addon-utils.sys.mjs",
 });
@@ -1350,12 +1338,38 @@ var gUnifiedExtensions = {
     // Only add extensions that do not have a browser action in this list since
     // the extensions with browser action have CUI widgets and will appear in
     // the panel (or toolbar) via the CUI mechanism.
-    const policies = this.getActivePolicies(/* all */ false);
-
-    for (const policy of policies) {
+    for (const policy of this.getActivePolicies(/* all */ false)) {
       const item = document.createElement("unified-extensions-item");
       item.setExtension(policy.extension);
       list.appendChild(item);
+    }
+
+    const isQuarantinedDomain = this.getActivePolicies().some(
+      policy =>
+        lazy.OriginControls.getState(policy, window.gBrowser.selectedTab)
+          .quarantined
+    );
+    const container = panelview.querySelector(
+      "#unified-extensions-messages-container"
+    );
+
+    if (isQuarantinedDomain) {
+      if (!this._messageBarQuarantinedDomain) {
+        this._messageBarQuarantinedDomain = this._makeMessageBar({
+          titleFluentId: "unified-extensions-mb-quarantined-domain-title",
+          messageFluentId: "unified-extensions-mb-quarantined-domain-message",
+          supportPage: "quarantined-domains",
+          dismissable: false,
+        });
+      }
+
+      container.appendChild(this._messageBarQuarantinedDomain);
+    } else if (
+      !isQuarantinedDomain &&
+      this._messageBarQuarantinedDomain &&
+      container.contains(this._messageBarQuarantinedDomain)
+    ) {
+      container.removeChild(this._messageBarQuarantinedDomain);
     }
   },
 
@@ -1853,5 +1867,38 @@ var gUnifiedExtensions = {
       menuButton.classList.toggle("subviewbutton-iconic", inPanel);
       menuButton.classList.toggle("toolbarbutton-1", !inPanel);
     }
+  },
+
+  _makeMessageBar({
+    messageFluentId,
+    titleFluentId = null,
+    supportPage = null,
+    type = "warning",
+  }) {
+    const messageBar = document.createElement("message-bar");
+    messageBar.setAttribute("type", type);
+    messageBar.classList.add("unified-extensions-message-bar");
+
+    if (titleFluentId) {
+      const titleEl = document.createElement("strong");
+      document.l10n.setAttributes(titleEl, titleFluentId);
+      messageBar.append(titleEl);
+    }
+
+    const messageEl = document.createElement("span");
+    document.l10n.setAttributes(messageEl, messageFluentId);
+    messageBar.append(messageEl);
+
+    if (supportPage) {
+      window.ensureCustomElements("moz-support-link");
+
+      const supportUrl = document.createElement("a", {
+        is: "moz-support-link",
+      });
+      supportUrl.setAttribute("support-page", supportPage);
+      messageBar.append(supportUrl);
+    }
+
+    return messageBar;
   },
 };

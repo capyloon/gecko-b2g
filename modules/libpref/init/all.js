@@ -271,6 +271,11 @@ pref("media.videocontrols.picture-in-picture.video-toggle.has-used", false);
 pref("media.videocontrols.picture-in-picture.display-text-tracks.toggle.enabled", true);
 pref("media.videocontrols.picture-in-picture.display-text-tracks.size", "medium");
 pref("media.videocontrols.picture-in-picture.improved-video-controls.enabled", true);
+#ifdef NIGHTLY_BUILD
+  pref("media.videocontrols.picture-in-picture.respect-disablePictureInPicture", true);
+#else
+  pref("media.videocontrols.picture-in-picture.respect-disablePictureInPicture", false);
+#endif
 pref("media.videocontrols.keyboard-tab-to-all-controls", true);
 
 #ifdef MOZ_WEBRTC
@@ -870,7 +875,6 @@ pref("dom.popup_allowed_events", "change click dblclick auxclick mousedown mouse
 
 pref("dom.serviceWorkers.disable_open_click_delay", 1000);
 
-pref("dom.storage.enabled", true);
 pref("dom.storage.shadow_writes", false);
 pref("dom.storage.snapshot_prefill", 16384);
 pref("dom.storage.snapshot_gradual_prefill", 4096);
@@ -3775,13 +3779,17 @@ pref("browser.storageManager.pressureNotification.usageThresholdGB", 5);
 
 pref("browser.sanitizer.loglevel", "Warn");
 
-// Enable Firefox translations based on Bergamot[1]. This project is in-development and
-// an effort to integrate the Firefox Translations[2] project direcly into Gecko.
+// Enable Firefox translations powered by the Bergamot translations engine[1].
 // See Bug 971044.
 //
 // [1]: https://browser.mt/
 // [2]: https://github.com/mozilla/firefox-translations
+#ifdef EARLY_BETA_OR_EARLIER
+pref("browser.translations.enable", true);
+#else
 pref("browser.translations.enable", false);
+#endif
+
 // Set to "All" to see all logs, which are useful for debugging. Set to "Info" to see
 // the application logic logs, and not all of the translated messages, which can be
 // slow and overwhelming.
@@ -4115,8 +4123,8 @@ pref("devtools.remote.adb.extensionURL", "https://ftp.mozilla.org/pub/labs/devto
 // Enable Inactive CSS detection; used both by the client and the server.
 pref("devtools.inspector.inactive.css.enabled", true);
 
-// The F12 experiment aims at disabling f12 on selected profiles.
-pref("devtools.experiment.f12.shortcut_disabled", false);
+// Should F12 open the Developer Tools toolbox.
+pref("devtools.f12_enabled", true);
 
 #if defined(NIGHTLY_BUILD) || defined(MOZ_DEV_EDITION)
 // Define in StaticPrefList.yaml and override here since StaticPrefList.yaml

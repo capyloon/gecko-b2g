@@ -54,28 +54,51 @@ const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 function checkBundles() {
   logStart("checkBundles");
 
-  const ASbundle = path.join("data", "content", "activity-stream.bundle.js");
-  const AWbundle = path.join(
-    "aboutwelcome",
-    "content",
-    "aboutwelcome.bundle.js"
-  );
-  let errors = [];
+  const items = {
+    "Activity Stream bundle": {
+      path: path.join("data", "content", "activity-stream.bundle.js"),
+    },
+    "activity-stream.html": {
+      path: path.join("prerendered", "activity-stream.html"),
+    },
+    "activity-stream-debug.html": {
+      path: path.join("prerendered", "activity-stream-debug.html"),
+    },
+    "activity-stream-noscripts.html": {
+      path: path.join("prerendered", "activity-stream-noscripts.html"),
+    },
+    "activity-stream-linux.css": {
+      path: path.join("css", "activity-stream-linux.css"),
+    },
+    "activity-stream-mac.css": {
+      path: path.join("css", "activity-stream-mac.css"),
+    },
+    "activity-stream-windows.css": {
+      path: path.join("css", "activity-stream-windows.css"),
+    },
+    "About:welcome bundle": {
+      path: path.join("aboutwelcome", "content", "aboutwelcome.bundle.js"),
+    },
+    "aboutwelcome.css": {
+      path: path.join("aboutwelcome", "content", "aboutwelcome.css"),
+    },
+  };
+  const errors = [];
 
-  let ASbefore = readFileSync(ASbundle, "utf8");
-  let AWbefore = readFileSync(AWbundle, "utf8");
+  for (const name of Object.keys(items)) {
+    const item = items[name];
+    item.before = readFileSync(item.path, item.encoding || "utf8");
+  }
 
   let bundleExitCode = execOut(npmCommand, ["run", "bundle"]).exitCode;
 
-  let ASafter = readFileSync(ASbundle, "utf8");
-  let AWafter = readFileSync(AWbundle, "utf8");
+  for (const name of Object.keys(items)) {
+    const item = items[name];
+    const after = readFileSync(item.path, item.encoding || "utf8");
 
-  if (ASbefore !== ASafter) {
-    errors.push("Activity Stream bundle out of date");
-  }
-
-  if (AWbefore !== AWafter) {
-    errors.push("About:welcome bundle out of date");
+    if (item.before !== after) {
+      errors.push(`${name} out of date`);
+    }
   }
 
   if (bundleExitCode !== 0) {
@@ -143,57 +166,6 @@ function karma() {
   return errors.length === 0 && !exitCode;
 }
 
-function stylelint() {
-  logStart("stylelint");
-  const { exitCode, out } = execOut(npmCommand, [
-    "run",
-    "--silent",
-    "lint:stylelint",
-    "--",
-    "--formatter",
-    "json",
-  ]);
-
-  // Successful exit and no output means stylelint passed.
-  if (!exitCode && !out.length) {
-    return true;
-  }
-
-  let fileObjects = JSON.parse(out);
-
-  let errs = [];
-  let errorString;
-  for (const file of fileObjects) {
-    let fileErrs = [];
-    for (const warningObj of file.warnings) {
-      let relativePath = path.relative(
-        path.join(__dirname, ".."),
-        path.join(...file.source.split("/"))
-      );
-      errorString = `${relativePath}(${warningObj.line}, ${warningObj.column}): ${warningObj.text}`;
-      fileErrs.push(errorString);
-    }
-    for (const warningObj of file.invalidOptionWarnings) {
-      errorString = `config: ${warningObj.text}`;
-      fileErrs.push(errorString);
-    }
-    for (const warningObj of file.parseErrors) {
-      errorString = `construct-specific parser error: ${warningObj.text}`;
-      fileErrs.push(errorString);
-    }
-    if (fileErrs.length) {
-      errs.push(...fileErrs);
-    } else if (file.errored) {
-      errs.push(`unknown error: ${file.source}`);
-    }
-  }
-
-  const errors = logErrors("stylelint", errs);
-
-  // Pass if there's no detected errors and nothing unexpected.
-  return errors.length === 0 && !exitCode;
-}
-
 function zipCodeCoverage() {
   logStart("zipCodeCoverage");
   const { exitCode, out } = execOut("zip", [
@@ -212,7 +184,7 @@ function zipCodeCoverage() {
 }
 
 const tests = {};
-const success = [checkBundles, karma, zipCodeCoverage, stylelint].every(
+const success = [checkBundles, karma, zipCodeCoverage].every(
   t => (tests[t.name] = t())
 );
 console.log(tests);

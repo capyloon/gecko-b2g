@@ -32,7 +32,7 @@ add_task(async function test_translations_panel_basics() {
 
   await waitForTranslationsPopupEvent("popuphidden", () => {
     click(
-      getByL10nId("translations-panel-default-translate-button"),
+      getByL10nId("translations-panel-translate-button"),
       "Start translating by clicking the translate button."
     );
   });
@@ -64,9 +64,14 @@ add_task(async function test_translations_panel_basics() {
     click(button, "Re-opening the popup");
   });
 
+  ok(
+    getByL10nId("translations-panel-translate-button").disabled,
+    "The translate button is disabled when re-opening."
+  );
+
   await waitForTranslationsPopupEvent("popuphidden", () => {
     click(
-      getByL10nId("translations-panel-revisit-restore-button"),
+      getByL10nId("translations-panel-restore-button"),
       "Click the restore language button."
     );
   });

@@ -4,6 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include <limits>
 #include <type_traits>
 
 #include "TimeUnits.h"
@@ -36,25 +37,16 @@ TimeUnit TimeUnit::FromSeconds(double aValue, int64_t aBase) {
   // stable.
   double inBase = aValue * static_cast<double>(aBase);
   if (std::abs(inBase) >
-      static_cast<double>(std::numeric_limits<int64_t>::max())) {
+          static_cast<double>(std::numeric_limits<int64_t>::max()) ||
+      inBase > std::pow(2, std::numeric_limits<double>::digits) - 1) {
     NS_WARNING(nsPrintfCString("Warning: base %" PRId64
-                               " is too high to represent %lfs accurately: "
-                               "overflows int64_t",
+                               " is too high to represent %lfs accurately.",
                                aBase, aValue)
                    .get());
     if (inBase > 0) {
       return TimeUnit::FromInfinity();
     }
     return TimeUnit::FromNegativeInfinity();
-  }
-  if (inBase > std::pow(2, std::numeric_limits<double>::digits) - 1) {
-    NS_WARNING(
-        nsPrintfCString("Warning base %" PRId64
-                        " is too high to represent %lfs accurately: greater "
-                        "than the max integer representable in a double.",
-                        aBase, aValue)
-            .get());
-    MOZ_DIAGNOSTIC_ASSERT(false);
   }
   return TimeUnit(static_cast<int64_t>(inBase), aBase);
 }
@@ -359,37 +351,6 @@ TimeUnit TimeUnit::MultDouble(double aVal) const {
   // static_cast is ok, the magnitude of the number has been checked just above.
   return TimeUnit(static_cast<int64_t>(multiplied), mBase);
 }
-TimeUnit TimeUnit::ToBase(int64_t aTargetBase) const {
-  double dummy = 0.0;
-  return ToBase(aTargetBase, dummy);
-}
-
-TimeUnit TimeUnit::ToBase(const TimeUnit& aTimeUnit) const {
-  double dummy = 0.0;
-  return ToBase(aTimeUnit, dummy);
-}
-
-// Allow returning the same value, in a base that matches another TimeUnit.
-TimeUnit TimeUnit::ToBase(const TimeUnit& aTimeUnit, double& aOutError) const {
-  int64_t targetBase = aTimeUnit.mBase;
-  return ToBase(targetBase, aOutError);
-}
-
-TimeUnit TimeUnit::ToBase(int64_t aTargetBase, double& aOutError) const {
-  aOutError = 0.0;
-  CheckedInt<int64_t> ticks = mTicks * aTargetBase;
-  if (ticks.isValid()) {
-    imaxdiv_t rv = imaxdiv(ticks.value(), mBase);
-    if (!rv.rem) {
-      return TimeUnit(rv.quot, aTargetBase);
-    }
-  }
-  double approx = static_cast<double>(mTicks.value()) *
-                  static_cast<double>(aTargetBase) / static_cast<double>(mBase);
-  double integer;
-  aOutError = modf(approx, &integer);
-  return TimeUnit(AssertedCast<int64_t>(approx), aTargetBase);
-}
 
 bool TimeUnit::IsValid() const { return mTicks.isValid(); }
 
@@ -426,7 +387,15 @@ int64_t TimeUnit::ToCommonUnit(int64_t aRatio) const {
   double baseFloating = AssertedCast<double>(mBase);
   double ticksFloating = static_cast<double>(mTicks.value());
   double approx = ticksFloating * (ratioFloating / baseFloating);
-  return AssertedCast<int64_t>(approx);
+  // Clamp to a valid range. If this is clamped it's outside any usable time
+  // value even in nanoseconds (thousands of years).
+  if (approx > static_cast<double>(std::numeric_limits<int64_t>::max())) {
+    return std::numeric_limits<int64_t>::max();
+  }
+  if (approx < static_cast<double>(std::numeric_limits<int64_t>::lowest())) {
+    return std::numeric_limits<int64_t>::lowest();
+  }
+  return static_cast<int64_t>(approx);
 }
 
 // Reduce a TimeUnit to the smallest possible ticks and base. This is useful

@@ -4,22 +4,22 @@
 /* This code is loaded in every child process that is started by mochitest.
  */
 
-const { ExtensionUtils } = ChromeUtils.import(
-  "resource://gre/modules/ExtensionUtils.jsm"
-);
+import { ExtensionUtils } from "resource://gre/modules/ExtensionUtils.sys.mjs";
 
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   ContentTaskUtils: "resource://testing-common/ContentTaskUtils.sys.mjs",
-  MockColorPicker: "resource://specialpowers/MockColorPicker.sys.mjs",
-  MockFilePicker: "resource://specialpowers/MockFilePicker.sys.mjs",
-  MockPermissionPrompt: "resource://specialpowers/MockPermissionPrompt.sys.mjs",
+  MockColorPicker: "resource://testing-common/MockColorPicker.sys.mjs",
+  MockFilePicker: "resource://testing-common/MockFilePicker.sys.mjs",
+  MockPermissionPrompt:
+    "resource://testing-common/MockPermissionPrompt.sys.mjs",
   PerTestCoverageUtils:
     "resource://testing-common/PerTestCoverageUtils.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
-  SpecialPowersSandbox: "resource://specialpowers/SpecialPowersSandbox.sys.mjs",
-  WrapPrivileged: "resource://specialpowers/WrapPrivileged.sys.mjs",
+  SpecialPowersSandbox:
+    "resource://testing-common/SpecialPowersSandbox.sys.mjs",
+  WrapPrivileged: "resource://testing-common/WrapPrivileged.sys.mjs",
 });
 ChromeUtils.defineModuleGetter(
   lazy,
@@ -309,7 +309,7 @@ export class SpecialPowersChild extends JSWindowActorChild {
       case "Assert":
         {
           if ("info" in message.data) {
-            this.SimpleTest.info(message.data.info);
+            (this.xpcshellScope || this.SimpleTest).info(message.data.info);
             break;
           }
 
@@ -320,6 +320,8 @@ export class SpecialPowersChild extends JSWindowActorChild {
           if (SimpleTest) {
             let expected = expectFail ? "fail" : "pass";
             SimpleTest.record(passed, name, diag, stack, expected);
+          } else if (this.xpcshellScope) {
+            this.xpcshellScope.do_report_result(passed, name, stack);
           } else {
             // Well, this is unexpected.
             dump(name + "\n");
@@ -1583,7 +1585,9 @@ export class SpecialPowersChild extends JSWindowActorChild {
       args,
       task: String(task),
       caller: Cu.getFunctionSourceLocation(task),
-      hasHarness: typeof this.SimpleTest === "object",
+      hasHarness:
+        typeof this.SimpleTest === "object" ||
+        typeof this.xpcshellScope === "object",
       imports: this._spawnTaskImports,
     });
   }
@@ -1663,6 +1667,13 @@ export class SpecialPowersChild extends JSWindowActorChild {
   }
   set SimpleTest(val) {
     this._SimpleTest = val;
+  }
+
+  get xpcshellScope() {
+    return this._xpcshellScope;
+  }
+  set xpcshellScope(val) {
+    this._xpcshellScope = val;
   }
 
   async evictAllContentViewers() {

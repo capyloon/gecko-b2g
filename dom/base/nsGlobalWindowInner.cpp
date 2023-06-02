@@ -3591,6 +3591,14 @@ void nsGlobalWindowInner::SetOuterHeight(JSContext* aCx,
                             "outerHeight", aCallerType, aError);
 }
 
+double nsGlobalWindowInner::ScreenEdgeSlopX() const {
+  FORWARD_TO_OUTER(ScreenEdgeSlopX, (), 0);
+}
+
+double nsGlobalWindowInner::ScreenEdgeSlopY() const {
+  FORWARD_TO_OUTER(ScreenEdgeSlopY, (), 0);
+}
+
 int32_t nsGlobalWindowInner::GetScreenX(CallerType aCallerType,
                                         ErrorResult& aError) {
   FORWARD_TO_OUTER_OR_THROW(GetScreenXOuter, (aCallerType, aError), aError, 0);
@@ -3641,7 +3649,8 @@ double nsGlobalWindowInner::GetDevicePixelRatio(CallerType aCallerType,
     return 1.0;
   }
 
-  if (nsIGlobalObject::ShouldResistFingerprinting(aCallerType)) {
+  if (nsIGlobalObject::ShouldResistFingerprinting(aCallerType,
+                                                  RFPTarget::Unknown)) {
     // Spoofing the DevicePixelRatio causes blurriness in some situations
     // on HiDPI displays. pdf.js is a non-system caller; but it can't
     // expose the fingerprintable information, so we can safely disable
@@ -7480,7 +7489,8 @@ void nsGlobalWindowInner::InitWasOffline() { mWasOffline = NS_IsOffline(); }
 int16_t nsGlobalWindowInner::Orientation(CallerType aCallerType) {
   // GetOrientationAngle() returns 0, 90, 180 or 270.
   // window.orientation returns -90, 0, 90 or 180.
-  if (nsIGlobalObject::ShouldResistFingerprinting(aCallerType)) {
+  if (nsIGlobalObject::ShouldResistFingerprinting(
+          aCallerType, RFPTarget::ScreenOrientation)) {
     return 0;
   }
   nsScreen* s = GetScreen(IgnoreErrors());

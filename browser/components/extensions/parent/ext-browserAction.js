@@ -8,14 +8,11 @@
 
 ChromeUtils.defineESModuleGetters(this, {
   CustomizableUI: "resource:///modules/CustomizableUI.sys.mjs",
+  ExtensionTelemetry: "resource://gre/modules/ExtensionTelemetry.sys.mjs",
+  OriginControls: "resource://gre/modules/ExtensionPermissions.sys.mjs",
   clearTimeout: "resource://gre/modules/Timer.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
-ChromeUtils.defineModuleGetter(
-  this,
-  "ExtensionTelemetry",
-  "resource://gre/modules/ExtensionTelemetry.jsm"
-);
 ChromeUtils.defineModuleGetter(
   this,
   "ViewPopup",
@@ -26,19 +23,14 @@ ChromeUtils.defineModuleGetter(
   "BrowserUsageTelemetry",
   "resource:///modules/BrowserUsageTelemetry.jsm"
 );
-ChromeUtils.defineModuleGetter(
-  this,
-  "OriginControls",
-  "resource://gre/modules/ExtensionPermissions.jsm"
-);
 
 var { DefaultWeakMap, ExtensionError } = ExtensionUtils;
 
-var { ExtensionParent } = ChromeUtils.import(
-  "resource://gre/modules/ExtensionParent.jsm"
+var { ExtensionParent } = ChromeUtils.importESModule(
+  "resource://gre/modules/ExtensionParent.sys.mjs"
 );
-var { BrowserActionBase } = ChromeUtils.import(
-  "resource://gre/modules/ExtensionActions.jsm"
+var { BrowserActionBase } = ChromeUtils.importESModule(
+  "resource://gre/modules/ExtensionActions.sys.mjs"
 );
 
 var { IconDetails, StartupCache } = ExtensionParent;
@@ -386,8 +378,10 @@ this.browserAction = class extends ExtensionAPIPersistent {
         const popup = target.ownerDocument.getElementById(
           "unified-extensions-context-menu"
         );
+        // Anchor to the visible part of the button.
+        const anchor = target.firstElementChild;
         popup.openPopup(
-          target,
+          anchor,
           "after_end",
           0,
           0,

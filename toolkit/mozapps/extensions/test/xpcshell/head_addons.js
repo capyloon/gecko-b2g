@@ -17,10 +17,6 @@ const PREF_EM_STRICT_COMPATIBILITY = "extensions.strictCompatibility";
 const PREF_GETADDONS_BYIDS = "extensions.getAddons.get.url";
 const PREF_XPI_SIGNATURES_REQUIRED = "xpinstall.signatures.required";
 
-const PREF_DISABLE_SECURITY =
-  "security.turn_off_all_security_so_that_" +
-  "viruses_can_take_over_this_computer";
-
 // Maximum error in file modification times. Some file systems don't store
 // modification times exactly. As long as we are closer than this then it
 // still passes.
@@ -58,25 +54,14 @@ ChromeUtils.defineModuleGetter(
 );
 ChromeUtils.defineModuleGetter(
   this,
-  "Extension",
-  "resource://gre/modules/Extension.jsm"
-);
-ChromeUtils.defineModuleGetter(
-  this,
-  "ExtensionTestUtils",
-  "resource://testing-common/ExtensionXPCShellUtils.jsm"
-);
-ChromeUtils.defineModuleGetter(
-  this,
-  "ExtensionTestCommon",
-  "resource://testing-common/ExtensionTestCommon.jsm"
-);
-ChromeUtils.defineModuleGetter(
-  this,
   "HttpServer",
   "resource://testing-common/httpd.js"
 );
 ChromeUtils.defineESModuleGetters(this, {
+  Extension: "resource://gre/modules/Extension.sys.mjs",
+  ExtensionTestCommon: "resource://testing-common/ExtensionTestCommon.sys.mjs",
+  ExtensionTestUtils:
+    "resource://testing-common/ExtensionXPCShellUtils.sys.mjs",
   MockRegistrar: "resource://testing-common/MockRegistrar.sys.mjs",
   MockRegistry: "resource://testing-common/MockRegistry.sys.mjs",
   PromiseTestUtils: "resource://testing-common/PromiseTestUtils.sys.mjs",

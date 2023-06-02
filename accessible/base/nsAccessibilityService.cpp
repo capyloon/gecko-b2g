@@ -498,7 +498,7 @@ void nsAccessibilityService::FireAccessibleEvent(uint32_t aEvent,
 
 void nsAccessibilityService::NotifyOfPossibleBoundsChange(
     mozilla::PresShell* aPresShell, nsIContent* aContent) {
-  if (IPCAccessibilityActive() && a11y::IsCacheActive()) {
+  if (IPCAccessibilityActive()) {
     DocAccessible* document = aPresShell->GetDocAccessible();
     if (document) {
       // DocAccessible::GetAccessible() won't return the document if a root
@@ -541,37 +541,33 @@ void nsAccessibilityService::NotifyOfComputedStyleChange(
         document->ContentInserted(aContent, aContent->GetNextSibling());
       }
     }
-  } else if (accessible && IPCAccessibilityActive() && a11y::IsCacheActive()) {
+  } else if (accessible && IPCAccessibilityActive()) {
     accessible->MaybeQueueCacheUpdateForStyleChanges();
   }
 }
 
 void nsAccessibilityService::NotifyOfResolutionChange(
     mozilla::PresShell* aPresShell, float aResolution) {
-  if (a11y::IsCacheActive()) {
-    DocAccessible* document = aPresShell->GetDocAccessible();
-    if (document && document->IPCDoc()) {
-      AutoTArray<mozilla::a11y::CacheData, 1> data;
-      RefPtr<AccAttributes> fields = new AccAttributes();
-      fields->SetAttribute(nsGkAtoms::resolution, aResolution);
-      data.AppendElement(mozilla::a11y::CacheData(0, fields));
-      document->IPCDoc()->SendCache(CacheUpdateType::Update, data);
-    }
+  DocAccessible* document = aPresShell->GetDocAccessible();
+  if (document && document->IPCDoc()) {
+    AutoTArray<mozilla::a11y::CacheData, 1> data;
+    RefPtr<AccAttributes> fields = new AccAttributes();
+    fields->SetAttribute(nsGkAtoms::resolution, aResolution);
+    data.AppendElement(mozilla::a11y::CacheData(0, fields));
+    document->IPCDoc()->SendCache(CacheUpdateType::Update, data);
   }
 }
 
 void nsAccessibilityService::NotifyOfDevPixelRatioChange(
     mozilla::PresShell* aPresShell, int32_t aAppUnitsPerDevPixel) {
-  if (a11y::IsCacheActive()) {
-    DocAccessible* document = aPresShell->GetDocAccessible();
-    if (document && document->IPCDoc()) {
-      AutoTArray<mozilla::a11y::CacheData, 1> data;
-      RefPtr<AccAttributes> fields = new AccAttributes();
-      fields->SetAttribute(nsGkAtoms::_moz_device_pixel_ratio,
-                           aAppUnitsPerDevPixel);
-      data.AppendElement(mozilla::a11y::CacheData(0, fields));
-      document->IPCDoc()->SendCache(CacheUpdateType::Update, data);
-    }
+  DocAccessible* document = aPresShell->GetDocAccessible();
+  if (document && document->IPCDoc()) {
+    AutoTArray<mozilla::a11y::CacheData, 1> data;
+    RefPtr<AccAttributes> fields = new AccAttributes();
+    fields->SetAttribute(nsGkAtoms::_moz_device_pixel_ratio,
+                         aAppUnitsPerDevPixel);
+    data.AppendElement(mozilla::a11y::CacheData(0, fields));
+    document->IPCDoc()->SendCache(CacheUpdateType::Update, data);
   }
 }
 
@@ -1351,6 +1347,8 @@ LocalAccessible* nsAccessibilityService::CreateAccessible(
         // <g> can also contain <foreignObject>.
         newAcc =
             new EnumRoleHyperTextAccessible<roles::GROUPING>(content, document);
+      } else if (content->IsSVGElement(nsGkAtoms::a)) {
+        newAcc = new HTMLLinkAccessible(content, document);
       }
 
     } else if (content->IsMathMLElement()) {

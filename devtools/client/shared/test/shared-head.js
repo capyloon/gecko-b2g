@@ -57,6 +57,9 @@ if (DEBUG_ALLOCATIONS) {
 const { loader, require } = ChromeUtils.importESModule(
   "resource://devtools/shared/loader/Loader.sys.mjs"
 );
+const { sinon } = ChromeUtils.importESModule(
+  "resource://testing-common/Sinon.sys.mjs"
+);
 
 // When loaded from xpcshell test, this file is loaded via xpcshell.ini's head property
 // and so it loaded first before anything else and isn't having access to Services global.
@@ -2090,7 +2093,7 @@ function createVersionizedHttpTestServer(testFolderName) {
     let fetchResponse;
 
     if (request.queryString) {
-      const url = `${URL_ROOT}${testFolderName}/v${currentVersion}${request.path}.${request.queryString}`;
+      const url = `${URL_ROOT_SSL}${testFolderName}/v${currentVersion}${request.path}.${request.queryString}`;
       try {
         fetchResponse = await fetch(url);
         // Log this only if the request succeed
@@ -2102,7 +2105,7 @@ function createVersionizedHttpTestServer(testFolderName) {
     }
 
     if (!fetchResponse) {
-      const url = `${URL_ROOT}${testFolderName}/v${currentVersion}${request.path}`;
+      const url = `${URL_ROOT_SSL}${testFolderName}/v${currentVersion}${request.path}`;
       info(`[test-http-server] serving: ${url}`);
       fetchResponse = await fetch(url);
     }
@@ -2134,4 +2137,73 @@ function createVersionizedHttpTestServer(testFolderName) {
       return `http://localhost:${port}/${path}`;
     },
   };
+}
+
+/**
+ * Fake clicking a link and return the URL we would have navigated to.
+ * This function should be used to check external links since we can't access
+ * network in tests.
+ * This can also be used to test that a click will not be fired.
+ *
+ * @param ElementNode element
+ *        The <a> element we want to simulate click on.
+ * @returns Promise
+ *          A Promise that is resolved when the link click simulation occured or
+ *          when the click is not dispatched.
+ *          The promise resolves with an object that holds the following properties
+ *          - link: url of the link or null(if event not fired)
+ *          - where: "tab" if tab is active or "tabshifted" if tab is inactive
+ *            or null(if event not fired)
+ */
+function simulateLinkClick(element) {
+  const browserWindow = Services.wm.getMostRecentWindow(
+    gDevTools.chromeWindowType
+  );
+
+  const onOpenLink = new Promise(resolve => {
+    const openLinkIn = (link, where) => resolve({ link, where });
+    sinon.replace(browserWindow, "openTrustedLinkIn", openLinkIn);
+    sinon.replace(browserWindow, "openWebLinkIn", openLinkIn);
+  });
+
+  element.click();
+
+  // Declare a timeout Promise that we can use to make sure spied methods were not called.
+  const onTimeout = new Promise(function (resolve) {
+    setTimeout(() => {
+      resolve({ link: null, where: null });
+    }, 1000);
+  });
+
+  const raceResult = Promise.race([onOpenLink, onTimeout]);
+  sinon.restore();
+  return raceResult;
+}
+
+/**
+ * Since the MDN data is updated frequently, it might happen that the properties used in
+ * this test are not in the dataset anymore/now have URLs.
+ * This function will return properties in the dataset that don't have MDN url so you
+ * can easily find a replacement.
+ */
+function logCssCompatDataPropertiesWithoutMDNUrl() {
+  const cssPropertiesCompatData = require("resource://devtools/shared/compatibility/dataset/css-properties.json");
+
+  function walk(node) {
+    for (const propertyName in node) {
+      const property = node[propertyName];
+      if (property.__compat) {
+        if (!property.__compat.mdn_url) {
+          dump(
+            `"${propertyName}" - MDN URL: ${
+              property.__compat.mdn_url || "❌"
+            } - Spec URL: ${property.__compat.spec_url || "❌"}\n`
+          );
+        }
+      } else if (typeof property == "object") {
+        walk(property);
+      }
+    }
+  }
+  walk(cssPropertiesCompatData);
 }
