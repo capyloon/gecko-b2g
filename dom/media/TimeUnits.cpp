@@ -154,7 +154,7 @@ bool TimeUnit::operator==(const TimeUnit& aOther) const {
   }
   // Reduce the fractions and try again
   const TimeUnit a = Reduced();
-  const TimeUnit b = Reduced();
+  const TimeUnit b = aOther.Reduced();
   lhs = a.mTicks * b.mBase;
   rhs = b.mTicks * a.mBase;
 
@@ -201,12 +201,7 @@ bool TimeUnit::operator>=(const TimeUnit& aOther) const {
     return lhs.value() >= rhs.value();
   }
   // last ditch, convert the reduced fractions to doubles
-  double lhsFloating =
-      static_cast<double>(a.mTicks.value()) * static_cast<double>(a.mBase);
-  double rhsFloating =
-      static_cast<double>(b.mTicks.value()) * static_cast<double>(b.mBase);
-
-  return lhsFloating >= rhsFloating;
+  return ToSeconds() >= aOther.ToSeconds();
 }
 bool TimeUnit::operator>(const TimeUnit& aOther) const {
   return !(*this <= aOther);
@@ -238,12 +233,7 @@ bool TimeUnit::operator<=(const TimeUnit& aOther) const {
     return lhs.value() <= rhs.value();
   }
   // last ditch, convert the reduced fractions to doubles
-  double lhsFloating =
-      static_cast<double>(a.mTicks.value()) * static_cast<double>(a.mBase);
-  double rhsFloating =
-      static_cast<double>(b.mTicks.value()) * static_cast<double>(b.mBase);
-
-  return lhsFloating <= rhsFloating;
+  return ToSeconds() <= aOther.ToSeconds();
 }
 bool TimeUnit::operator<(const TimeUnit& aOther) const {
   return !(*this >= aOther);

@@ -30,13 +30,6 @@ user-login = "padenot"
 user-name = "Paul Adenot"
 
 [[publisher.authenticator]]
-version = "0.4.0-alpha.14"
-when = "2023-05-02"
-user-id = 175410
-user-login = "jschanck"
-user-name = "John Schanck"
-
-[[publisher.authenticator]]
 version = "0.4.0-alpha.15"
 when = "2023-05-15"
 user-id = 175410
@@ -309,6 +302,20 @@ user-id = 3618
 user-login = "dtolnay"
 user-name = "David Tolnay"
 
+[[publisher.proc-macro2]]
+version = "1.0.59"
+when = "2023-05-25"
+user-id = 3618
+user-login = "dtolnay"
+user-name = "David Tolnay"
+
+[[publisher.quote]]
+version = "1.0.28"
+when = "2023-05-25"
+user-id = 3618
+user-login = "dtolnay"
+user-name = "David Tolnay"
+
 [[publisher.regex]]
 version = "1.7.1"
 when = "2023-01-09"
@@ -352,8 +359,8 @@ user-login = "Amanieu"
 user-name = "Amanieu d'Antras"
 
 [[publisher.serde]]
-version = "1.0.152"
-when = "2022-12-26"
+version = "1.0.163"
+when = "2023-05-11"
 user-id = 3618
 user-login = "dtolnay"
 user-name = "David Tolnay"
@@ -366,8 +373,8 @@ user-login = "dtolnay"
 user-name = "David Tolnay"
 
 [[publisher.serde_derive]]
-version = "1.0.152"
-when = "2022-12-26"
+version = "1.0.163"
+when = "2023-05-10"
 user-id = 3618
 user-login = "dtolnay"
 user-name = "David Tolnay"
@@ -403,6 +410,13 @@ user-name = "Matt Brubeck"
 [[publisher.syn]]
 version = "1.0.107"
 when = "2022-12-18"
+user-id = 3618
+user-login = "dtolnay"
+user-name = "David Tolnay"
+
+[[publisher.syn]]
+version = "2.0.18"
+when = "2023-05-26"
 user-id = 3618
 user-login = "dtolnay"
 user-name = "David Tolnay"
@@ -799,21 +813,23 @@ criteria = "safe-to-deploy"
 version = "0.2.2"
 notes = "Inspected it and is a tiny crate with just type definitions"
 
+[[audits.embark-studios.audits.derive_more]]
+who = "Johan Andersson <opensource@embark-studios.com>"
+criteria = "safe-to-deploy"
+version = "0.99.17"
+notes = "No unsafe usage or ambient capabilities"
+
 [[audits.embark-studios.audits.epaint]]
 who = "Johan Andersson <opensource@embark-studios.com>"
 criteria = "safe-to-deploy"
 violation = "<0.20.0"
 notes = "Specified crate license does not include licenses of embedded fonts if using default features or the `default_fonts` feature. Tracked in: https://github.com/emilk/egui/issues/2321"
 
-[[audits.embark-studios.audits.serial_test]]
+[[audits.embark-studios.audits.ident_case]]
 who = "Johan Andersson <opensource@embark-studios.com>"
-criteria = "safe-to-run"
-version = "0.6.0"
-
-[[audits.embark-studios.audits.serial_test_derive]]
-who = "Johan Andersson <opensource@embark-studios.com>"
-criteria = "safe-to-run"
-version = "0.6.0"
+criteria = "safe-to-deploy"
+version = "1.0.1"
+notes = "No unsafe usage or ambient capabilities"
 
 [[audits.google.audits.ash]]
 who = "David Koloski <dkoloski@google.com>"

@@ -5,6 +5,7 @@
 #ifndef mozilla_net_EarlyHintPreloader_h
 #define mozilla_net_EarlyHintPreloader_h
 
+#include "mozilla/dom/ipc/IdType.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/PreloadHashKey.h"
 #include "NeckoCommon.h"
@@ -45,7 +46,7 @@ class OngoingEarlyHints final {
 
   // registers all channels and returns the ids
   void RegisterLinksAndGetConnectArgs(
-      nsTArray<EarlyHintConnectArgs>& aOutLinks);
+      dom::ContentParentId aCpId, nsTArray<EarlyHintConnectArgs>& aOutLinks);
 
  private:
   ~OngoingEarlyHints() = default;
@@ -87,11 +88,17 @@ class EarlyHintPreloader final : public nsIStreamListener,
       OngoingEarlyHints* aOngoingEarlyHints, const LinkHeader& aHeader,
       nsIURI* aBaseURI, nsIPrincipal* aPrincipal,
       nsICookieJarSettings* aCookieJarSettings,
-      const nsACString& aReferrerPolicy, const nsACString& aCSPHeader);
+      const nsACString& aReferrerPolicy, const nsACString& aCSPHeader,
+      uint64_t aBrowsingContextID);
 
   // register Channel to EarlyHintRegistrar. Returns true and sets connect args
   // if successful
-  bool Register(EarlyHintConnectArgs& aOut);
+  bool Register(dom::ContentParentId aCpId, EarlyHintConnectArgs& aOut);
+
+  // Allows EarlyHintRegistrar to check if the correct content process accesses
+  // this preload. Preventing compromised content processes to access Early Hint
+  // preloads from other origins
+  bool IsFromContentParent(dom::ContentParentId aCpId) const;
 
   // Should be called by the preloader service when the preload is not
   // needed after all, because the final response returns a non-2xx status
@@ -125,7 +132,8 @@ class EarlyHintPreloader final : public nsIStreamListener,
                        nsSecurityFlags aSecurityFlags,
                        nsContentPolicyType aContentPolicyType,
                        nsIReferrerInfo* aReferrerInfo,
-                       nsICookieJarSettings* aCookieJarSettings);
+                       nsICookieJarSettings* aCookieJarSettings,
+                       uint64_t aBrowsingContextID);
   void PriorizeAsPreload();
   void SetLinkHeader(const LinkHeader& aLinkHeader);
 
@@ -133,6 +141,7 @@ class EarlyHintPreloader final : public nsIStreamListener,
   nsCOMPtr<nsIChannel> mChannel;
   nsCOMPtr<nsIChannel> mRedirectChannel;
 
+  dom::ContentParentId mCpId;
   EarlyHintConnectArgs mConnectArgs;
 
   // Copy behavior from DocumentLoadListener.h:

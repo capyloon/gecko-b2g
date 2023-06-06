@@ -107,6 +107,11 @@ TOLERATED_DUPES = {
     # and hasn't been updated in 1.5 years (an hypothetical update is
     # expected to remove the dependency on time altogether).
     "time": 2,
+    # Transition is underway from syn 1.x to 2.x. (bug 1835053)
+    "syn": 2,
+    "synstructure": 2,
+    # Until we make clap optional in b2ghald lib
+    "hermit-abi": 2,
 }
 
 
