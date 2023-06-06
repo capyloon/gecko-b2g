@@ -6,7 +6,7 @@ set -e
 TARGET_ARCH=x86_64-unknown-linux-gnu
 
 rm -rf prebuilts/
-cargo build --release --target=${TARGET_ARCH}
+cargo build --release --target=${TARGET_ARCH} --features=cmdline
 mkdir -p prebuilts/${TARGET_ARCH}
 cp target/${TARGET_ARCH}/release/b2ghald prebuilts/${TARGET_ARCH}/
 cp target/${TARGET_ARCH}/release/b2ghalctl prebuilts/${TARGET_ARCH}/

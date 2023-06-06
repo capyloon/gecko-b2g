@@ -120,7 +120,7 @@ EOF
     printenv
     rustc --version
     cargo --version
-    cargo build --target=${TARGET_TRIPLE} ${OPT}
+    cargo build --target=${TARGET_TRIPLE} ${OPT} --features=cmdline
 }
 
 function xstrip() {

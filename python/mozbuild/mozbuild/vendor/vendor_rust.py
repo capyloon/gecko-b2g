@@ -110,8 +110,6 @@ TOLERATED_DUPES = {
     # Transition is underway from syn 1.x to 2.x. (bug 1835053)
     "syn": 2,
     "synstructure": 2,
-    # Until we make clap optional in b2ghald lib
-    "hermit-abi": 2,
 }
 
 
