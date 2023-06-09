@@ -2187,7 +2187,7 @@
 # This only works when sessionHistoryInParent is enabled.
 - name: docshell.shistory.bfcache.ship_allow_beforeunload_listeners
   type: bool
-  value: @IS_EARLY_BETA_OR_EARLIER@
+  value: true
   mirror: always
 
 #---------------------------------------------------------------------------
@@ -2666,6 +2666,13 @@
   value: false
   mirror: always
   do_not_use_directly: true
+
+# Guard for bug 1731504, in case fix breaks more websites
+# If true, event is first captured then bubbled on target element
+- name: dom.events.phases.correctOrderOnTarget
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
 
 # This pref controls whether or not the `protected` dataTransfer state is
 # enabled. If the `protected` dataTransfer stae is disabled, then the
@@ -6297,16 +6304,6 @@
   value: @IS_NOT_RELEASE_OR_BETA@
   mirror: always
 
-- name: gfx.draw-color-bars
-  type: RelaxedAtomicBool
-  value: false
-  mirror: always
-
-- name: gfx.e10s.hide-plugins-for-scroll
-  type: bool
-  value: true
-  mirror: once
-
 - name: gfx.e10s.font-list.shared
   type: bool
   value: true
@@ -6961,6 +6958,15 @@
   type: bool
   value: false
   mirror: always
+
+- name: gfx.webrender.enable-subpixel-aa
+  type: bool
+  mirror: once
+#ifdef MOZ_WIDGET_ANDROID
+  value: false
+#else
+  value: true
+#endif
 
 #ifdef XP_MACOSX
 - name: gfx.webrender.enable-client-storage
@@ -8072,6 +8078,13 @@
   value: false
   mirror: always
 
+# Whether the W^X policy is enforced to mark JIT code pages as either writable
+# or executable but never both at the same time.
+- name: javascript.options.content_process_write_protect_code
+  type: bool
+  value: false
+  mirror: always
+
 # Whether to use the XPCOM thread pool for JS helper tasks.
 - name: javascript.options.external_thread_pool
   type: bool
@@ -8897,14 +8910,6 @@
   mirror: always
   rust: true
 
-# Is support for :nth-child(An+B of S) and :nth-last-child(An+B of S) enabled?
-# Before enabling everywhere, make sure blockers of bug 1808229 are fixed.
-- name: layout.css.nth-child-of.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-  rust: true
-
 # Is support for :has() enabled?
 - name: layout.css.has-selector.enabled
   type: RelaxedAtomicBool
@@ -9222,19 +9227,29 @@
 # measurements in bug 1385982 comments 11, 12, 13 that investigate some
 # slightly different values for the work unit size.
 #
-# If the size is significantly increased, make sure to adjust the condition for
-# kicking off a new work unit (stylo-parallelism-threshold), because otherwise
-# we're likely to end up doing too much work serially.
+# If the size is significantly increased, make sure to also review
+# stylo-local-work-queue prefs, since we might end up doing too much work
+# sequentially.
+#
+# A value of 0 disables parallelism altogether.
 - name: layout.css.stylo-work-unit-size
   type: RelaxedAtomicUint32
   value: 16
   mirror: always
   rust: true
 
-# The amount of nodes that kick off the initial parallel traversal. See above
-# for tweaking. A value of 0 causes the traversal to effectively always be
-# serial.
-- name: layout.css.stylo-parallelism-threshold
+# The minimum amount of work that a thread doing styling will try to keep
+# locally before sending work to other threads, in a worker.
+- name: layout.css.stylo-local-work-queue.in-worker
+  type: RelaxedAtomicUint32
+  value: 0
+  mirror: always
+  rust: true
+
+# As above but for the main thread. The main thread can't really steal from
+# other threads so it might want a bigger min queue size before giving work to
+# other threads.
+- name: layout.css.stylo-local-work-queue.in-main-thread
   type: RelaxedAtomicUint32
   value: 32
   mirror: always
@@ -11064,6 +11079,12 @@
 
 # WebRTC prefs follow
 
+# Enables auto refresh of stats by default
+- name: media.aboutwebrtc.auto_refresh
+  type: bool
+  value: @IS_NOT_NIGHTLY_BUILD@
+  mirror: always
+
 # Enables RTCPeerConnection support. Note that, when true, this pref enables
 # navigator.mediaDevices and getUserMedia() support as well.
 # See also media.navigator.enabled
@@ -11469,7 +11490,7 @@
 #if defined(XP_MACOSX)
 -   name: media.plugin_helper_process.enabled
     type: RelaxedAtomicBool
-    value: false
+    value: true
     mirror: always
 #endif
 
@@ -11943,16 +11964,6 @@
 - name: network.http.sanitize-headers-in-logs
   type: RelaxedAtomicBool
   value: true
-  mirror: always
-
-# Set this pref to an integer like 99 to override the User-Agent string's
-# Firefox version. The value 0 means use the default Firefox version. If
-# enterprise users rely on sites that aren't compatible with Firefox version
-# 100's three-digit version number, enterprise admins can set this pref to a
-# known-good version (like 99) in an enterprise policy file.
-- name: network.http.useragent.forceVersion
-  type: uint32_t
-  value: 0
   mirror: always
 
 # Set this pref to an integer like 99 to override the User-Agent string's
@@ -13618,22 +13629,6 @@
 # We want to remove that override as soon as possible however.
 - name: privacy.resistFingerprinting.testing.setTZtoUTC
   type: bool
-  value: false
-  mirror: always
-
-# Bitfield for selectively disabling RFP
-#   0 for no new behavior
-#   1 for disabling RFP if it's a WebExtension
-#   2 for disabling RFP if we are not in PBM
-#   4 for disabling RFP on specific domains (see privacy.resistFingerprinting.exemptedDomains)
-- name: privacy.resistFingerprinting.testGranularityMask
-  type: RelaxedAtomicUint32
-  value: 0
-  mirror: always
-
-# Enable the fingerprinting randomization.
-- name: privacy.resistFingerprinting.randomization.enabled
-  type: RelaxedAtomicBool
   value: false
   mirror: always
 

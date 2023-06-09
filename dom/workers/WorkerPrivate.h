@@ -19,7 +19,6 @@
 #include "mozilla/Maybe.h"
 #include "mozilla/MozPromise.h"
 #include "mozilla/OriginTrials.h"
-#include "mozilla/PerformanceCounter.h"
 #include "mozilla/RelativeTimeline.h"
 #include "mozilla/Result.h"
 #include "mozilla/StorageAccess.h"
@@ -526,13 +525,9 @@ class WorkerPrivate final
 
   void StopSyncLoop(nsIEventTarget* aSyncLoopTarget, nsresult aResult);
 
-  bool AllPendingRunnablesShouldBeCanceled() const {
-    return mCancelAllPendingRunnables;
-  }
-
   void ShutdownModuleLoader();
 
-  void ClearMainEventQueue(WorkerRanOrNot aRanOrNot);
+  void ClearPreStartRunnables();
 
   void ClearDebuggerEventQueue();
 
@@ -564,7 +559,7 @@ class WorkerPrivate final
   // Get the event target to use when dispatching to the main thread
   // from this Worker thread.  This may be the main thread itself or
   // a ThrottledEventQueue to the main thread.
-  nsIEventTarget* MainThreadEventTargetForMessaging();
+  nsISerialEventTarget* MainThreadEventTargetForMessaging();
 
   nsresult DispatchToMainThreadForMessaging(
       nsIRunnable* aRunnable, uint32_t aFlags = NS_DISPATCH_NORMAL);
@@ -573,7 +568,7 @@ class WorkerPrivate final
       already_AddRefed<nsIRunnable> aRunnable,
       uint32_t aFlags = NS_DISPATCH_NORMAL);
 
-  nsIEventTarget* MainThreadEventTarget();
+  nsISerialEventTarget* MainThreadEventTarget();
 
   nsresult DispatchToMainThread(nsIRunnable* aRunnable,
                                 uint32_t aFlags = NS_DISPATCH_NORMAL);
@@ -614,14 +609,6 @@ class WorkerPrivate final
   void ExecutionReady();
 
   PerformanceStorage* GetPerformanceStorage();
-
-  PerformanceCounter& MutablePerformanceCounterRef() const {
-    return *mPerformanceCounter;
-  }
-
-  const PerformanceCounter& PerformanceCounterRef() const {
-    return MutablePerformanceCounterRef();
-  }
 
   bool IsAcceptingEvents() {
     AssertIsOnParentThread();
@@ -984,6 +971,8 @@ class WorkerPrivate final
 
   bool IsWatchedByDevTools() const { return mLoadInfo.mWatchedByDevTools; }
 
+  bool ShouldResistFingerprinting(RFPTarget aTarget) const;
+
   RemoteWorkerChild* GetRemoteWorkerController();
 
   void SetRemoteWorkerController(RemoteWorkerChild* aController);
@@ -1134,6 +1123,11 @@ class WorkerPrivate final
   void DecreaseWorkerFinishedRunnableCount() { --mWorkerFinishedRunnableCount; }
 
   void RunShutdownTasks();
+
+  bool CancelBeforeWorkerScopeConstructed() const {
+    auto data = mWorkerThreadAccessible.Access();
+    return data->mCancelBeforeWorkerScopeConstructed;
+  }
 
  private:
   WorkerPrivate(
@@ -1483,6 +1477,8 @@ class WorkerPrivate final
     bool mJSThreadExecutionGranted;
     bool mCCCollectedAnything;
     FlippedOnce<false> mDeletionScheduled;
+    FlippedOnce<false> mCancelBeforeWorkerScopeConstructed;
+    FlippedOnce<false> mPerformedShutdownAfterLastContentTaskExecuted;
   };
   ThreadBound<WorkerThreadAccessible> mWorkerThreadAccessible;
 
@@ -1503,13 +1499,11 @@ class WorkerPrivate final
 
   // List of operations to do at the end of the last sync event loop.
   enum {
-    ePendingEventQueueClearing = 0x01,
     eDispatchCancelingRunnable = 0x02,
   };
 
   bool mParentWindowPaused;
 
-  bool mCancelAllPendingRunnables;
   bool mWorkerScriptExecutedSuccessfully;
   bool mFetchHandlerWasAdded;
   bool mMainThreadObjectsForgotten;
@@ -1544,10 +1538,6 @@ class WorkerPrivate final
   // mIsInAutomation is true when we're running in test automation.
   // We expose some extra testing functions in that case.
   bool mIsInAutomation;
-
-  const RefPtr<PerformanceCounter> mPerformanceCounter =
-      MakeRefPtr<PerformanceCounter>(nsPrintfCString(
-          "Worker:%s", NS_ConvertUTF16toUTF8(mWorkerName).get()));
 
   nsString mId;
 

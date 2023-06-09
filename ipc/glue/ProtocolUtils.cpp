@@ -7,7 +7,7 @@
 #include "base/process_util.h"
 #include "base/task.h"
 
-#ifdef OS_POSIX
+#ifdef XP_UNIX
 #  include <errno.h>
 #endif
 #include <type_traits>
@@ -77,7 +77,7 @@ void AnnotateSystemError() {
   int64_t error = 0;
 #if defined(XP_WIN)
   error = ::GetLastError();
-#elif defined(OS_POSIX)
+#else
   error = errno;
 #endif
   if (error) {
@@ -401,7 +401,7 @@ void IProtocol::HandleFatalError(const char* aErrorMsg) {
 
   mozilla::ipc::FatalError(aErrorMsg, mSide == ParentSide);
   if (CanSend()) {
-    GetIPCChannel()->CloseWithError();
+    GetIPCChannel()->InduceConnectionError();
   }
 }
 
@@ -632,8 +632,6 @@ void IToplevelProtocol::NotifyImpendingShutdown() {
 }
 
 void IToplevelProtocol::Close() { GetIPCChannel()->Close(); }
-
-void IToplevelProtocol::CloseWithError() { GetIPCChannel()->CloseWithError(); }
 
 void IToplevelProtocol::SetReplyTimeoutMs(int32_t aTimeoutMs) {
   GetIPCChannel()->SetReplyTimeoutMs(aTimeoutMs);

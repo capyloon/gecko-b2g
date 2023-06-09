@@ -159,17 +159,30 @@ impl<const S: usize> Multihash<S> {
         Ok(result)
     }
 
-    /// Writes a multihash to a byte stream.
-    pub fn write<W: io::Write>(&self, w: W) -> Result<(), Error> {
+    /// Writes a multihash to a byte stream, returning the written size.
+    pub fn write<W: io::Write>(&self, w: W) -> Result<usize, Error> {
         write_multihash(w, self.code(), self.size(), self.digest())
+    }
+
+    /// Returns the length in bytes needed to encode this multihash into bytes.
+    pub fn encoded_len(&self) -> usize {
+        let mut code_buf = varint_encode::u64_buffer();
+        let code = varint_encode::u64(self.code, &mut code_buf);
+
+        let mut size_buf = varint_encode::u8_buffer();
+        let size = varint_encode::u8(self.size, &mut size_buf);
+
+        code.len() + size.len() + usize::from(self.size)
     }
 
     #[cfg(feature = "alloc")]
     /// Returns the bytes of a multihash.
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(self.size().into());
-        self.write(&mut bytes)
+        let written = self
+            .write(&mut bytes)
             .expect("writing to a vec should never fail");
+        debug_assert_eq!(written, bytes.len());
         bytes
     }
 
@@ -211,10 +224,31 @@ impl<const S: usize> Multihash<S> {
         mh.digest[..size].copy_from_slice(&self.digest[..size]);
         Ok(mh)
     }
+
+    /// Decomposes struct, useful when needing a `Sized` array or moving all the data into another type
+    ///
+    /// It is recommended to use `digest()` `code()` and `size()` for most cases
+    ///
+    /// ```
+    /// use multihash::{Code, MultihashDigest};
+    /// struct Foo<const S: usize> {
+    ///     arr: [u8; S],
+    ///     len: usize,
+    /// }
+    ///
+    /// let hash = Code::Sha3_256.digest(b"Hello world!");
+    /// let (.., arr, size) = hash.into_inner();
+    /// let foo = Foo { arr, len: size as usize };
+    /// ```
+    pub fn into_inner(self) -> (u64, [u8; S], u8) {
+        let Self { code, digest, size } = self;
+        (code, digest, size)
+    }
 }
 
 // Don't hash the whole allocated space, but just the actual digest
-#[allow(clippy::derive_hash_xor_eq)]
+#[allow(unknown_lints, renamed_and_removed_lints)]
+#[allow(clippy::derived_hash_with_manual_eq, clippy::derive_hash_xor_eq)]
 impl<const S: usize> core::hash::Hash for Multihash<S> {
     fn hash<T: core::hash::Hasher>(&self, state: &mut T) {
         self.code.hash(state);
@@ -273,7 +307,7 @@ impl<const S: usize> parity_scale_codec::Decode for Multihash<S> {
 }
 
 /// Writes the multihash to a byte stream.
-pub fn write_multihash<W>(mut w: W, code: u64, size: u8, digest: &[u8]) -> Result<(), Error>
+pub fn write_multihash<W>(mut w: W, code: u64, size: u8, digest: &[u8]) -> Result<usize, Error>
 where
     W: io::Write,
 {
@@ -283,10 +317,13 @@ where
     let mut size_buf = varint_encode::u8_buffer();
     let size = varint_encode::u8(size, &mut size_buf);
 
+    let written = code.len() + size.len() + digest.len();
+
     w.write_all(code)?;
     w.write_all(size)?;
     w.write_all(digest)?;
-    Ok(())
+
+    Ok(written)
 }
 
 /// Reads a multihash from a byte stream that contains a full multihash (code, size and the digest)
@@ -326,7 +363,9 @@ pub(crate) fn read_u64<R: io::Read>(mut r: R) -> Result<u64, Error> {
         if n == 0 {
             return Err(Error::Varint(decode::Error::Insufficient));
         } else if decode::is_last(b[i]) {
-            return Ok(decode::u64(&b[..=i]).unwrap().0);
+            return decode::u64(&b[..=i])
+                .map(|decoded| decoded.0)
+                .map_err(Error::Varint);
         }
     }
     Err(Error::Varint(decode::Error::Overflow))
@@ -341,9 +380,10 @@ mod tests {
     fn roundtrip() {
         let hash = Code::Sha2_256.digest(b"hello world");
         let mut buf = [0u8; 35];
-        hash.write(&mut buf[..]).unwrap();
+        let written = hash.write(&mut buf[..]).unwrap();
         let hash2 = Multihash::<32>::read(&buf[..]).unwrap();
         assert_eq!(hash, hash2);
+        assert_eq!(hash.encoded_len(), written);
     }
 
     #[test]
@@ -414,5 +454,13 @@ mod tests {
         let mh1 = Multihash::<32>::default();
         let mh2 = Multihash::<64>::default();
         assert_eq!(mh1, mh2);
+    }
+
+    #[test]
+    fn decode_non_minimal_error() {
+        // This is a non-minimal varint.
+        let data = [241, 0, 0, 0, 0, 0, 128, 132, 132, 132, 58];
+        let result = read_u64(&data[..]);
+        assert!(result.is_err());
     }
 }

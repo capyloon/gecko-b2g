@@ -45,14 +45,43 @@ fn import_my_crate() {
 
 ```
 
+### Edge cases
+
+There are multiple edge cases when it comes to determining the correct crate. If you for example
+import a crate as its own dependency, like this:
+
+```toml
+[package]
+name = "my_crate"
+
+[dev-dependencies]
+my_crate = { version = "0.1", features = [ "test-feature" ] }
+```
+
+The crate will return `FoundCrate::Itself` and you will not be able to find the other instance
+of your crate in `dev-dependencies`. Other similar cases are when one crate is imported multiple
+times:
+
+```toml
+[package]
+name = "my_crate"
+
+[dependencies]
+some-crate = { version = "0.5" }
+some-crate-old = { package = "some-crate", version = "0.1" }
+```
+
+When searching for `some-crate` in this `Cargo.toml` it will return `FoundCrate::Name("some_old_crate")`,
+aka the last definition of the crate in the `Cargo.toml`.
+
 ### License
 
 Licensed under either of
 
- * [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0)
+ * [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0)
 
- * [MIT license](http://opensource.org/licenses/MIT)
+ * [MIT license](https://opensource.org/licenses/MIT)
 
 at your option.
 
-License: Apache-2.0/MIT
+License: MIT OR Apache-2.0

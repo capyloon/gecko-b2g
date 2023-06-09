@@ -139,6 +139,33 @@ fn to_string_of_base_v0_error() {
     ));
 }
 
+#[test]
+fn explicit_v0_is_disallowed() {
+    use std::io::Cursor;
+    assert!(matches!(
+        Cid::read_bytes(Cursor::new([
+            0x00, 0x70, 0x12, 0x12, 0x12, 0x12, 0x12, 0x12, 0x12, 0x12, 0x12, 0x12
+        ])),
+        Err(Error::InvalidExplicitCidV0)
+    ));
+}
+
+#[test]
+fn new_v0_accepts_only_32_bytes() {
+    use multihash::Multihash;
+    const SHA2_256: u64 = 0x12;
+
+    for i in 1..64 {
+        if i == 32 {
+            continue;
+        }
+        assert!(matches!(
+            Cid::new_v0(Multihash::wrap(SHA2_256, &vec![7; i]).unwrap()),
+            Err(Error::InvalidCidV0Multihash)
+        ));
+    }
+}
+
 fn a_function_that_takes_a_generic_cid<const S: usize>(cid: &CidGeneric<S>) -> String {
     cid.to_string()
 }
@@ -161,4 +188,20 @@ fn method_can_take_differently_sized_cids() {
         a_function_that_takes_a_generic_cid(&cid_default),
         a_function_that_takes_a_generic_cid(&cid_128)
     );
+}
+
+#[test]
+fn test_into_v1() {
+    let cid = Cid::from_str("QmTPcW343HGMdoxarwvHHoPhkbo5GfNYjnZkyW5DBtpvLe").unwrap();
+    let cid_v1 = cid.into_v1().unwrap();
+    assert_eq!(cid_v1.version(), Version::V1);
+    assert_eq!(
+        cid_v1.to_string(),
+        "bafybeiclbsxcvqpfliqcejqz5ghpvw4r7vktjkyk3ruvjvdmam5azct2v4"
+    );
+
+    let cid = Cid::from_str("bafyreibjo4xmgaevkgud7mbifn3dzp4v4lyaui4yvqp3f2bqwtxcjrdqg4").unwrap();
+    let cid_v1 = cid.into_v1().unwrap();
+    assert_eq!(cid_v1.version(), Version::V1);
+    assert_eq!(cid_v1, cid);
 }

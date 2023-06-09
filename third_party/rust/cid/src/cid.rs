@@ -76,7 +76,7 @@ pub struct Cid<const S: usize> {
 impl<const S: usize> Cid<S> {
     /// Create a new CIDv0.
     pub const fn new_v0(hash: Multihash<S>) -> Result<Self> {
-        if hash.code() != SHA2_256 {
+        if hash.code() != SHA2_256 || hash.size() != 32 {
             return Err(Error::InvalidCidV0Multihash);
         }
         Ok(Self {
@@ -108,6 +108,19 @@ impl<const S: usize> Cid<S> {
         }
     }
 
+    /// Convert a CIDv0 to a CIDv1. Returns unchanged if already a CIDv1.
+    pub fn into_v1(self) -> Result<Self> {
+        match self.version {
+            Version::V0 => {
+                if self.codec != DAG_PB {
+                    return Err(Error::InvalidCidV0Codec);
+                }
+                Ok(Self::new_v1(self.codec, self.hash))
+            }
+            Version::V1 => Ok(self),
+        }
+    }
+
     /// Returns the cid version.
     pub const fn version(&self) -> Version {
         self.version
@@ -127,46 +140,72 @@ impl<const S: usize> Cid<S> {
     pub fn read_bytes<R: io::Read>(mut r: R) -> Result<Self> {
         let version = varint_read_u64(&mut r)?;
         let codec = varint_read_u64(&mut r)?;
+
         // CIDv0 has the fixed `0x12 0x20` prefix
         if [version, codec] == [0x12, 0x20] {
             let mut digest = [0u8; 32];
             r.read_exact(&mut digest)?;
             let mh = Multihash::wrap(version, &digest).expect("Digest is always 32 bytes.");
-            Self::new_v0(mh)
-        } else {
-            let version = Version::try_from(version)?;
-            let mh = Multihash::read(r)?;
-            Self::new(version, codec, mh)
+            return Self::new_v0(mh);
+        }
+
+        let version = Version::try_from(version)?;
+        match version {
+            Version::V0 => Err(Error::InvalidExplicitCidV0),
+            Version::V1 => {
+                let mh = Multihash::read(r)?;
+                Self::new(version, codec, mh)
+            }
         }
     }
 
-    fn write_bytes_v1<W: io::Write>(&self, mut w: W) -> Result<()> {
+    fn write_bytes_v1<W: io::Write>(&self, mut w: W) -> Result<usize> {
         let mut version_buf = varint_encode::u64_buffer();
         let version = varint_encode::u64(self.version.into(), &mut version_buf);
 
         let mut codec_buf = varint_encode::u64_buffer();
         let codec = varint_encode::u64(self.codec, &mut codec_buf);
 
+        let mut written = version.len() + codec.len();
+
         w.write_all(version)?;
         w.write_all(codec)?;
-        self.hash.write(&mut w)?;
-        Ok(())
+        written += self.hash.write(&mut w)?;
+
+        Ok(written)
     }
 
-    /// Writes the bytes to a byte stream.
-    pub fn write_bytes<W: io::Write>(&self, w: W) -> Result<()> {
-        match self.version {
+    /// Writes the bytes to a byte stream, returns the number of bytes written.
+    pub fn write_bytes<W: io::Write>(&self, w: W) -> Result<usize> {
+        let written = match self.version {
             Version::V0 => self.hash.write(w)?,
             Version::V1 => self.write_bytes_v1(w)?,
+        };
+        Ok(written)
+    }
+
+    /// Returns the length in bytes needed to encode this cid into bytes.
+    pub fn encoded_len(&self) -> usize {
+        match self.version {
+            Version::V0 => self.hash.encoded_len(),
+            Version::V1 => {
+                let mut version_buf = varint_encode::u64_buffer();
+                let version = varint_encode::u64(self.version.into(), &mut version_buf);
+
+                let mut codec_buf = varint_encode::u64_buffer();
+                let codec = varint_encode::u64(self.codec, &mut codec_buf);
+
+                version.len() + codec.len() + self.hash.encoded_len()
+            }
         }
-        Ok(())
     }
 
     /// Returns the encoded bytes of the `Cid`.
     #[cfg(feature = "alloc")]
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
-        self.write_bytes(&mut bytes).unwrap();
+        let written = self.write_bytes(&mut bytes).unwrap();
+        debug_assert_eq!(written, bytes.len());
         bytes
     }
 

@@ -36,6 +36,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   Interactions: "resource:///modules/Interactions.sys.mjs",
   Log: "resource://gre/modules/Log.sys.mjs",
   LoginBreaches: "resource:///modules/LoginBreaches.sys.mjs",
+  NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
   NewTabUtils: "resource://gre/modules/NewTabUtils.sys.mjs",
   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
   Normandy: "resource://normandy/Normandy.sys.mjs",
@@ -90,7 +91,6 @@ XPCOMUtils.defineLazyModuleGetters(lazy, {
   Discovery: "resource:///modules/Discovery.jsm",
   ExtensionsUI: "resource:///modules/ExtensionsUI.jsm",
   HomePage: "resource:///modules/HomePage.jsm",
-  NetUtil: "resource://gre/modules/NetUtil.jsm",
   OnboardingMessageProvider:
     "resource://activity-stream/lib/OnboardingMessageProvider.jsm",
   PageActions: "resource:///modules/PageActions.jsm",
@@ -750,6 +750,20 @@ let JSWINDOWACTORS = {
       },
     },
     matches: ["about:studies*"],
+  },
+
+  SpeechDispatcher: {
+    parent: {
+      esModuleURI: "resource:///actors/SpeechDispatcherParent.sys.mjs",
+    },
+
+    child: {
+      esModuleURI: "resource:///actors/SpeechDispatcherChild.sys.mjs",
+      observers: ["chrome-synth-voices-error"],
+    },
+
+    messageManagerGroups: ["browsers"],
+    allFrames: true,
   },
 
   ASRouter: {
@@ -4223,48 +4237,6 @@ BrowserGlue.prototype = {
         }
       } catch (ex) {
         console.error("Failed to clear XULStore PiP values: ", ex);
-      }
-    }
-
-    if (currentUIVersion < 126) {
-      // Bug 1747343 - Add a pref to set the default download action to "Always
-      // ask" so the UCT dialog will be opened for mime types that are not
-      // stored already. Users who wanted this behavior would have disabled the
-      // experimental pref browser.download.improvements_to_download_panel so we
-      // can migrate its inverted value to this new pref.
-      if (
-        !Services.prefs.getBoolPref(
-          "browser.download.improvements_to_download_panel",
-          true
-        )
-      ) {
-        Services.prefs.setBoolPref(
-          "browser.download.always_ask_before_handling_new_types",
-          true
-        );
-      }
-    }
-
-    // Bug 1769071: The UI Version 127 was used for a clean up code that is not
-    // necessary anymore. Please do not use 127 because this number is probably
-    // set in Nightly and Beta channel.
-
-    // Non-macOS only (on macOS we've never used the tmp folder for downloads):
-    if (AppConstants.platform != "macosx" && currentUIVersion < 128) {
-      // Bug 1738574 - Add a pref to start downloads in the tmp folder.
-      // Users who wanted this behavior would have disabled the experimental
-      // pref browser.download.improvements_to_download_panel so we
-      // can migrate its inverted value to this new pref.
-      if (
-        !Services.prefs.getBoolPref(
-          "browser.download.improvements_to_download_panel",
-          true
-        )
-      ) {
-        Services.prefs.setBoolPref(
-          "browser.download.start_downloads_in_tmp_dir",
-          true
-        );
       }
     }
 

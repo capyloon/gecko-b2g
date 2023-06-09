@@ -32,8 +32,6 @@
 #include "mozilla/MemoryTelemetry.h"
 #include "mozilla/NullPrincipal.h"
 #include "mozilla/PerfStats.h"
-#include "mozilla/PerformanceMetricsCollector.h"
-#include "mozilla/PerformanceUtils.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/ProcessHangMonitorIPC.h"
 #include "mozilla/RemoteDecoderManagerChild.h"
@@ -885,11 +883,11 @@ void ContentChild::SetProcessName(const nsACString& aName,
                                   const nsACString* aCurrentProfile) {
   char* name;
   if ((name = PR_GetEnv("MOZ_DEBUG_APP_PROCESS")) && aName.EqualsASCII(name)) {
-#ifdef OS_POSIX
+#ifdef XP_UNIX
     printf_stderr("\n\nCHILDCHILDCHILDCHILD\n  [%s] debug me @%d\n\n", name,
                   getpid());
     sleep(30);
-#elif defined(OS_WIN)
+#elif defined(XP_WIN)
     // Windows has a decent JIT debugging story, so NS_DebugBreak does the
     // right thing.
     NS_DebugBreak(NS_DEBUG_BREAK,
@@ -1608,25 +1606,6 @@ mozilla::ipc::IPCResult ContentChild::GetResultForRenderingInitFailure(
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult ContentChild::RecvRequestPerformanceMetrics(
-    const nsID& aID) {
-  RefPtr<ContentChild> self = this;
-  RefPtr<AbstractThread> mainThread = AbstractThread::MainThread();
-  nsTArray<RefPtr<PerformanceInfoPromise>> promises = CollectPerformanceInfo();
-
-  PerformanceInfoPromise::All(mainThread, promises)
-      ->Then(
-          mainThread, __func__,
-          [self, aID](const nsTArray<mozilla::dom::PerformanceInfo>& aResult) {
-            self->SendAddPerformanceMetrics(aID, aResult);
-          },
-          []() { /* silently fails -- the parent times out
-                    and proceeds when the data is not coming back */
-          });
-
-  return IPC_OK();
-}
-
 #if defined(XP_MACOSX)
 extern "C" {
 void CGSShutdownServerConnections();
@@ -1837,11 +1816,11 @@ mozilla::ipc::IPCResult ContentChild::RecvSetProcessSandbox(
 
   CrashReporter::AnnotateCrashReport(
       CrashReporter::Annotation::ContentSandboxEnabled, sandboxEnabled);
-#  if defined(XP_LINUX) && !defined(OS_ANDROID)
+#  if defined(XP_LINUX) && !defined(ANDROID)
   CrashReporter::AnnotateCrashReport(
       CrashReporter::Annotation::ContentSandboxCapabilities,
       static_cast<int>(SandboxInfo::Get().AsInteger()));
-#  endif /* XP_LINUX && !OS_ANDROID */
+#  endif /* XP_LINUX && !ANDROID */
 #endif   /* MOZ_SANDBOX */
 
   return IPC_OK();
