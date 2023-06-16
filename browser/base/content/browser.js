@@ -1532,8 +1532,8 @@ var gBrowserInit = {
       if (!toolbarMenubar.hasAttribute("autohide")) {
         toolbarMenubar.setAttribute("autohide", true);
       }
-      toolbarMenubar.setAttribute(
-        "data-l10n-id",
+      document.l10n.setAttributes(
+        toolbarMenubar,
         "toolbar-context-menu-menu-bar-cmd"
       );
       toolbarMenubar.setAttribute("data-l10n-attrs", "toolbarname");
@@ -1987,8 +1987,8 @@ var gBrowserInit = {
               toplevel.toplevel_name
             );
           } else {
-            managedBookmarksButton.setAttribute(
-              "data-l10n-id",
+            document.l10n.setAttributes(
+              managedBookmarksButton,
               "managed-bookmarks"
             );
           }
@@ -2017,7 +2017,7 @@ var gBrowserInit = {
           );
           managedBookmarksPopup.setAttribute("placespopup", "true");
           managedBookmarksPopup.setAttribute("is", "places-popup");
-          managedBookmarksPopup.setAttribute("type", "arrow");
+          managedBookmarksPopup.classList.add("toolbar-menupopup");
           managedBookmarksButton.appendChild(managedBookmarksPopup);
 
           gNavToolbox.palette.appendChild(managedBookmarksButton);
@@ -5434,7 +5434,7 @@ var XULBrowserWindow = {
       }
     }
 
-    if (TranslationsParent.isRestrictedPage(gBrowser.currentURI.spec)) {
+    if (TranslationsParent.isRestrictedPage(gBrowser.currentURI.scheme)) {
       this._menuItemForTranslations.setAttribute("disabled", "true");
     } else {
       this._menuItemForTranslations.removeAttribute("disabled");
@@ -7619,6 +7619,33 @@ var WebAuthnPromptHelper = {
         "pinAuthBlocked",
         "webauthn.pinAuthBlockedPrompt"
       );
+    } else if (data.action == "uv-blocked") {
+      this.show_info(
+        mgr,
+        data.origin,
+        data.tid,
+        "uvBlocked",
+        "webauthn.uvBlockedPrompt"
+      );
+    } else if (data.action == "uv-invalid") {
+      let retriesLeft = data.retriesLeft;
+      let dialogText;
+      if (retriesLeft == 0) {
+        // We can skip that because it will either be replaced
+        // by uv-blocked or by PIN-prompt
+        return;
+      } else if (retriesLeft < 0) {
+        dialogText = this._l10n.formatValueSync(
+          "webauthn-uv-invalid-short-prompt"
+        );
+      } else {
+        dialogText = this._l10n.formatValueSync(
+          "webauthn-uv-invalid-long-prompt",
+          { retriesLeft }
+        );
+      }
+      let mainAction = this.buildCancelAction(mgr, data.tid);
+      this.show_formatted_msg(data.tid, "uvInvalid", dialogText, mainAction);
     } else if (data.action == "device-blocked") {
       this.show_info(
         mgr,
@@ -7639,6 +7666,7 @@ var WebAuthnPromptHelper = {
   },
 
   prompt_for_password(origin, wasInvalid, retriesLeft, aPassword) {
+    this.reset();
     let dialogText;
     if (!wasInvalid) {
       dialogText = this._l10n.formatValueSync("webauthn-pin-required-prompt");
@@ -7764,14 +7792,6 @@ var WebAuthnPromptHelper = {
     secondaryActions = [],
     options = {}
   ) {
-    this.reset();
-
-    try {
-      origin = Services.io.newURI(origin).asciiHost;
-    } catch (e) {
-      /* Might fail for arbitrary U2F RP IDs. */
-    }
-
     let brandShortName = document
       .getElementById("bundle_brand")
       .getString("brandShortName");
@@ -7779,13 +7799,42 @@ var WebAuthnPromptHelper = {
       "<>",
       brandShortName,
     ]);
+
+    try {
+      origin = Services.io.newURI(origin).asciiHost;
+    } catch (e) {
+      /* Might fail for arbitrary U2F RP IDs. */
+    }
+    options.name = origin;
+    this.show_formatted_msg(
+      tid,
+      id,
+      message,
+      mainAction,
+      secondaryActions,
+      options
+    );
+  },
+
+  show_formatted_msg(
+    tid,
+    id,
+    message,
+    mainAction,
+    secondaryActions = [],
+    options = {}
+  ) {
+    this.reset();
+
+    let brandShortName = document
+      .getElementById("bundle_brand")
+      .getString("brandShortName");
     if (options.hintText) {
       options.hintText = gNavigatorBundle.getFormattedString(options.hintText, [
         brandShortName,
       ]);
     }
 
-    options.name = origin;
     options.hideClose = true;
     options.persistent = true;
     options.eventCallback = event => {
@@ -8107,6 +8156,23 @@ function AddKeywordForSearchField() {
 }
 
 /**
+ * Applies only to the cmd|ctrl + shift + T keyboard shortcut
+ * Undo the last action that was taken - either closing the last tab or closing the last window;
+ * If none of those were the last actions, restore the last session if possible.
+ */
+function restoreLastClosedTabOrWindowOrSession() {
+  let lastActionTaken = SessionStore.popLastClosedAction();
+
+  if (!lastActionTaken && SessionStore.canRestoreLastSession) {
+    SessionStore.restoreLastSession();
+  } else if (lastActionTaken?.type == SessionStore.LAST_ACTION_CLOSED_TAB) {
+    this.undoCloseTab();
+  } else if (lastActionTaken?.type == SessionStore.LAST_ACTION_CLOSED_WINDOW) {
+    this.undoCloseWindow();
+  }
+}
+
+/**
  * Re-open a closed tab.
  * @param aIndex
  *        The index of the tab (via SessionStore.getClosedTabDataForWindow)
@@ -8120,19 +8186,6 @@ function undoCloseTab(aIndex) {
   }
 
   let closedTabCount = SessionStore.getLastClosedTabCount(window);
-
-  // There's nothing to do here if there are no tabs to re-open for this
-  // window...
-  if (!closedTabCount) {
-    // ... unless there's a previous session that we can restore, in which
-    // case, we use this as a signal to restore that session and merge it into
-    // the current session.
-    if (SessionStore.canRestoreLastSession) {
-      SessionStore.restoreLastSession();
-    }
-    return null;
-  }
-
   let tab = null;
   // aIndex is undefined if the function is called without a specific tab to restore.
   let tabsToRemove =

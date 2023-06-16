@@ -1755,6 +1755,19 @@
   mirror: always
   do_not_use_directly: true
 
+# This pref controls how exceptions to opaque response blocking for the media MIME types
+# `audio/*` and `video/*` are handled. This is because step 8 in the spec that performs
+# audio or video type pattern matching cannot handle certain MIME types (yet).
+# See https://whatpr.org/fetch/1442.html#orb-algorithm
+#   0) No exceptions
+#   1) Some exceptions, explicitly hard coded in `IsOpaqueSafeListedSpecBreakingMIMEType`
+#   2) Allow all MIME types beginning with `audio/*` or `video/*`.
+- name: browser.opaqueResponseBlocking.mediaExceptionsStrategy
+  type: uint32_t
+  value: 1
+  mirror: always
+  do_not_use_directly: true
+
 # When this pref is enabled, <object> and <embed> elements will create
 # synthetic documents when the resource type they're loading is an image.
 - name: browser.opaqueResponseBlocking.syntheticBrowsingContext
@@ -2319,13 +2332,6 @@
   value: 20
   mirror: always
 
-# Whether Window.{inner,outer}{Width,Height} and screen{X,Y}
-# behave as replaceable properties unconditionally.
-- name: dom.window_position_size_properties_replaceable.enabled
-  type: bool
-  value: true
-  mirror: always
-
 # Whether window.location.reload() and window.history.go(0) should be blocked
 # when called directly from a window resize event handler.
 #
@@ -2671,7 +2677,7 @@
 # If true, event is first captured then bubbled on target element
 - name: dom.events.phases.correctOrderOnTarget
   type: RelaxedAtomicBool
-  value: true
+  value: false
   mirror: always
 
 # This pref controls whether or not the `protected` dataTransfer state is
@@ -3021,11 +3027,6 @@
 #endif
   mirror: always
 
-- name: dom.ipc.tabs.disabled
-  type: bool
-  value: false
-  mirror: always
-
 # Process launch delay (in milliseconds).
 - name: dom.ipc.processPrelaunch.delayMs
   type: uint32_t
@@ -3127,6 +3128,13 @@
 
 # Is support for key events and focus events on disabled elements enabled?
 - name: dom.forms.always_allow_key_and_focus_events.enabled
+  type: bool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+
+# Whether to disable only the descendants or the parent fieldset element too
+# Note that this still allows it to be selected by `:disable`.
+- name: dom.forms.fieldset_disable_only_descendants.enabled
   type: bool
   value: @IS_NIGHTLY_BUILD@
   mirror: always
@@ -3449,11 +3457,6 @@
 - name: dom.performance.enable_user_timing_logging
   type: RelaxedAtomicBool
   value: false
-  mirror: always
-
-- name: dom.performance.children_results_ipc_timeout
-  type: uint32_t
-  value: 1000
   mirror: always
 
 # Enable notification of performance timing
@@ -4169,6 +4172,19 @@
 - name: dom.workers.serialized-sab-access
   type: RelaxedAtomicBool
   value: false
+  mirror: always
+
+# Enable stronger diagnostics on worker shutdown.
+# If this is true, we will potentially run an extra GCCC when a  worker should
+# exit its DoRunLoop but holds any WorkerRef and we will MOZ_DIAGNOSTIC_ASSERT
+# when during that extra GCCC such a WorkerRef is freed.
+- name: dom.workers.GCCC_on_potentially_last_event
+  type: RelaxedAtomicBool
+#if defined(FUZZING) || defined(DEBUG)
+  value: true
+#else
+  value: false
+#endif
   mirror: always
 
 - name: dom.sitepermsaddon-provider.enabled
@@ -6569,11 +6585,6 @@
   value: false
   mirror: once
 
-- name: gfx.vsync.collect-scroll-transforms
-  type: RelaxedAtomicBool
-  value: false
-  mirror: always
-
 - name: gfx.vsync.compositor.unobserve-count
   type: int32_t
   value: 10
@@ -7309,19 +7320,6 @@
 - name: image.mem.surfacecache.size_factor
   type: uint32_t
   value: 4
-  mirror: once
-
-# How long in ms before we should start shutting down idle decoder threads.
-- name: image.multithreaded_decoding.idle_timeout
-  type: int32_t
-  value: 600000
-  mirror: once
-
-# How many threads we'll use for multithreaded decoding. If < 0, will be
-# automatically determined based on the system's number of cores.
-- name: image.multithreaded_decoding.limit
-  type: int32_t
-  value: -1
   mirror: once
 
 # Whether we record SVG images as blobs or not.
@@ -8900,6 +8898,22 @@
   type: bool
   value: true
   mirror: always
+
+# Is support for motion-path <basic-shape> other than path() enabled?
+# https://drafts.fxtf.org/motion-1/#valdef-offset-path-basic-shape
+- name: layout.css.motion-path-basic-shapes.enabled
+  type: RelaxedAtomicBool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+  rust: true
+
+# Is support for motion-path <coord-box> enabled?
+# https://drafts.fxtf.org/motion-1/#valdef-offset-path-coord-box
+- name: layout.css.motion-path-coord-box.enabled
+  type: RelaxedAtomicBool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+  rust: true
 
 # Is support for motion-path ray() enabled?
 - name: layout.css.motion-path-ray.enabled
@@ -10984,6 +10998,14 @@
   value: @IS_NOT_ANDROID@
   mirror: always
 
+# The getDisplayMedia prompt uses getDisplayMedia under the hood to show previews.
+# This can be turned off if, e.g. on systems with known issues like X11, or if
+# previews are not desired.
+- name: media.getdisplaymedia.previews.enabled
+  type: bool
+  value: @IS_NOT_ANDROID@
+  mirror: always
+
 # Turn off any cameras (but not mics) while in the background. This is desirable
 # on mobile.
 - name: media.getusermedia.camera.background.mute.enabled
@@ -11251,6 +11273,11 @@
   type: RelaxedAtomicBool
   value: true
   mirror: always
+
+- name: media.webrtc.camera.allow-pipewire
+  type: bool
+  value: false
+  mirror: once
 #endif
 
 - name: media.block-autoplay-until-in-foreground
@@ -11315,6 +11342,13 @@
   value: 8
   mirror: always
 
+# The interval of time in milliseconds between attempts to reopen any
+# previously unavailable audio device.
+- name: media.audio.device.retry.ms
+  type: RelaxedAtomicInt32
+  value: 1000
+  mirror: always
+
 # Time-stretch algorithm single processing sequence length in milliseconds.
 # This determines to how long sequences the original sound is chopped in the
 # time-stretch algorithm.
@@ -11373,6 +11407,35 @@
     type: String
     value: "audio/mpeg"
     mirror: never
+
+  # Set which audio decoder path should be used.
+  # true: use new decoder: GonkDataDecoder / GonkMediaCodec
+  # false: use old decoder: GonkMediaDataDecoder / MediaCodecProxy
+-   name: media.gonkmediacodec.audio.enabled
+    type: RelaxedAtomicBool
+    value: true
+    mirror: always
+
+  # Set which video decoder path should be used.
+-   name: media.gonkmediacodec.video.enabled
+    type: RelaxedAtomicBool
+    value: true
+    mirror: always
+
+-   name: media.gonkmediacodec.recycling.enabled
+    type: RelaxedAtomicBool
+    value: true
+    mirror: always
+
+-   name: media.gonkmediacodec.bufferqueue.enabled
+    type: RelaxedAtomicBool
+    value: true
+    mirror: always
+
+-   name: media.gonkmediacodec.bufferqueue.max.acquired.count
+    type: RelaxedAtomicInt32
+    value: 4
+    mirror: always
 
 -   name: media.gonk.video.max_video_decode_width
     type: RelaxedAtomicUint32
@@ -12696,11 +12759,6 @@
   value: true
   mirror: always
 
-- name: network.http.http2.persistent-settings
-  type: RelaxedAtomicBool
-  value: false
-  mirror: always
-
 - name: network.http.http2.ping-threshold
   type: RelaxedAtomicInt32
   value: 58
@@ -12906,11 +12964,6 @@
 - name: network.dns.force_use_https_rr
   type: RelaxedAtomicBool
   value: false
-  mirror: always
-
-- name: network.cache.frecency_array_check_enabled
-  type: RelaxedAtomicBool
-  value: @IS_EARLY_BETA_OR_EARLIER@
   mirror: always
 
 # When this pref is true, AddStorageEntry will return an error if the
@@ -13298,11 +13351,6 @@
 # Prefs starting with "privacy."
 #---------------------------------------------------------------------------
 
-- name: privacy.fuzzyfox.clockgrainus
-  type: RelaxedAtomicUint32
-  value: 100
-  mirror: always
-
 # Annotate trackers using the strict list. If set to false, the basic list will
 # be used instead.
 - name: privacy.annotate_channels.strict_list.enabled
@@ -13552,13 +13600,6 @@
 - name: privacy.resistFingerprinting.target_video_res
   type: uint32_t
   value: 480
-  mirror: always
-
-# Setting TZ=UTC ensures that even libc functions use the spoofed time zone.
-# We want to remove that override as soon as possible however.
-- name: privacy.resistFingerprinting.testing.setTZtoUTC
-  type: bool
-  value: false
   mirror: always
 
 # Enable resetting the fingerprinting randomization key daily for normal windwos.
@@ -14721,11 +14762,6 @@
 #---------------------------------------------------------------------------
 # Prefs starting with "thread."
 #---------------------------------------------------------------------------
-
-- name: threads.medium_high_event_queue.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
 
 # If control tasks aren't enabled, they get medium high priority.
 - name: threads.control_event_queue.enabled

@@ -344,6 +344,12 @@ BROWSER_PROCESS += [
 
     # Nahimic audio driver (bug 1540883)
     DllBlocklistEntry("audiodevprops2.dll", (2, 6, 14, 0)),
+
+    # Kingsoft internet security (bug 1837242)
+    DllBlocklistEntry("kisfdpro64.dll", (2023, 5, 31, 209)),
+
+    # Kingsoft internet security (bug 1837246)
+    DllBlocklistEntry("dghmpg64.dll", (2023, 5, 31, 1367)),
 ]
 
 CHILD_PROCESSES += [
@@ -400,6 +406,9 @@ UTILITY_PROCESSES += [
     DllBlocklistEntry("ipseng32.dll", ALL_VERSIONS),
     DllBlocklistEntry("ks3rdhmpg.dll", ALL_VERSIONS),
     DllBlocklistEntry("kwsui64.dll", ALL_VERSIONS),
+
+    # Messes with user32 and breaks Utility on Win7 x86
+    DllBlocklistEntry("aswhook.dll", ALL_VERSIONS, BLOCK_WIN7_AND_OLDER),
 ]
 
 UTILITY_PROCESSES_TESTS += [

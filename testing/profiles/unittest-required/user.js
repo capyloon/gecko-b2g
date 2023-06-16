@@ -50,9 +50,6 @@ user_pref("browser.shell.checkDefaultBrowser", false);
 user_pref("browser.startup.page", 0); // use about:blank, not browser.startup.homepage
 // Don't show a delay when hiding the audio indicator during tests
 user_pref("browser.tabs.delayHidingAudioPlayingIconMS", 0);
-// Don't allow background tabs to be zombified, otherwise for tests that
-// open additional tabs, the test harness tab itself might get unloaded.
-user_pref("browser.tabs.disableBackgroundZombification", true);
 // Don't use auto-enabled e10s
 user_pref("browser.tabs.remote.autostart", false);
 // Make sure Translation won't hit the network.
@@ -71,7 +68,6 @@ user_pref("browser.urlbar.speculativeConnect.enabled", false);
 // Turn off search suggestions in the location bar so as not to trigger network
 // connections.
 user_pref("browser.urlbar.suggest.searches", false);
-user_pref("browser.urlbar.usepreloadedtopurls.enabled", false);
 // URIFixup whitelist
 user_pref("browser.fixup.domainsuffixwhitelist.test", true);
 user_pref("browser.warnOnQuit", false);

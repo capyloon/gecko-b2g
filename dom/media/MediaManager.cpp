@@ -41,6 +41,7 @@
 #include "mozilla/dom/WindowContext.h"
 #include "mozilla/dom/WindowGlobalChild.h"
 #include "mozilla/ipc/BackgroundChild.h"
+#include "mozilla/ipc/PBackgroundChild.h"
 #include "mozilla/media/MediaChild.h"
 #include "mozilla/media/MediaTaskUtils.h"
 #include "nsAppDirectoryServiceDefs.h"
@@ -191,9 +192,11 @@ using dom::Sequence;
 using dom::UserActivation;
 using dom::WindowGlobalChild;
 using ConstDeviceSetPromise = MediaManager::ConstDeviceSetPromise;
+using DeviceSetPromise = MediaManager::DeviceSetPromise;
 using LocalDevicePromise = MediaManager::LocalDevicePromise;
 using LocalDeviceSetPromise = MediaManager::LocalDeviceSetPromise;
 using LocalMediaDeviceSetRefCnt = MediaManager::LocalMediaDeviceSetRefCnt;
+using MediaDeviceSetRefCnt = MediaManager::MediaDeviceSetRefCnt;
 using media::NewRunnableFrom;
 using media::NewTaskFrom;
 using media::Refcountable;
@@ -1802,12 +1805,53 @@ void MediaManager::GuessVideoDeviceGroupIDs(MediaDeviceSet& aDevices,
   }
 }
 
+namespace {
+
+// Class to hold the promise returned by EnumerateRawDevices() and to resolve
+// even if |task| does not run, either because GeckoViewPermissionProcessChild
+// gets destroyed before ask-device-permission receives its
+// got-device-permission reply, or because the media thread is no longer
+// available.  In either case, the process is shutting down so the result is
+// not important.  Resolve with an empty set, so that callers do not need to
+// handle rejection.
+class DeviceSetPromiseHolderWithFallback
+    : public MozPromiseHolder<DeviceSetPromise> {
+ public:
+  DeviceSetPromiseHolderWithFallback() = default;
+  DeviceSetPromiseHolderWithFallback(DeviceSetPromiseHolderWithFallback&&) =
+      default;
+  ~DeviceSetPromiseHolderWithFallback() {
+    if (!IsEmpty()) {
+      Resolve(new MediaDeviceSetRefCnt(), __func__);
+    }
+  }
+};
+
+// Class to hold the promise used to request device access and to resolve
+// even if |task| does not run, which can happen in case there is no
+// observer for the ask-device-permission event.
+class DeviceAccessRequestPromiseHolderWithFallback
+    : public MozPromiseHolder<
+          MozPromise<nsresult, mozilla::ipc::ResponseRejectReason, true>> {
+ public:
+  DeviceAccessRequestPromiseHolderWithFallback() = default;
+  DeviceAccessRequestPromiseHolderWithFallback(
+      DeviceAccessRequestPromiseHolderWithFallback&&) = default;
+  ~DeviceAccessRequestPromiseHolderWithFallback() {
+    if (!IsEmpty()) {
+      Resolve(NS_OK, __func__);
+    }
+  }
+};
+
+}  // anonymous namespace
+
 /**
  * EnumerateRawDevices - Enumerate a list of audio & video devices that
  * satisfy passed-in constraints. List contains raw id's.
  */
 
-RefPtr<MediaManager::DeviceSetPromise> MediaManager::EnumerateRawDevices(
+RefPtr<DeviceSetPromise> MediaManager::EnumerateRawDevices(
     MediaSourceEnum aVideoInputType, MediaSourceEnum aAudioInputType,
     EnumerationFlags aFlags) {
   MOZ_ASSERT(NS_IsMainThread());
@@ -1819,13 +1863,11 @@ RefPtr<MediaManager::DeviceSetPromise> MediaManager::EnumerateRawDevices(
       static_cast<uint8_t>(aVideoInputType),
       static_cast<uint8_t>(aAudioInputType));
 
-  MozPromiseHolder<DeviceSetPromise> holder;
+  DeviceSetPromiseHolderWithFallback holder;
   RefPtr<DeviceSetPromise> promise = holder.Ensure(__func__);
   if (sHasMainThreadShutdown) {
     // The media thread is no longer available but the result will not be
-    // observable.  Resolve with an empty set, so that callers do not need to
-    // handle rejection.
-    holder.Resolve(new MediaDeviceSetRefCnt(), __func__);
+    // observable.  |holder| will resolve |promise| on destruction.
     return promise;
   }
 
@@ -1862,10 +1904,61 @@ RefPtr<MediaManager::DeviceSetPromise> MediaManager::EnumerateRawDevices(
   const bool realDeviceRequested = (!hasFakeCams && hasVideo) ||
                                    (!hasFakeMics && hasAudio) || hasAudioOutput;
 
-  RefPtr<Runnable> task = NewTaskFrom(
+  using NativePromise = MozPromise<nsresult, mozilla::ipc::ResponseRejectReason,
+                                   /* IsExclusive = */ true>;
+  RefPtr<NativePromise> deviceAccessPromise;
+  if (realDeviceRequested &&
+      aFlags.contains(EnumerationFlag::AllowPermissionRequest)) {
+    if (Preferences::GetBool("media.navigator.permission.device", false)) {
+      // Need to ask permission to retrieve list of all devices;
+      // notify frontend observer and wait for callback notification to post
+      // task.
+      const char16_t* const type =
+          (aVideoInputType != MediaSourceEnum::Camera)       ? u"audio"
+          : (aAudioInputType != MediaSourceEnum::Microphone) ? u"video"
+                                                             : u"all";
+      nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
+      DeviceAccessRequestPromiseHolderWithFallback deviceAccessPromiseHolder;
+      deviceAccessPromise = deviceAccessPromiseHolder.Ensure(__func__);
+      RefPtr task = NS_NewRunnableFunction(
+          __func__, [holder = std::move(deviceAccessPromiseHolder)]() mutable {
+            holder.Resolve(NS_OK, "getUserMedia:got-device-permission");
+          });
+      obs->NotifyObservers(static_cast<nsIRunnable*>(task),
+                           "getUserMedia:ask-device-permission", type);
+    } else if (hasVideo && aVideoInputType == MediaSourceEnum::Camera) {
+      ipc::PBackgroundChild* backgroundChild =
+          ipc::BackgroundChild::GetOrCreateForCurrentThread();
+      deviceAccessPromise = backgroundChild->SendRequestCameraAccess();
+    }
+  }
+
+  if (!deviceAccessPromise) {
+    // No device access request needed. Proceed directly.
+    deviceAccessPromise = NativePromise::CreateAndResolve(NS_OK, __func__);
+  }
+
+  deviceAccessPromise->Then(
+      mMediaThread, __func__,
       [holder = std::move(holder), aVideoInputType, aAudioInputType,
        hasFakeCams, hasFakeMics, videoLoopDev, audioLoopDev, hasVideo, hasAudio,
-       hasAudioOutput, realDeviceRequested]() mutable {
+       hasAudioOutput, realDeviceRequested](
+          NativePromise::ResolveOrRejectValue&& aValue) mutable {
+        if (aValue.IsReject()) {
+          // IPC failure probably means we're in shutdown. Resolve with
+          // an empty set, so that callers do not need to handle rejection.
+          holder.Resolve(new MediaDeviceSetRefCnt(),
+                         "EnumerateRawDevices: ipc failure");
+          return;
+        }
+
+        if (nsresult value = aValue.ResolveValue(); NS_FAILED(value)) {
+          holder.Reject(
+              MakeRefPtr<MediaMgrError>(MediaMgrError::Name::NotAllowedError),
+              "EnumerateRawDevices: camera access rejected");
+          return;
+        }
+
         // Only enumerate what's asked for, and only fake cams and mics.
         RefPtr<MediaEngine> fakeBackend, realBackend;
         if (hasFakeCams || hasFakeMics) {
@@ -1952,24 +2045,6 @@ RefPtr<MediaManager::DeviceSetPromise> MediaManager::EnumerateRawDevices(
 
         holder.Resolve(std::move(devices), __func__);
       });
-
-  if (realDeviceRequested &&
-      aFlags.contains(EnumerationFlag::AllowPermissionRequest) &&
-      Preferences::GetBool("media.navigator.permission.device", false)) {
-    // Need to ask permission to retrieve list of all devices;
-    // notify frontend observer and wait for callback notification to post task.
-    const char16_t* const type =
-        (aVideoInputType != MediaSourceEnum::Camera)       ? u"audio"
-        : (aAudioInputType != MediaSourceEnum::Microphone) ? u"video"
-                                                           : u"all";
-    nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
-    obs->NotifyObservers(static_cast<nsIRunnable*>(task),
-                         "getUserMedia:ask-device-permission", type);
-  } else {
-    // Don't need to ask permission to retrieve list of all devices;
-    // post the retrieval task immediately.
-    MediaManager::Dispatch(task.forget());
-  }
 
   return promise;
 }
@@ -3104,8 +3179,9 @@ RefPtr<LocalDeviceSetPromise> MediaManager::EnumerateDevicesImpl(
           [placeholderListener](RefPtr<MediaMgrError>&& aError) {
             // EnumerateDevicesImpl may fail if a new doc has been set, in which
             // case the OnNavigation() method should have removed all previous
-            // active listeners.
-            MOZ_ASSERT(placeholderListener->Stopped());
+            // active listeners, or if a platform device access request was not
+            // granted.
+            placeholderListener->Stop();
             return LocalDeviceSetPromise::CreateAndReject(std::move(aError),
                                                           __func__);
           });

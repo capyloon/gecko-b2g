@@ -243,6 +243,15 @@ status_t GonkBufferQueueConsumer::attachBuffer(
         numAcquiredBuffers, mCore->mMaxAcquiredBufferCount);
     return INVALID_OPERATION;
   }
+
+  if (buffer->getGenerationNumber() != mCore->mGenerationNumber) {
+    ALOGE(
+        "attachBuffer: generation number mismatch [buffer %u] "
+        "[queue %u]",
+        buffer->getGenerationNumber(), mCore->mGenerationNumber);
+    return BAD_VALUE;
+  }
+
   if (found == GonkBufferQueueCore::INVALID_BUFFER_SLOT) {
     ALOGE("attachBuffer(P): could not find free buffer slot");
     return NO_MEMORY;
@@ -585,4 +594,16 @@ int GonkBufferQueueConsumer::getSlotFromTextureClientLocked(
   ALOGE("getSlotFromBufferLocked: unknown TextureClient: %p", client);
   return BAD_VALUE;
 }
+
+int GonkBufferQueueConsumer::getAcquiredBufferCount() const {
+  Mutex::Autolock lock(mCore->mMutex);
+  int numAcquiredBuffers = 0;
+  for (int s = 0; s < GonkBufferQueueDefs::NUM_BUFFER_SLOTS; ++s) {
+    if (mSlots[s].mBufferState == GonkBufferSlot::ACQUIRED) {
+      ++numAcquiredBuffers;
+    }
+  }
+  return numAcquiredBuffers;
+}
+
 }  // namespace android

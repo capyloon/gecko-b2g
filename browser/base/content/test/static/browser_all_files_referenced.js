@@ -94,6 +94,11 @@ if (AppConstants.NIGHTLY_BUILD) {
   gExceptionPaths.push("resource://builtin-addons/translations/");
 }
 
+// Temporary allowlist for shopping - we'll reference this soon.
+if (AppConstants.NIGHTLY_BUILD) {
+  gExceptionPaths.push("chrome://browser/content/shopping/shopping.html");
+}
+
 if (AppConstants.NIGHTLY_BUILD) {
   // This is nightly-only debug tool.
   gExceptionPaths.push(
@@ -289,12 +294,6 @@ var whitelist = [
 
   // Bug 1824826 - Implement a view of history in Firefox View
   { file: "resource://gre/modules/PlacesQuery.sys.mjs" },
-
-  // Should be removed in bug 1824826 when fxview-tab-list is used in Firefox View
-  { file: "resource://app/localization/en-US/browser/fxviewTabList.ftl" },
-  { file: "chrome://browser/content/firefoxview/fxview-tab-list.css" },
-  { file: "chrome://browser/content/firefoxview/fxview-tab-list.mjs" },
-  { file: "chrome://browser/content/firefoxview/fxview-tab-row.css" },
 ];
 
 if (AppConstants.NIGHTLY_BUILD && AppConstants.platform != "win") {

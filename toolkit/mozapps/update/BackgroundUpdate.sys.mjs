@@ -294,7 +294,8 @@ export var BackgroundUpdate = {
       "backgroundupdate",
     ];
 
-    let workingDirectory = lazy.FileUtils.getDir("UpdRootD", [], true).path;
+    let workingDirectory = Services.dirsvc.get("UpdRootD", Ci.nsIFile).path;
+    await IOUtils.makeDirectory(workingDirectory, { ignoreExisting: true });
 
     let description = await lazy.localization.formatValue(
       "backgroundupdate-task-description"
@@ -549,7 +550,7 @@ export var BackgroundUpdate = {
           // put a log file in the specified location. But just to be safe,
           // we'll do some cleanup when we re-register the task to make sure
           // that no log file is hanging around in the old location.
-          let oldUpdateDir = lazy.FileUtils.getDir("OldUpdRootD", [], false);
+          let oldUpdateDir = lazy.FileUtils.getDir("OldUpdRootD", []);
           let oldLog = oldUpdateDir.clone();
           oldLog.append("backgroundupdate.moz_log");
 

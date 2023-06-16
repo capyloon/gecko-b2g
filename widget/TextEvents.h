@@ -80,12 +80,21 @@ enum class AccessKeyType {
  ******************************************************************************/
 
 struct AlternativeCharCode {
-  AlternativeCharCode() : mUnshiftedCharCode(0), mShiftedCharCode(0) {}
+  AlternativeCharCode() = default;
   AlternativeCharCode(uint32_t aUnshiftedCharCode, uint32_t aShiftedCharCode)
       : mUnshiftedCharCode(aUnshiftedCharCode),
         mShiftedCharCode(aShiftedCharCode) {}
-  uint32_t mUnshiftedCharCode;
-  uint32_t mShiftedCharCode;
+
+  uint32_t mUnshiftedCharCode = 0u;
+  uint32_t mShiftedCharCode = 0u;
+
+  bool operator==(const AlternativeCharCode& aOther) const {
+    return mUnshiftedCharCode == aOther.mUnshiftedCharCode &&
+           mShiftedCharCode == aOther.mShiftedCharCode;
+  }
+  bool operator!=(const AlternativeCharCode& aOther) const {
+    return !(*this == aOther);
+  }
 };
 
 /******************************************************************************
@@ -891,6 +900,11 @@ class WidgetCompositionEvent : public WidgetGUIEvent {
   // If the instance is a clone of another event, mOriginalMessage stores
   // the another event's mMessage.
   EventMessage mOriginalMessage;
+
+  // Composition ID considered by TextComposition.  If the event has not been
+  // handled by TextComposition yet, this is 0.  And also if the event is for
+  // a composition synthesized in a content process, this is always 0.
+  uint32_t mCompositionId = 0;
 
   void AssignCompositionEventData(const WidgetCompositionEvent& aEvent,
                                   bool aCopyTargets) {

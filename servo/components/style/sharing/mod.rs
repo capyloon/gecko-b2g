@@ -632,7 +632,11 @@ impl<E: TElement> StyleSharingCache<E> {
         //   matching `.foo`, even if `:has()` may not even be used. Ideally we'd
         //   have something like `RelativeSelectorConsidered::RightMost`, but the
         //   element flag is required for invalidation, and this reduces more tracking.
-        if element.anchors_relative_selector() {
+        if style
+            .style
+            .0
+            .flags
+            .intersects(ComputedValueFlags::ANCHORS_RELATIVE_SELECTOR) {
             debug!("Failing to insert to the cache: may anchor relative selector");
             return;
         }
@@ -873,25 +877,30 @@ impl<E: TElement> StyleSharingCache<E> {
             // NOTE(emilio): We only need to check name / namespace because we
             // do name-dependent style adjustments, like the display: contents
             // to display: none adjustment.
-            if target.namespace() != candidate.element.namespace() {
+            if target.namespace() != candidate.element.namespace() ||
+                target.local_name() != candidate.element.local_name()
+            {
                 return None;
             }
-            if target.local_name() != candidate.element.local_name() {
+            // When using container units, inherited style + rules matched aren't enough to
+            // determine whether the style is the same. We could actually do a full container
+            // lookup but for now we just check that our actual traversal parent matches.
+            if data
+                .styles
+                .primary()
+                .flags
+                .intersects(ComputedValueFlags::USES_CONTAINER_UNITS) &&
+                candidate.element.traversal_parent() != target.traversal_parent()
+            {
                 return None;
             }
-            // Rule nodes and styles are computed independent of the element's
-            // actual visitedness, but at the end of the cascade (in
-            // `adjust_for_visited`) we do store the visitedness as a flag in
-            // style.  (This is a subtle change from initial visited work that
-            // landed when computed values were fused, see
-            // https://bugzilla.mozilla.org/show_bug.cgi?id=1381635.)
-            // So at the moment, we need to additionally compare visitedness,
-            // since that is not accounted for by rule nodes alone.
-            // FIXME(jryans): This seems like it breaks the constant time
-            // requirements of visited, assuming we get a cache hit on only one
-            // of unvisited vs. visited.
-            // TODO(emilio): We no longer have such a flag, remove this check.
-            if target.is_visited_link() != candidate.element.is_visited_link() {
+            // Rule nodes and styles are computed independent of the element's actual visitedness,
+            // but at the end of the cascade (in `adjust_for_visited`) we do store the
+            // RELEVANT_LINK_VISITED flag, so we can't share by rule node between visited and
+            // unvisited styles. We don't check for visitedness and just refuse to share for links
+            // entirely, so that visitedness doesn't affect timing.
+            debug_assert_eq!(target.is_link(), candidate.element.is_link(), "Linkness mismatch");
+            if target.is_link() {
                 return None;
             }
 

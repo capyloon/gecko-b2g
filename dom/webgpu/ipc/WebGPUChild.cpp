@@ -4,11 +4,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "WebGPUChild.h"
+
 #include "js/RootingAPI.h"
 #include "js/String.h"
 #include "js/TypeDecls.h"
 #include "js/Value.h"
 #include "js/Warnings.h"  // JS::WarnUTF8
+#include "mozilla/Assertions.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/EnumTypeTraits.h"
 #include "mozilla/dom/Console.h"
@@ -26,6 +28,8 @@
 #include "CompilationInfo.h"
 #include "mozilla/ipc/RawShmem.h"
 #include "nsGlobalWindowInner.h"
+
+#include <utility>
 
 namespace mozilla::webgpu {
 
@@ -274,96 +278,15 @@ RefPtr<AdapterPromise> WebGPUChild::InstanceRequestAdapter(
 }
 
 Maybe<DeviceRequest> WebGPUChild::AdapterRequestDevice(
-    RawId aSelfId, const dom::GPUDeviceDescriptor& aDesc,
-    ffi::WGPULimits* aLimits) {
-  ffi::WGPUDeviceDescriptor desc = {};
-  ffi::wgpu_client_fill_default_limits(&desc.limits);
-
-  // webgpu::StringHelper label(aDesc.mLabel);
-  // desc.label = label.Get();
-
-  const auto featureBits = Adapter::MakeFeatureBits(aDesc.mRequiredFeatures);
-  if (!featureBits) {
-    return Nothing();
-  }
-  desc.features = *featureBits;
-
-  if (aDesc.mRequiredLimits.WasPassed()) {
-    for (const auto& entry : aDesc.mRequiredLimits.Value().Entries()) {
-      const uint32_t valueU32 =
-          entry.mValue < std::numeric_limits<uint32_t>::max()
-              ? entry.mValue
-              : std::numeric_limits<uint32_t>::max();
-      if (entry.mKey == u"maxTextureDimension1D"_ns) {
-        desc.limits.max_texture_dimension_1d = valueU32;
-      } else if (entry.mKey == u"maxTextureDimension2D"_ns) {
-        desc.limits.max_texture_dimension_2d = valueU32;
-      } else if (entry.mKey == u"maxTextureDimension3D"_ns) {
-        desc.limits.max_texture_dimension_3d = valueU32;
-      } else if (entry.mKey == u"maxTextureArrayLayers"_ns) {
-        desc.limits.max_texture_array_layers = valueU32;
-      } else if (entry.mKey == u"maxBindGroups"_ns) {
-        desc.limits.max_bind_groups = valueU32;
-      } else if (entry.mKey ==
-                 u"maxDynamicUniformBuffersPerPipelineLayout"_ns) {
-        desc.limits.max_dynamic_uniform_buffers_per_pipeline_layout = valueU32;
-      } else if (entry.mKey ==
-                 u"maxDynamicStorageBuffersPerPipelineLayout"_ns) {
-        desc.limits.max_dynamic_storage_buffers_per_pipeline_layout = valueU32;
-      } else if (entry.mKey == u"maxSampledTexturesPerShaderStage"_ns) {
-        desc.limits.max_sampled_textures_per_shader_stage = valueU32;
-      } else if (entry.mKey == u"maxSamplersPerShaderStage"_ns) {
-        desc.limits.max_samplers_per_shader_stage = valueU32;
-      } else if (entry.mKey == u"maxStorageBuffersPerShaderStage"_ns) {
-        desc.limits.max_storage_buffers_per_shader_stage = valueU32;
-      } else if (entry.mKey == u"maxStorageTexturesPerShaderStage"_ns) {
-        desc.limits.max_storage_textures_per_shader_stage = valueU32;
-      } else if (entry.mKey == u"maxUniformBuffersPerShaderStage"_ns) {
-        desc.limits.max_uniform_buffers_per_shader_stage = valueU32;
-      } else if (entry.mKey == u"maxUniformBufferBindingSize"_ns) {
-        desc.limits.max_uniform_buffer_binding_size = entry.mValue;
-      } else if (entry.mKey == u"maxStorageBufferBindingSize"_ns) {
-        desc.limits.max_storage_buffer_binding_size = entry.mValue;
-      } else if (entry.mKey == u"minUniformBufferOffsetAlignment"_ns) {
-        desc.limits.min_uniform_buffer_offset_alignment = valueU32;
-      } else if (entry.mKey == u"minStorageBufferOffsetAlignment"_ns) {
-        desc.limits.min_storage_buffer_offset_alignment = valueU32;
-      } else if (entry.mKey == u"maxVertexBuffers"_ns) {
-        desc.limits.max_vertex_buffers = valueU32;
-      } else if (entry.mKey == u"maxVertexAttributes"_ns) {
-        desc.limits.max_vertex_attributes = valueU32;
-      } else if (entry.mKey == u"maxVertexBufferArrayStride"_ns) {
-        desc.limits.max_vertex_buffer_array_stride = valueU32;
-      } else if (entry.mKey == u"maxComputeWorkgroupSizeX"_ns) {
-        desc.limits.max_compute_workgroup_size_x = valueU32;
-      } else if (entry.mKey == u"maxComputeWorkgroupSizeY"_ns) {
-        desc.limits.max_compute_workgroup_size_y = valueU32;
-      } else if (entry.mKey == u"maxComputeWorkgroupSizeZ"_ns) {
-        desc.limits.max_compute_workgroup_size_z = valueU32;
-      } else if (entry.mKey == u"maxComputeWorkgroupsPerDimension"_ns) {
-        desc.limits.max_compute_workgroups_per_dimension = valueU32;
-      } else {
-        NS_WARNING(nsPrintfCString("Requested limit '%s' is not recognized.",
-                                   NS_ConvertUTF16toUTF8(entry.mKey).get())
-                       .get());
-        return Nothing();
-      }
-
-      // TODO: maxInterStageShaderComponents
-      // TODO: maxComputeWorkgroupStorageSize
-      // TODO: maxComputeInvocationsPerWorkgroup
-    }
-  }
-
+    RawId aSelfId, const ffi::WGPUDeviceDescriptor& aDesc) {
   RawId id = ffi::wgpu_client_make_device_id(mClient.get(), aSelfId);
 
   ByteBuf bb;
-  ffi::wgpu_client_serialize_device_descriptor(&desc, ToFFI(&bb));
+  ffi::wgpu_client_serialize_device_descriptor(&aDesc, ToFFI(&bb));
 
   DeviceRequest request;
   request.mId = id;
   request.mPromise = SendAdapterRequestDevice(aSelfId, std::move(bb), id);
-  *aLimits = desc.limits;
 
   return Some(std::move(request));
 }
@@ -529,6 +452,21 @@ RawId WebGPUChild::RenderBundleEncoderFinish(
   ipc::ByteBuf bb;
   RawId id = ffi::wgpu_client_create_render_bundle(
       mClient.get(), &aEncoder, aDeviceId, &desc, ToFFI(&bb));
+
+  if (!SendDeviceAction(aDeviceId, std::move(bb))) {
+    MOZ_CRASH("IPC failure");
+  }
+
+  return id;
+}
+
+RawId WebGPUChild::RenderBundleEncoderFinishError(RawId aDeviceId,
+                                                  const nsString& aLabel) {
+  webgpu::StringHelper label(aLabel);
+
+  ipc::ByteBuf bb;
+  RawId id = ffi::wgpu_client_create_render_bundle_error(
+      mClient.get(), aDeviceId, label.Get(), ToFFI(&bb));
 
   if (!SendDeviceAction(aDeviceId, std::move(bb))) {
     MOZ_CRASH("IPC failure");
@@ -855,14 +793,9 @@ WebGPUChild::DeviceCreateShaderModule(
 
   RefPtr<ShaderModule> shaderModule =
       new ShaderModule(aDevice, moduleId, aPromise);
+  shaderModule->SetLabel(aDesc.mLabel);
 
-  nsString noLabel;
-  nsString& label = noLabel;
-  if (aDesc.mLabel.WasPassed()) {
-    label = aDesc.mLabel.Value();
-    shaderModule->SetLabel(label);
-  }
-  SendDeviceCreateShaderModule(deviceId, moduleId, label, aDesc.mCode)
+  SendDeviceCreateShaderModule(deviceId, moduleId, aDesc.mLabel, aDesc.mCode)
       ->Then(
           GetCurrentSerialEventTarget(), __func__,
           [aPromise, aDevice,
@@ -888,11 +821,11 @@ RawId WebGPUChild::DeviceCreateComputePipelineImpl(
     PipelineCreationContext* const aContext,
     const dom::GPUComputePipelineDescriptor& aDesc, ByteBuf* const aByteBuf) {
   ffi::WGPUComputePipelineDescriptor desc = {};
-  nsCString label, entryPoint;
-  if (aDesc.mLabel.WasPassed()) {
-    CopyUTF16toUTF8(aDesc.mLabel.Value(), label);
-    desc.label = label.get();
-  }
+  nsCString entryPoint;
+
+  webgpu::StringHelper label(aDesc.mLabel);
+  desc.label = label.Get();
+
   if (aDesc.mLayout.IsGPUAutoLayoutMode()) {
     desc.layout = 0;
   } else if (aDesc.mLayout.IsGPUPipelineLayout()) {
@@ -1150,25 +1083,30 @@ RefPtr<PipelinePromise> WebGPUChild::DeviceCreateRenderPipelineAsync(
           });
 }
 
-ipc::IPCResult WebGPUChild::RecvDeviceUncapturedError(
-    RawId aDeviceId, const nsACString& aMessage) {
-  auto targetIter = mDeviceMap.find(aDeviceId);
-  if (!aDeviceId || targetIter == mDeviceMap.end()) {
+ipc::IPCResult WebGPUChild::RecvUncapturedError(const Maybe<RawId> aDeviceId,
+                                                const nsACString& aMessage) {
+  RefPtr<Device> device;
+  if (aDeviceId) {
+    const auto itr = mDeviceMap.find(*aDeviceId);
+    if (itr != mDeviceMap.end()) {
+      device = itr->second.get();
+      MOZ_ASSERT(device);
+    }
+  }
+  if (!device) {
     JsWarning(nullptr, aMessage);
   } else {
-    auto* target = targetIter->second.get();
-    MOZ_ASSERT(target);
     // We don't want to spam the errors to the console indefinitely
-    if (target->CheckNewWarning(aMessage)) {
-      JsWarning(target->GetOwnerGlobal(), aMessage);
+    if (device->CheckNewWarning(aMessage)) {
+      JsWarning(device->GetOwnerGlobal(), aMessage);
 
       dom::GPUUncapturedErrorEventInit init;
       init.mError.SetAsGPUValidationError() =
-          new ValidationError(target->GetParentObject(), aMessage);
+          new ValidationError(device->GetParentObject(), aMessage);
       RefPtr<mozilla::dom::GPUUncapturedErrorEvent> event =
           dom::GPUUncapturedErrorEvent::Constructor(
-              target, u"uncapturederror"_ns, init);
-      target->DispatchEvent(*event);
+              device, u"uncapturederror"_ns, init);
+      device->DispatchEvent(*event);
     }
   }
   return IPC_OK();

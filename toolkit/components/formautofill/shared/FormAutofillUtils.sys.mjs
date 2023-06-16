@@ -253,6 +253,7 @@ FormAutofillUtils = {
     "cc-exp-year": "creditCard",
     "cc-exp": "creditCard",
     "cc-type": "creditCard",
+    "cc-csc": "creditCard",
   },
 
   _collators: {},
@@ -265,7 +266,7 @@ FormAutofillUtils = {
   },
 
   isCreditCardField(fieldName) {
-    return this._fieldNameInfo[fieldName] == "creditCard";
+    return this._fieldNameInfo?.[fieldName] == "creditCard";
   },
 
   isCCNumber(ccNumber) {

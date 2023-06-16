@@ -460,6 +460,10 @@ class BpGonkGraphicBufferConsumer
       mozilla::layers::TextureClient* client) const {
     return BAD_VALUE;
   }
+
+  virtual int getAcquiredBufferCount() const {
+    return -1;
+  }
 };
 
 // FIXME: "b/64223827: Manually written binder interfaces are considered error prone and frequently have bugs. The preferred way to add interfaces is to define an .aidl file to auto-generate the interface. If an interface must be manually written, add its name to the whitelist."

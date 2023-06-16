@@ -353,6 +353,11 @@ class IGonkGraphicBufferConsumer : public IInterface {
 
   virtual int getSlotFromTextureClientLocked(
       mozilla::layers::TextureClient* client) const = 0;
+
+  virtual int getAcquiredBufferCount() const = 0;
+
+ public:
+  DECLARE_META_INTERFACE(GonkGraphicBufferConsumer);
 };
 
 // ----------------------------------------------------------------------------

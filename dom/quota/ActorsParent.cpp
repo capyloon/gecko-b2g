@@ -2526,10 +2526,6 @@ void InitializeQuotaManager() {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(!gQuotaManagerInitialized);
 
-#ifdef QM_SCOPED_LOG_EXTRA_INFO_ENABLED
-  ScopedLogExtraInfo::Initialize();
-#endif
-
   if (!QuotaManager::IsRunningGTests()) {
     // These services have to be started on the main thread currently.
     const nsCOMPtr<mozIStorageService> ss =
@@ -2545,6 +2541,12 @@ void InitializeQuotaManager() {
 
 #ifdef DEBUG
   gQuotaManagerInitialized = true;
+#endif
+}
+
+void InitializeScopedLogExtraInfo() {
+#ifdef QM_SCOPED_LOG_EXTRA_INFO_ENABLED
+  ScopedLogExtraInfo::Initialize();
 #endif
 }
 
@@ -8854,7 +8856,7 @@ nsresult InitTemporaryStorageOp::DoDirectoryWork(QuotaManager& aQuotaManager) {
 
   AUTO_PROFILER_LABEL("InitTemporaryStorageOp::DoDirectoryWork", OTHER);
 
-  QM_TRY(OkIf(aQuotaManager.IsStorageInitialized()), NS_ERROR_FAILURE);
+  QM_TRY(OkIf(aQuotaManager.IsStorageInitialized()), NS_ERROR_NOT_INITIALIZED);
 
   QM_TRY(MOZ_TO_RESULT(aQuotaManager.EnsureTemporaryStorageIsInitialized()));
 
@@ -8923,7 +8925,7 @@ nsresult InitializePersistentOriginOp::DoDirectoryWork(
 
   AUTO_PROFILER_LABEL("InitializePersistentOriginOp::DoDirectoryWork", OTHER);
 
-  QM_TRY(OkIf(aQuotaManager.IsStorageInitialized()), NS_ERROR_FAILURE);
+  QM_TRY(OkIf(aQuotaManager.IsStorageInitialized()), NS_ERROR_NOT_INITIALIZED);
 
   QM_TRY_UNWRAP(
       mCreated,
@@ -8959,9 +8961,10 @@ nsresult InitializeTemporaryOriginOp::DoDirectoryWork(
 
   AUTO_PROFILER_LABEL("InitializeTemporaryOriginOp::DoDirectoryWork", OTHER);
 
-  QM_TRY(OkIf(aQuotaManager.IsStorageInitialized()), NS_ERROR_FAILURE);
+  QM_TRY(OkIf(aQuotaManager.IsStorageInitialized()), NS_ERROR_NOT_INITIALIZED);
 
-  QM_TRY(OkIf(aQuotaManager.IsTemporaryStorageInitialized()), NS_ERROR_FAILURE);
+  QM_TRY(OkIf(aQuotaManager.IsTemporaryStorageInitialized()),
+         NS_ERROR_NOT_INITIALIZED);
 
   QM_TRY_UNWRAP(
       mCreated,
@@ -9341,7 +9344,7 @@ void ClearRequestBase::DeleteFiles(QuotaManager& aQuotaManager,
     for (auto&& file : std::exchange(directoriesForRemovalRetry,
                                      nsTArray<nsCOMPtr<nsIFile>>{})) {
       QM_WARNONLY_TRY(
-          QM_TO_RESULT(file->Remove(true)),
+          RemoveOrMoveToDir(*file, toBeRemovedDir),
           ([&directoriesForRemovalRetry, &file](const auto&) {
             directoriesForRemovalRetry.AppendElement(std::move(file));
           }));

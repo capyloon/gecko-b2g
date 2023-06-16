@@ -107,9 +107,6 @@ pref("browser.cache.disk_cache_ssl",        true);
 // The half life used to re-compute cache entries frecency in hours.
 pref("browser.cache.frecency_half_life_hours", 6);
 
-// offline cache capacity in kilobytes
-pref("browser.cache.offline.capacity",         512000);
-
 // Don't show "Open with" option on download dialog if true.
 pref("browser.download.forbid_open_with", false);
 
@@ -216,11 +213,6 @@ pref("media.omt_data_delivery.enabled", true);
 // This means we'll only throttle the download if there's no concern that
 // throttling would cause us to stop and buffer.
 pref("media.throttle-factor", 2);
-// By default, we'll throttle media download once we've reached the the
-// readahead_limit if the download is fast. This pref toggles the "and the
-// download is fast" check off, so that we can always throttle the download
-// once the readaheadd limit is reached even on a slow network.
-pref("media.throttle-regardless-of-download-rate", false);
 
 // Master HTML5 media volume scale.
 pref("media.volume_scale", "1.0");
@@ -233,8 +225,6 @@ pref("media.play-stand-alone", true);
   pref("media.wmf.dxva.enabled", true);
   pref("media.wmf.play-stand-alone", true);
 #endif
-pref("media.gmp.decoder.aac", 0);
-pref("media.gmp.decoder.h264", 0);
 
 // GMP storage version number. At startup we check the version against
 // media.gmp.storage.version.observed, and if the versions don't match,
@@ -304,7 +294,6 @@ pref("media.videocontrols.keyboard-tab-to-all-controls", true);
 
   pref("media.navigator.video.default_width",0);  // adaptive default
   pref("media.navigator.video.default_height",0); // adaptive default
-  pref("media.peerconnection.video.enabled", true);
   pref("media.navigator.video.max_fs", 12288); // Enough for 2048x1536
   pref("media.navigator.video.max_fr", 60);
   pref("media.navigator.video.h264.level", 31); // 0x42E01f - level 3.1
@@ -408,10 +397,6 @@ pref("media.video-queue.default-size", 10);
 // The maximum number of queued frames to send to the compositor.
 // By default, send all of them.
 pref("media.video-queue.send-to-compositor-size", 9999);
-
-// Log level for cubeb, the audio input/output system. Valid values are
-// "verbose", "normal" and "" (log disabled).
-pref("media.cubeb.logging_level", "");
 
 pref("media.cubeb.output_voice_routing", true);
 
@@ -570,19 +555,6 @@ pref("ui.-moz-autofill-background", "rgba(255, 249, 145, .5)");
 // Values are -1 always on. 1 always off, 0 is auto as some platform perform
 // further checks.
 pref("accessibility.force_disabled", 0);
-
-#ifdef XP_WIN
-  // Some accessibility tools poke at windows in the plugin process during
-  // setup which can cause hangs.  To hack around this set
-  // accessibility.delay_plugins to true, you can also try increasing
-  // accessibility.delay_plugin_time if your machine is slow and you still
-  // experience hangs. See bug 781791.
-  pref("accessibility.delay_plugins", false);
-  pref("accessibility.delay_plugin_time", 10000);
-
-  // The COM handler used for Windows e10s performance and live regions.
-  pref("accessibility.handler.enabled", true);
-#endif
 
 pref("focusmanager.testmode", false);
 
@@ -895,13 +867,6 @@ pref("dom.forms.selectSearch", false);
 #endif
 
 pref("dom.cycle_collector.incremental", true);
-
-// Disable popups from plugins by default
-//   0 = openAllowed
-//   1 = openControlled
-//   2 = openBlocked
-//   3 = openAbused
-pref("privacy.popups.disable_from_plugins", 3);
 
 // List of domains exempted from RFP. The list is comma separated domain list.
 pref("privacy.resistFingerprinting.exemptedDomains", "*.example.invalid");
@@ -1633,9 +1598,6 @@ pref("network.proxy.enable_wpad_over_dhcp", true);
 // Use the HSTS preload list by default
 pref("network.stricttransportsecurity.preloadlist", true);
 
-// Use JS mDNS as a fallback
-pref("network.mdns.use_js_fallback", false);
-
 pref("converter.html2txt.structs",          true); // Output structured phrases (strong, em, code, sub, sup, b, i, u)
 pref("converter.html2txt.header_strategy",  1); // 0 = no indention; 1 = indention, increased with header level; 2 = numbering and slight indention
 
@@ -1647,10 +1609,6 @@ pref("intl.ellipsis",                       "chrome://global-platform/locale/int
 // like date/time formatting, unit formatting, calendars etc. should use
 // OS locale set instead of the app locale set.
 pref("intl.regional_prefs.use_os_locales",  false);
-// fallback charset list for Unicode conversion (converting from Unicode)
-// currently used for mail send only to handle symbol characters (e.g Euro, trademark, smartquotes)
-// for ISO-8859-1
-pref("intl.fallbackCharsetList.ISO-8859-1", "windows-1252");
 pref("font.language.group",                 "chrome://global/locale/intl.properties");
 pref("font.cjk_pref_fallback_order",        "zh-cn,zh-hk,zh-tw,ja,ko");
 
@@ -2018,9 +1976,6 @@ pref("mousewheel.with_win.delta_multiplier_x", 100);
 pref("mousewheel.with_win.delta_multiplier_y", 100);
 pref("mousewheel.with_win.delta_multiplier_z", 100);
 
-// We can show it anytime from menus
-pref("profile.manage_only_at_launch", false);
-
 // pref for which side vertical scrollbars should be on
 // 0 = end-side in UI direction
 // 1 = end-side in document/content direction
@@ -2030,9 +1985,6 @@ pref("layout.scrollbar.side", 0);
 
 // pref to control whether layout warnings that are hit quite often are enabled
 pref("layout.spammy_warnings.enabled", false);
-
-// if true, allow plug-ins to override internal imglib decoder mime types in full-page mode
-pref("plugin.override_internal_types", false);
 
 // enable single finger gesture input (win7+ tablets)
 pref("gestures.enable_single_finger_input", true);
@@ -2044,9 +1996,6 @@ pref("dom.global_stop_script", true);
 
 // Support the input event queue on the main thread of content process
 pref("input_event_queue.supported", true);
-
-// This only supports one hidden ctp plugin, edit nsPluginArray.cpp if adding a second
-pref("plugins.navigator.hidden_ctp_plugin", "");
 
 // The default value for nsIPluginTag.enabledState (STATE_ENABLED = 2)
 pref("plugin.default.state", 2);
@@ -2442,10 +2391,6 @@ pref("font.size.monospace.x-math", 13);
   // force_gdi_classic_for_families.
   pref("gfx.font_rendering.cleartype_params.force_gdi_classic_max_size", 15);
 
-  // Locate plugins by the directories specified in the Windows registry for PLIDs
-  // Which is currently HKLM\Software\MozillaPlugins\xxxPLIDxxx\Path
-  pref("plugin.scan.plid.all", true);
-
   // Switch the keyboard layout per window
   pref("intl.keyboard.per_window_layout", false);
 
@@ -2539,7 +2484,6 @@ pref("font.size.monospace.x-math", 13);
 #ifdef XP_MACOSX
   // Mac specific preference defaults
   pref("browser.drag_out_of_frame_style", 1);
-  pref("ui.key.saveLink.shift", false); // true = shift, false = meta
 
   // default fonts (in UTF8 and using canonical names)
   // to determine canonical font names, use a debug build and
@@ -2764,10 +2708,6 @@ pref("font.size.monospace.x-math", 13);
   // A problem with using managed windows is that metacity sometimes deactivates
   // the parent window when the managed popup is shown.
   pref("ui.panel.default_level_parent", true);
-
-  // Forward downloads with known OMA MIME types to Android's download manager
-  // instead of downloading them in the browser.
-  pref("browser.download.forward_oma_android_download_manager", false);
 
 #endif // ANDROID
 
@@ -3238,9 +3178,6 @@ pref("browser.region.network.scan", false);
 pref("browser.region.timeout", 5000);
 pref("browser.region.update.enabled", true);
 
-// Enable/Disable the device storage API for content
-pref("device.storage.enabled", false);
-
 pref("browser.meta_refresh_when_inactive.disabled", false);
 
 // XPInstall prefs
@@ -3661,10 +3598,6 @@ pref("reader.color_scheme.values", "[\"light\",\"dark\",\"sepia\",\"auto\"]");
 // The font type in reader (sans-serif, serif)
 pref("reader.font_type", "sans-serif");
 
-// Whether or not the user has interacted with the reader mode toolbar.
-// This is used to show a first-launch tip in reader mode.
-pref("reader.has_used_toolbar", false);
-
 // Whether to use a vertical or horizontal toolbar.
 pref("reader.toolbar.vertical", true);
 
@@ -3765,22 +3698,12 @@ pref("prompts.authentication_dialog_abuse_limit", 2);
 // content: 1, tab: 2, window: 3
 pref("prompts.modalType.httpAuth", 2);
 
-// Payment Request API preferences
-pref("dom.payments.loglevel", "Warn");
-pref("dom.payments.defaults.saveCreditCard", false);
-pref("dom.payments.defaults.saveAddress", true);
 pref("dom.payments.request.supportedRegions", "US,CA");
 
 #ifdef MOZ_ASAN_REPORTER
   pref("asanreporter.apiurl", "https://anf1.fuzzing.mozilla.org/crashproxy/submit/");
   pref("asanreporter.clientid", "unknown");
   pref("toolkit.telemetry.overrideUpdateChannel", "nightly-asan");
-#endif
-
-#ifdef RELEASE_OR_BETA
-  pref("toolkit.aboutPerformance.showInternals", false);
-#else
-  pref("toolkit.aboutPerformance.showInternals", true);
 #endif
 
 // If `true`, about:processes shows in-process subframes.
@@ -4038,8 +3961,6 @@ pref("devtools.dump.emit", false);
 
 // Disable device discovery logging.
 pref("devtools.discovery.log", false);
-// Whether to scan for DevTools devices via WiFi.
-pref("devtools.remote.wifi.scan", true);
 
 // The extension ID for devtools-adb-extension.
 pref("devtools.remote.adb.extensionID", "adb@mozilla.org");

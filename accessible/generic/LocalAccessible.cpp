@@ -2699,7 +2699,7 @@ uint32_t LocalAccessible::EmbeddedChildCount() {
   return ChildCount();
 }
 
-LocalAccessible* LocalAccessible::EmbeddedChildAt(uint32_t aIndex) {
+Accessible* LocalAccessible::EmbeddedChildAt(uint32_t aIndex) {
   if (mStateFlags & eHasTextKids) {
     if (!mEmbeddedObjCollector) {
       mEmbeddedObjCollector.reset(new EmbeddedObjCollector(this));
@@ -2709,7 +2709,7 @@ LocalAccessible* LocalAccessible::EmbeddedChildAt(uint32_t aIndex) {
                : nullptr;
   }
 
-  return LocalChildAt(aIndex);
+  return ChildAt(aIndex);
 }
 
 int32_t LocalAccessible::IndexOfEmbeddedChild(Accessible* aChild) {
@@ -3162,19 +3162,14 @@ already_AddRefed<AccAttributes> LocalAccessible::BundleFieldsForCache(
 
     if (IsImage()) {
       // Cache the src of images. This is used by some clients to help remediate
-      // inaccessible images. If the image has a name, it's accessible, so this
-      // isn't necessary.
+      // inaccessible images.
       MOZ_ASSERT(mContent, "Image must have mContent");
-      nsAutoString name;
-      Name(name);
-      if (name.IsEmpty()) {
-        nsString src;
-        mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::src, src);
-        if (!src.IsEmpty()) {
-          fields->SetAttribute(nsGkAtoms::src, std::move(src));
-        } else if (aUpdateType == CacheUpdateType::Update) {
-          fields->SetAttribute(nsGkAtoms::src, DeleteEntry());
-        }
+      nsString src;
+      mContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::src, src);
+      if (!src.IsEmpty()) {
+        fields->SetAttribute(nsGkAtoms::src, std::move(src));
+      } else if (aUpdateType == CacheUpdateType::Update) {
+        fields->SetAttribute(nsGkAtoms::src, DeleteEntry());
       }
     }
   }
