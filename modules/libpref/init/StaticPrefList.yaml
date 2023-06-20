@@ -2606,7 +2606,7 @@
 # events that occur in a given wheel transaction have the same event target.
 - name: dom.event.wheel-event-groups.enabled
   type: bool
-  value: @IS_EARLY_BETA_OR_EARLIER@
+  value: true
   mirror: always
 
 # Whether WheelEvent should return pixels instead of lines for
@@ -2693,7 +2693,7 @@
 # the content process.
 - name: dom.events.dataTransfer.mozFile.enabled
   type: bool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
 
 - name: dom.events.dataTransfer.imageAsFile.enabled
@@ -3256,7 +3256,7 @@
 # WebCodecs API
 - name: dom.media.webcodecs.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
 
 # Number of seconds of very quiet or silent audio before considering the audio
@@ -5105,7 +5105,7 @@
 # Controls if a content script will be aborted on child process shutdown.
 - name: dom.abort_script_on_child_shutdown
   type: bool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
 
 - name: dom.max_chrome_script_run_time
@@ -6808,11 +6808,6 @@
   mirror: once
 
 #ifdef XP_WIN
-  # Whether or not to fallback from WebRender to Software WebRender + D3D11.
--   name: gfx.webrender.fallback.software-d3d11
-    type: bool
-    value: true
-    mirror: once
   # Whether to use a video overlay layers with DirectComposition
 -   name: gfx.webrender.dcomp-video-overlay-win
     type: bool
@@ -14760,6 +14755,51 @@
   mirror: always
 
 #---------------------------------------------------------------------------
+# Prefs used to hold themeing values.
+#---------------------------------------------------------------------------
+- name: theme.wallpaper.accent
+  type: DataMutexString
+  value: ""
+  mirror: always
+  rust: true
+
+- name: theme.wallpaper.vibrant
+  type: DataMutexString
+  value: ""
+  mirror: always
+  rust: true
+
+- name: theme.wallpaper.vibrant-dark
+  type: DataMutexString
+  value: ""
+  mirror: always
+  rust: true
+
+- name: theme.wallpaper.vibrant-light
+  type: DataMutexString
+  value: ""
+  mirror: always
+  rust: true
+
+- name: theme.wallpaper.muted
+  type: DataMutexString
+  value: ""
+  mirror: always
+  rust: true
+
+- name: theme.wallpaper.muted-dark
+  type: DataMutexString
+  value: ""
+  mirror: always
+  rust: true
+
+- name: theme.wallpaper.muted-light
+  type: DataMutexString
+  value: ""
+  mirror: always
+  rust: true
+
+#---------------------------------------------------------------------------
 # Prefs starting with "thread."
 #---------------------------------------------------------------------------
 
@@ -15457,11 +15497,7 @@
 # Forces async present to wait for a sync, even while using remote textures.
 - name: webgl.out-of-process.async-present.force-sync
   type: RelaxedAtomicBool
-#if defined(EARLY_BETA_OR_EARLIER)
   value: false
-#else
-  value: true
-#endif
   mirror: always
 
 #if defined(MOZ_WIDGET_ANDROID)

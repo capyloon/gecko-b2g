@@ -64,6 +64,63 @@ fn get_safearea_inset_right(device: &Device) -> VariableValue {
     VariableValue::pixels(device.safe_area_insets().right)
 }
 
+#[derive(Debug)]
+enum ThemeColor {
+    WallpaperAccent,
+    WallpaperVibrant,
+    WallpaperVibrantLight,
+    WallpaperVibrantDark,
+    WallpaperMuted,
+    WallpaperMutedLight,
+    WallpaperMutedDark,
+}
+
+impl ThemeColor {
+    fn variable_value(&self) -> VariableValue {
+        let css = match self {
+            ThemeColor::WallpaperAccent => static_prefs::pref!("theme.wallpaper.accent"),
+            ThemeColor::WallpaperVibrant => static_prefs::pref!("theme.wallpaper.vibrant"),
+            ThemeColor::WallpaperVibrantLight => static_prefs::pref!("theme.wallpaper.vibrant-light"),
+            ThemeColor::WallpaperVibrantDark => static_prefs::pref!("theme.wallpaper.vibrant-dark"),
+            ThemeColor::WallpaperMuted => static_prefs::pref!("theme.wallpaper.muted"),
+            ThemeColor::WallpaperMutedLight => static_prefs::pref!("theme.wallpaper.muted-light"),
+            ThemeColor::WallpaperMutedDark => static_prefs::pref!("theme.wallpaper.muted-dark"),
+        };
+
+        let mut value = VariableValue::empty();
+        value.css = css.to_string();
+        value
+    }
+}
+
+fn get_theme_wallpaper_vibrant(_device: &Device) -> VariableValue {
+    ThemeColor::WallpaperVibrant.variable_value()
+}
+
+fn get_theme_wallpaper_vibrant_dark(_device: &Device) -> VariableValue {
+    ThemeColor::WallpaperVibrantDark.variable_value()
+}
+
+fn get_theme_wallpaper_vibrant_light(_device: &Device) -> VariableValue {
+    ThemeColor::WallpaperVibrantLight.variable_value()
+}
+
+fn get_theme_wallpaper_muted(_device: &Device) -> VariableValue {
+    ThemeColor::WallpaperMuted.variable_value()
+}
+
+fn get_theme_wallpaper_muted_dark(_device: &Device) -> VariableValue {
+    ThemeColor::WallpaperMutedDark.variable_value()
+}
+
+fn get_theme_wallpaper_muted_light(_device: &Device) -> VariableValue {
+    ThemeColor::WallpaperMutedLight.variable_value()
+}
+
+fn get_theme_wallpaper_accent(_device: &Device) -> VariableValue {
+    ThemeColor::WallpaperAccent.variable_value()
+}
+
 fn get_content_preferred_color_scheme(device: &Device) -> VariableValue {
     use crate::gecko::media_features::PrefersColorScheme;
     let prefers_color_scheme = unsafe {
@@ -82,11 +139,19 @@ fn get_scrollbar_inline_size(device: &Device) -> VariableValue {
     VariableValue::pixels(device.scrollbar_inline_size().px())
 }
 
-static ENVIRONMENT_VARIABLES: [EnvironmentVariable; 4] = [
+static ENVIRONMENT_VARIABLES: [EnvironmentVariable; 11] = [
     make_variable!(atom!("safe-area-inset-top"), get_safearea_inset_top),
     make_variable!(atom!("safe-area-inset-bottom"), get_safearea_inset_bottom),
     make_variable!(atom!("safe-area-inset-left"), get_safearea_inset_left),
     make_variable!(atom!("safe-area-inset-right"), get_safearea_inset_right),
+
+    make_variable!(atom!("theme-wallpaper-vibrant"), get_theme_wallpaper_vibrant),
+    make_variable!(atom!("theme-wallpaper-vibrant-dark"), get_theme_wallpaper_vibrant_dark),
+    make_variable!(atom!("theme-wallpaper-vibrant-light"), get_theme_wallpaper_vibrant_light),
+    make_variable!(atom!("theme-wallpaper-muted"), get_theme_wallpaper_muted),
+    make_variable!(atom!("theme-wallpaper-muted-dark"), get_theme_wallpaper_muted_dark),
+    make_variable!(atom!("theme-wallpaper-muted-light"), get_theme_wallpaper_muted_light),
+    make_variable!(atom!("theme-wallpaper-accent"), get_theme_wallpaper_accent),
 ];
 
 macro_rules! lnf_int {

@@ -29,7 +29,6 @@
 #include "mozilla/dom/BindContext.h"
 #include "mozilla/dom/Document.h"
 #include "nsMappedAttributes.h"
-#include "nsHTMLStyleSheet.h"
 #include "nsPIDOMWindow.h"
 #include "nsIFrameInlines.h"
 #include "nsIScrollableFrame.h"
@@ -3276,9 +3275,11 @@ bool nsGenericHTMLElement::CheckPopoverValidity(
     return false;
   }
 
-  if (IsHTMLElement(nsGkAtoms::dialog) && HasAttr(nsGkAtoms::open)) {
-    aRv.ThrowInvalidStateError("Element is an open <dialog> element");
-    return false;
+  if (auto* dialog = HTMLDialogElement::FromNode(this)) {
+    if (dialog->IsInTopLayer()) {
+      aRv.ThrowInvalidStateError("Element is a modal <dialog> element");
+      return false;
+    }
   }
 
   if (State().HasState(ElementState::FULLSCREEN)) {
@@ -3381,6 +3382,14 @@ void nsGenericHTMLElement::ShowPopoverInternal(
   RefPtr<Document> document = OwnerDoc();
   MOZ_ASSERT(!OwnerDoc()->TopLayerContains(*this));
 
+  bool wasShowingOrHiding = GetPopoverData()->IsShowingOrHiding();
+  GetPopoverData()->SetIsShowingOrHiding(true);
+  auto cleanupShowingFlag = MakeScopeExit([&]() {
+    if (auto* popoverData = GetPopoverData()) {
+      popoverData->SetIsShowingOrHiding(wasShowingOrHiding);
+    }
+  });
+
   // Fire beforetoggle event and re-check popover validity.
   if (FireToggleEvent(PopoverVisibilityState::Hidden,
                       PopoverVisibilityState::Showing, u"beforetoggle"_ns)) {
@@ -3397,7 +3406,8 @@ void nsGenericHTMLElement::ShowPopoverInternal(
     if (!ancestor) {
       ancestor = document;
     }
-    document->HideAllPopoversUntil(*ancestor, false, true);
+    document->HideAllPopoversUntil(*ancestor, false,
+                                   /* aFireEvents = */ !wasShowingOrHiding);
 
     // TODO: Handle if document changes, see
     // https://github.com/whatwg/html/issues/9177

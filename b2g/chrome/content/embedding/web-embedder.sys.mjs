@@ -30,7 +30,7 @@ XPCOMUtils.defineLazyServiceGetter(
   "nsIUserIdleService"
 );
 
-(function () {
+(function() {
   const { AlertsEventHandler } = ChromeUtils.importESModule(
     "resource://gre/modules/AlertsHelper.sys.mjs"
   );
@@ -600,6 +600,26 @@ XPCOMUtils.defineLazyServiceGetter(
           new CustomEvent("launch-app", { detail: { manifestUrl } })
         );
       }, "on-launch-app");
+    }
+
+    updateThemeColors(values) {
+      _webembed_log(`updateThemeColors`);
+      [
+        "accent",
+        "vibrant",
+        "vibrant-light",
+        "vibrant-dark",
+        "muted",
+        "muted-light",
+        "muted-dark",
+      ].forEach(name => {
+        let pref = `theme.wallpaper.${name}`;
+        if (values[pref]) {
+          Services.prefs.setCharPref(pref, values[pref]);
+        }
+      });
+      // Trigger a restyle to take into account the new values.
+      Services.obs.notifyObservers(null, "theme-colors-changed");
     }
 
     isDaemonReady() {

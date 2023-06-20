@@ -64,7 +64,6 @@
 #include "nsCycleCollectionParticipant.h"
 #include "nsTHashMap.h"
 #include "nsDebug.h"
-#include "nsExpirationTracker.h"
 #include "nsGkAtoms.h"
 #include "nsHashKeys.h"
 #include "nsIChannel.h"
@@ -145,9 +144,7 @@ class nsFrameLoader;
 class nsFrameLoaderOwner;
 class nsGenericHTMLElement;
 class nsGlobalWindowInner;
-class nsHTMLCSSStyleSheet;
 class nsHTMLDocument;
-class nsHTMLStyleSheet;
 class nsHtml5TreeOpExecutor;
 class nsIAppWindow;
 class nsIAsyncVerifyRedirectCallback;
@@ -190,6 +187,7 @@ struct nsFont;
 
 namespace mozilla {
 class AbstractThread;
+class AttributeStyles;
 class StyleSheet;
 class EditorBase;
 class EditorCommand;
@@ -211,7 +209,6 @@ enum class StyleCursorKind : uint8_t;
 class SVGContextPaint;
 enum class ColorScheme : uint8_t;
 enum class StyleRuleChangeKind : uint32_t;
-struct StyleSelectorList;
 struct StyleUseCounters;
 template <typename>
 class OwningNonNull;
@@ -1628,59 +1625,7 @@ class Document : public nsINode,
 
   void MaybeEditingStateChanged();
 
- private:
-  class SelectorCacheKey {
-   public:
-    explicit SelectorCacheKey(const nsACString& aString) : mKey(aString) {
-      MOZ_COUNT_CTOR(SelectorCacheKey);
-    }
-
-    nsCString mKey;
-    nsExpirationState mState;
-
-    nsExpirationState* GetExpirationState() { return &mState; }
-
-    MOZ_COUNTED_DTOR(SelectorCacheKey)
-  };
-
-  class SelectorCacheKeyDeleter;
-
  public:
-  class SelectorCache final : public nsExpirationTracker<SelectorCacheKey, 4> {
-   public:
-    using SelectorList = UniquePtr<StyleSelectorList>;
-    using Table = nsTHashMap<nsCStringHashKey, SelectorList>;
-
-    explicit SelectorCache(nsIEventTarget* aEventTarget);
-    void NotifyExpired(SelectorCacheKey*) final;
-
-    // We do not call MarkUsed because it would just slow down lookups and
-    // because we're OK expiring things after a few seconds even if they're
-    // being used.  Returns whether we actually had an entry for aSelector.
-    //
-    // If we have an entry and the selector list returned has a null
-    // StyleSelectorList*, that indicates that aSelector has already been
-    // parsed and is not a syntactically valid selector.
-    template <typename F>
-    StyleSelectorList* GetListOrInsertFrom(const nsACString& aSelector,
-                                           F&& aFrom) {
-      MOZ_ASSERT(NS_IsMainThread());
-      return mTable.LookupOrInsertWith(aSelector, std::forward<F>(aFrom)).get();
-    }
-
-    ~SelectorCache();
-
-   private:
-    Table mTable;
-  };
-
-  SelectorCache& GetSelectorCache() {
-    if (!mSelectorCache) {
-      mSelectorCache =
-          MakeUnique<SelectorCache>(EventTargetFor(TaskCategory::Other));
-    }
-    return *mSelectorCache;
-  }
   // Get the root <html> element, or return null if there isn't one (e.g.
   // if the root isn't <html>)
   Element* GetHtmlElement() const;
@@ -1788,15 +1733,7 @@ class Document : public nsINode,
    * Get this document's attribute stylesheet.  May return null if
    * there isn't one.
    */
-  nsHTMLStyleSheet* GetAttributeStyleSheet() const { return mAttrStyleSheet; }
-
-  /**
-   * Get this document's inline style sheet.  May return null if there
-   * isn't one
-   */
-  nsHTMLCSSStyleSheet* GetInlineStyleSheet() const {
-    return mStyleAttrStyleSheet;
-  }
+  AttributeStyles* GetAttributeStyles() const { return mAttributeStyles.get(); }
 
   virtual void SetScriptGlobalObject(nsIScriptGlobalObject* aGlobalObject);
 
@@ -2936,6 +2873,12 @@ class Document : public nsINode,
 
   Document* GetTemplateContentsOwnerIfExists() const {
     return mTemplateContentsOwner.get();
+  }
+
+  bool IsTemplateContentsOwner() const {
+    // Template contents owner documents are the template contents owner of
+    // themselves.
+    return mTemplateContentsOwner == this;
   }
 
   /**
@@ -4437,8 +4380,6 @@ class Document : public nsINode,
   mutable std::bitset<eDocumentWarningCount> mDocWarningWarnedAbout;
 
   // Lazy-initialization to have mDocGroup initialized in prior to the
-  // SelectorCaches.
-  UniquePtr<SelectorCache> mSelectorCache;
   UniquePtr<ServoStyleSet> mStyleSet;
 
  protected:
@@ -4538,8 +4479,10 @@ class Document : public nsINode,
   nsNodeInfoManager* mNodeInfoManager;
   RefPtr<css::Loader> mCSSLoader;
   RefPtr<css::ImageLoader> mStyleImageLoader;
-  RefPtr<nsHTMLStyleSheet> mAttrStyleSheet;
-  RefPtr<nsHTMLCSSStyleSheet> mStyleAttrStyleSheet;
+
+  // The object that contains link color declarations (from the <body> mapped
+  // attributes), mapped attribute caches, and inline style attribute caches.
+  RefPtr<AttributeStyles> mAttributeStyles;
 
   // Tracking for images in the document.
   RefPtr<dom::ImageTracker> mImageTracker;

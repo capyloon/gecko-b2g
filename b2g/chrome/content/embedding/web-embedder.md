@@ -65,6 +65,7 @@ The `WebEmbedder` object exposes the following methods:
 - `doSelectionAction(action)`: send selection action to the active window, `action` can be one of ['cut', 'copy', 'paste', 'selectAll'].
 - `launchRemoteWindows()`: this will open remote shell windows if the device supports multiscreen.
 - `getContentProcesses()`: returns a list of process information items.
+- `updateThemeColors(values)`: update the colors usable from CSS using `env()`. The `values` parameter is an object with the following properties: `theme.wallpaper.accent`, `theme.wallpaper.vibrant`, `theme.wallpaper.vibrant-light`, `theme.wallpaper.vibrant-dark`, `theme.wallpaper.muted`, `theme.wallpaper.muted-light`, `theme.wallpaper.muted-dark`.
 
 ### Events
 

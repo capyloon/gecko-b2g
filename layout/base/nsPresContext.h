@@ -520,6 +520,12 @@ class nsPresContext : public nsISupports, public mozilla::SupportsWeakPtr {
    */
   void SetSafeAreaInsets(const mozilla::ScreenIntMargin& aInsets);
 
+  /**
+   * Notify the pres context that theme colors have changed, triggering
+   * a re-style.
+   */
+  void ThemeColorsChanged();
+
   mozilla::ScreenIntMargin GetSafeAreaInsets() const { return mSafeAreaInsets; }
 
   void RegisterManagedPostRefreshObserver(mozilla::ManagedPostRefreshObserver*);

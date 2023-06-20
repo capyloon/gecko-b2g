@@ -1817,6 +1817,8 @@ void BaseCompiler::popAndAllocateForMulI64(RegI64* r0, RegI64* r1,
   pop2xI64(r0, r1);
 #elif defined(JS_CODEGEN_LOONG64)
   pop2xI64(r0, r1);
+#elif defined(JS_CODEGEN_RISCV64)
+  pop2xI64(r0, r1);
 #else
   MOZ_CRASH("BaseCompiler porting interface: popAndAllocateForMulI64");
 #endif
@@ -1879,6 +1881,12 @@ static void QuotientI64(MacroAssembler& masm, RegI64 rhs, RegI64 srcDest,
   } else {
     masm.as_div_d(srcDest.reg, srcDest.reg, rhs.reg);
   }
+#  elif defined(JS_CODEGEN_RISCV64)
+  if (isUnsigned) {
+    masm.divu(srcDest.reg, srcDest.reg, rhs.reg);
+  } else {
+    masm.div(srcDest.reg, srcDest.reg, rhs.reg);
+  }
 #  else
   MOZ_CRASH("BaseCompiler platform hook: quotientI64");
 #  endif
@@ -1923,6 +1931,12 @@ static void RemainderI64(MacroAssembler& masm, RegI64 rhs, RegI64 srcDest,
     masm.as_mod_du(srcDest.reg, srcDest.reg, rhs.reg);
   } else {
     masm.as_mod_d(srcDest.reg, srcDest.reg, rhs.reg);
+  }
+#  elif defined(JS_CODEGEN_RISCV64)
+  if (isUnsigned) {
+    masm.remu(srcDest.reg, srcDest.reg, rhs.reg);
+  } else {
+    masm.rem(srcDest.reg, srcDest.reg, rhs.reg);
   }
 #  else
   MOZ_CRASH("BaseCompiler platform hook: remainderI64");
@@ -2288,8 +2302,9 @@ static void CtzI32(MacroAssembler& masm, RegI32 rsd) {
 static RegI32 PopcntTemp(BaseCompiler& bc) {
 #if defined(JS_CODEGEN_X86) || defined(JS_CODEGEN_X64)
   return AssemblerX86Shared::HasPOPCNT() ? RegI32::Invalid() : bc.needI32();
-#elif defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_ARM64) || \
-    defined(JS_CODEGEN_MIPS64) || defined(JS_CODEGEN_LOONG64)
+#elif defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_ARM64) ||    \
+    defined(JS_CODEGEN_MIPS64) || defined(JS_CODEGEN_LOONG64) || \
+    defined(JS_CODEGEN_RISCV64)
   return bc.needI32();
 #else
   MOZ_CRASH("BaseCompiler platform hook: PopcntTemp");
@@ -8489,23 +8504,23 @@ static void BitselectV128(MacroAssembler& masm, RegV128 rhs, RegV128 control,
 #  endif
 
 #  ifdef ENABLE_WASM_RELAXED_SIMD
-static void RelaxedFmaF32x4(MacroAssembler& masm, RegV128 rs1, RegV128 rs2,
-                            RegV128 rsd) {
+static void RelaxedMaddF32x4(MacroAssembler& masm, RegV128 rs1, RegV128 rs2,
+                             RegV128 rsd) {
   masm.fmaFloat32x4(rs1, rs2, rsd);
 }
 
-static void RelaxedFnmaF32x4(MacroAssembler& masm, RegV128 rs1, RegV128 rs2,
-                             RegV128 rsd) {
+static void RelaxedNmaddF32x4(MacroAssembler& masm, RegV128 rs1, RegV128 rs2,
+                              RegV128 rsd) {
   masm.fnmaFloat32x4(rs1, rs2, rsd);
 }
 
-static void RelaxedFmaF64x2(MacroAssembler& masm, RegV128 rs1, RegV128 rs2,
-                            RegV128 rsd) {
+static void RelaxedMaddF64x2(MacroAssembler& masm, RegV128 rs1, RegV128 rs2,
+                             RegV128 rsd) {
   masm.fmaFloat64x2(rs1, rs2, rsd);
 }
 
-static void RelaxedFnmaF64x2(MacroAssembler& masm, RegV128 rs1, RegV128 rs2,
-                             RegV128 rsd) {
+static void RelaxedNmaddF64x2(MacroAssembler& masm, RegV128 rs1, RegV128 rs2,
+                              RegV128 rsd) {
   masm.fnmaFloat64x2(rs1, rs2, rsd);
 }
 
@@ -10237,26 +10252,26 @@ bool BaseCompiler::emitBody() {
           case uint32_t(SimdOp::V128Store64Lane):
             CHECK_NEXT(emitStoreLane(8));
 #  ifdef ENABLE_WASM_RELAXED_SIMD
-          case uint32_t(SimdOp::F32x4RelaxedFma):
+          case uint32_t(SimdOp::F32x4RelaxedMadd):
             if (!moduleEnv_.v128RelaxedEnabled()) {
               return iter_.unrecognizedOpcode(&op);
             }
-            CHECK_NEXT(dispatchTernary2(RelaxedFmaF32x4, ValType::V128));
-          case uint32_t(SimdOp::F32x4RelaxedFnma):
+            CHECK_NEXT(dispatchTernary2(RelaxedMaddF32x4, ValType::V128));
+          case uint32_t(SimdOp::F32x4RelaxedNmadd):
             if (!moduleEnv_.v128RelaxedEnabled()) {
               return iter_.unrecognizedOpcode(&op);
             }
-            CHECK_NEXT(dispatchTernary2(RelaxedFnmaF32x4, ValType::V128));
-          case uint32_t(SimdOp::F64x2RelaxedFma):
+            CHECK_NEXT(dispatchTernary2(RelaxedNmaddF32x4, ValType::V128));
+          case uint32_t(SimdOp::F64x2RelaxedMadd):
             if (!moduleEnv_.v128RelaxedEnabled()) {
               return iter_.unrecognizedOpcode(&op);
             }
-            CHECK_NEXT(dispatchTernary2(RelaxedFmaF64x2, ValType::V128));
-          case uint32_t(SimdOp::F64x2RelaxedFnma):
+            CHECK_NEXT(dispatchTernary2(RelaxedMaddF64x2, ValType::V128));
+          case uint32_t(SimdOp::F64x2RelaxedNmadd):
             if (!moduleEnv_.v128RelaxedEnabled()) {
               return iter_.unrecognizedOpcode(&op);
             }
-            CHECK_NEXT(dispatchTernary2(RelaxedFnmaF64x2, ValType::V128));
+            CHECK_NEXT(dispatchTernary2(RelaxedNmaddF64x2, ValType::V128));
             break;
           case uint32_t(SimdOp::I8x16RelaxedLaneSelect):
           case uint32_t(SimdOp::I16x8RelaxedLaneSelect):
@@ -10926,9 +10941,10 @@ bool js::wasm::BaselinePlatformSupport() {
     return false;
   }
 #endif
-#if defined(JS_CODEGEN_X64) || defined(JS_CODEGEN_X86) ||   \
-    defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_ARM64) || \
-    defined(JS_CODEGEN_MIPS64) || defined(JS_CODEGEN_LOONG64)
+#if defined(JS_CODEGEN_X64) || defined(JS_CODEGEN_X86) ||        \
+    defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_ARM64) ||      \
+    defined(JS_CODEGEN_MIPS64) || defined(JS_CODEGEN_LOONG64) || \
+    defined(JS_CODEGEN_RISCV64)
   return true;
 #else
   return false;

@@ -83,6 +83,7 @@ pref_groups = [
     "svg",
     "telemetry",
     "test",
+    "theme",
     "threads",
     "timer",
     "toolkit",

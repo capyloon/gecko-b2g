@@ -10,6 +10,7 @@ use cssparser::{Parser, ParserInput, SourceLocation, UnicodeRange};
 use dom::{DocumentState, ElementState};
 use malloc_size_of::MallocSizeOfOps;
 use nsstring::{nsCString, nsString};
+use selectors::matching::IgnoreNthChildForInvalidation;
 use selectors::NthIndexCache;
 use servo_arc::{Arc, ArcBorrow};
 use smallvec::SmallVec;
@@ -2516,6 +2517,7 @@ pub extern "C" fn Servo_StyleRule_SelectorMatchesElement(
             visited_mode,
             quirks_mode,
             NeedsSelectorFlags::No,
+            IgnoreNthChildForInvalidation::No,
         );
         ctx.with_shadow_host(host, |ctx| {
             matches_selector(selector, 0, None, &element, ctx)
@@ -2535,6 +2537,7 @@ pub extern "C" fn Servo_StyleRule_SetSelectorText(
 
     write_locked_arc(rule, |rule: &mut StyleRule| {
         use style::selector_parser::SelectorParser;
+        use selectors::parser::ParseRelative;
 
         let namespaces = contents.namespaces.read();
         let url_data = contents.url_data.read();
@@ -2545,8 +2548,10 @@ pub extern "C" fn Servo_StyleRule_SetSelectorText(
             for_supports_rule: false,
         };
 
+        // TODO: Maybe allow setting relative selectors from the OM, if we're in a nested style
+        // rule?
         let mut parser_input = ParserInput::new(&value_str);
-        match SelectorList::parse(&parser, &mut Parser::new(&mut parser_input)) {
+        match SelectorList::parse(&parser, &mut Parser::new(&mut parser_input), ParseRelative::No) {
             Ok(selectors) => {
                 rule.selectors = selectors;
                 true
@@ -7300,6 +7305,7 @@ pub unsafe extern "C" fn Servo_ParseFontShorthandForMatching(
     stretch: &mut FontStretch,
     weight: &mut FontWeight,
     size: Option<&mut f32>,
+    small_caps: Option<&mut bool>,
 ) -> bool {
     use style::properties::shorthands::font;
     use style::values::generics::font::FontStyle as GenericFontStyle;
@@ -7387,6 +7393,11 @@ pub unsafe extern "C" fn Servo_ParseFontShorthandForMatching(
                 return false;
             },
         };
+    }
+
+    if let Some(small_caps) = small_caps {
+        use style::computed_values::font_variant_caps::T::SmallCaps;
+        *small_caps = font.font_variant_caps == SmallCaps;
     }
 
     true

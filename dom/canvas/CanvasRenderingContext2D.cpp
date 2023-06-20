@@ -2459,7 +2459,12 @@ static already_AddRefed<const ComputedStyle> GetFontStyleForServo(
 
   // The font getter is required to be reserialized based on what we
   // parsed (including having line-height removed).
+  // If we failed to reserialize, ignore this attempt to set the value.
   Servo_SerializeFontValueForCanvas(declarations, &aOutUsedFont);
+  if (aOutUsedFont.IsEmpty()) {
+    return nullptr;
+  }
+
   return sc.forget();
 }
 
@@ -2627,7 +2632,8 @@ void CanvasRenderingContext2D::ParseSpacing(const nsACString& aSpacing,
   // 'normal' keyword, which is not accepted.
   nsAutoCString normalized(aSpacing);
   normalized.CompressWhitespace(true, true);
-  if (normalized.Equals("normal", nsCaseInsensitiveCStringComparator)) {
+  ToLowerCase(normalized);
+  if (normalized.EqualsLiteral("normal")) {
     return;
   }
   float value;
@@ -2976,6 +2982,7 @@ void CanvasRenderingContext2D::BeginPath() {
   mPathBuilder = nullptr;
   mDSPathBuilder = nullptr;
   mPathTransformWillUpdate = false;
+  mPathPruned = false;
 }
 
 void CanvasRenderingContext2D::Fill(const CanvasWindingRule& aWinding) {
@@ -3304,11 +3311,16 @@ void CanvasRenderingContext2D::Arc(double aX, double aY, double aR,
   if (aR < 0.0) {
     return aError.ThrowIndexSizeError("Negative radius");
   }
+  if (aStartAngle == aEndAngle) {
+    mPathPruned = true;
+    return;
+  }
 
   EnsureWritablePath();
 
   ArcToBezier(this, Point(aX, aY), Size(aR, aR), aStartAngle, aEndAngle,
               aAnticlockwise);
+  mPathPruned = false;
 }
 
 void CanvasRenderingContext2D::Rect(double aX, double aY, double aW,
@@ -3320,6 +3332,7 @@ void CanvasRenderingContext2D::Rect(double aX, double aY, double aW,
     return;
   }
 
+  EnsureCapped();
   if (mPathBuilder) {
     mPathBuilder->MoveTo(Point(aX, aY));
     if (aW == 0 && aH == 0) {
@@ -3532,6 +3545,7 @@ void CanvasRenderingContext2D::RoundRect(
     transform = Some(mTarget->GetTransform());
   }
 
+  EnsureCapped();
   RoundRectImpl(builder, transform, aX, aY, aW, aH, aRadii, aError);
 }
 
@@ -3543,11 +3557,16 @@ void CanvasRenderingContext2D::Ellipse(double aX, double aY, double aRadiusX,
   if (aRadiusX < 0.0 || aRadiusY < 0.0) {
     return aError.ThrowIndexSizeError("Negative radius");
   }
+  if (aStartAngle == aEndAngle) {
+    mPathPruned = true;
+    return;
+  }
 
   EnsureWritablePath();
 
   ArcToBezier(this, Point(aX, aY), Size(aRadiusX, aRadiusY), aStartAngle,
               aEndAngle, aAnticlockwise, aRotation);
+  mPathPruned = false;
 }
 
 void CanvasRenderingContext2D::EnsureWritablePath() {
@@ -3602,6 +3621,7 @@ void CanvasRenderingContext2D::EnsureUserSpacePath(
   }
 
   if (mPathBuilder) {
+    EnsureCapped();
     mPath = mPathBuilder->Finish();
     mPathBuilder = nullptr;
   }
@@ -3614,6 +3634,7 @@ void CanvasRenderingContext2D::EnsureUserSpacePath(
 
   if (mDSPathBuilder) {
     RefPtr<Path> dsPath;
+    EnsureCapped();
     dsPath = mDSPathBuilder->Finish();
     mDSPathBuilder = nullptr;
 
@@ -3673,6 +3694,11 @@ void CanvasRenderingContext2D::SetFont(const nsACString& aFont,
   UpdateSpacing();
 }
 
+static float QuantizeFontSize(float aSize) {
+  // Round to nearest 0.25px
+  return NS_round(4.0 * aSize) * 0.25;
+}
+
 bool CanvasRenderingContext2D::SetFontInternal(const nsACString& aFont,
                                                ErrorResult& aError) {
   RefPtr<PresShell> presShell = GetPresShell();
@@ -3715,6 +3741,11 @@ bool CanvasRenderingContext2D::SetFontInternal(const nsACString& aFont,
   resizedFont.size =
       fontStyle->mSize.ScaledBy(1.0f / c->CSSToDevPixelScale().scale);
 
+  // Quantize font size to avoid filling caches with thousands of fonts that
+  // differ by imperceptibly-tiny size deltas.
+  resizedFont.size = StyleCSSPixelLength::FromPixels(
+      QuantizeFontSize(resizedFont.size.ToCSSPixels()));
+
   // Our FontKerning constants (see the enum definition) are the same as the
   // NS_FONT_KERNING_* values so we can simply assign here.
   resizedFont.kerning = uint8_t(CurrentState().fontKerning);
@@ -3742,7 +3773,7 @@ bool CanvasRenderingContext2D::SetFontInternal(const nsACString& aFont,
 
 static nsAutoCString FamilyListToString(
     const StyleFontFamilyList& aFamilyList) {
-  return StringJoin(","_ns, aFamilyList.list.AsSpan(),
+  return StringJoin(", "_ns, aFamilyList.list.AsSpan(),
                     [](nsACString& dst, const StyleSingleFontFamily& name) {
                       name.AppendToString(dst);
                     });
@@ -3769,6 +3800,10 @@ static void SerializeFontForCanvas(const StyleFontFamilyList& aList,
   if (!aStyle.stretch.IsNormal() &&
       Servo_FontStretch_SerializeKeyword(&aStyle.stretch, &aUsedFont)) {
     aUsedFont.Append(" ");
+  }
+
+  if (aStyle.variantCaps == NS_FONT_VARIANT_CAPS_SMALLCAPS) {
+    aUsedFont.Append("small-caps ");
   }
 
   // Serialize the computed (not specified) size, and the family name(s).
@@ -3812,13 +3847,16 @@ bool CanvasRenderingContext2D::SetFontInternalDisconnected(
   StyleFontFamilyList list;
   gfxFontStyle fontStyle;
   float size = 0.0f;
+  bool smallCaps = false;
   if (!ServoCSSParser::ParseFontShorthandForMatching(
           aFont, urlExtraData, list, fontStyle.style, fontStyle.stretch,
-          fontStyle.weight, &size)) {
+          fontStyle.weight, &size, &smallCaps)) {
     return false;
   }
 
-  fontStyle.size = size;
+  fontStyle.size = QuantizeFontSize(size);
+  fontStyle.variantCaps =
+      smallCaps ? NS_FONT_VARIANT_CAPS_SMALLCAPS : NS_FONT_VARIANT_CAPS_NORMAL;
 
   // Set the kerning feature, if required by the fontKerning attribute.
   gfxFontFeature setting{TRUETYPE_TAG('k', 'e', 'r', 'n'), 0};
@@ -6312,6 +6350,16 @@ void CanvasPath::ClosePath() {
   EnsurePathBuilder();
 
   mPathBuilder->Close();
+  mPruned = false;
+}
+
+inline void CanvasPath::EnsureCapped() const {
+  // If there were zero-length segments emitted that were pruned, we need to
+  // emit a LineTo to ensure that caps are generated for the segment.
+  if (mPruned) {
+    mPathBuilder->LineTo(mPathBuilder->CurrentPoint());
+    mPruned = false;
+  }
 }
 
 void CanvasPath::MoveTo(double aX, double aY) {
@@ -6322,6 +6370,7 @@ void CanvasPath::MoveTo(double aX, double aY) {
     return;
   }
 
+  EnsureCapped();
   mPathBuilder->MoveTo(pos);
 }
 
@@ -6335,12 +6384,16 @@ void CanvasPath::QuadraticCurveTo(double aCpx, double aCpy, double aX,
 
   Point cp1(ToFloat(aCpx), ToFloat(aCpy));
   Point cp2(ToFloat(aX), ToFloat(aY));
-  if (!cp1.IsFinite() || !cp2.IsFinite() ||
-      (cp1 == mPathBuilder->CurrentPoint() && cp1 == cp2)) {
+  if (!cp1.IsFinite() || !cp2.IsFinite()) {
+    return;
+  }
+  if (cp1 == mPathBuilder->CurrentPoint() && cp1 == cp2) {
+    mPruned = true;
     return;
   }
 
   mPathBuilder->QuadraticBezierTo(cp1, cp2);
+  mPruned = false;
 }
 
 void CanvasPath::BezierCurveTo(double aCp1x, double aCp1y, double aCp2x,
@@ -6441,6 +6494,7 @@ void CanvasPath::RoundRect(
     ErrorResult& aError) {
   EnsurePathBuilder();
 
+  EnsureCapped();
   RoundRectImpl(mPathBuilder, Nothing(), aX, aY, aW, aH, aRadii, aError);
 }
 
@@ -6450,11 +6504,16 @@ void CanvasPath::Arc(double aX, double aY, double aRadius, double aStartAngle,
   if (aRadius < 0.0) {
     return aError.ThrowIndexSizeError("Negative radius");
   }
+  if (aStartAngle == aEndAngle) {
+    mPruned = true;
+    return;
+  }
 
   EnsurePathBuilder();
 
   ArcToBezier(this, Point(aX, aY), Size(aRadius, aRadius), aStartAngle,
               aEndAngle, aAnticlockwise);
+  mPruned = false;
 }
 
 void CanvasPath::Ellipse(double x, double y, double radiusX, double radiusY,
@@ -6463,33 +6522,47 @@ void CanvasPath::Ellipse(double x, double y, double radiusX, double radiusY,
   if (radiusX < 0.0 || radiusY < 0.0) {
     return aError.ThrowIndexSizeError("Negative radius");
   }
+  if (startAngle == endAngle) {
+    mPruned = true;
+    return;
+  }
 
   EnsurePathBuilder();
 
   ArcToBezier(this, Point(x, y), Size(radiusX, radiusY), startAngle, endAngle,
               anticlockwise, rotation);
+  mPruned = false;
 }
 
 void CanvasPath::LineTo(const gfx::Point& aPoint) {
   EnsurePathBuilder();
 
-  if (!aPoint.IsFinite() || aPoint == mPathBuilder->CurrentPoint()) {
+  if (!aPoint.IsFinite()) {
+    return;
+  }
+  if (aPoint == mPathBuilder->CurrentPoint()) {
+    mPruned = true;
     return;
   }
 
   mPathBuilder->LineTo(aPoint);
+  mPruned = false;
 }
 
 void CanvasPath::BezierTo(const gfx::Point& aCP1, const gfx::Point& aCP2,
                           const gfx::Point& aCP3) {
   EnsurePathBuilder();
 
-  if (!aCP1.IsFinite() || !aCP2.IsFinite() || !aCP3.IsFinite() ||
-      (aCP1 == mPathBuilder->CurrentPoint() && aCP1 == aCP2 && aCP1 == aCP3)) {
+  if (!aCP1.IsFinite() || !aCP2.IsFinite() || !aCP3.IsFinite()) {
+    return;
+  }
+  if (aCP1 == mPathBuilder->CurrentPoint() && aCP1 == aCP2 && aCP1 == aCP3) {
+    mPruned = true;
     return;
   }
 
   mPathBuilder->BezierTo(aCP1, aCP2, aCP3);
+  mPruned = false;
 }
 
 void CanvasPath::AddPath(CanvasPath& aCanvasPath, const DOMMatrix2DInit& aInit,
@@ -6518,6 +6591,7 @@ void CanvasPath::AddPath(CanvasPath& aCanvasPath, const DOMMatrix2DInit& aInit,
   }
 
   EnsurePathBuilder();  // in case a path is added to itself
+  EnsureCapped();
   tempPath->StreamToSink(mPathBuilder);
 }
 
@@ -6537,6 +6611,7 @@ already_AddRefed<gfx::Path> CanvasPath::GetPath(
   if (!mPath) {
     // if there is no path, there must be a pathbuilder
     MOZ_ASSERT(mPathBuilder);
+    EnsureCapped();
     mPath = mPathBuilder->Finish();
     if (!mPath) {
       RefPtr<gfx::Path> path(mPath);

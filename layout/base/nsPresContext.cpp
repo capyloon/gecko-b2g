@@ -3006,6 +3006,11 @@ void nsPresContext::SetSafeAreaInsets(const ScreenIntMargin& aSafeAreaInsets) {
                                RestyleHint::RecascadeSubtree());
 }
 
+void nsPresContext::ThemeColorsChanged() {
+  PostRebuildAllStyleDataEvent(nsChangeHint(0),
+                               RestyleHint::RecascadeSubtree());
+}
+
 #ifdef DEBUG
 
 void nsPresContext::ValidatePresShellAndDocumentReleation() const {

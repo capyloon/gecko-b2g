@@ -3484,6 +3484,18 @@ mozilla::ipc::IPCResult BrowserChild::RecvSafeAreaInsetsChanged(
   return IPC_OK();
 }
 
+mozilla::ipc::IPCResult BrowserChild::RecvThemeColorsChanged() {
+  if (nsCOMPtr<Document> document = GetTopLevelDocument()) {
+    nsPresContext* presContext = document->GetPresContext();
+    if (presContext) {
+      presContext->ThemeColorsChanged();
+    }
+  }
+
+  return IPC_OK();
+}
+
+
 mozilla::ipc::IPCResult BrowserChild::RecvAllowScriptsToClose() {
   nsCOMPtr<nsPIDOMWindowOuter> window = do_GetInterface(WebNavigation());
   if (window) {

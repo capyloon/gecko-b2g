@@ -271,6 +271,7 @@ BrowserParent::LayerToBrowserParentTable*
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(BrowserParent)
   NS_INTERFACE_MAP_ENTRY(nsIAuthPromptProvider)
   NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
+  NS_INTERFACE_MAP_ENTRY(nsIObserver)
   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIDOMEventListener)
 NS_INTERFACE_MAP_END
 NS_IMPL_CYCLE_COLLECTION_WEAK(BrowserParent, mFrameLoader, mBrowsingContext)
@@ -342,10 +343,25 @@ BrowserParent::BrowserParent(ContentParent* aManager, const TabId& aTabId,
   if (aBrowsingContext->Top()->IsPriorityActive()) {
     ProcessPriorityManager::BrowserPriorityChanged(this, true);
   }
+
+  // Add observers.
+  nsCOMPtr<nsIObserverService> observerService =
+      mozilla::services::GetObserverService();
+  if (observerService) {
+    observerService->AddObserver(this, "theme-colors-changed", false);
+  }
 }
 
 BrowserParent::~BrowserParent() {
   RequestingAccessKeyEventData::OnBrowserParentDestroyed();
+}
+
+nsresult BrowserParent::Observe(nsISupports* aSubject, const char* aTopic,
+                                  const char16_t* aData) {
+  if (!nsCRT::strcmp(aTopic, "theme-colors-changed")) {
+    Unused << SendThemeColorsChanged();
+  }
+  return NS_OK;
 }
 
 /* static */
@@ -2319,8 +2335,23 @@ mozilla::ipc::IPCResult BrowserParent::RecvSetCursor(
 
   nsCOMPtr<imgIContainer> cursorImage;
   if (aHasCustomCursor) {
-    if (!aCursorData || aHeight * aStride != aCursorData->Size() ||
-        aStride < aWidth * gfx::BytesPerPixel(aFormat)) {
+    const bool cursorDataValid = [&] {
+      if (!aCursorData) {
+        return false;
+      }
+      auto expectedSize = CheckedInt<uint32_t>(aHeight) * aStride;
+      if (!expectedSize.isValid() ||
+          expectedSize.value() != aCursorData->Size()) {
+        return false;
+      }
+      auto minStride =
+          CheckedInt<uint32_t>(aWidth) * gfx::BytesPerPixel(aFormat);
+      if (!minStride.isValid() || aStride < minStride.value()) {
+        return false;
+      }
+      return true;
+    }();
+    if (!cursorDataValid) {
       return IPC_FAIL(this, "Invalid custom cursor data");
     }
     const gfx::IntSize size(aWidth, aHeight);
@@ -3897,10 +3928,14 @@ mozilla::ipc::IPCResult BrowserParent::RecvInvokeDragSession(
       cookieJarSettings, aSourceWindowContext.GetMaybeDiscarded(),
       aSourceTopWindowContext.GetMaybeDiscarded());
 
-  if (aVisualDnDData && aVisualDnDData->Size() >= aDragRect.height * aStride) {
-    dragStartData->SetVisualization(gfx::CreateDataSourceSurfaceFromData(
-        gfx::IntSize(aDragRect.width, aDragRect.height), aFormat,
-        aVisualDnDData->Data(), aStride));
+  if (aVisualDnDData) {
+    const auto checkedSize = CheckedInt<size_t>(aDragRect.height) * aStride;
+    if (checkedSize.isValid() &&
+        aVisualDnDData->Size() >= checkedSize.value()) {
+      dragStartData->SetVisualization(gfx::CreateDataSourceSurfaceFromData(
+          gfx::IntSize(aDragRect.width, aDragRect.height), aFormat,
+          aVisualDnDData->Data(), aStride));
+    }
   }
 
   nsCOMPtr<nsIDragService> dragService =

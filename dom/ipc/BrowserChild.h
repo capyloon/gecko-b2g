@@ -424,6 +424,8 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
 
   mozilla::ipc::IPCResult RecvSetUpdateHitRegion(const bool& aEnabled);
 
+  mozilla::ipc::IPCResult RecvThemeColorsChanged();
+
 #ifdef ACCESSIBILITY
   PDocAccessibleChild* AllocPDocAccessibleChild(
       PDocAccessibleChild*, const uint64_t&,

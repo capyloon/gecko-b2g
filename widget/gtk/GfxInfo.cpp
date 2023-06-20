@@ -24,6 +24,7 @@
 #include "mozilla/XREAppData.h"
 #include "mozilla/ScopeExit.h"
 #include "mozilla/GUniquePtr.h"
+#include "mozilla/StaticPrefs_media.h"
 #include "nsCRTGlue.h"
 #include "nsExceptionHandler.h"
 #include "nsPrintfCString.h"
@@ -375,6 +376,10 @@ void GfxInfo::GetData() {
       mIsAccelerated = false;
     } else if (strcasestr(glRenderer.get(), "software rasterizer")) {
       CopyUTF16toUTF8(GfxDriverInfo::GetDriverVendor(DriverVendor::MesaSWRast),
+                      mDriverVendor);
+      mIsAccelerated = false;
+    } else if (strcasestr(driDriver.get(), "vmwgfx")) {
+      CopyUTF16toUTF8(GfxDriverInfo::GetDriverVendor(DriverVendor::MesaVM),
                       mDriverVendor);
       mIsAccelerated = false;
     } else if (!mIsAccelerated) {
@@ -958,6 +963,14 @@ const nsTArray<GfxDriverInfo>& GfxInfo::GetGfxDriverInfo() {
         V(21, 0, 0, 0), "FEATURE_FAILURE_WEBRENDER_BUG_1635186",
         "Mesa 21.0.0.0");
 
+    // Bug 1815481 - Disable mesa drivers in virtual machines.
+    APPEND_TO_DRIVER_BLOCKLIST_EXT(
+        OperatingSystem::Linux, ScreenSizeStatus::All, BatteryStatus::All,
+        WindowProtocol::All, DriverVendor::MesaVM, DeviceFamily::All,
+        nsIGfxInfo::FEATURE_WEBRENDER, nsIGfxInfo::FEATURE_BLOCKED_DEVICE,
+        DRIVER_COMPARISON_IGNORED, V(0, 0, 0, 0),
+        "FEATURE_FAILURE_WEBRENDER_MESA_VM", "");
+
     ////////////////////////////////////
     // FEATURE_WEBRENDER_COMPOSITOR
     APPEND_TO_DRIVER_BLOCKLIST(
@@ -1270,9 +1283,19 @@ nsresult GfxInfo::GetFeatureStatusImpl(
       aFeature, aStatus, aSuggestedDriverVersion, aDriverInfo, aFailureId, &os);
 
   // Probe VA-API/V4L2 on supported devices only
-  if (aFeature == nsIGfxInfo::FEATURE_HARDWARE_VIDEO_DECODING &&
-      *aStatus == nsIGfxInfo::FEATURE_STATUS_OK) {
-    if (mIsAccelerated) {
+  if (aFeature == nsIGfxInfo::FEATURE_HARDWARE_VIDEO_DECODING) {
+    if (!StaticPrefs::media_hardware_video_decoding_enabled_AtStartup()) {
+      return ret;
+    }
+    bool probeHWDecode = false;
+#ifdef MOZ_WAYLAND
+    probeHWDecode =
+        mIsAccelerated &&
+        (*aStatus == nsIGfxInfo::FEATURE_STATUS_OK ||
+         StaticPrefs::media_hardware_video_decoding_force_enabled_AtStartup() ||
+         StaticPrefs::media_ffmpeg_vaapi_enabled_AtStartup());
+#endif
+    if (probeHWDecode) {
       GetDataVAAPI();
       GetDataV4L2();
     } else {

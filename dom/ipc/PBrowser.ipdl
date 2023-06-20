@@ -1043,6 +1043,12 @@ child:
 
     async TransparentChanged(bool isTransparent);
 
+    /**
+     * Tell the child that the theme colors have changed.
+     *
+     */
+    async ThemeColorsChanged();
+
 parent:
     /**
      * Fetches whether this window supports protected media, which is sent back in response.

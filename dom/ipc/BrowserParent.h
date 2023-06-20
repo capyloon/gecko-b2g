@@ -89,6 +89,7 @@ class StructuredCloneData;
 class BrowserParent final : public PBrowserParent,
                             public nsIDOMEventListener,
                             public nsIAuthPromptProvider,
+                            public nsIObserver,
                             public nsSupportsWeakReference,
                             public TabContext,
                             public LiveResizeListener {
@@ -105,6 +106,7 @@ class BrowserParent final : public PBrowserParent,
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_NSIAUTHPROMPTPROVIDER
+  NS_DECL_NSIOBSERVER
   // nsIDOMEventListener interfaces
   NS_DECL_NSIDOMEVENTLISTENER
 

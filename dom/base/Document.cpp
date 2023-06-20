@@ -55,6 +55,7 @@
 #include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/DocLoadingTimelineMarker.h"
+#include "mozilla/AttributeStyles.h"
 #include "mozilla/DocumentStyleRootIterator.h"
 #include "mozilla/EditorBase.h"
 #include "mozilla/EditorCommands.h"
@@ -295,9 +296,7 @@
 #include "nsGenericHTMLElement.h"
 #include "nsGlobalWindowInner.h"
 #include "nsGlobalWindowOuter.h"
-#include "nsHTMLCSSStyleSheet.h"
 #include "nsHTMLDocument.h"
-#include "nsHTMLStyleSheet.h"
 #include "nsHtml5Module.h"
 #include "nsHtml5Parser.h"
 #include "nsHtml5TreeOpExecutor.h"
@@ -1266,32 +1265,6 @@ void DOMStyleSheetSetList::EnsureFresh() {
       return;
     }
   }
-}
-
-// ==================================================================
-Document::SelectorCache::SelectorCache(nsIEventTarget* aEventTarget)
-    : nsExpirationTracker<SelectorCacheKey, 4>(1000, "Document::SelectorCache",
-                                               aEventTarget) {}
-
-Document::SelectorCache::~SelectorCache() { AgeAllGenerations(); }
-
-void Document::SelectorCache::NotifyExpired(SelectorCacheKey* aSelector) {
-  MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(aSelector);
-
-  // There is no guarantee that this method won't be re-entered when selector
-  // matching is ongoing because "memory-pressure" could be notified immediately
-  // when OOM happens according to the design of nsExpirationTracker.
-  // The perfect solution is to delete the |aSelector| and its
-  // RawServoSelectorList in mTable asynchronously.
-  // We remove these objects synchronously for now because NotifyExpired() will
-  // never be triggered by "memory-pressure" which is not implemented yet in
-  // the stage 2 of mozalloc_handle_oom().
-  // Once these objects are removed asynchronously, we should update the warning
-  // added in mozalloc_handle_oom() as well.
-  RemoveObject(aSelector);
-  mTable.Remove(aSelector->mKey);
-  delete aSelector;
 }
 
 Document::PendingFrameStaticClone::~PendingFrameStaticClone() = default;
@@ -2405,8 +2378,8 @@ Document::~Document() {
     UnlinkStyleSheets(sheets);
   }
 
-  if (mAttrStyleSheet) {
-    mAttrStyleSheet->SetOwningDocument(nullptr);
+  if (mAttributeStyles) {
+    mAttributeStyles->SetOwningDocument(nullptr);
   }
 
   if (mListenerManager) {
@@ -3148,15 +3121,11 @@ void Document::ResetStylesheetsToURI(nsIURI* aURI) {
   }
 
   // Now reset our inline style and attribute sheets.
-  if (mAttrStyleSheet) {
-    mAttrStyleSheet->Reset();
-    mAttrStyleSheet->SetOwningDocument(this);
+  if (mAttributeStyles) {
+    mAttributeStyles->Reset();
+    mAttributeStyles->SetOwningDocument(this);
   } else {
-    mAttrStyleSheet = new nsHTMLStyleSheet(this);
-  }
-
-  if (!mStyleAttrStyleSheet) {
-    mStyleAttrStyleSheet = new nsHTMLCSSStyleSheet();
+    mAttributeStyles = new AttributeStyles(this);
   }
 
   if (mStyleSetFilled) {
@@ -7857,7 +7826,7 @@ void Document::SetScriptGlobalObject(
   }
 
   // Tell the script loader about the new global object.
-  if (mScriptLoader) {
+  if (mScriptLoader && !IsTemplateContentsOwner()) {
     mScriptLoader->SetGlobalObject(mScriptGlobalObject);
   }
 
@@ -12783,6 +12752,7 @@ Document* Document::GetTemplateContentsOwner() {
     mTemplateContentsOwner->mTemplateContentsOwner = mTemplateContentsOwner;
   }
 
+  MOZ_ASSERT(mTemplateContentsOwner->IsTemplateContentsOwner());
   return mTemplateContentsOwner;
 }
 
@@ -15061,16 +15031,18 @@ void Document::HidePopover(Element& aPopover, bool aFocusPreviousElement,
     return;
   }
 
-  bool wasHiding = popoverHTMLEl->GetPopoverData()->IsHiding();
-  popoverHTMLEl->GetPopoverData()->SetIsHiding(true);
-  auto restoreIsHiding = MakeScopeExit([&]() {
+  bool wasShowingOrHiding =
+      popoverHTMLEl->GetPopoverData()->IsShowingOrHiding();
+  popoverHTMLEl->GetPopoverData()->SetIsShowingOrHiding(true);
+  const bool fireEvents = aFireEvents && !wasShowingOrHiding;
+  auto cleanupHidingFlag = MakeScopeExit([&]() {
     if (auto* popoverData = popoverHTMLEl->GetPopoverData()) {
-      popoverData->SetIsHiding(wasHiding);
+      popoverData->SetIsShowingOrHiding(wasShowingOrHiding);
     }
   });
 
   if (popoverHTMLEl->IsAutoPopover()) {
-    HideAllPopoversUntil(*popoverHTMLEl, aFocusPreviousElement, aFireEvents);
+    HideAllPopoversUntil(*popoverHTMLEl, aFocusPreviousElement, fireEvents);
     if (!popoverHTMLEl->CheckPopoverValidity(PopoverVisibilityState::Showing,
                                              nullptr, aRv)) {
       return;
@@ -15096,7 +15068,7 @@ void Document::HidePopover(Element& aPopover, bool aFocusPreviousElement,
   data->SetInvoker(nullptr);
 
   // Fire beforetoggle event and re-check popover validity.
-  if (aFireEvents && !wasHiding) {
+  if (fireEvents) {
     // Intentionally ignore the return value here as only on open event for
     // beforetoggle the cancelable attribute is initialized to true.
     popoverHTMLEl->FireToggleEvent(PopoverVisibilityState::Showing,
@@ -15115,7 +15087,7 @@ void Document::HidePopover(Element& aPopover, bool aFocusPreviousElement,
       PopoverVisibilityState::Hidden);
 
   // Queue popover toggle event task.
-  if (aFireEvents) {
+  if (fireEvents) {
     popoverHTMLEl->QueuePopoverEventTask(PopoverVisibilityState::Showing);
   }
 
@@ -15130,7 +15102,7 @@ nsTArray<Element*> Document::AutoPopoverList() const {
   nsTArray<Element*> elements;
   for (const nsWeakPtr& ptr : mTopLayer) {
     if (nsCOMPtr<Element> element = do_QueryReferent(ptr)) {
-      if (element && element->IsAutoPopover()) {
+      if (element && element->IsAutoPopover() && element->IsPopoverOpen()) {
         elements.AppendElement(element);
       }
     }
@@ -15141,17 +15113,8 @@ nsTArray<Element*> Document::AutoPopoverList() const {
 Element* Document::GetTopmostAutoPopover() const {
   for (const nsWeakPtr& weakPtr : Reversed(mTopLayer)) {
     nsCOMPtr<Element> element(do_QueryReferent(weakPtr));
-    if (!element) {
-      continue;
-    }
-    if (element->State().HasState(ElementState::FULLSCREEN)) {
-      continue;
-    }
-    if (element->IsAutoPopover()) {
-      auto* dialog = HTMLDialogElement::FromNode(element);
-      if (!dialog || !dialog->IsInTopLayer()) {
-        return element;
-      }
+    if (element && element->IsAutoPopover() && element->IsPopoverOpen()) {
+      return element;
     }
   }
   return nullptr;
@@ -15760,10 +15723,11 @@ void Document::DocAddSizeOfExcludingThis(nsWindowSizes& aWindowSizes) const {
     mResizeObserverController->AddSizeOfIncludingThis(aWindowSizes);
   }
 
-  aWindowSizes.mDOMSizes.mDOMOtherSize +=
-      mAttrStyleSheet ? mAttrStyleSheet->DOMSizeOfIncludingThis(
-                            aWindowSizes.mState.mMallocSizeOf)
-                      : 0;
+  if (mAttributeStyles) {
+    aWindowSizes.mDOMSizes.mDOMOtherSize +=
+        mAttributeStyles->DOMSizeOfIncludingThis(
+            aWindowSizes.mState.mMallocSizeOf);
+  }
 
   aWindowSizes.mDOMSizes.mDOMOtherSize +=
       mStyledLinks.ShallowSizeOfExcludingThis(
@@ -17993,8 +17957,8 @@ bool Document::AutomaticStorageAccessPermissionCanBeGranted(
     return false;
   }
 
-  nsCOMPtr<nsIBrowserUsage> bu = do_ImportModule(
-      "resource:///modules/BrowserUsageTelemetry.jsm", fallible);
+  nsCOMPtr<nsIBrowserUsage> bu = do_ImportESModule(
+      "resource:///modules/BrowserUsageTelemetry.sys.mjs", fallible);
   if (NS_WARN_IF(!bu)) {
     return false;
   }
