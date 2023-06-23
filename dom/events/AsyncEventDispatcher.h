@@ -185,20 +185,21 @@ class LoadBlockingAsyncEventDispatcher final : public AsyncEventDispatcher {
       : AsyncEventDispatcher(aEventNode, aEventType, aBubbles,
                              aDispatchChromeOnly),
         mBlockedDoc(aEventNode->OwnerDoc()) {
-    if (mBlockedDoc) {
-      mBlockedDoc->BlockOnload();
-    }
+    mBlockedDoc->BlockOnload();
   }
+
+  // The static version of AsyncEventDispatcher::RunDOMEventWhenSafe should be
+  // preferred when possible, but for LoadBlockingAsyncEventDispatcher it makes
+  // sense to expose the helper so that the load event is blocked appropriately.
+  using AsyncEventDispatcher::RunDOMEventWhenSafe;
 
   LoadBlockingAsyncEventDispatcher(nsINode* aEventNode, dom::Event* aEvent)
       : AsyncEventDispatcher(aEventNode, aEvent),
         mBlockedDoc(aEventNode->OwnerDoc()) {
-    if (mBlockedDoc) {
-      mBlockedDoc->BlockOnload();
-    }
+    mBlockedDoc->BlockOnload();
   }
 
-  ~LoadBlockingAsyncEventDispatcher();
+  ~LoadBlockingAsyncEventDispatcher() { mBlockedDoc->UnblockOnload(true); }
 
  private:
   RefPtr<dom::Document> mBlockedDoc;

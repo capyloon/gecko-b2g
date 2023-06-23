@@ -65,6 +65,7 @@ EXPORTS.mozilla.dom.quota += [
     "ScopedLogExtraInfo.h",
     "SerializationHelpers.h",
     "StorageHelpers.h",
+    "StreamUtils.h",
     "UsageInfo.h",
 ]
 
@@ -75,6 +76,7 @@ XPCOM_MANIFESTS += [
 UNIFIED_SOURCES += [
     "ActorsChild.cpp",
     "ActorsParent.cpp",
+    "Assertions.cpp",
     "CachingDatabaseConnection.cpp",
     "CanonicalQuotaObject.cpp",
     "Client.cpp",
@@ -99,9 +101,11 @@ UNIFIED_SOURCES += [
     "RemoteQuotaObject.cpp",
     "RemoteQuotaObjectChild.cpp",
     "RemoteQuotaObjectParent.cpp",
+    "SanitizationUtils.cpp",
     "ScopedLogExtraInfo.cpp",
     "StorageHelpers.cpp",
     "StorageManager.cpp",
+    "StreamUtils.cpp",
 ]
 
 IPDL_SOURCES += [

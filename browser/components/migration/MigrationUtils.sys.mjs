@@ -14,6 +14,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
   Sqlite: "resource://gre/modules/Sqlite.sys.mjs",
   WindowsRegistry: "resource://gre/modules/WindowsRegistry.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
+  MigrationWizardConstants:
+    "chrome://browser/content/migration/migration-wizard-constants.mjs",
 });
 
 var gMigrators = null;
@@ -168,6 +170,7 @@ class MigrationUtils {
     OTHERDATA: 0x0040,
     SESSION: 0x0080,
     PAYMENT_METHODS: 0x0100,
+    EXTENSIONS: 0x0200,
   });
 
   /**
@@ -815,6 +818,7 @@ class MigrationUtils {
     logins: 0,
     history: 0,
     cards: 0,
+    extensions: 0,
   };
 
   getImportedCount(type) {
@@ -957,6 +961,48 @@ class MigrationUtils {
         console.error("Failed to insert credit card due to error: ", e, card);
       }
     }
+  }
+
+  /**
+   * Responsible for calling the AddonManager API that
+   * ultimately installs the matched add-ons.
+   *
+   * @param {string[]} extensions a list of extension IDs from another browser
+   */
+  async installExtensionsWrapper(extensions) {
+    /*
+    TODO: one potential implementation for calling the Add-ons API to match and install extensions
+    let totalExtensions = extensions.length;
+    let importedExtensions = await AddonsManager.installExtensions(extensions);
+  */
+    let totalExtensions = extensions.length;
+    // importedExtensions hardcoded until we have the AddonsManager API call
+    // Assuming that installExtensions will return an array of sorts.
+    // ! creates the error case
+    // let importedExtensions = [];
+    // ! creates the full match/success case
+    // let importedExtensions = extensions;
+    // ! creates the partial match/info case
+    let importedExtensions = ["extensionID1", "extensionID2"];
+
+    this._importQuantities.extensions += importedExtensions.length;
+
+    if (!importedExtensions.length) {
+      return [
+        lazy.MigrationWizardConstants.PROGRESS_VALUE.ERROR,
+        importedExtensions,
+      ];
+    }
+    if (totalExtensions == importedExtensions.length) {
+      return [
+        lazy.MigrationWizardConstants.PROGRESS_VALUE.SUCCESS,
+        importedExtensions,
+      ];
+    }
+    return [
+      lazy.MigrationWizardConstants.PROGRESS_VALUE.INFO,
+      importedExtensions,
+    ];
   }
 
   initializeUndoData() {

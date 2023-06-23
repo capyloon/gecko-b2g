@@ -22,17 +22,10 @@ namespace InspectorUtils {
   unsigned long getRuleColumn(CSSRule rule);
   unsigned long getRelativeRuleLine(CSSRule rule);
   boolean hasRulesModifiedByCSSOM(CSSStyleSheet sheet);
-  unsigned long getSelectorCount(CSSStyleRule rule);
-  [Throws] UTF8String getSelectorText(CSSStyleRule rule,
-                                      unsigned long selectorIndex);
-  [Throws] unsigned long long getSpecificity(CSSStyleRule rule,
-                                             unsigned long selectorIndex);
-  [Throws] boolean selectorMatchesElement(
-      Element element,
-      CSSStyleRule rule,
-      unsigned long selectorIndex,
-      optional [LegacyNullToEmptyString] DOMString pseudo = "",
-      optional boolean includeVisitedStyle = false);
+  // Get a flat list of all rules (including nested ones) of a given stylesheet.
+  // Useful for DevTools as this is faster than in JS where we'd have a lot of
+  // proxy access overhead building the same list.
+  sequence<CSSRule> getAllStyleSheetCSSStyleRules(CSSStyleSheet sheet);
   boolean isInheritedProperty(UTF8String property);
   sequence<DOMString> getCSSPropertyNames(optional PropertyNamesOptions options = {});
   sequence<PropertyPref> getCSSPropertyPrefs();

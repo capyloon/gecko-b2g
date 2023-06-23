@@ -728,18 +728,13 @@ std::pair<nsPoint, nsRect> DocAccessible::ComputeScrollData(
 
 NS_IMETHODIMP
 DocAccessible::OnPivotChanged(nsIAccessiblePivot* aPivot,
-                              nsIAccessible* aOldAccessible, int32_t aOldStart,
-                              int32_t aOldEnd, nsIAccessible* aNewAccessible,
-                              int32_t aNewStart, int32_t aNewEnd,
-                              PivotMoveReason aReason,
-                              TextBoundaryType aBoundaryType,
-                              bool aIsFromUserInput) {
+                              nsIAccessible* aOldAccessible,
+                              nsIAccessible* aNewAccessible,
+                              PivotMoveReason aReason, bool aIsFromUserInput) {
   RefPtr<AccEvent> event = new AccVCChangeEvent(
       this, (aOldAccessible ? aOldAccessible->ToInternalAccessible() : nullptr),
-      aOldStart, aOldEnd,
       (aNewAccessible ? aNewAccessible->ToInternalAccessible() : nullptr),
-      aNewStart, aNewEnd, aReason, aBoundaryType,
-      aIsFromUserInput ? eFromUserInput : eNoUserInput);
+      aReason, aIsFromUserInput ? eFromUserInput : eNoUserInput);
   nsEventShell::FireEvent(event);
 
   return NS_OK;
@@ -1627,9 +1622,6 @@ void DocAccessible::DoInitialUpdate() {
 
           browserChild->SendPDocAccessibleConstructor(
               ipcDoc, nullptr, 0, mDocumentNode->GetBrowsingContext());
-#if !defined(XP_WIN)
-          ipcDoc->SendPDocAccessiblePlatformExtConstructor();
-#endif
         }
       }
     }
@@ -2021,6 +2013,7 @@ void DocAccessible::ProcessContentInserted(
 #endif
 
   TreeMutation mt(aContainer);
+  bool inserted = false;
   do {
     LocalAccessible* parent = iter.Child()->LocalParent();
     if (parent) {
@@ -2043,6 +2036,7 @@ void DocAccessible::ProcessContentInserted(
 #endif
         MoveChild(iter.Child(), aContainer,
                   previousSibling ? previousSibling->IndexInParent() + 1 : 0);
+        inserted = true;
       }
       continue;
     }
@@ -2055,6 +2049,7 @@ void DocAccessible::ProcessContentInserted(
 
       CreateSubtree(iter.Child());
       mt.AfterInsertion(iter.Child());
+      inserted = true;
       continue;
     }
 
@@ -2068,7 +2063,11 @@ void DocAccessible::ProcessContentInserted(
   logging::TreeInfo("children after insertion", logging::eVerbose, aContainer);
 #endif
 
-  FireEventsOnInsertion(aContainer);
+  // We might not have actually inserted anything if layout frame reconstruction
+  // occurred.
+  if (inserted) {
+    FireEventsOnInsertion(aContainer);
+  }
 }
 
 void DocAccessible::ProcessContentInserted(LocalAccessible* aContainer,

@@ -4394,7 +4394,7 @@
 
 - name: dom.textMetrics.fontBoundingBox.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: true
   mirror: always
 
 # Time (in ms) that it takes to regenerate 1ms.
@@ -6808,13 +6808,13 @@
   mirror: once
 
 #ifdef XP_WIN
-  # Whether to use a video overlay layers with DirectComposition
--   name: gfx.webrender.dcomp-video-overlay-win
+  # Whether to use an overlay of hardware decoded video with DirectComposition
+-   name: gfx.webrender.dcomp-video-hw-overlay-win
     type: bool
     value: true
     mirror: once
-  # Enable video overlay even when it is blocked.
--   name: gfx.webrender.dcomp-video-overlay-win-force-enabled
+  # Enable hardware decoded video overlay even when it is blocked.
+-   name: gfx.webrender.dcomp-video-hw-overlay-win-force-enabled
     type: bool
     value: false
     mirror: once
@@ -6832,10 +6832,15 @@
     type: bool
     value: true
     mirror: once
-  # Whether to use a video overlay layers for sw decoded video with DirectComposition
+  # Whether to use an overlay of software decoded video with DirectComposition
 -   name: gfx.webrender.dcomp-video-sw-overlay-win
     type: bool
     value: true
+    mirror: once
+  # Enable software decoded video overlay even when it is blocked.
+-   name: gfx.webrender.dcomp-video-sw-overlay-win-force-enabled
+    type: bool
+    value: false
     mirror: once
 -   name: gfx.webrender.dcomp-video-check-slow-present
     type: RelaxedAtomicBool
@@ -10370,6 +10375,18 @@
     mirror: always
 #endif  # ANDROID
 
+# Now we will completely disable the ability to perform audio decoding outside
+# of Utility.
+# We do that only on nightly builds for now.
+-   name: media.allow-audio-non-utility
+    type: RelaxedAtomicBool
+#if defined(NIGHTLY_BUILD)
+    value: false
+#else
+    value: true
+#endif // defined(NIGHTLY_BUILD)
+    mirror: always
+
 #ifdef MOZ_OMX
 -   name: media.omx.enabled
     type: bool
@@ -10632,7 +10649,7 @@
 # True if we allow use of any decoders found in GMP plugins.
 - name: media.gmp.decoder.enabled
   type: RelaxedAtomicBool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
 
 # True if we want to request the multithreaded GMP decoder.
@@ -14850,11 +14867,7 @@
 # Setting this to zero will effectively disable timer coalescing.
 - name: timer.maximum_firing_delay_tolerance_ms
   type: AtomicFloat
-#ifdef NIGHTLY_BUILD
   value: 10000.0
-#else
-  value: 0.0
-#endif
   mirror: always
 
 #---------------------------------------------------------------------------
@@ -15806,30 +15819,6 @@
   mirror: always
 
 #ifdef MOZ_WAYLAND
-# Whether to override the DMABuf blocklist.
-- name: widget.dmabuf.force-enabled
-  type: bool
-  value: false
-  mirror: once
-
-#ifdef NIGHTLY_BUILD
-# Keep those pref hidden on non-nightly builds to avoid people accidentally
-# turning it on.
-
-# Use DMABuf for content textures.
-# For testing purposes only.
-- name: widget.dmabuf-textures.enabled
-  type: RelaxedAtomicBool
-  value: false
-  mirror: always
-#endif
-
-# Use DMABuf backend for WebGL.
-- name: widget.dmabuf-webgl.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
 # Force fractional scaling using wp_viewporter. Valid values: 0.5 - 8
 - name: widget.wayland.fractional_buffer_scale
   type: float
@@ -15857,6 +15846,29 @@
 #endif
 
 #ifdef MOZ_WIDGET_GTK
+# Whether to override the DMABuf blocklist.
+- name: widget.dmabuf.force-enabled
+  type: bool
+  value: false
+  mirror: once
+
+#ifdef NIGHTLY_BUILD
+# Keep those pref hidden on non-nightly builds to avoid people accidentally
+# turning it on.
+
+# Use DMABuf for content textures.
+# For testing purposes only.
+- name: widget.dmabuf-textures.enabled
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+#endif
+
+# Use DMABuf backend for WebGL.
+- name: widget.dmabuf-webgl.enabled
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
 
 # Use gdk_window_move_to_rect to move Wayland popups when available.
 - name: widget.wayland.use-move-to-rect

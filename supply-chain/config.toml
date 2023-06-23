@@ -2,7 +2,7 @@
 # cargo-vet config file
 
 [cargo-vet]
-version = "0.7"
+version = "0.8"
 
 [imports.bytecode-alliance]
 url = "https://raw.githubusercontent.com/bytecodealliance/wasmtime/main/supply-chain/audits.toml"
@@ -109,6 +109,10 @@ notes = "This is a first-party crate which is also published to crates.io. We ce
 [policy.mozglue-static]
 dependency-criteria = { rustc_version = "safe-to-run" }
 notes = "The rustc_version dependency is only used in the build script, and does not generate any runtime code"
+
+[policy.mozilla-central-workspace-hack]
+criteria = "safe-to-run"
+notes = "The dependencies from this crate are dependencies of other crates that will get the right criteria through them, but using safe-to-deploy for this one would be too broad."
 
 [policy.mozprofile]
 audit-as-crates-io = false
@@ -482,10 +486,6 @@ criteria = "safe-to-run"
 [[exemptions.fuchsia-zircon-sys]]
 version = "0.3.3"
 criteria = "safe-to-run"
-
-[[exemptions.futures]]
-version = "0.3.21"
-criteria = "safe-to-deploy"
 
 [[exemptions.futures-macro]]
 version = "0.3.21"

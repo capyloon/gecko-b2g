@@ -19,7 +19,6 @@ use std::fmt::Write;
 use std::iter;
 use std::os::raw::c_void;
 use std::ptr;
-use style::applicable_declarations::ApplicableDeclarationBlock;
 use style::color::mix::ColorInterpolationMethod;
 use style::color::{AbsoluteColor, ColorSpace};
 use style::context::ThreadLocalStyleContext;
@@ -106,7 +105,7 @@ use style::properties::{PropertyDeclarationId, ShorthandId};
 use style::properties::{SourcePropertyDeclaration, StyleBuilder};
 use style::properties_and_values::rule::Inherits as PropertyInherits;
 use style::rule_cache::RuleCacheConditions;
-use style::rule_tree::{CascadeLevel, StrongRuleNode};
+use style::rule_tree::StrongRuleNode;
 use style::selector_parser::PseudoElementCascadeType;
 use style::shared_lock::{
     Locked, SharedRwLock, SharedRwLockReadGuard, StylesheetGuards, ToCssWithGuard,
@@ -116,14 +115,14 @@ use style::style_adjuster::StyleAdjuster;
 use style::stylesheets::container_rule::ContainerSizeQuery;
 use style::stylesheets::import_rule::{ImportLayer, ImportSheet};
 use style::stylesheets::keyframes_rule::{Keyframe, KeyframeSelector, KeyframesStepValue};
-use style::stylesheets::layer_rule::LayerOrder;
 use style::stylesheets::supports_rule::parse_condition_or_declaration;
 use style::stylesheets::{
     AllowImportRules, ContainerRule, CounterStyleRule, CssRule, CssRuleType, CssRules,
     CssRulesHelpers, DocumentRule, FontFaceRule, FontFeatureValuesRule, FontPaletteValuesRule,
     ImportRule, KeyframesRule, LayerBlockRule, LayerStatementRule, MediaRule, NamespaceRule,
-    Origin, OriginSet, PageRule, PropertyRule, SanitizationData, SanitizationKind, StyleRule,
-    StylesheetContents, StylesheetLoader as StyleStylesheetLoader, SupportsRule, UrlExtraData,
+    Origin, OriginSet, PageRule, PagePseudoClassFlags, PropertyRule, SanitizationData,
+    SanitizationKind, StyleRule, StylesheetContents, StylesheetLoader as StyleStylesheetLoader,
+    SupportsRule, UrlExtraData,
 };
 use style::stylist::{add_size_of_ua_cache, AuthorStylesEnabled, RuleInclusion, Stylist};
 use style::thread_state;
@@ -135,7 +134,7 @@ use style::values::animated::{Animate, Procedure, ToAnimatedZero};
 use style::values::computed::easing::ComputedTimingFunction;
 use style::values::computed::effects::Filter;
 use style::values::computed::font::{
-    FontFamily, FontFamilyList, FontStretch, FontStyle, FontWeight, GenericFontFamily,
+    FamilyName, FontFamily, FontFamilyList, FontStretch, FontStyle, FontWeight, GenericFontFamily,
 };
 use style::values::computed::{self, Context, ToComputedValue};
 use style::values::distance::ComputeSquaredDistance;
@@ -2421,48 +2420,45 @@ pub extern "C" fn Servo_StyleRule_SetStyle(
 
 #[no_mangle]
 pub extern "C" fn Servo_StyleRule_GetSelectorText(rule: &LockedStyleRule, result: &mut nsACString) {
-    read_locked_arc(rule, |rule: &StyleRule| {
-        rule.selectors.to_css(result).unwrap();
-    })
+    read_locked_arc(rule, |rule| rule.selectors.to_css(result).unwrap());
+}
+
+fn desugared_selector_list(rules: &ThinVec<&LockedStyleRule>) -> SelectorList {
+    let mut selectors: Option<SelectorList> = None;
+    for rule in rules.iter().rev() {
+        selectors = Some(read_locked_arc(rule, |rule| match selectors {
+            Some(s) => rule.selectors.replace_parent_selector(&s.0),
+            None => rule.selectors.clone(),
+        }));
+    }
+    selectors.expect("Empty rule chain?")
 }
 
 #[no_mangle]
-pub extern "C" fn Servo_StyleRule_GetSelectorTextAtIndex(
-    rule: &LockedStyleRule,
+pub extern "C" fn Servo_StyleRule_GetSelectorDataAtIndex(
+    rules: &ThinVec<&LockedStyleRule>,
     index: u32,
-    result: &mut nsACString,
+    text: Option<&mut nsACString>,
+    specificity: Option<&mut u64>,
 ) {
-    read_locked_arc(rule, |rule: &StyleRule| {
-        let index = index as usize;
-        if index >= rule.selectors.0.len() {
-            return;
-        }
-        rule.selectors.0[index].to_css(result).unwrap();
-    })
+    let selectors = desugared_selector_list(rules);
+    let Some(selector) = selectors.0.get(index as usize) else { return };
+    if let Some(text) = text {
+        selector.to_css(text).unwrap();
+    }
+    if let Some(specificity) = specificity {
+        *specificity = selector.specificity() as u64;
+    }
 }
 
 #[no_mangle]
 pub extern "C" fn Servo_StyleRule_GetSelectorCount(rule: &LockedStyleRule) -> u32 {
-    read_locked_arc(rule, |rule: &StyleRule| rule.selectors.0.len() as u32)
-}
-
-#[no_mangle]
-pub extern "C" fn Servo_StyleRule_GetSpecificityAtIndex(
-    rule: &LockedStyleRule,
-    index: u32,
-) -> u64 {
-    read_locked_arc(rule, |rule: &StyleRule| {
-        let index = index as usize;
-        if index >= rule.selectors.0.len() {
-            return 0;
-        }
-        rule.selectors.0[index].specificity() as u64
-    })
+    read_locked_arc(rule, |rule| rule.selectors.0.len() as u32)
 }
 
 #[no_mangle]
 pub extern "C" fn Servo_StyleRule_SelectorMatchesElement(
-    rule: &LockedStyleRule,
+    rules: &ThinVec<&LockedStyleRule>,
     element: &RawGeckoElement,
     index: u32,
     host: Option<&RawGeckoElement>,
@@ -2472,56 +2468,49 @@ pub extern "C" fn Servo_StyleRule_SelectorMatchesElement(
     use selectors::matching::{
         matches_selector, MatchingContext, MatchingMode, NeedsSelectorFlags, VisitedHandlingMode,
     };
-    read_locked_arc(rule, |rule: &StyleRule| {
-        let index = index as usize;
-        if index >= rule.selectors.0.len() {
-            return false;
-        }
+    let selectors = desugared_selector_list(rules);
+    let Some(selector) = selectors.0.get(index as usize) else { return false };
+    let mut matching_mode = MatchingMode::Normal;
+    match PseudoElement::from_pseudo_type(pseudo_type) {
+        Some(pseudo) => {
+            // We need to make sure that the requested pseudo element type
+            // matches the selector pseudo element type before proceeding.
+            match selector.pseudo_element() {
+                Some(selector_pseudo) if *selector_pseudo == pseudo => {
+                    matching_mode = MatchingMode::ForStatelessPseudoElement
+                },
+                _ => return false,
+            };
+        },
+        None => {
+            // Do not attempt to match if a pseudo element is requested and
+            // this is not a pseudo element selector, or vice versa.
+            if selector.has_pseudo_element() {
+                return false;
+            }
+        },
+    };
 
-        let selector = &rule.selectors.0[index];
-        let mut matching_mode = MatchingMode::Normal;
-
-        match PseudoElement::from_pseudo_type(pseudo_type) {
-            Some(pseudo) => {
-                // We need to make sure that the requested pseudo element type
-                // matches the selector pseudo element type before proceeding.
-                match selector.pseudo_element() {
-                    Some(selector_pseudo) if *selector_pseudo == pseudo => {
-                        matching_mode = MatchingMode::ForStatelessPseudoElement
-                    },
-                    _ => return false,
-                };
-            },
-            None => {
-                // Do not attempt to match if a pseudo element is requested and
-                // this is not a pseudo element selector, or vice versa.
-                if selector.has_pseudo_element() {
-                    return false;
-                }
-            },
-        };
-
-        let element = GeckoElement(element);
-        let host = host.map(GeckoElement);
-        let quirks_mode = element.as_node().owner_doc().quirks_mode();
-        let mut nth_index_cache = Default::default();
-        let visited_mode = if relevant_link_visited {
-            VisitedHandlingMode::RelevantLinkVisited
-        } else {
-            VisitedHandlingMode::AllLinksUnvisited
-        };
-        let mut ctx = MatchingContext::new_for_visited(
-            matching_mode,
-            /* bloom_filter = */ None,
-            &mut nth_index_cache,
-            visited_mode,
-            quirks_mode,
-            NeedsSelectorFlags::No,
-            IgnoreNthChildForInvalidation::No,
-        );
-        ctx.with_shadow_host(host, |ctx| {
-            matches_selector(selector, 0, None, &element, ctx)
-        })
+    let element = GeckoElement(element);
+    let host = host.map(GeckoElement);
+    let quirks_mode = element.as_node().owner_doc().quirks_mode();
+    let mut nth_index_cache = Default::default();
+    let visited_mode = if relevant_link_visited {
+        VisitedHandlingMode::RelevantLinkVisited
+    } else {
+        VisitedHandlingMode::AllLinksUnvisited
+    };
+    let mut ctx = MatchingContext::new_for_visited(
+        matching_mode,
+        /* bloom_filter = */ None,
+        &mut nth_index_cache,
+        visited_mode,
+        quirks_mode,
+        NeedsSelectorFlags::No,
+        IgnoreNthChildForInvalidation::No,
+    );
+    ctx.with_shadow_host(host, |ctx| {
+        matches_selector(selector, 0, None, &element, ctx)
     })
 }
 
@@ -3867,39 +3856,30 @@ counter_style_descriptors! {
 pub unsafe extern "C" fn Servo_ComputedValues_GetForPageContent(
     raw_data: &PerDocumentStyleData,
     page_name: *const nsAtom,
+    pseudos: PagePseudoClassFlags,
 ) -> Strong<ComputedValues> {
     let global_style_data = &*GLOBAL_STYLE_DATA;
     let guard = global_style_data.shared_lock.read();
     let guards = StylesheetGuards::same(&guard);
     let data = raw_data.borrow_mut();
+    let cascade_data = data.stylist.cascade_data();
 
     let mut extra_declarations = vec![];
     let iter = data.stylist.iter_extra_data_origins_rev();
+    let name = if !page_name.is_null() {
+        Some(Atom::from_raw(page_name as *mut nsAtom))
+    } else {
+        None
+    };
     for (data, origin) in iter {
-        let level = match origin {
-            Origin::UserAgent => CascadeLevel::UANormal,
-            Origin::User => CascadeLevel::UserNormal,
-            Origin::Author => CascadeLevel::same_tree_author_normal(),
-        };
-        extra_declarations.reserve(data.pages.global.len());
-        let mut add_rule = |rule: &Arc<Locked<PageRule>>| {
-            extra_declarations.push(ApplicableDeclarationBlock::from_declarations(
-                rule.read_with(level.guard(&guards)).block.clone(),
-                level,
-                LayerOrder::root(),
-            ));
-        };
-        for &(ref rule, _layer_id) in data.pages.global.iter() {
-            add_rule(&rule.0);
-        }
-        if !page_name.is_null() {
-            Atom::with(page_name, |name| {
-                if let Some(rules) = data.pages.named.get(name) {
-                    // Rules are already sorted by source order.
-                    rules.iter().for_each(|d| add_rule(&d.rule));
-                }
-            });
-        }
+        data.pages.match_and_append_rules(
+            &mut extra_declarations,
+            origin,
+            &guards,
+            cascade_data,
+            &name,
+            pseudos,
+        );
     }
 
     let rule_node = data.stylist.rule_node_for_precomputed_pseudo(
@@ -7682,6 +7662,11 @@ pub extern "C" fn Servo_FontFamilyList_WithNames(
     *out = FontFamilyList {
         list: style_traits::arc_slice::ArcSlice::from_iter(names.iter().cloned()),
     };
+}
+
+#[no_mangle]
+pub extern "C" fn Servo_FamilyName_Serialize(name: &FamilyName, result: &mut nsACString) {
+    name.to_css(&mut CssWriter::new(result)).unwrap()
 }
 
 #[no_mangle]

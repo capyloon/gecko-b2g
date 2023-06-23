@@ -428,8 +428,21 @@ void StructuredCloneHolder::ReadFromBuffer(
 
 static bool CheckExposedGlobals(JSContext* aCx, nsIGlobalObject* aGlobal,
                                 uint16_t aExposedGlobals) {
-  if (!IsGlobalInExposureSet(aCx, aGlobal->GetGlobalJSObject(),
-                             aExposedGlobals)) {
+  JS::Rooted<JSObject*> global(aCx, aGlobal->GetGlobalJSObject());
+
+  // Sandboxes aren't really DOM globals (though they do set the
+  // JSCLASS_DOM_GLOBAL flag), and so we can't simply do the exposure check.
+  // Some sandboxes do have a DOM global as their prototype, so using the
+  // prototype to check for exposure will at least make it work for those
+  // specific cases.
+  {
+    JSObject* proto = xpc::SandboxPrototypeOrNull(aCx, global);
+    if (proto) {
+      global = proto;
+    }
+  }
+
+  if (!IsGlobalInExposureSet(aCx, global, aExposedGlobals)) {
     ErrorResult error;
     error.ThrowDataCloneError("Interface is not exposed.");
     MOZ_ALWAYS_TRUE(error.MaybeSetPendingException(aCx));
@@ -1017,9 +1030,14 @@ JSObject* StructuredCloneHolder::CustomReadHandler(
   MOZ_ASSERT(mSupportsCloning);
 
   if (aTag == SCTAG_DOM_BLOB) {
+#if !defined(MOZ_B2G)
+    // The WebActivityRequestHandler creates object in a 'Sandbox'
+    // global to use structured clone when returning activity results.
+    // This makes CheckExposedGlobals() fail.
     if (!CheckExposedGlobals(aCx, mGlobal, sWindowOrWorker)) {
       return nullptr;
     }
+#endif
     return ReadBlob(aCx, aIndex, this);
   }
 

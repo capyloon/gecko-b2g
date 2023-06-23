@@ -424,6 +424,10 @@ impl Inner {
     }
 
     pub fn has_file(&self, full_path: &str) -> Option<bool> {
+        if !self.is_unlocked() {
+            return Some(false);
+        }
+
         match self.entries.borrow().get(full_path) {
             Some(ResourceStatus::MissingRequired) => Some(false),
             Some(ResourceStatus::MissingOptional) => Some(false),

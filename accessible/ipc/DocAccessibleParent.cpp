@@ -24,8 +24,6 @@
 #if defined(XP_WIN)
 #  include "Compatibility.h"
 #  include "nsWinUtils.h"
-#else
-#  include "mozilla/a11y/DocAccessiblePlatformExtParent.h"
 #endif
 
 #if defined(MOZ_WIDGET_ANDROID)
@@ -539,10 +537,8 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvSelectionEvent(
 
 mozilla::ipc::IPCResult DocAccessibleParent::RecvVirtualCursorChangeEvent(
     const uint64_t& aID, const uint64_t& aOldPositionID,
-    const int32_t& aOldStartOffset, const int32_t& aOldEndOffset,
-    const uint64_t& aNewPositionID, const int32_t& aNewStartOffset,
-    const int32_t& aNewEndOffset, const int16_t& aReason,
-    const int16_t& aBoundaryType, const bool& aFromUser) {
+    const uint64_t& aNewPositionID, const int16_t& aReason,
+    const bool& aFromUser) {
   ACQUIRE_ANDROID_LOCK
   if (mShutdown) {
     return IPC_OK();
@@ -558,9 +554,8 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvVirtualCursorChangeEvent(
   }
 
 #if defined(MOZ_WIDGET_ANDROID)
-  ProxyVirtualCursorChangeEvent(
-      target, oldPosition, aOldStartOffset, aOldEndOffset, newPosition,
-      aNewStartOffset, aNewEndOffset, aReason, aBoundaryType, aFromUser);
+  ProxyVirtualCursorChangeEvent(target, oldPosition, newPosition, aReason,
+                                aFromUser);
 #endif
 
   if (!nsCoreUtils::AccEventObserversExist()) {
@@ -572,9 +567,8 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvVirtualCursorChangeEvent(
       new xpcAccVirtualCursorChangeEvent(
           nsIAccessibleEvent::EVENT_VIRTUALCURSOR_CHANGED,
           GetXPCAccessible(target), doc, nullptr, aFromUser,
-          GetXPCAccessible(oldPosition), aOldStartOffset, aOldEndOffset,
-          GetXPCAccessible(newPosition), aNewStartOffset, aNewEndOffset,
-          aReason, aBoundaryType);
+          GetXPCAccessible(oldPosition), GetXPCAccessible(newPosition),
+          aReason);
   nsCoreUtils::DispatchAccEvent(std::move(event));
 
   return IPC_OK();
@@ -1107,25 +1101,6 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvFocusEvent(
 }
 
 #endif  // defined(XP_WIN)
-
-#if !defined(XP_WIN)
-bool DocAccessibleParent::DeallocPDocAccessiblePlatformExtParent(
-    PDocAccessiblePlatformExtParent* aActor) {
-  delete aActor;
-  return true;
-}
-
-PDocAccessiblePlatformExtParent*
-DocAccessibleParent::AllocPDocAccessiblePlatformExtParent() {
-  return new DocAccessiblePlatformExtParent();
-}
-
-DocAccessiblePlatformExtParent* DocAccessibleParent::GetPlatformExtension() {
-  return static_cast<DocAccessiblePlatformExtParent*>(
-      SingleManagedOrNull(ManagedPDocAccessiblePlatformExtParent()));
-}
-
-#endif  // !defined(XP_WIN)
 
 void DocAccessibleParent::SelectionRanges(nsTArray<TextRange>* aRanges) const {
   for (const auto& data : mTextSelections) {

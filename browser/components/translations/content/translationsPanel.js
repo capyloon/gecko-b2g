@@ -22,6 +22,7 @@ ChromeUtils.defineESModuleGetters(this, {
 const PageAction = Object.freeze({
   NO_CHANGE: "NO_CHANGE",
   HIDE_BUTTON: "HIDE_BUTTON",
+  SHOW_BUTTON: "SHOW_BUTTON",
   RESTORE_PAGE: "RESTORE_PAGE",
   TRANSLATE_PAGE: "TRANSLATE_PAGE",
 });
@@ -159,6 +160,9 @@ class CheckboxStateMachine {
       case CheckboxStateMachine.#computeState(0, 0, 0, 0): {
         return PageAction.HIDE_BUTTON;
       }
+      case CheckboxStateMachine.#computeState(0, 0, 1, 0): {
+        return PageAction.SHOW_BUTTON;
+      }
     }
     return PageAction.NO_CHANGE;
   }
@@ -182,6 +186,9 @@ class CheckboxStateMachine {
       }
       case CheckboxStateMachine.#computeState(0, 1, 0, 1): {
         return PageAction.TRANSLATE_PAGE;
+      }
+      case CheckboxStateMachine.#computeState(0, 0, 0, 1): {
+        return PageAction.SHOW_BUTTON;
       }
     }
     return PageAction.NO_CHANGE;
@@ -1005,6 +1012,11 @@ var TranslationsPanel = new (class {
         this.#hideTranslationsButton();
         break;
       }
+      case PageAction.SHOW_BUTTON: {
+        const { button } = this.elements;
+        button.hidden = false;
+        break;
+      }
       case PageAction.RESTORE_PAGE: {
         await this.onRestore();
         break;
@@ -1133,7 +1145,9 @@ var TranslationsPanel = new (class {
           // the icon.
           error ||
           // Finally check that this is a supported language that we should translate.
-          (hasSupportedLanguage && !(await shouldNeverTranslate()))
+          (hasSupportedLanguage &&
+            !(await shouldNeverTranslate()) &&
+            (await TranslationsParent.getIsTranslationsEngineSupported()))
         ) {
           if (handleEventId !== this.handleEventId) {
             // A new handleEvent was received, this one is stale.
