@@ -146,6 +146,7 @@ out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/oemnetd_aidl_inte
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/audiopolicy-aidl-cpp.so
 out/target/product/${GONK_PRODUCT_NAME}/apex/com.android.tethering/lib${BINSUFFIX}/libnetworkstats.so
 out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libwificond_ipc_shared.so
+out/target/product/${GONK_PRODUCT_NAME}/system/lib${BINSUFFIX}/libmedia_codeclist.so
 EOF
 
 # is not available in aosp 13.

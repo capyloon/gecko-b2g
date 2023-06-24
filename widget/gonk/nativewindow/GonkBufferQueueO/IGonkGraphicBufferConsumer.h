@@ -50,8 +50,6 @@ class NativeHandle;
 
 class IGonkGraphicBufferConsumer : public IInterface {
  public:
-  DECLARE_META_INTERFACE(GonkGraphicBufferConsumer);
-
   // public facing structure for BufferSlot
   class BufferItem : public Flattenable<BufferItem> {
     friend class Flattenable<BufferItem>;
