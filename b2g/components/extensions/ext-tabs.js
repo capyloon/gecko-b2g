@@ -8,15 +8,10 @@ function log(msg) {
 
 log(`loaded`);
 
-ChromeUtils.defineModuleGetter(
-  this,
-  "PromiseUtils",
-  "resource://gre/modules/PromiseUtils.jsm"
-);
-
-XPCOMUtils.defineLazyModuleGetters(this, {
-  WebExtensionsEmbedding: "resource://gre/modules/WebExtensionsEmbedding.jsm",
-  mobileWindowTracker: "resource://gre/modules/WebExtensionsEmbedding.jsm",
+ChromeUtils.defineESModuleGetters(this, {
+  PromiseUtils: "resource://gre/modules/PromiseUtils.sys.mjs",
+  WebExtensionsEmbedding: "resource://gre/modules/WebExtensionsEmbedding.sys.mjs",
+  mobileWindowTracker: "resource://gre/modules/WebExtensionsEmbedding.sys.mjs"
 });
 
 const getBrowserWindow = window => {
@@ -148,12 +143,8 @@ this.tabs = class extends ExtensionAPI {
           name: "tabs.onActivated",
           event: "tab-activated",
           listener: (fire, event) => {
-            let {
-              tabId,
-              windowId,
-              previousTabId,
-              previousTabIsPrivate,
-            } = event;
+            let { tabId, windowId, previousTabId, previousTabIsPrivate } =
+              event;
             if (previousTabIsPrivate && !context.privateBrowsingAllowed) {
               previousTabId = undefined;
             }
@@ -177,6 +168,7 @@ this.tabs = class extends ExtensionAPI {
          * Since multiple tabs currently can't be highlighted, onHighlighted
          * essentially acts an alias for self.tabs.onActivated but returns
          * the tabId in an array to match the API.
+         *
          * @see  https://developer.mozilla.org/en-US/Add-ons/WebExtensions/API/Tabs/onHighlighted
          */
         onHighlighted: new EventManager({
@@ -198,9 +190,9 @@ this.tabs = class extends ExtensionAPI {
               }
               let tabIds = Array.from(
                 windowWrapper.getHighlightedTabs(),
-                tab => tab.id
+                tab => tab._extensionId
               );
-              fire.async({ tabIds: tabIds, windowId: event.windowId });
+              fire.async({ tabIds, windowId: event.windowId });
             };
 
             tabTracker.on("tabs-highlighted", highlightListener);
@@ -287,7 +279,7 @@ this.tabs = class extends ExtensionAPI {
             const fireForTab = (tab, changed) => {
               const [needed, changeInfo] = sanitize(tab, changed);
               if (needed) {
-                fire.async(tab.id, changeInfo, tab.convert());
+                fire.async(tab._extensionId, changeInfo, tab.convert());
               }
             };
 
@@ -413,10 +405,11 @@ this.tabs = class extends ExtensionAPI {
             // inherit, and instead always get a NullPrincipal.
             flags |= Ci.nsIWebNavigation.LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL;
             // Falling back to content here as about: requires it, however is safe.
-            principal = Services.scriptSecurityManager.getLoadContextContentPrincipal(
-              Services.io.newURI(url),
-              browser.loadContext
-            );
+            principal =
+              Services.scriptSecurityManager.getLoadContextContentPrincipal(
+                Services.io.newURI(url),
+                browser.loadContext
+              );
           }
 
           linkedBrowser.loadURI(url, {

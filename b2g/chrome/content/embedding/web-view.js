@@ -11,7 +11,7 @@ const { AboutReaderParent } = ChromeUtils.importESModule(
   "resource://gre/actors/AboutReaderParent.sys.mjs"
 );
 
-(function() {
+(function () {
   const { XPCOMUtils } = ChromeUtils.importESModule(
     "resource://gre/modules/XPCOMUtils.sys.mjs"
   );
@@ -450,6 +450,10 @@ const { AboutReaderParent } = ChromeUtils.importESModule(
         this.browser = this._browser;
       } else {
         this.browser = document.createXULElement("browser");
+        // Setup private browsing if needed.
+        if (this.hasAttribute("privatebrowsing")) {
+          this.browser.setAttribute("mozprivatebrowsing", "true");
+        }
         // Used by the WebExtension code to figure our where to inject content scripts & CSS.
         this.browser.setAttribute("messagemanagergroup", "browsers");
         // The remoteType and initialBrowsingContextGroupId can't change once set, so are not observed attributes.
@@ -502,6 +506,7 @@ const { AboutReaderParent } = ChromeUtils.importESModule(
 
       this.browser.setAttribute("src", "about:blank");
       this.browser.setAttribute("type", "content");
+      this.browser.setAttribute("nodefaultsrc", "true");
 
       // We can't set the xul:browser style as an attribute because that is rejected by the CSP.
       this.browser.style.border = "none";

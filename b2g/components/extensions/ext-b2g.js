@@ -3,13 +3,9 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
-
-ChromeUtils.defineModuleGetter(
-  this,
-  "PrivateBrowsingUtils",
-  "resource://gre/modules/PrivateBrowsingUtils.jsm"
-);
+ChromeUtils.defineESModuleGetters(this, {
+  PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
+});
 
 function log(msg) {
   dump(`ext-b2g.js: ${msg}\n`);
@@ -17,11 +13,10 @@ function log(msg) {
 
 log(`Loading...`);
 
-ChromeUtils.defineModuleGetter(
-  this,
-  "WebExtensionsEmbedding",
-  "resource://gre/modules/WebExtensionsEmbedding.jsm"
-);
+ChromeUtils.defineESModuleGetters(this, {
+  WebExtensionsEmbedding:
+    "resource://gre/modules/WebExtensionsEmbedding.sys.mjs",
+});
 
 // ChromeUtils.defineModuleGetter(
 //   this,
@@ -39,11 +34,11 @@ ChromeUtils.defineModuleGetter(
 //   "resource://gre/modules/Messaging.jsm"
 // );
 
-var { ExtensionCommon } = ChromeUtils.import(
-  "resource://gre/modules/ExtensionCommon.jsm"
+var { ExtensionCommon } = ChromeUtils.importESModule(
+  "resource://gre/modules/ExtensionCommon.sys.mjs"
 );
-var { ExtensionUtils } = ChromeUtils.import(
-  "resource://gre/modules/ExtensionUtils.jsm"
+var { ExtensionUtils } = ChromeUtils.importESModule(
+  "resource://gre/modules/ExtensionUtils.sys.mjs"
 );
 
 var { DefaultWeakMap, ExtensionError } = ExtensionUtils;
@@ -198,7 +193,7 @@ class WindowTracker extends WindowTrackerBase {
  *        The API name of the event manager, e.g.,"runtime.onMessage".
  * @param {string} event
  *        The name of the EventDispatcher event to listen for.
- * @param {function} listener
+ * @param {Function} listener
  *        The listener function to call when an EventDispatcher event is
  *        recieved.
  *
@@ -231,7 +226,7 @@ class WindowTracker extends WindowTrackerBase {
 // Return an array of <web-views> loaded with content that is not a WebExtension popup.
 function getWebViewsForWindow(someWindow) {
   // Find the web-view container.
-  let window = !!someWindow?.systemapp ? someWindow.systemapp : someWindow;
+  let window = someWindow?.systemapp ? someWindow.systemapp : someWindow;
   if (!window) {
     return [];
   }
@@ -430,6 +425,12 @@ class Tab extends TabBase {
     return false;
   }
 
+  get autoDiscardable() {
+    // This property reflects whether the browser is allowed to auto-discard.
+    // Since extensions cannot do so on Android, we return true here.
+    return true;
+  }
+
   get sharingState() {
     return {
       screen: undefined,
@@ -465,7 +466,7 @@ class TabContext extends EventEmitter {
     this.emit(
       "location-change",
       {
-        id: tab.id,
+        id: tab._extensionId,
         linkedBrowser: browser,
         // TODO: we don't support selected so we just alway say we are
         selected: true,
@@ -707,7 +708,6 @@ global.openOptionsPage = async extension => {
 
     const newWindow = linkedBrowser.ownerGlobal;
     // mobileWindowTracker.setTabActive(newWindow, true);
-    return;
   }
 
   // Delegate option page handling to the app.

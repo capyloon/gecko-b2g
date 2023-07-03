@@ -12,15 +12,13 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
 
-XPCOMUtils.defineLazyModuleGetters(lazy, {
-  WebExtensionsEmbedding: "resource://gre/modules/WebExtensionsEmbedding.jsm",
-});
-
 ChromeUtils.defineESModuleGetters(lazy, {
   ChromeNotifications: "resource://gre/modules/ChromeNotifications.sys.mjs",
   SelectionActionParent: "resource://gre/actors/SelectionActionParent.sys.mjs",
   embeddableProcessInfo: "resource://gre/modules/B2GProcessSelector.sys.mjs",
   Screenshot: "resource://gre/modules/Screenshot.sys.mjs",
+  WebExtensionsEmbedding:
+    "resource://gre/modules/WebExtensionsEmbedding.sys.mjs",
 });
 
 XPCOMUtils.defineLazyServiceGetter(
@@ -30,7 +28,7 @@ XPCOMUtils.defineLazyServiceGetter(
   "nsIUserIdleService"
 );
 
-(function() {
+(function () {
   const { AlertsEventHandler } = ChromeUtils.importESModule(
     "resource://gre/modules/AlertsHelper.sys.mjs"
   );

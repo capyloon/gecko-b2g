@@ -8,12 +8,13 @@ console.log(`ext-browserAction.js loaded`);
 // The ext-* files are imported into the same scopes.
 /* import-globals-from ext-b2g.js */
 
-XPCOMUtils.defineLazyModuleGetters(this, {
-  WebExtensionsEmbedding: "resource://gre/modules/WebExtensionsEmbedding.jsm",
+ChromeUtils.defineESModuleGetters(this, {
+  WebExtensionsEmbedding:
+    "resource://gre/modules/WebExtensionsEmbedding.sys.mjs",
 });
 
-const { BrowserActionBase } = ChromeUtils.import(
-  "resource://gre/modules/ExtensionActions.jsm"
+const { BrowserActionBase } = ChromeUtils.importESModule(
+  "resource://gre/modules/ExtensionActions.sys.mjs"
 );
 
 // TODO: Move to a common file
@@ -92,7 +93,7 @@ class BrowserAction extends BrowserActionBase {
 
   updateOnChange(tab) {
     // console.log(`ext-BrowserAction::updateOnChange`);
-    const tabId = tab ? tab.id : null;
+    const tabId = tab ? tab._extensionId : null;
     const action = tab
       ? this.getContextData(tab)
       : this.helper.extractProperties(this.globals);
@@ -179,7 +180,16 @@ this.browserAction = class extends ExtensionAPI {
           },
         }).api(),
 
-        openPopup: function() {
+        getUserSettings: () => {
+          return {
+            // isOnToolbar is not supported on B2G.
+            // We intentionally omit the property, in case
+            // extensions would like to feature-detect support
+            // for this feature.
+          };
+        },
+
+        openPopup() {
           action.openPopup();
         },
       },
