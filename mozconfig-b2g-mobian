@@ -1,6 +1,13 @@
 # Needed to use llvm-strip when packaging.
 export TOOLCHAIN_PREFIX="llvm-"
 
+MOZBUILD="$HOME/.mozbuild"
+
+export CC="$MOZBUILD/clang/bin/clang"
+export CXX="$MOZBUILD/clang/bin/clang++"
+export HOST_CC="$MOZBUILD/clang/bin/clang"
+export HOST_CXX="$MOZBUILD/clang/bin/clang++"
+
 #ac_add_options --enable-bootstrap
 ac_add_options --target=aarch64-unknown-linux-gnu
 ac_add_options --enable-linker=lld

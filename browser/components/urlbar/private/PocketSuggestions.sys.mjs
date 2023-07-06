@@ -30,7 +30,8 @@ const RESULT_MENU_COMMAND = {
 export class PocketSuggestions extends BaseFeature {
   constructor() {
     super();
-    this.#suggestionsMap = new lazy.SuggestionsMap();
+    this.#lowConfidenceSuggestionsMap = new lazy.SuggestionsMap();
+    this.#highConfidenceSuggestionsMap = new lazy.SuggestionsMap();
   }
 
   get shouldEnable() {
@@ -56,9 +57,11 @@ export class PocketSuggestions extends BaseFeature {
   }
 
   get canShowLessFrequently() {
-    // TODO (bug 1837097): To be implemented once the "Show less frequently"
-    // logic is decided.
-    return false;
+    let cap =
+      lazy.UrlbarPrefs.get("pocketShowLessFrequentlyCap") ||
+      lazy.QuickSuggestRemoteSettings.config.show_less_frequently_cap ||
+      0;
+    return !cap || this.showLessFrequentlyCount < cap;
   }
 
   enable(enabled) {
@@ -66,52 +69,107 @@ export class PocketSuggestions extends BaseFeature {
       lazy.QuickSuggestRemoteSettings.register(this);
     } else {
       lazy.QuickSuggestRemoteSettings.unregister(this);
+      this.#lowConfidenceSuggestionsMap.clear();
+      this.#highConfidenceSuggestionsMap.clear();
     }
   }
 
   async queryRemoteSettings(searchString) {
-    let suggestions = this.#suggestionsMap.get(searchString);
-    if (!suggestions) {
-      return [];
+    // If the search string matches high confidence suggestions, they should be
+    // treated as top picks. Otherwise try to match low confidence suggestions.
+    let is_top_pick = false;
+    let suggestions = this.#highConfidenceSuggestionsMap.get(searchString);
+    if (suggestions.length) {
+      is_top_pick = true;
+    } else {
+      suggestions = this.#lowConfidenceSuggestionsMap.get(searchString);
     }
 
-    return suggestions.map(suggestion => ({
-      url: suggestion.url,
-      title: suggestion.title,
-      score: suggestion.score,
-      is_top_pick: suggestion.is_top_pick,
-    }));
+    let lowerSearchString = searchString.toLocaleLowerCase();
+    return suggestions.map(suggestion => {
+      // Add `full_keyword` to each matched suggestion. It should be the longest
+      // keyword that starts with the user's search string.
+      let full_keyword = lowerSearchString;
+      let keywords = is_top_pick
+        ? suggestion.highConfidenceKeywords
+        : suggestion.lowConfidenceKeywords;
+      for (let keyword of keywords) {
+        if (
+          keyword.startsWith(lowerSearchString) &&
+          full_keyword.length < keyword.length
+        ) {
+          full_keyword = keyword;
+        }
+      }
+      return { ...suggestion, is_top_pick, full_keyword };
+    });
   }
 
   async onRemoteSettingsSync(rs) {
     let records = await rs.get({ filters: { type: "pocket-suggestions" } });
-    if (rs != lazy.QuickSuggestRemoteSettings.rs) {
+    if (!this.isEnabled) {
       return;
     }
 
-    let suggestionsMap = new lazy.SuggestionsMap();
+    let lowMap = new lazy.SuggestionsMap();
+    let highMap = new lazy.SuggestionsMap();
 
     this.logger.debug(`Got ${records.length} records`);
     for (let record of records) {
       let { buffer } = await rs.attachments.download(record);
-      if (rs != lazy.QuickSuggestRemoteSettings.rs) {
+      if (!this.isEnabled) {
         return;
       }
 
       let suggestions = JSON.parse(new TextDecoder("utf-8").decode(buffer));
       this.logger.debug(`Adding ${suggestions.length} suggestions`);
-      await suggestionsMap.add(suggestions);
-      if (rs != lazy.QuickSuggestRemoteSettings.rs) {
+
+      await lowMap.add(suggestions, {
+        keywordsProperty: "lowConfidenceKeywords",
+        mapKeyword:
+          lazy.SuggestionsMap.MAP_KEYWORD_PREFIXES_STARTING_AT_FIRST_WORD,
+      });
+      if (!this.isEnabled) {
+        return;
+      }
+
+      await highMap.add(suggestions, {
+        keywordsProperty: "highConfidenceKeywords",
+      });
+      if (!this.isEnabled) {
         return;
       }
     }
 
-    this.#suggestionsMap = suggestionsMap;
+    this.#lowConfidenceSuggestionsMap = lowMap;
+    this.#highConfidenceSuggestionsMap = highMap;
   }
 
   makeResult(queryContext, suggestion, searchString) {
-    // If `is_top_pick` is not specified, handle it as top pick suggestion.
-    suggestion.is_top_pick = suggestion.is_top_pick ?? true;
+    if (!this.isEnabled) {
+      // The feature is disabled on the client, but Merino may still return
+      // suggestions anyway, and we filter them out here.
+      return null;
+    }
+
+    // If the user hasn't clicked the "Show less frequently" command, the
+    // suggestion can be shown. Otherwise, the suggestion can be shown if the
+    // user typed more than one word with at least `showLessFrequentlyCount`
+    // characters after the first word, including spaces.
+    if (this.showLessFrequentlyCount) {
+      let spaceIndex = searchString.search(/\s/);
+      if (
+        spaceIndex < 0 ||
+        searchString.length - spaceIndex < this.showLessFrequentlyCount
+      ) {
+        return null;
+      }
+    }
+
+    let isBestMatch =
+      suggestion.is_top_pick &&
+      lazy.UrlbarPrefs.get("bestMatchEnabled") &&
+      lazy.UrlbarPrefs.get("suggest.bestmatch");
 
     return Object.assign(
       new lazy.UrlbarResult(
@@ -120,11 +178,26 @@ export class PocketSuggestions extends BaseFeature {
         ...lazy.UrlbarResult.payloadAndSimpleHighlights(queryContext.tokens, {
           url: suggestion.url,
           title: [suggestion.title, lazy.UrlbarUtils.HIGHLIGHT.TYPED],
+          description: isBestMatch ? suggestion.description : "",
           icon: "chrome://global/skin/icons/pocket.svg",
+          shouldShowUrl: true,
+          bottomTextL10n: {
+            id: "firefox-suggest-pocket-bottom-text",
+            args: {
+              keywordSubstringTyped: searchString,
+              keywordSubstringNotTyped: suggestion.full_keyword.substring(
+                searchString.length
+              ),
+            },
+          },
           helpUrl: lazy.QuickSuggest.HELP_URL,
         })
       ),
-      { showFeedbackMenu: true }
+      {
+        isRichSuggestion: true,
+        richSuggestionIconSize: isBestMatch ? 24 : 16,
+        showFeedbackMenu: true,
+      }
     );
   }
 
@@ -135,14 +208,17 @@ export class PocketSuggestions extends BaseFeature {
         break;
       // selType == "dismiss" when the user presses the dismiss key shortcut.
       case "dismiss":
-      case RESULT_MENU_COMMAND.NOT_INTERESTED:
       case RESULT_MENU_COMMAND.NOT_RELEVANT:
         lazy.QuickSuggest.blockedSuggestions.add(result.payload.url);
-        queryContext.view.acknowledgeDismissal(result);
+        queryContext.view.acknowledgeDismissal(result, false);
+        break;
+      case RESULT_MENU_COMMAND.NOT_INTERESTED:
+        lazy.UrlbarPrefs.set("suggest.pocket", false);
+        queryContext.view.acknowledgeDismissal(result, true);
         break;
       case RESULT_MENU_COMMAND.SHOW_LESS_FREQUENTLY:
         queryContext.view.acknowledgeFeedback(result);
-        this.#incrementShowLessFrequentlyCount();
+        this.incrementShowLessFrequentlyCount();
         break;
     }
   }
@@ -191,7 +267,7 @@ export class PocketSuggestions extends BaseFeature {
     return commands;
   }
 
-  #incrementShowLessFrequentlyCount() {
+  incrementShowLessFrequentlyCount() {
     if (this.canShowLessFrequently) {
       lazy.UrlbarPrefs.set(
         "pocket.showLessFrequentlyCount",
@@ -200,5 +276,6 @@ export class PocketSuggestions extends BaseFeature {
     }
   }
 
-  #suggestionsMap;
+  #lowConfidenceSuggestionsMap;
+  #highConfidenceSuggestionsMap;
 }
