@@ -504,7 +504,7 @@ this.tabs = class extends ExtensionAPI {
         },
 
         async get(tabId) {
-          log(`get ${tabId}`);
+          // log(`get ${tabId}`);
           return tabManager.get(tabId).convert();
         },
 

@@ -51,7 +51,7 @@ pub struct SystemClock {}
 
 fn get_clock_id_ms(clock: ClockId) -> i64 {
     match clock_gettime(clock) {
-        Ok(time) => time.tv_nsec() / 1_000_000 + time.tv_sec() * 1000,
+        Ok(time) => (time.tv_nsec() / 1_000_000 + time.tv_sec()) as i64 * 1000,
         Err(_) => 0,
     }
 }

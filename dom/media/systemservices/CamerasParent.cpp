@@ -6,6 +6,9 @@
 
 #include "CamerasParent.h"
 
+#include <sys/socket.h>
+#include <sys/un.h>
+
 #include <atomic>
 #include "MediaEngineSource.h"
 #include "PerformanceRecorder.h"
@@ -429,6 +432,42 @@ VideoEngine* CamerasParent::EnsureInitialized(int aEngine) {
   }
 
   if (capEngine == CameraEngine) {
+#if defined(WEBRTC_USE_PIPEWIRE) && defined(MOZ_B2G)
+    const bool usePipeWire =
+          mozilla::StaticPrefs::media_webrtc_camera_allow_pipewire_AtStartup();
+
+    if (usePipeWire && !sVideoCaptureOptions.get()) {
+      // We need to create the video capture options to prevent
+      // GetOrCreateVideoCaptureDeviceInfo() to be called with
+      // null since that leads to use the v4l2 path.
+      int pipewireFd = -1;
+      struct sockaddr_un addr;
+
+      nsCString pipewirePath(PR_GetEnv("XDG_RUNTIME_DIR"));
+      // TODO: don't hardcode ??
+      // This is core.name in /usr/share/pipewire/pipewire.conf
+      pipewirePath += "/pipewire-0";
+
+      if ((pipewireFd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
+          LOG("Error creating pipewire socket");
+          return nullptr;
+      }
+
+      memset(&addr, 0, sizeof(addr));
+      addr.sun_family = AF_UNIX;
+      strncpy(addr.sun_path, pipewirePath.get(), sizeof(addr.sun_path) - 1);
+
+      if (connect(pipewireFd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
+          LOG("Error connecting to pipewire socket at %s", pipewirePath.get());
+          return nullptr;
+      }
+
+      auto options = MakeRefPtr<VideoCaptureOptionsImpl>();
+      options->Init(pipewireFd);
+      sVideoCaptureOptions = options->ReleaseOptions().release();
+    }
+#endif
+
     auto device_info =
         engine->GetOrCreateVideoCaptureDeviceInfo(sVideoCaptureOptions.get());
     MOZ_ASSERT(device_info);
@@ -1191,7 +1230,7 @@ auto CamerasParent::RequestCameraAccess()
         NS_OK, "CamerasParent::RequestCameraAccess Resolve");
   }
 
-#if defined(WEBRTC_USE_PIPEWIRE)
+#if defined(WEBRTC_USE_PIPEWIRE) && !defined(MOZ_B2G)
   static StaticRefPtr<CameraAccessRequestPromise> sCameraAccessRequestPromise;
   if (!sCameraAccessRequestPromise) {
     auto options = MakeRefPtr<VideoCaptureOptionsImpl>();
@@ -1250,6 +1289,19 @@ auto CamerasParent::RequestCameraAccess()
         }
         return CamerasParent::RequestCameraAccess();
       });
+#endif
+
+// When running for B2G we don't want the UI from the portal to
+// show up, so we connect directly to the Pipewire socket.
+#if defined(WEBRTC_USE_PIPEWIRE) && defined(MOZ_B2G)
+  NS_DispatchToMainThread(NS_NewRunnableFunction(
+      "CamerasParent::RequestCameraAccess",
+      []() { ClearOnShutdown(&sVideoCaptureOptions); }));
+  return CameraAccessRequestPromise::CreateAndResolve(
+      NS_OK,
+      "CamerasParent::RequestCameraAccess options init "
+      "resolve");
+
 #endif
 }
 

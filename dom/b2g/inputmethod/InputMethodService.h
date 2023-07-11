@@ -31,13 +31,15 @@ class InputMethodService final : public nsIEditableSupport {
                   nsIInputContext* aPropBag);
 
   void RegisterEditableSupport(nsIEditableSupport* aEditableSupport) {
-    MOZ_ASSERT(!mEditableSupport);
-    mEditableSupport = aEditableSupport;
+    if (!mEditableSupport) {
+      mEditableSupport = aEditableSupport;
+    }
   }
 
   void UnregisterEditableSupport(nsIEditableSupport* aEditableSupport) {
-    MOZ_ASSERT(mEditableSupport == aEditableSupport);
-    mEditableSupport = nullptr;
+    if (mEditableSupport == aEditableSupport) {
+      mEditableSupport = nullptr;
+    }
   }
 
   nsIEditableSupport* GetRegisteredEditableSupport() {

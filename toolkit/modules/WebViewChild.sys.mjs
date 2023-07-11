@@ -250,6 +250,13 @@ WebViewChild.prototype = {
       backgroundcolor = content
         .getComputedStyle(content.document.body)
         .getPropertyValue("background-color");
+      // If the computed color is "transparent" on the body,
+      // get it from the "html" element.
+      if (backgroundcolor == "rgba(0, 0, 0, 0)") {
+        backgroundcolor = content
+        .getComputedStyle(content.document.body.parentNode)
+        .getPropertyValue("background-color");
+      }
       this.global.sendAsyncMessage(messageName, {
         success: true,
         result: backgroundcolor,

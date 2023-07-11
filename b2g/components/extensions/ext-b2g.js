@@ -280,7 +280,7 @@ class TabTracker extends TabTrackerBase {
   }
 
   getTab(tabId, default_ = undefined) {
-    log(`TabTracker::getTab(tabId=${tabId}, default=${default_})`);
+    // log(`TabTracker::getTab(tabId=${tabId}, default=${default_})`);
     let nativeTab = this._tabIds.get(tabId);
     if (nativeTab) {
       return nativeTab;

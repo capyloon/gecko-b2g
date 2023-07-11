@@ -120,6 +120,14 @@ let tabFinder = {
     if (!browser) {
       return null;
     }
+
+    if (AppConstants.MOZ_B2G) {
+      return {
+        tabbrowser: {},
+        tab: browser,
+      };
+    }
+
     let tabbrowser = browser.getTabBrowser();
     if (!tabbrowser) {
       return {
@@ -602,7 +610,12 @@ var View = {
       switch (data.type) {
         case "browser":
         case "privilegedabout":
-          image = "chrome://branding/content/icon32.png";
+          if (AppConstants.MOZ_B2G) {
+            // TODO: figure out how to get the branded one instead.
+            image = `chrome://system/content/resources/logo-b2g.webp`;
+          } else {
+            image = "chrome://branding/content/icon32.png";
+          }
           break;
         case "extension":
           image = "chrome://mozapps/skin/extensions/extension.svg";
@@ -814,7 +827,8 @@ var View = {
     let className;
     if (tab && tab.tabbrowser) {
       fluentName = "about-processes-tab-name";
-      fluentArgs.name = tab.tab.label;
+      fluentArgs.name =
+        tab.tab.label || data.documentTitle || data.documentURI.spec;
       className = "tab";
     } else if (tab) {
       fluentName = "about-processes-preloaded-tab";

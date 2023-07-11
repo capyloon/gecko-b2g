@@ -280,10 +280,6 @@ APZCTreeManager::APZCTreeManager(LayersId aRootLayersId,
       mDPI(160.0),
       mHitTester(std::move(aHitTester)),
       mScrollGenerationLock("APZScrollGenerationLock") {
-  RefPtr<APZCTreeManager> self(this);
-  NS_DispatchToMainThread(NS_NewRunnableFunction(
-      "layers::APZCTreeManager::APZCTreeManager",
-      [self] { self->mFlushObserver = new CheckerboardFlushObserver(self); }));
   AsyncPanZoomController::InitializeGlobalState();
   mApzcTreeLog.ConditionOnPrefFunction(StaticPrefs::apz_printtree);
 
@@ -294,6 +290,21 @@ APZCTreeManager::APZCTreeManager(LayersId aRootLayersId,
 }
 
 APZCTreeManager::~APZCTreeManager() = default;
+
+void APZCTreeManager::Init() {
+  RefPtr<APZCTreeManager> self(this);
+  NS_DispatchToMainThread(NS_NewRunnableFunction(
+      "layers::APZCTreeManager::Init",
+      [self] { self->mFlushObserver = new CheckerboardFlushObserver(self); }));
+}
+
+already_AddRefed<APZCTreeManager> APZCTreeManager::Create(
+    LayersId aRootLayersId, UniquePtr<IAPZHitTester> aHitTester) {
+  RefPtr<APZCTreeManager> manager =
+      new APZCTreeManager(aRootLayersId, std::move(aHitTester));
+  manager->Init();
+  return manager.forget();
+}
 
 void APZCTreeManager::SetSampler(APZSampler* aSampler) {
   // We're either setting the sampler or clearing it
@@ -607,8 +618,8 @@ void APZCTreeManager::UpdateHitTestingTree(
                 *mAsyncZoomContainerSubtree),
         "If there is an async zoom container, all scroll nodes with root "
         "content scroll metadata should be inside it");
-    MOZ_ASSERT(!haveNestedAsyncZoomContainers,
-               "Should not have nested async zoom container");
+    // MOZ_ASSERT(!haveNestedAsyncZoomContainers,
+    //            "Should not have nested async zoom container");
 
     // If we have perspective transforms deferred to children, do another
     // walk of the tree and actually apply them to the children.
