@@ -45,6 +45,14 @@
   display: flex;
 }
 
+@media (max-width: 650px) {
+  #toolbar {
+    min-width: unset;
+    flex-direction: column;
+    gap: 0.5em;
+  }
+}
+
 .checkbox-container {
   /* Center align and get rid of whitespace. */
   display: inline-flex;
@@ -110,6 +118,12 @@
   border-spacing: 0;
 }
 
+@media (max-width: 650px) {
+  #prefs {
+    min-width: unset;
+  }
+}
+
 #prefs > tr.odd {
   background-color: var(--in-content-box-background-odd);
 }
@@ -150,11 +164,16 @@
 
 #prefs > tr:dir(ltr) > th {
   /* Be explicit about padding direction since `th` is forced to be LTR. */
-  padding-left: 30px;
+  padding-left: 10px;
 }
 
 #prefs > tr:dir(rtl) > th {
-  padding-right: 30px;
+  padding-right: 10px;
+}
+
+#prefs > tr > th {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 #prefs > tr.deleted > th > span {
@@ -172,6 +191,12 @@
   overflow-wrap: anywhere;
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+@media (max-width: 650px) {
+  .cell-value {
+    width: 25%;
+  }
 }
 
 tr:not(.deleted) > .cell-value {
@@ -287,4 +312,10 @@ td.cell-value > form > input[type="number"] {
   #prefs > tr.deleted:hover > th > span {
     color: inherit;
   }
+}
+
+#form-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
 }
