@@ -92,17 +92,13 @@
 @BINPATH@/@DLL_PREFIX@mozwayland@DLL_SUFFIX@
 #endif
 
-@RESPATH@/chrome/recording.manifest
-@RESPATH@/chrome/recording/content/recording.js
 @RESPATH@/update.locale
-@RESPATH@/xpcshell
 
 [browser]
 ; [Base Browser Files]
 #ifndef XP_UNIX
 @BINPATH@/@MOZ_APP_NAME@.exe
 #else
-@BINPATH@/@MOZ_APP_NAME@-bin
 @BINPATH@/@MOZ_APP_NAME@
 #endif
 @RESPATH@/application.ini
@@ -137,7 +133,6 @@
 #endif
 
 ; JavaScript components
-@RESPATH@/components/toolkitsearch.manifest
 #ifdef ENABLE_TV
 @RESPATH@/components/TVSimulatorService.js
 @RESPATH@/components/TVSimulatorService.manifest
@@ -265,25 +260,13 @@
 @RESPATH@/components/cryptoComponents.manifest
 @RESPATH@/components/TelemetryStartup.manifest
 
-@RESPATH@/components/DataCallManager.manifest
-@RESPATH@/components/DataCallService.manifest
-@RESPATH@/components/RadioInterfaceLayer.manifest
 @RESPATH@/components/Push.manifest
 #ifdef MOZ_WEBPUSH
 @RESPATH@/components/PushComponents.js
 #endif
 
-@RESPATH@/components/nsDOMIdentity.js
-@RESPATH@/components/nsIDService.js
-@RESPATH@/components/Identity.manifest
-
 #ifdef HAS_KOOST_MODULES
 @RESPATH@/components/AuthorizationService.js
-#endif
-
-#ifdef MOZ_DEBUG
-@RESPATH@/components/TestInterfaceJS.js
-@RESPATH@/components/TestInterfaceJS.manifest
 #endif
 
 ; Modules
@@ -364,8 +347,9 @@
 #ifdef XP_MACOSX
 @RESPATH@/res/MainMenu.nib/
 #endif
-@RESPATH@/contentaccessible/TopLevelVideoDocument.css
-@RESPATH@/contentaccessible/TopLevelImageDocument.css
+
+; Content-accessible resources.
+@RESPATH@/contentaccessible/*
 
 ; svg
 @RESPATH@/res/svg.css
