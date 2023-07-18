@@ -512,6 +512,8 @@ var ExtensionAddonObserver = {
     // since only extensions have uuid's.
     lazy.ExtensionPermissions.removeAll(addon.id);
 
+    lazy.QuarantinedDomains.clearUserPref(addon.id);
+
     let uuid = UUIDMap.get(addon.id, false);
     if (!uuid) {
       return;
@@ -699,6 +701,7 @@ export var ExtensionProcessCrashObserver = {
         let pp = subject.QueryInterface(Ci.nsIDOMProcessParent);
         if (pp.remoteType === "extension") {
           this.currentProcessChildID = childID;
+          Glean.extensions.processEvent.created.add(1);
         }
         break;
       }
@@ -726,6 +729,7 @@ export var ExtensionProcessCrashObserver = {
         }
 
         this.lastCrashedProcessChildID = childID;
+        Glean.extensions.processEvent.crashed.add(1);
         Management.emit("extension-process-crash", { childID });
         break;
       }

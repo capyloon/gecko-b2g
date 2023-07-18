@@ -1069,7 +1069,7 @@ static bool WasmGlobalFromArrayBuffer(JSContext* cx, unsigned argc, Value* vp) {
     JS_ReportErrorASCII(cx, "argument is not an array buffer");
     return false;
   }
-  RootedArrayBufferObject buffer(
+  Rooted<ArrayBufferObject*> buffer(
       cx, &args.get(1).toObject().as<ArrayBufferObject>());
 
   // Only allow POD to be created from bytes
@@ -5277,6 +5277,7 @@ class CustomSerializableObject : public NativeObject {
   }
 
   static bool ReadTransfer(JSContext* cx, JSStructuredCloneReader* r,
+                           const JS::CloneDataPolicy& cloneDataPolicy,
                            uint32_t tag, void* content, uint64_t extraData,
                            void* closure,
                            JS::MutableHandleObject returnObject) {
