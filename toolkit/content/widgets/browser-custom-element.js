@@ -1296,6 +1296,18 @@
 
     // Asks the child to change the scroll position.
     webViewScrollTo(where, smooth = true) {
+      if (!this.isRemoteBrowser) {
+        let win = this.contentDocument.defaultView;
+        let options = {
+          top: where === "top" ? 0 : win.scrollMaxY,
+        };
+        if (smooth) {
+          options.behavior = "smooth";
+        }
+        win.scrollTo(options);r
+        return;
+      }
+
       this.messageManager.sendAsyncMessage("WebView::ScrollTo", {
         where,
         smooth,

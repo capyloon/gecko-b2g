@@ -108,7 +108,6 @@
 }
 
 /* B2G specific overrides */
-/* To override moz-accessiblecaret css in ua.css */
 :host {
   --caret-width: 14px;
   --caret-height: 14px;

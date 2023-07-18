@@ -112,7 +112,8 @@ export class WebViewForContentChild extends JSWindowActorChild {
     if (
       !browser ||
       !XULFrameElement.isInstance(browser) ||
-      browser.isRemoteBrowser
+      browser.isRemoteBrowser ||
+      Services.appinfo.processType == Ci.nsIXULRuntime.PROCESS_TYPE_DEFAULT
     ) {
       // We only handle the window which is one of in-process <web-view>'s children.
       return;

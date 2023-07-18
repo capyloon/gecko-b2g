@@ -261,9 +261,7 @@
 @RESPATH@/components/TelemetryStartup.manifest
 
 @RESPATH@/components/Push.manifest
-#ifdef MOZ_WEBPUSH
-@RESPATH@/components/PushComponents.js
-#endif
+@RESPATH@/components/l10n-registry.manifest
 
 #ifdef HAS_KOOST_MODULES
 @RESPATH@/components/AuthorizationService.js
