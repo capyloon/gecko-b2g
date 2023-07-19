@@ -27,7 +27,14 @@ var modules = {
       Ci.nsIAboutModule.URI_CAN_LOAD_IN_CHILD |
       Ci.nsIAboutModule.HIDE_FROM_ABOUTABOUT,
     privileged: true,
-    hide: true,
+  },
+  blocked: {
+    uri: "chrome://b2g/content/blockedSite.xhtml",
+    flags:
+      Ci.nsIAboutModule.ALLOW_SCRIPT |
+      Ci.nsIAboutModule.URI_CAN_LOAD_IN_CHILD |
+      Ci.nsIAboutModule.HIDE_FROM_ABOUTABOUT,
+    privileged: true,
   },
   reader: {
     // Use the same uri and flags as in browser/components/about/AboutRedirector.cpp
@@ -38,7 +45,6 @@ var modules = {
       Ci.nsIAboutModule.URI_MUST_LOAD_IN_CHILD |
       Ci.nsIAboutModule.HIDE_FROM_ABOUTABOUT,
     privileged: true,
-    hide: true,
   },
 };
 

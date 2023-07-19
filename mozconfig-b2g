@@ -1,3 +1,5 @@
+. $topsrcdir/mozconfig-capyloon-env
+
 # Compiler
 
 NDK=$HOME/.mozbuild/android-ndk-r25b

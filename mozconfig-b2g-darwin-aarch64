@@ -1,3 +1,5 @@
+. $topsrcdir/mozconfig-capyloon-env
+
 # Cross compiling from Linux to OS-X: setup from https://github.com/emilio/mozconfigs/blob/master/mozconfigs/osx-cross
 
 ac_add_options --target=aarch64-apple-darwin

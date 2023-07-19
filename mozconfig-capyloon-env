@@ -1,0 +1,8 @@
+
+if [ -f "$MOZ_MOZILLA_API_KEY_FILE" ]; then
+ac_add_options --with-mozilla-api-keyfile="$MOZ_MOZILLA_API_KEY_FILE"
+fi
+
+if [ -f "$MOZ_GOOGLE_SAFEBROWSING_API_KEY_FILE" ]; then
+ac_add_options --with-google-safebrowsing-api-keyfile="$MOZ_GOOGLE_SAFEBROWSING_API_KEY_FILE"
+fi

@@ -1,3 +1,5 @@
+. $topsrcdir/mozconfig-capyloon-env
+
 # Needed to use llvm-strip when packaging.
 export TOOLCHAIN_PREFIX="llvm-"
 

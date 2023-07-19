@@ -63,6 +63,11 @@ chrome.jar:
   content/images/controls/keypad_number_normal.png (content/images/controls/keypad_number_normal.png)
   content/images/controls/keypad_number_press.png  (content/images/controls/keypad_number_press.png)
 
+# SafeBrowsing resources
+  content/blockedSite.xhtml (content/blockedSite.xhtml)
+  content/blockedSite.js    (content/blockedSite.js)
+  content/blockedSite.css   (content/blockedSite.css)
+
 # <web-view> and embedder
   content/embedding                           (content/embedding/*)
 

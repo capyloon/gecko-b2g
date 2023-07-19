@@ -62,10 +62,6 @@ pref("network.cookie.cookieBehavior", 0);
 // spdy
 pref("network.http.spdy.push-allowance", 32768);
 
-pref("network.http.customheader.hosts", "ssp.kaiads.com,kaios-analytics.com,kaios-wallet.com");
-pref("network.http.customheader.name", "X-Kai-Ads");
-pref("network.http.customheader.version", "v1");
-
 // See bug 545869 for details on why these are set the way they are
 pref("network.buffer.cache.count", 24);
 pref("network.buffer.cache.size",  16384);
@@ -183,10 +179,9 @@ pref("privacy.item.syncAccount", true);
 pref("geo.provider.use_mls", false);
 pref("geo.cell.scan", true);
 
-// URL for geolocating service, the original URL of B2G OS is
-// "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%"
+// URL for geolocation service.
 // Empty string would disable WiFi/cell geolocating service
-pref("geo.provider.network.url", "https://global.skyhookwireless.com/wps2/json/location?key=%GONK_GEOLOCATION_API_KEY%");
+pref("geo.provider.network.url", "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%");
 
 // whether to ask location provider to use IP address to determine location
 pref("geo.provider.network.considerIp", false);
@@ -1260,14 +1255,7 @@ pref("dom.filesystem.pathcheck.disabled", true);
 // Enable or disable the native font source of freetype.
 pref("gfx.font_rendering.native_font_source_none", false);
 
-// KaiOS Captive Portal URL
-pref("captivedetect.canonicalURL", "http://detectportal.kaiostech.com/success.txt");
-pref("captivedetect.canonicalContent", "success");
-
-pref("externalAPI.websocket.protocols", "kaios-services");
-pref("externalAPI.websocket.url", "ws://localhost/");
-
-//MVS featrue
+// MVS feature
 #if B2G_CCUSTOM_MODULES == C001
 pref("device.mvs", true);
 #endif
