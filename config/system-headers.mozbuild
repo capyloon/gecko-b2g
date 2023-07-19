@@ -1520,6 +1520,13 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gonk':
             'utils/StrongPointer.h',
         ]
 
+    if CONFIG['ANDROID_VERSION'] >= '33':
+        system_headers += [
+            'android/hardware/gnss/BnAGnssCallback.h',
+            'android/hardware/gnss/BnGnssCallback.h',
+            'android/hardware/gnss/visibility_control/BnGnssVisibilityControlCallback.h',
+        ]
+
     if CONFIG['B2G_OEMHOOK']:
         system_headers += [
             'vendor/qti/hardware/radio/qcrilhook/1.0/IQtiOemHook.h',
