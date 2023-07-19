@@ -416,7 +416,7 @@ Result_t WifiNative::GetDebugLevel(uint32_t& aLevel) {
 }
 
 Result_t WifiNative::SetDebugLevel(SupplicantDebugLevelOptions* aLevel) {
-  CONFIG_WIFI_DEBUG(aLevel->mLogLevel < nsISupplicantDebugLevel::LOG_INFO);
+  CONFIG_WIFI_DEBUG(aLevel->mLogLevel < nsISupplicantDebugLevel::SUP_LOG_INFO);
   return sSupplicantStaManager->SetSupplicantDebugLevel(aLevel);
 }
 
