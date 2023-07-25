@@ -12,6 +12,9 @@ export AR=$TOOLCHAIN/bin/llvm-ar
 export NM=$TOOLCHAIN/bin/llvm-nm
 export RANLIB=$TOOLCHAIN/bin/llvm-ranlib
 
+export NODEJS=$HOME/.mozbuild/node/bin/node
+ac_add_options --with-wasi-sysroot=$HOME/.mozbuild/sysroot-wasm32-wasi
+
 # Build B2G
 ac_add_options --enable-application=b2g
 ac_add_options --target=$TARGET_TRIPLE
