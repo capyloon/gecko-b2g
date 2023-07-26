@@ -454,6 +454,11 @@ const { AboutReaderParent } = ChromeUtils.importESModule(
         if (this.hasAttribute("privatebrowsing")) {
           this.browser.setAttribute("mozprivatebrowsing", "true");
         }
+        // Setup user context id (containers) if needed.
+        if (this.hasAttribute("usercontextid")) {
+          const userContextId = this.getAttribute("usercontextid");
+          this.browser.setAttribute("usercontextid", userContextId);
+        }
         // Used by the WebExtension code to figure our where to inject content scripts & CSS.
         this.browser.setAttribute("messagemanagergroup", "browsers");
         // The remoteType and initialBrowsingContextGroupId can't change once set, so are not observed attributes.

@@ -3647,6 +3647,8 @@ void nsINode::Adopt(nsNodeInfoManager* aNewNodeInfoManager,
     MOZ_ASSERT(afterAdoptDoc);
     MOZ_ASSERT(beforeAdoptDoc != afterAdoptDoc);
 
+// Disabling on b2g to allow svg icons to use adoptNode() in the system app.
+#if !defined(MOZ_B2G)
     if (afterAdoptDoc->GetDocGroup() != beforeAdoptDoc->GetDocGroup()) {
       // This is a temporary solution for Bug 1590526 to only limit
       // the restriction to chrome level documents because web extensions
@@ -3658,6 +3660,7 @@ void nsINode::Adopt(nsNodeInfoManager* aNewNodeInfoManager,
             "is unsupported");
       }
     }
+#endif
   }
 
   // Just need to store the return value of CloneAndAdopt in a
