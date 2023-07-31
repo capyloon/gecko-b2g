@@ -130,7 +130,6 @@ namespace jit {
   _(js::jit::NumberBigIntCompare<ComparisonKind::LessThan>)           \
   _(js::jit::NumberBigIntCompare<ComparisonKind::GreaterThanOrEqual>) \
   _(js::jit::BigIntNumberCompare<ComparisonKind::GreaterThanOrEqual>) \
-  _(js::jit::CreateMatchResultFallbackFunc)                           \
   _(js::jit::EqualStringsHelperPure)                                  \
   _(js::jit::FinishBailoutToBaseline)                                 \
   _(js::jit::FrameIsDebuggeeCheck)                                    \
@@ -157,8 +156,7 @@ namespace jit {
   _(js::jit::ObjectIsConstructor)                                     \
   _(js::jit::PostGlobalWriteBarrier)                                  \
   _(js::jit::PostWriteBarrier)                                        \
-  _(js::jit::PostWriteElementBarrier<IndexInBounds::Yes>)             \
-  _(js::jit::PostWriteElementBarrier<IndexInBounds::Maybe>)           \
+  _(js::jit::PostWriteElementBarrier)                                 \
   _(js::jit::Printf0)                                                 \
   _(js::jit::Printf1)                                                 \
   _(js::jit::StringFromCharCodeNoGC)                                  \

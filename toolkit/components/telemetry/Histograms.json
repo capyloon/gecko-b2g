@@ -8953,9 +8953,9 @@
     "products": ["firefox"],
     "alert_emails": ["mconley@mozilla.com"],
     "bug_numbers": [
-      1622263, 1683101, 1714258, 1730042, 1754641, 1781978, 1811151
+      1622263, 1683101, 1714258, 1730042, 1754641, 1781978, 1811151, 1841926
     ],
-    "expires_in_version": "118",
+    "expires_in_version": "never",
     "kind": "exponential",
     "high": 10000,
     "n_buckets": 100,
@@ -12710,7 +12710,7 @@
     "record_in_processes": ["main"],
     "products": ["firefox"],
     "operating_systems": ["windows"],
-    "expires_in_version": "120",
+    "expires_in_version": "126",
     "kind": "categorical",
     "labels": [
       "Success",
@@ -12734,7 +12734,7 @@
     "record_in_processes": ["main"],
     "products": ["firefox"],
     "operating_systems": ["windows"],
-    "expires_in_version": "118",
+    "expires_in_version": "126",
     "kind": "categorical",
     "labels": [
       "Success",

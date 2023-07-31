@@ -13,6 +13,7 @@ use crate::parser::{Parse, ParserContext};
 use crate::values::CustomIdent;
 use cssparser::{Parser as CSSParser, ParserInput as CSSParserInput};
 use style_traits::{
+    arc_slice::ArcSlice,
     CssWriter, ParseError as StyleParseError, PropertySyntaxParseError as ParseError,
     StyleParseErrorKind, ToCss,
 };
@@ -20,11 +21,11 @@ use style_traits::{
 use self::data_type::DataType;
 
 mod ascii;
-mod data_type;
+pub mod data_type;
 
 /// <https://drafts.css-houdini.org/css-properties-values-api-1/#parsing-syntax>
 #[derive(Debug, Clone, Default, MallocSizeOf, PartialEq)]
-pub struct Descriptor(#[ignore_malloc_size_of = "arc"] crate::ArcSlice<Component>);
+pub struct Descriptor(#[ignore_malloc_size_of = "arc"] pub ArcSlice<Component>);
 
 impl Descriptor {
     /// Returns whether this is the universal syntax descriptor.
@@ -61,7 +62,7 @@ impl Descriptor {
             // 5. Repeatedly consume the next input code point from stream.
             parser.parse()?;
         }
-        Ok(Self(crate::ArcSlice::from_iter(components.into_iter())))
+        Ok(Self(ArcSlice::from_iter(components.into_iter())))
     }
 }
 
@@ -292,14 +293,9 @@ impl<'a> Parser<'a> {
         let input = &self.input[self.position..];
         let mut input = CSSParserInput::new(input);
         let mut input = CSSParser::new(&mut input);
-        let location = input.current_source_location();
-        let name = input
-            .expect_ident()
-            .ok()
-            .and_then(|name| CustomIdent::from_ident(location, name, &[]).ok());
-        let name = match name {
-            Some(name) => name,
-            None => return Err(ParseError::InvalidName),
+        let name = match CustomIdent::parse(&mut input, &[]) {
+            Ok(name) => name,
+            Err(_) => return Err(ParseError::InvalidName),
         };
         self.position += input.position().byte_index();
         return Ok(ComponentName::Ident(name));

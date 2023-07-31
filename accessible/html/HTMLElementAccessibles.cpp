@@ -9,7 +9,7 @@
 #include "nsCoreUtils.h"
 #include "nsTextEquivUtils.h"
 #include "Relation.h"
-#include "Role.h"
+#include "mozilla/a11y/Role.h"
 #include "States.h"
 
 #include "mozilla/dom/HTMLLabelElement.h"
@@ -65,8 +65,7 @@ void HTMLLabelAccessible::DOMAttributeChanged(int32_t aNameSpaceID,
                                                aModType, aOldValue, aOldState);
 
   if (aAttribute == nsGkAtoms::_for) {
-    mDoc->QueueCacheUpdate(this, CacheDomain::Relations);
-    SendCache(CacheDomain::Actions, CacheUpdateType::Update);
+    mDoc->QueueCacheUpdate(this, CacheDomain::Relations | CacheDomain::Actions);
   }
 }
 

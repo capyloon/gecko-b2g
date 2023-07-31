@@ -96,6 +96,8 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
     return mCanvasElement->GetOriginalCanvas();
   }
 
+  void GetContextAttributes(CanvasRenderingContext2DSettings& aSettings) const;
+
   void OnMemoryPressure() override;
   void OnBeforePaintTransaction() override;
   void OnDidPaintTransaction() override;
@@ -350,6 +352,13 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
     }
   }
 
+  void EnsureActivePath() {
+    if (mPathPruned && !mPathBuilder->IsActive()) {
+      mPathBuilder->MoveTo(mPathBuilder->CurrentPoint());
+      mPathPruned = false;
+    }
+  }
+
   void ClosePath() {
     EnsureWritablePath();
 
@@ -388,6 +397,7 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
       mPathPruned = true;
       return;
     }
+    EnsureActivePath();
     mPathBuilder->QuadraticBezierTo(cp1, cp2);
     mPathPruned = false;
   }
@@ -528,6 +538,7 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
       mPathPruned = true;
       return;
     }
+    EnsureActivePath();
     mPathBuilder->LineTo(aPoint);
     mPathPruned = false;
   }
@@ -543,6 +554,7 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
       mPathPruned = true;
       return;
     }
+    EnsureActivePath();
     mPathBuilder->BezierTo(aCP1, aCP2, aCP3);
     mPathPruned = false;
   }
@@ -641,6 +653,12 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
   // Clears the target and updates mOpaque based on mOpaqueAttrValue and
   // mContextAttributesHasAlpha.
   void UpdateIsOpaque();
+
+  // Shared implementation for Stroke() and Stroke(CanvasPath) methods.
+  void StrokeImpl(const mozilla::gfx::Path& aPath);
+
+  // Shared implementation for Fill() methods.
+  void FillImpl(const mozilla::gfx::Path& aPath);
 
   /**
    * Creates the error target, if it doesn't exist

@@ -1984,6 +1984,8 @@ STATIC_ATOMS = [
     Atom("onspeakerforcedchange", "onspeakerforcedchange"),
     # MediaDevices device change event
     Atom("ondevicechange", "ondevicechange"),
+    # WebRTC events
+    Atom("onrtctransform", "onrtctransform"),
     # Internal Visual Viewport events
     Atom("onmozvisualresize", "onmozvisualresize"),
     Atom("onmozvisualscroll", "onmozvisualscroll"),
@@ -2290,8 +2292,6 @@ STATIC_ATOMS = [
     Atom("_moz_scrollbar_end_forward", "-moz-scrollbar-end-forward"),
     Atom("_moz_overlay_scrollbars", "-moz-overlay-scrollbars"),
     Atom("_moz_windows_accent_color_in_titlebar", "-moz-windows-accent-color-in-titlebar"),
-    Atom("_moz_windows_default_theme", "-moz-windows-default-theme"),
-    Atom("_moz_mac_graphite_theme", "-moz-mac-graphite-theme"),
     Atom("_moz_mac_big_sur_theme", "-moz-mac-big-sur-theme"),
     Atom("_moz_mac_rtl", "-moz-mac-rtl"),
     Atom("_moz_platform", "-moz-platform"),
@@ -2443,10 +2443,6 @@ STATIC_ATOMS = [
     Atom("onplaybackstatechange", "onplaybackstatechange"),
     Atom("onpositionstatechange", "onpositionstatechange"),
     Atom("onsupportedkeyschange", "onsupportedkeyschange"),
-    # media query for MathML Core's implementation of maction/semantics
-    Atom("_moz_mathml_core_maction_and_semantics", "-moz-mathml-core-maction-and-semantics"),
-    # media query for MathML Core's implementation of ms
-    Atom("_moz_mathml_core_ms", "-moz-mathml-core-ms"),
     Atom("_moz_popover_enabled", "-moz-popover-enabled"),
     # media query for MathML Core's implementation of mi
     Atom("_moz_mathml_core_mi", "-moz-mathml-core-mi"),

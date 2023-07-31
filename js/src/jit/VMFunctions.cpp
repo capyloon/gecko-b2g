@@ -421,6 +421,8 @@ bool JitRuntime::generateVMWrappers(JSContext* cx, MacroAssembler& masm,
     }
 #if defined(JS_ION_PERF)
     rangeRecorder.recordVMWrapperOffset(fun.name());
+#else
+    rangeRecorder.recordOffset("Trampoline: VMWrapper");
 #endif
 
     MOZ_ASSERT(functionWrapperOffsets_.length() == size_t(id));
@@ -829,25 +831,16 @@ void PostWriteBarrier(JSRuntime* rt, js::gc::Cell* cell) {
 
 static const size_t MAX_WHOLE_CELL_BUFFER_SIZE = 4096;
 
-template <IndexInBounds InBounds>
 void PostWriteElementBarrier(JSRuntime* rt, JSObject* obj, int32_t index) {
   AutoUnsafeCallWithABI unsafe;
 
   MOZ_ASSERT(!IsInsideNursery(obj));
 
-  if (InBounds == IndexInBounds::Yes) {
-    MOZ_ASSERT(uint32_t(index) <
-               obj->as<NativeObject>().getDenseInitializedLength());
-  } else {
-    if (MOZ_UNLIKELY(!obj->is<NativeObject>() || index < 0 ||
-                     uint32_t(index) >=
-                         NativeObject::MAX_DENSE_ELEMENTS_COUNT)) {
-      rt->gc.storeBuffer().putWholeCell(obj);
-      return;
-    }
-  }
-
   NativeObject* nobj = &obj->as<NativeObject>();
+
+  MOZ_ASSERT(index >= 0);
+  MOZ_ASSERT(uint32_t(index) < nobj->getDenseInitializedLength());
+
   if (nobj->isInWholeCellBuffer()) {
     return;
   }
@@ -864,14 +857,6 @@ void PostWriteElementBarrier(JSRuntime* rt, JSObject* obj, int32_t index) {
 
   rt->gc.storeBuffer().putWholeCell(obj);
 }
-
-template void PostWriteElementBarrier<IndexInBounds::Yes>(JSRuntime* rt,
-                                                          JSObject* obj,
-                                                          int32_t index);
-
-template void PostWriteElementBarrier<IndexInBounds::Maybe>(JSRuntime* rt,
-                                                            JSObject* obj,
-                                                            int32_t index);
 
 void PostGlobalWriteBarrier(JSRuntime* rt, GlobalObject* obj) {
   MOZ_ASSERT(obj->JSObject::is<GlobalObject>());
@@ -2257,20 +2242,6 @@ void AllocateAndInitTypedArrayBuffer(JSContext* cx, TypedArrayObject* obj,
     InitReservedSlot(obj, TypedArrayObject::DATA_SLOT, buf, nbytes,
                      MemoryUse::TypedArrayElements);
   }
-}
-
-void* CreateMatchResultFallbackFunc(JSContext* cx, gc::AllocKind kind,
-                                    size_t nDynamicSlots) {
-  MOZ_ASSERT(nDynamicSlots);
-
-  AutoUnsafeCallWithABI unsafe;
-  ArrayObject* array = cx->newCell<ArrayObject, NoGC>(kind, gc::Heap::Default,
-                                                      &ArrayObject::class_);
-  if (!array || !array->allocateInitialSlots(cx, nDynamicSlots)) {
-    return nullptr;
-  }
-
-  return array;
 }
 
 #ifdef JS_GC_PROBES

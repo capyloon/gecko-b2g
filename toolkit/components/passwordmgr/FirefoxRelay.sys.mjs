@@ -8,7 +8,6 @@ import {
   OptInFeature,
   ParentAutocompleteOption,
 } from "resource://gre/modules/LoginHelper.sys.mjs";
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 import { TelemetryUtils } from "resource://gre/modules/TelemetryUtils.sys.mjs";
 
 const lazy = {};
@@ -44,15 +43,15 @@ ChromeUtils.defineESModuleGetters(lazy, {
   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "log", () =>
+ChromeUtils.defineLazyGetter(lazy, "log", () =>
   LoginHelper.createLogger("FirefoxRelay")
 );
-XPCOMUtils.defineLazyGetter(lazy, "fxAccounts", () =>
+ChromeUtils.defineLazyGetter(lazy, "fxAccounts", () =>
   ChromeUtils.importESModule(
     "resource://gre/modules/FxAccounts.sys.mjs"
   ).getFxAccountsSingleton()
 );
-XPCOMUtils.defineLazyGetter(lazy, "strings", function () {
+ChromeUtils.defineLazyGetter(lazy, "strings", function () {
   return new Localization([
     "branding/brand.ftl",
     "browser/firefoxRelay.ftl",
@@ -173,7 +172,7 @@ async function showErrorAsync(browser, messageId, messageArgs) {
     {
       autofocus: true,
       removeOnDismissal: true,
-      popupIconURL: "page-icon:https://relay.firefox.com",
+      popupIconURL: "chrome://browser/content/logos/relay.svg",
       learnMoreURL: gConfig.learnMoreURL,
     }
   );
@@ -407,7 +406,7 @@ class RelayOffered {
           "firefox-relay-opt-in-subtitle-1"
         );
         yield new ParentAutocompleteOption(
-          "page-icon:https://relay.firefox.com",
+          "chrome://browser/content/logos/relay.svg",
           title,
           subtitle,
           "PasswordManager:offerRelayIntegration",
@@ -578,7 +577,7 @@ class RelayEnabled {
     ) {
       const [title] = await formatMessages("firefox-relay-use-mask-title");
       yield new ParentAutocompleteOption(
-        "page-icon:https://relay.firefox.com",
+        "chrome://browser/content/logos/relay.svg",
         title,
         "", // when the user has opted-in, there is no subtitle content
         "PasswordManager:generateRelayUsername",

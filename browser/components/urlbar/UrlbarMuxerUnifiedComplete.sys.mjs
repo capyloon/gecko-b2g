@@ -6,8 +6,6 @@
  * This module exports a component used to sort results in a UrlbarQueryContext.
  */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 import {
   UrlbarMuxer,
   UrlbarUtils,
@@ -26,7 +24,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   UrlbarSearchUtils: "resource:///modules/UrlbarSearchUtils.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "logger", () =>
+ChromeUtils.defineLazyGetter(lazy, "logger", () =>
   UrlbarUtils.getLogger({ prefix: "MuxerUnifiedComplete" })
 );
 
@@ -806,10 +804,13 @@ class MuxerUnifiedComplete extends UrlbarMuxer {
     }
 
     // Discard form history and remote suggestions that dupe previously added
-    // suggestions or the heuristic.
+    // suggestions or the heuristic. We do not deduplicate rich suggestions so
+    // they do not visually disapear as the suggestion is completed and
+    // becomes the same url as the heuristic result.
     if (
       result.type == UrlbarUtils.RESULT_TYPE.SEARCH &&
-      result.payload.lowerCaseSuggestion
+      result.payload.lowerCaseSuggestion &&
+      !result.isRichSuggestion
     ) {
       let suggestion = result.payload.lowerCaseSuggestion.trim();
       if (!suggestion || state.suggestions.has(suggestion)) {

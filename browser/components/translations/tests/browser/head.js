@@ -69,8 +69,22 @@ async function openTranslationsSettingsMenuViaTranslationsButton() {
     click(button, "Opening the popup");
   });
 
-  const gearIcon = getByL10nId("translations-panel-settings-button");
-  click(gearIcon, "Open the settings menu");
+  const gearIcons = getAllByL10nId("translations-panel-settings-button");
+  for (const gearIcon of gearIcons) {
+    if (gearIcon.hidden) {
+      continue;
+    }
+    click(gearIcon, "Open the settings menu");
+    info("Waiting for settings menu to open.");
+    const manageLanguages = await waitForCondition(() =>
+      maybeGetByL10nId("translations-panel-settings-manage-languages")
+    );
+    ok(
+      manageLanguages,
+      "The manage languages item should be visible in the settings menu."
+    );
+    return;
+  }
 }
 
 /**
@@ -81,8 +95,22 @@ async function openTranslationsSettingsMenuViaTranslationsButton() {
  */
 async function openTranslationsSettingsMenuViaAppMenu() {
   await openTranslationsPanelViaAppMenu();
-  const gearIcon = getByL10nId("translations-panel-settings-button");
-  click(gearIcon, "Open the settings menu");
+  const gearIcons = getAllByL10nId("translations-panel-settings-button");
+  for (const gearIcon of gearIcons) {
+    if (gearIcon.hidden) {
+      continue;
+    }
+    click(gearIcon, "Open the settings menu");
+    info("Waiting for settings menu to open.");
+    const manageLanguages = await waitForCondition(() =>
+      maybeGetByL10nId("translations-panel-settings-manage-languages")
+    );
+    ok(
+      manageLanguages,
+      "The manage languages item should be visible in the settings menu."
+    );
+    return;
+  }
 }
 
 /**
@@ -121,6 +149,7 @@ async function toggleAlwaysTranslateLanguage() {
   );
   info("Toggle the always-translate-language menuitem");
   await alwaysTranslateLanguage.doCommand();
+  await closeSettingsMenuIfOpen();
 }
 
 /**
@@ -134,6 +163,7 @@ async function toggleNeverTranslateLanguage() {
   );
   info("Toggle the never-translate-language menuitem");
   await neverTranslateLanguage.doCommand();
+  await closeSettingsMenuIfOpen();
 }
 
 /**
@@ -147,6 +177,7 @@ async function toggleNeverTranslateSite() {
   );
   info("Toggle the never-translate-site menuitem");
   await neverTranslateSite.doCommand();
+  await closeSettingsMenuIfOpen();
 }
 
 /**
@@ -267,6 +298,9 @@ function click(button, message) {
  * @returns {boolean}
  */
 function isVisible(element) {
+  if (element.offsetParent === null) {
+    return false;
+  }
   const win = element.ownerDocument.ownerGlobal;
   const { visibility, display } = win.getComputedStyle(element);
   return visibility === "visible" && display !== "none";
@@ -387,10 +421,10 @@ const SPANISH_PAGE_URL = TRANSLATIONS_TESTER_ES;
 const SPANISH_PAGE_URL_2 = TRANSLATIONS_TESTER_ES_2;
 const SPANISH_PAGE_URL_DOT_ORG = TRANSLATIONS_TESTER_ES_DOT_ORG;
 const LANGUAGE_PAIRS = [
-  { fromLang: "es", toLang: "en", isBeta: false },
-  { fromLang: "en", toLang: "es", isBeta: false },
-  { fromLang: "fr", toLang: "en", isBeta: false },
-  { fromLang: "en", toLang: "fr", isBeta: false },
-  { fromLang: "en", toLang: "uk", isBeta: true },
-  { fromLang: "uk", toLang: "en", isBeta: true },
+  { fromLang: "es", toLang: "en" },
+  { fromLang: "en", toLang: "es" },
+  { fromLang: "fr", toLang: "en" },
+  { fromLang: "en", toLang: "fr" },
+  { fromLang: "en", toLang: "uk" },
+  { fromLang: "uk", toLang: "en" },
 ];

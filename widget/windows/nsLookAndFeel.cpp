@@ -15,7 +15,6 @@
 #include "WindowsUIUtils.h"
 #include "mozilla/FontPropertyTypes.h"
 #include "mozilla/Telemetry.h"
-#include "mozilla/WindowsVersion.h"
 #include "gfxFontConstants.h"
 #include "gfxWindowsPlatform.h"
 
@@ -39,11 +38,6 @@ static int32_t GetSystemParam(long flag, int32_t def) {
 }
 
 static nsresult SystemWantsDarkTheme(int32_t& darkThemeEnabled) {
-  if (!IsWin10OrLater()) {
-    darkThemeEnabled = 0;
-    return NS_OK;
-  }
-
   nsresult rv = NS_OK;
   nsCOMPtr<nsIWindowsRegKey> personalizeKey =
       do_CreateInstance("@mozilla.org/windows-registry-key;1", &rv);
@@ -122,7 +116,7 @@ void nsLookAndFeel::RefreshImpl() {
 }
 
 static bool UseNonNativeMenuColors(ColorScheme aScheme) {
-  return LookAndFeel::GetInt(LookAndFeel::IntID::WindowsDefaultTheme) ||
+  return !LookAndFeel::GetInt(LookAndFeel::IntID::UseAccessibilityTheme) ||
          aScheme == ColorScheme::Dark;
 }
 
@@ -166,7 +160,6 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme,
         return aScheme != ColorScheme::Dark || mDarkHighlightText;
       case ColorID::IMESelectedRawTextForeground:
       case ColorID::IMESelectedConvertedTextForeground:
-      case ColorID::MozDragtargetzone:
         return true;
       default:
         return false;
@@ -189,6 +182,30 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme,
       aColor = GetColorForSysColorIndex(COLOR_HIGHLIGHTTEXT);
     }
     return NS_OK;
+  }
+
+  // Titlebar colors are color-scheme aware.
+  switch (aID) {
+    case ColorID::Activecaption:
+      aColor = mTitlebarColors.Get(aScheme, true).mBg;
+      return NS_OK;
+    case ColorID::Captiontext:
+      aColor = mTitlebarColors.Get(aScheme, true).mFg;
+      return NS_OK;
+    case ColorID::Activeborder:
+      aColor = mTitlebarColors.Get(aScheme, true).mBorder;
+      return NS_OK;
+    case ColorID::Inactivecaption:
+      aColor = mTitlebarColors.Get(aScheme, false).mBg;
+      return NS_OK;
+    case ColorID::Inactivecaptiontext:
+      aColor = mTitlebarColors.Get(aScheme, false).mFg;
+      return NS_OK;
+    case ColorID::Inactiveborder:
+      aColor = mTitlebarColors.Get(aScheme, false).mBorder;
+      return NS_OK;
+    default:
+      break;
   }
 
   if (aScheme == ColorScheme::Dark) {
@@ -280,24 +297,6 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme,
       }
       aColor = NS_TRANSPARENT;
       return NS_OK;
-    case ColorID::Activecaption:
-      aColor = mTitlebarColors.Get(aScheme, true).mBg;
-      return NS_OK;
-    case ColorID::Captiontext:
-      aColor = mTitlebarColors.Get(aScheme, true).mFg;
-      return NS_OK;
-    case ColorID::Activeborder:
-      aColor = mTitlebarColors.Get(aScheme, true).mBorder;
-      return NS_OK;
-    case ColorID::Inactivecaption:
-      aColor = mTitlebarColors.Get(aScheme, false).mBg;
-      return NS_OK;
-    case ColorID::Inactivecaptiontext:
-      aColor = mTitlebarColors.Get(aScheme, false).mFg;
-      return NS_OK;
-    case ColorID::Inactiveborder:
-      aColor = mTitlebarColors.Get(aScheme, false).mBorder;
-      return NS_OK;
     case ColorID::Infobackground:
       idx = COLOR_INFOBK;
       break;
@@ -366,22 +365,6 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme,
     case ColorID::Accentcolortext:
       aColor = mColorAccentText;
       return NS_OK;
-    case ColorID::MozWinMediatext:
-      if (mColorMediaText) {
-        aColor = *mColorMediaText;
-        return NS_OK;
-      }
-      // if we've gotten here just return -moz-dialogtext instead
-      idx = COLOR_WINDOWTEXT;
-      break;
-    case ColorID::MozWinCommunicationstext:
-      if (mColorCommunicationsText) {
-        aColor = *mColorCommunicationsText;
-        return NS_OK;
-      }
-      // if we've gotten here just return -moz-dialogtext instead
-      idx = COLOR_WINDOWTEXT;
-      break;
     case ColorID::MozDialogtext:
     case ColorID::MozColheadertext:
     case ColorID::MozColheaderhovertext:
@@ -488,9 +471,6 @@ nsresult nsLookAndFeel::NativeGetInt(IntID aID, int32_t& aResult) {
       break;
     case IntID::TreeScrollLinesMax:
       aResult = 3;
-      break;
-    case IntID::WindowsDefaultTheme:
-      aResult = nsUXThemeData::IsDefaultWindowTheme();
       break;
     case IntID::WindowsAccentColorInTitlebar: {
       aResult = mTitlebarColors.mUseAccent;
@@ -808,11 +788,21 @@ auto nsLookAndFeel::ComputeTitlebarColors() -> TitlebarColors {
                            GetColorForSysColorIndex(COLOR_INACTIVECAPTIONTEXT),
                            GetColorForSysColorIndex(COLOR_INACTIVEBORDER)};
 
-  // Foreground and background taken from Windows Mica material theme colors.
-  result.mActiveDark = {NS_RGB(0x2e, 0x2e, 0x2e), NS_RGB(0xff, 0xff, 0xff),
-                        NS_RGB(57, 57, 57)};
-  result.mInactiveDark = {NS_RGB(0x33, 0x33, 0x33), NS_RGB(0xff, 0xff, 0xff),
-                          NS_RGB(57, 57, 57)};
+  if (!nsUXThemeData::IsHighContrastOn()) {
+    // This is our current default light theme behavior.
+    result.mActiveLight =
+        result.mInactiveLight = {GetColorForSysColorIndex(COLOR_3DFACE),
+                                 GetColorForSysColorIndex(COLOR_WINDOWTEXT),
+                                 GetColorForSysColorIndex(COLOR_ACTIVEBORDER)};
+  }
+
+  // Foreground and background taken from our dark theme.
+  result.mActiveDark = {*GenericDarkColor(ColorID::Activecaption),
+                        *GenericDarkColor(ColorID::Captiontext),
+                        *GenericDarkColor(ColorID::Activeborder)};
+  result.mInactiveDark = {*GenericDarkColor(ColorID::Inactivecaption),
+                          *GenericDarkColor(ColorID::Inactivecaptiontext),
+                          *GenericDarkColor(ColorID::Inactiveborder)};
 
   nsCOMPtr<nsIWindowsRegKey> dwmKey =
       do_CreateInstance("@mozilla.org/windows-registry-key;1");
@@ -894,10 +884,6 @@ void nsLookAndFeel::EnsureInit() {
 
   mColorMenuHoverText =
       ::GetColorFromTheme(eUXMenu, MENU_POPUPITEM, MPI_HOT, TMT_TEXTCOLOR);
-  mColorMediaText =
-      ::GetColorFromTheme(eUXMediaToolbar, TP_BUTTON, TS_NORMAL, TMT_TEXTCOLOR);
-  mColorCommunicationsText = ::GetColorFromTheme(
-      eUXCommunicationsToolbar, TP_BUTTON, TS_NORMAL, TMT_TEXTCOLOR);
 
   // Fill out the sys color table.
   for (int i = SYS_COLOR_MIN; i <= SYS_COLOR_MAX; ++i) {
@@ -929,6 +915,5 @@ void nsLookAndFeel::EnsureInit() {
     return NS_RGB(0, 120, 215);
   }();
   mColorAccentText = GetAccentColorText(mColorAccent);
-
   RecordTelemetry();
 }

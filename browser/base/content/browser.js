@@ -878,7 +878,7 @@ const gClickAndHoldListenersOnElement = {
         aEvent.metaKey,
         0,
         null,
-        aEvent.mozInputSource
+        aEvent.inputSource
       );
       aEvent.currentTarget.dispatchEvent(cmdEvent);
 
@@ -1548,36 +1548,6 @@ var gBrowserInit = {
     TabsInTitlebar.init();
 
     new LightweightThemeConsumer(document);
-
-    if (AppConstants.platform == "win") {
-      if (
-        window.matchMedia("(-moz-platform: windows-win8)").matches &&
-        window.matchMedia("(-moz-windows-default-theme)").matches
-      ) {
-        let windowFrameColor = new Color(
-          ...ChromeUtils.importESModule(
-            "resource:///modules/Windows8WindowFrameColor.sys.mjs"
-          ).Windows8WindowFrameColor.get()
-        );
-        // Default to black for foreground text.
-        if (!windowFrameColor.isContrastRatioAcceptable(new Color(0, 0, 0))) {
-          document.documentElement.setAttribute("darkwindowframe", "true");
-        }
-      } else if (AppConstants.isPlatformAndVersionAtLeast("win", "10")) {
-        TelemetryEnvironment.onInitialized().then(() => {
-          // 17763 is the build number of Windows 10 version 1809
-          if (
-            TelemetryEnvironment.currentEnvironment.system.os
-              .windowsBuildNumber < 17763
-          ) {
-            document.documentElement.setAttribute(
-              "always-use-accent-color-for-window-border",
-              ""
-            );
-          }
-        });
-      }
-    }
 
     if (
       Services.prefs.getBoolPref(
@@ -2973,7 +2943,8 @@ function BrowserOpenFileWindow() {
         nsIFilePicker.filterText |
         nsIFilePicker.filterImages |
         nsIFilePicker.filterXML |
-        nsIFilePicker.filterHTML
+        nsIFilePicker.filterHTML |
+        nsIFilePicker.filterPDF
     );
     fp.displayDirectory = gLastOpenDirectory.path;
     fp.open(fpCallback);
@@ -5872,6 +5843,15 @@ var TabsProgressListener = {
   },
 
   onLocationChange(aBrowser, aWebProgress, aRequest, aLocationURI, aFlags) {
+    // Filter out location changes in sub documents.
+    if (!aWebProgress.isTopLevel) {
+      return;
+    }
+
+    // Some shops use pushState to move between individual products, so
+    // the shopping code needs to be told about all of these.
+    ShoppingSidebarManager.onLocationChange(aBrowser, aLocationURI);
+
     // Filter out location changes caused by anchor navigation
     // or history.push/pop/replaceState.
     if (aFlags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT) {
@@ -5884,11 +5864,6 @@ var TabsProgressListener = {
         },
         "AboutReader"
       );
-      return;
-    }
-
-    // Filter out location changes in sub documents.
-    if (!aWebProgress.isTopLevel) {
       return;
     }
 
@@ -5908,7 +5883,6 @@ var TabsProgressListener = {
 
     FullZoom.onLocationChange(aLocationURI, false, aBrowser);
     CaptivePortalWatcher.onLocationChange(aBrowser);
-    ShoppingSidebarManager.onLocationChange(aBrowser, aLocationURI);
   },
 
   onLinkIconAvailable(browser, dataURI, iconURI) {
@@ -8550,7 +8524,7 @@ var MenuTouchModeObserver = {
 
   handleEvent(event) {
     let target = event.originalTarget;
-    if (event.mozInputSource == MouseEvent.MOZ_SOURCE_TOUCH) {
+    if (event.inputSource == MouseEvent.MOZ_SOURCE_TOUCH) {
       target.setAttribute("touchmode", "true");
     } else {
       target.removeAttribute("touchmode");
@@ -9962,19 +9936,29 @@ var FirefoxViewHandler = {
 
 var ShoppingSidebarManager = {
   init() {
-    this._updateEnabledState = this._updateEnabledState.bind(this);
-    NimbusFeatures.shopping2023.onUpdate(this._updateEnabledState);
-    this._updateEnabledState();
+    this._updateVisibility = this._updateVisibility.bind(this);
+    NimbusFeatures.shopping2023.onUpdate(this._updateVisibility);
+    XPCOMUtils.defineLazyPreferenceGetter(
+      this,
+      "optedInPref",
+      "browser.shopping.experience2023.optedIn",
+      null,
+      this._updateVisibility
+    );
+
+    this._updateVisibility();
   },
 
   uninit() {
-    NimbusFeatures.shopping2023.offUpdate(this._updateEnabledState);
+    NimbusFeatures.shopping2023.offUpdate(this._updateVisibility);
   },
 
-  _updateEnabledState() {
+  _updateVisibility() {
+    let optedOut = this.optedInPref === 2;
+    let isPBM = PrivateBrowsingUtils.isWindowPrivate(window);
+
     this._enabled =
-      NimbusFeatures.shopping2023.getVariable("enabled") &&
-      !PrivateBrowsingUtils.isWindowPrivate(window);
+      NimbusFeatures.shopping2023.getVariable("enabled") && !isPBM && !optedOut;
 
     if (!this._enabled) {
       document.querySelectorAll("shopping-sidebar").forEach(sidebar => {
@@ -9983,10 +9967,12 @@ var ShoppingSidebarManager = {
     }
   },
 
-  _isProductPage(locationURI) {
-    return isProductURL(locationURI);
-  },
-
+  /**
+   * Called by TabsProgressListener whenever any browser navigates from one
+   * URL to another.
+   * Note that this includes hash changes / pushState navigations, because
+   * those can be significant for us.
+   */
   onLocationChange(aBrowser, aLocationURI) {
     if (!this._enabled) {
       return;
@@ -9994,19 +9980,24 @@ var ShoppingSidebarManager = {
 
     let browserPanel = gBrowser.getPanel(aBrowser);
     let sidebar = browserPanel.querySelector("shopping-sidebar");
-    if (this._isProductPage(aLocationURI)) {
+    let actor;
+    if (sidebar) {
+      let global =
+        sidebar.querySelector("browser").browsingContext.currentWindowGlobal;
+      actor = global.getExistingActor("ShoppingSidebar");
+    }
+    if (isProductURL(aLocationURI)) {
       if (!sidebar) {
         sidebar = document.createXULElement("shopping-sidebar");
         sidebar.setAttribute("style", "width: 320px");
-        sidebar.setAttribute("url", aLocationURI.asciiSpec);
         sidebar.hidden = false;
         browserPanel.appendChild(sidebar);
       } else {
-        sidebar.setAttribute("url", aLocationURI.asciiSpec);
+        actor?.updateProductURL(aLocationURI);
         sidebar.hidden = false;
       }
     } else if (sidebar && !sidebar.hidden) {
-      sidebar.setAttribute("url", null);
+      actor?.updateProductURL(null);
       sidebar.hidden = true;
     }
   },

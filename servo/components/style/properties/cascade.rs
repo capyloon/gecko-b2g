@@ -1089,25 +1089,19 @@ impl<'a, 'b: 'a> Cascade<'a, 'b> {
         builder.mutate_font().unzoom_fonts(device);
     }
 
-    /// MathML script* attributes do some very weird shit with font-size.
-    ///
-    /// Handle them specially here, separate from other font-size stuff.
-    ///
-    /// How this should interact with lang="" and font-family-dependent sizes is
-    /// not clear to me. For now just pretend those don't exist here.
+    /// Special handling of font-size: math (used for MathML).
+    /// https://w3c.github.io/mathml-core/#the-math-script-level-property
+    /// TODO: Bug: 1548471: MathML Core also does not specify a script min size
+    /// should we unship that feature or standardize it?
     #[cfg(feature = "gecko")]
-    fn handle_mathml_scriptlevel_if_needed(&mut self) {
+    fn recompute_math_font_size_if_needed(&mut self) {
         use crate::values::generics::NonNegative;
 
-        if !self.seen.contains(LonghandId::MathDepth) &&
-            !self.seen.contains(LonghandId::MozScriptMinSize) &&
-            !self.seen.contains(LonghandId::MozScriptSizeMultiplier)
-        {
-            return;
-        }
-
-        // If the user specifies a font-size, just let it be.
-        if self.seen.contains(LonghandId::FontSize) {
+        // Do not do anything if font-size: math or math-depth is not set.
+        if !self.seen.contains(LonghandId::MathDepth) ||
+           !self.seen.contains(LonghandId::FontSize) ||
+           self.context.builder.get_font().clone_font_size().keyword_info.kw !=
+           specified::FontSizeKeyword::Math {
             return;
         }
 
@@ -1178,14 +1172,8 @@ impl<'a, 'b: 'a> Cascade<'a, 'b> {
                 min = builder.device.zoom_text(min);
             }
 
-            // If the scriptsizemultiplier has been set to something other than
-            // the default scale, use MathML3's implementation for backward
-            // compatibility. Otherwise, follow MathML Core's algorithm.
-            let scale = if parent_font.mScriptSizeMultiplier !=
-                SCALE_FACTOR_WHEN_INCREMENTING_MATH_DEPTH_BY_ONE
-            {
-                (parent_font.mScriptSizeMultiplier as f32).powi(delta as i32)
-            } else {
+            // Calculate scale factor following MathML Core's algorithm.
+            let scale = {
                 // Script scale factors are independent of orientation.
                 let font_metrics = self.context.query_font_metrics(
                     FontBaseSize::InheritedStyle,
@@ -1244,7 +1232,7 @@ impl<'a, 'b: 'a> Cascade<'a, 'b> {
             self.recompute_initial_font_family_if_needed();
             self.prioritize_user_fonts_if_needed();
             self.recompute_keyword_font_size_if_needed();
-            self.handle_mathml_scriptlevel_if_needed();
+            self.recompute_math_font_size_if_needed();
             self.constrain_font_size_if_needed()
         }
     }

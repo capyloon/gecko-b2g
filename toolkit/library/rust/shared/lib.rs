@@ -103,7 +103,6 @@ extern crate ipfs_handler;
 #[cfg(target_os = "linux")]
 extern crate b2glinuxhal;
 
-#[cfg(target_os = "linux")]
 #[cfg(feature = "oxidized_breakpad")]
 extern crate rust_minidump_writer_linux;
 

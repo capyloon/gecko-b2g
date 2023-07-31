@@ -101,7 +101,8 @@ PER_PROJECT_PARAMETERS = {
         "release_type": "esr115",
     },
     "pine": {
-        "target_tasks_method": "pine_tasks",
+        "target_tasks_method": "default",
+        "release_type": "nightly-pine",
     },
     "kaios": {
         "target_tasks_method": "kaios_tasks",
@@ -345,7 +346,7 @@ def get_decision_parameters(graph_config, options):
     parameters["filters"] = [
         "target_tasks_method",
     ]
-    parameters["enable_always_target"] = False
+    parameters["enable_always_target"] = ["docker-image"]
     parameters["existing_tasks"] = {}
     parameters["do_not_optimize"] = []
     parameters["build_number"] = 1

@@ -410,8 +410,8 @@ document.mozL10n.setExternalLocalizerServices({
     });
   }
   function translateString(key, args, fallback) {
-    var i = key.lastIndexOf(".");
-    var name, property;
+    const i = key.lastIndexOf(".");
+    let name, property;
     if (i >= 0) {
       name = key.substring(0, i);
       property = key.substring(i + 1);
@@ -419,23 +419,23 @@ document.mozL10n.setExternalLocalizerServices({
       name = key;
       property = "textContent";
     }
-    var data = getL10nData(name);
-    var value = data && data[property] || fallback;
+    const data = getL10nData(name);
+    const value = data?.[property] || fallback;
     if (!value) {
       return "{{" + key + "}}";
     }
     return substArguments(value, args);
   }
   function translateElement(element) {
-    if (!element || !element.dataset) {
+    if (!element?.dataset) {
       return;
     }
-    var key = element.dataset.l10nId;
-    var data = getL10nData(key);
+    const key = element.dataset.l10nId;
+    const data = getL10nData(key);
     if (!data) {
       return;
     }
-    var args;
+    let args;
     if (element.dataset.l10nArgs) {
       try {
         args = JSON.parse(element.dataset.l10nArgs);
@@ -443,15 +443,15 @@ document.mozL10n.setExternalLocalizerServices({
         console.warn("[l10n] could not parse arguments for #" + key + "");
       }
     }
-    for (var k in data) {
+    for (const k in data) {
       element[k] = substArguments(data[k], args);
     }
   }
   function translateFragment(element) {
-    element = element || document.querySelector("html");
-    var children = element.querySelectorAll("*[data-l10n-id]");
-    var elementCount = children.length;
-    for (var i = 0; i < elementCount; i++) {
+    element ||= document.querySelector("html");
+    const children = element.querySelectorAll("*[data-l10n-id]");
+    const elementCount = children.length;
+    for (let i = 0; i < elementCount; i++) {
       translateElement(children[i]);
     }
     if (element.dataset.l10nId) {
@@ -464,8 +464,8 @@ document.mozL10n.setExternalLocalizerServices({
       return gLanguage;
     },
     getDirection() {
-      var rtlList = ["ar", "he", "fa", "ps", "ur"];
-      var shortCode = gLanguage.split("-")[0];
+      const rtlList = ["ar", "he", "fa", "ps", "ur"];
+      const shortCode = gLanguage.split("-")[0];
       return rtlList.includes(shortCode) ? "rtl" : "ltr";
     },
     getReadyState() {
@@ -718,9 +718,7 @@ const PDFViewerApplication = {
       const enabled = params.get("pdfbug").split(",");
       try {
         await loadPDFBug(this);
-        this._PDFBug.init({
-          OPS: _pdfjsLib.OPS
-        }, mainContainer, enabled);
+        this._PDFBug.init(mainContainer, enabled);
       } catch (ex) {
         console.error(`_parseHashParams: "${ex.message}".`);
       }
@@ -3206,13 +3204,7 @@ function toggleExpandedBtn(button, toggle, view = null) {
 
 
 
-let pdfjsLib;
-if (typeof window !== "undefined" && window["pdfjs-dist/build/pdf"]) {
-  pdfjsLib = window["pdfjs-dist/build/pdf"];
-} else {
-  pdfjsLib = require("../build/pdf.js");
-}
-module.exports = pdfjsLib;
+module.exports = globalThis.pdfjsLib;
 
 /***/ }),
 /* 6 */
@@ -3341,7 +3333,7 @@ const defaultOptions = {
   },
   useOnlyCssZoom: {
     value: false,
-    kind: OptionKind.VIEWER + OptionKind.PREFERENCE
+    kind: OptionKind.VIEWER
   },
   viewerCssTheme: {
     value: 0,
@@ -3839,26 +3831,24 @@ class PDFLinkService {
           dest = [null, {
             name: "XYZ"
           }, zoomArgs.length > 1 ? zoomArgs[1] | 0 : null, zoomArgs.length > 2 ? zoomArgs[2] | 0 : null, zoomArgNumber ? zoomArgNumber / 100 : zoomArg];
-        } else {
-          if (zoomArg === "Fit" || zoomArg === "FitB") {
-            dest = [null, {
-              name: zoomArg
-            }];
-          } else if (zoomArg === "FitH" || zoomArg === "FitBH" || zoomArg === "FitV" || zoomArg === "FitBV") {
-            dest = [null, {
-              name: zoomArg
-            }, zoomArgs.length > 1 ? zoomArgs[1] | 0 : null];
-          } else if (zoomArg === "FitR") {
-            if (zoomArgs.length !== 5) {
-              console.error('PDFLinkService.setHash: Not enough parameters for "FitR".');
-            } else {
-              dest = [null, {
-                name: zoomArg
-              }, zoomArgs[1] | 0, zoomArgs[2] | 0, zoomArgs[3] | 0, zoomArgs[4] | 0];
-            }
+        } else if (zoomArg === "Fit" || zoomArg === "FitB") {
+          dest = [null, {
+            name: zoomArg
+          }];
+        } else if (zoomArg === "FitH" || zoomArg === "FitBH" || zoomArg === "FitV" || zoomArg === "FitBV") {
+          dest = [null, {
+            name: zoomArg
+          }, zoomArgs.length > 1 ? zoomArgs[1] | 0 : null];
+        } else if (zoomArg === "FitR") {
+          if (zoomArgs.length !== 5) {
+            console.error('PDFLinkService.setHash: Not enough parameters for "FitR".');
           } else {
-            console.error(`PDFLinkService.setHash: "${zoomArg}" is not a valid zoom value.`);
+            dest = [null, {
+              name: zoomArg
+            }, zoomArgs[1] | 0, zoomArgs[2] | 0, zoomArgs[3] | 0, zoomArgs[4] | 0];
           }
+        } else {
+          console.error(`PDFLinkService.setHash: "${zoomArg}" is not a valid zoom value.`);
         }
       }
       if (dest) {
@@ -5480,10 +5470,8 @@ class PDFFindController {
       if (newQuery !== prevQuery) {
         return true;
       }
-    } else {
-      if (JSON.stringify(newQuery) !== JSON.stringify(prevQuery)) {
-        return true;
-      }
+    } else if (JSON.stringify(newQuery) !== JSON.stringify(prevQuery)) {
+      return true;
     }
     switch (state.type) {
       case "again":
@@ -8568,7 +8556,7 @@ class PDFViewer {
   #scaleTimeoutId = null;
   #textLayerMode = _ui_utils.TextLayerMode.ENABLE;
   constructor(options) {
-    const viewerVersion = '3.9.62';
+    const viewerVersion = '3.9.146';
     if (_pdfjsLib.version !== viewerVersion) {
       throw new Error(`The API version "${_pdfjsLib.version}" does not match the Viewer version "${viewerVersion}".`);
     }
@@ -12442,7 +12430,6 @@ class BasePreferences {
     "scrollModeOnLoad": -1,
     "spreadModeOnLoad": -1,
     "textLayerMode": 1,
-    "useOnlyCssZoom": false,
     "viewerCssTheme": 0,
     "viewOnLoad": 0,
     "disableAutoFetch": false,
@@ -12719,8 +12706,8 @@ var _ui_utils = __webpack_require__(4);
 var _app_options = __webpack_require__(6);
 var _pdf_link_service = __webpack_require__(8);
 var _app = __webpack_require__(3);
-const pdfjsVersion = '3.9.62';
-const pdfjsBuild = '762d86a59';
+const pdfjsVersion = '3.9.146';
+const pdfjsBuild = '48cc67f17';
 const AppConstants = null;
 exports.PDFViewerApplicationConstants = AppConstants;
 window.PDFViewerApplication = _app.PDFViewerApplication;

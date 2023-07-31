@@ -401,6 +401,13 @@ export const LoginHelper = {
     this.updateSignonPrefs();
     Services.telemetry.setEventRecordingEnabled("pwmgr", true);
     Services.telemetry.setEventRecordingEnabled("form_autocomplete", true);
+
+    // Watch for FXA Logout to reset signon.firefoxRelay to 'available'
+    // Using hard-coded value for FxAccountsCommon.ONLOGOUT_NOTIFICATION because
+    // importing FxAccountsCommon here caused hard-to-diagnose crash.
+    Services.obs.addObserver(() => {
+      Services.prefs.clearUserPref("signon.firefoxRelay.feature");
+    }, "fxaccounts:onlogout");
   },
 
   updateSignonPrefs() {
@@ -1792,7 +1799,7 @@ export const LoginHelper = {
   },
 };
 
-XPCOMUtils.defineLazyGetter(lazy, "log", () => {
+ChromeUtils.defineLazyGetter(lazy, "log", () => {
   let processName =
     Services.appinfo.processType === Services.appinfo.PROCESS_TYPE_DEFAULT
       ? "Main"

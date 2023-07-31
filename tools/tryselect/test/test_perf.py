@@ -1170,9 +1170,11 @@ def test_save_revision_treeherder(args, call_counts, exists_cache_file):
             {},
             [1, 0, 0, 1],
             (
-                "That's a lot of tests selected (300)!\n"
-                "These tests won't be triggered. If this was unexpected, "
-                "please file a bug in Testing :: Performance."
+                "\n\n----------------------------------------------------------------------------------------------\n"
+                f"You have selected {MAX_PERF_TASKS+1} total test runs! (selected tasks({MAX_PERF_TASKS+1}) * rebuild"
+                f" count(1) \nThese tests won't be triggered as the current maximum for a single ./mach try "
+                f"perf run is {MAX_PERF_TASKS}. \nIf this was unexpected, please file a bug in Testing :: Performance."
+                "\n----------------------------------------------------------------------------------------------\n\n"
             ),
             True,
         ),
@@ -1191,9 +1193,12 @@ def test_save_revision_treeherder(args, call_counts, exists_cache_file):
             {"show_all": True, "try_config": {"rebuild": 2}},
             [1, 0, 0, 1],
             (
-                "That's a lot of tests selected (300)!\n"
-                "These tests won't be triggered. If this was unexpected, "
-                "please file a bug in Testing :: Performance."
+                "\n\n----------------------------------------------------------------------------------------------\n"
+                f"You have selected {int((MAX_PERF_TASKS + 2) / 2) * 2} total test runs! (selected tasks("
+                f"{int((MAX_PERF_TASKS + 2) / 2)}) * rebuild"
+                f" count(2) \nThese tests won't be triggered as the current maximum for a single ./mach try "
+                f"perf run is {MAX_PERF_TASKS}. \nIf this was unexpected, please file a bug in Testing :: Performance."
+                "\n----------------------------------------------------------------------------------------------\n\n"
             ),
             True,
         ),
@@ -1241,6 +1246,38 @@ def test_max_perf_tasks(
         assert perf_print.call_count == call_counts[3]
         assert fzf.call_count == 0
         assert perf_print.call_args_list[-1][0][0] == expected_log_message
+
+
+@pytest.mark.parametrize(
+    "try_config, selected_tasks, expected_try_config",
+    [
+        (
+            {"use-artifact-builds": True},
+            ["some-android-task"],
+            {"use-artifact-builds": False},
+        ),
+        (
+            {"use-artifact-builds": True},
+            ["some-desktop-task"],
+            {"use-artifact-builds": True},
+        ),
+        (
+            {"use-artifact-builds": False},
+            ["some-android-task"],
+            {"use-artifact-builds": False},
+        ),
+        (
+            {"use-artifact-builds": True},
+            ["some-desktop-task", "some-android-task"],
+            {"use-artifact-builds": False},
+        ),
+    ],
+)
+def test_artifact_mode_autodisable(try_config, selected_tasks, expected_try_config):
+    PerfParser.setup_try_config(try_config, [], selected_tasks)
+    assert (
+        try_config["use-artifact-builds"] == expected_try_config["use-artifact-builds"]
+    )
 
 
 if __name__ == "__main__":

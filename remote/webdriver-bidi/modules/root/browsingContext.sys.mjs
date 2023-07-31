@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
 import { Module } from "chrome://remote/content/shared/messagehandler/Module.sys.mjs";
 
 const lazy = {};
@@ -29,7 +27,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   windowManager: "chrome://remote/content/shared/WindowManager.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "logger", () =>
+ChromeUtils.defineLazyGetter(lazy, "logger", () =>
   lazy.Log.get(lazy.Log.TYPES.WEBDRIVER_BIDI)
 );
 
@@ -304,6 +302,9 @@ class BrowsingContextModule extends Module {
    * Create a new browsing context using the provided type "tab" or "window".
    *
    * @param {object=} options
+   * @param {boolean=} options.background
+   *     Whether the tab/window should be open in the background. Defaults to false,
+   *     which means that the tab/window will be open in the foreground.
    * @param {string=} options.referenceContext
    *     Id of the top-level browsing context to use as reference.
    *     If options.type is "tab", the new tab will open in the same window as
@@ -318,17 +319,28 @@ class BrowsingContextModule extends Module {
    *     If the browsing context cannot be found.
    */
   async create(options = {}) {
-    const { referenceContext: referenceContextId = null, type } = options;
+    const {
+      background = false,
+      referenceContext: referenceContextId = null,
+      type,
+    } = options;
     if (type !== CreateType.tab && type !== CreateType.window) {
       throw new lazy.error.InvalidArgumentError(
         `Expected "type" to be one of ${Object.values(CreateType)}, got ${type}`
       );
     }
 
+    lazy.assert.boolean(
+      background,
+      lazy.pprint`Expected "background" to be a boolean, got ${background}`
+    );
+
     let browser;
     switch (type) {
       case "window":
-        let newWindow = await lazy.windowManager.openBrowserWindow();
+        const newWindow = await lazy.windowManager.openBrowserWindow({
+          focus: !background,
+        });
         browser = lazy.TabManager.getTabBrowser(newWindow).selectedBrowser;
         break;
 
@@ -366,7 +378,7 @@ class BrowsingContextModule extends Module {
         }
 
         const tab = await lazy.TabManager.addTab({
-          focus: false,
+          focus: !background,
           referenceTab,
         });
         browser = lazy.TabManager.getBrowserForTab(tab);
@@ -856,10 +868,12 @@ class BrowsingContextModule extends Module {
       url = listener.currentURI.spec;
     }
 
+    const navigation =
+      this.messageHandler.navigationManager.getNavigationForBrowsingContext(
+        webProgress.browsingContext
+      );
     return {
-      // TODO: The navigation id should be a real id mapped to the navigation.
-      // See https://bugzilla.mozilla.org/show_bug.cgi?id=1763122
-      navigation: null,
+      navigation: navigation ? navigation.id : null,
       url,
     };
   }
@@ -967,17 +981,73 @@ class BrowsingContextModule extends Module {
     );
   };
 
+  #onLocationChange = async (eventName, data) => {
+    const { id, navigableId, url } = data;
+    const context = this.#getBrowsingContext(navigableId);
+
+    if (this.#subscribedEvents.has("browsingContext.fragmentNavigated")) {
+      const contextInfo = {
+        contextId: context.id,
+        type: lazy.WindowGlobalMessageHandler.type,
+      };
+      this.emitEvent(
+        "browsingContext.fragmentNavigated",
+        {
+          context: navigableId,
+          navigation: id,
+          timestamp: Date.now(),
+          url,
+        },
+        contextInfo
+      );
+    }
+  };
+
+  #startListeningLocationChanged() {
+    if (!this.#subscribedEvents.has("browsingContext.fragmentNavigated")) {
+      this.messageHandler.navigationManager.on(
+        "location-changed",
+        this.#onLocationChange
+      );
+    }
+  }
+
+  #stopListeningLocationChanged() {
+    if (this.#subscribedEvents.has("browsingContext.fragmentNavigated")) {
+      this.messageHandler.navigationManager.off(
+        "location-changed",
+        this.#onLocationChange
+      );
+    }
+  }
+
   #subscribeEvent(event) {
-    if (event === "browsingContext.contextCreated") {
-      this.#contextListener.startListening();
-      this.#subscribedEvents.add(event);
+    switch (event) {
+      case "browsingContext.contextCreated": {
+        this.#contextListener.startListening();
+        this.#subscribedEvents.add(event);
+        break;
+      }
+      case "browsingContext.fragmentNavigated": {
+        this.#startListeningLocationChanged();
+        this.#subscribedEvents.add(event);
+        break;
+      }
     }
   }
 
   #unsubscribeEvent(event) {
-    if (event === "browsingContext.contextCreated") {
-      this.#contextListener.stopListening();
-      this.#subscribedEvents.delete(event);
+    switch (event) {
+      case "browsingContext.contextCreated": {
+        this.#contextListener.stopListening();
+        this.#subscribedEvents.delete(event);
+        break;
+      }
+      case "browsingContext.fragmentNavigated": {
+        this.#stopListeningLocationChanged();
+        this.#subscribedEvents.delete(event);
+        break;
+      }
     }
   }
 
@@ -1014,6 +1084,7 @@ class BrowsingContextModule extends Module {
     return [
       "browsingContext.contextCreated",
       "browsingContext.domContentLoaded",
+      "browsingContext.fragmentNavigated",
       "browsingContext.load",
     ];
   }

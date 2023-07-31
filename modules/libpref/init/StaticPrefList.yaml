@@ -605,7 +605,11 @@
 #    (multiplied then by pixelsPerLineStep which in GNOME-web is 40).
 -   name: apz.gtk.pangesture.delta_mode
     type: uint32_t
+#ifdef NIGHTLY_BUILD
+    value: 2
+#else
     value: 0
+#endif
     mirror: always
 
 -   name: apz.gtk.pangesture.page_delta_mode_multiplier
@@ -2268,12 +2272,6 @@
   value: @IS_NOT_NIGHTLY_BUILD@
   mirror: always
 
-# Is support for AudioWorklet enabled?
-- name: dom.audioworklet.enabled
-  type: bool
-  value: true
-  mirror: always
-
 # dom.audiochannel.mutedByDefault actually means "suspended by default".
 # We keep this pref name just for compatibility with gecko48.
 # If true, any new AudioChannelAgent will be suspended when created.
@@ -2306,12 +2304,6 @@
   value: true
   mirror: always
 
-# Block all downloads in iframes with the sandboxed attribute
-- name: dom.block_download_in_sandboxed_iframes
-  type: bool
-  value: true
-  mirror: always
-
 # Block multiple window.open() per single event.
 - name: dom.block_multiple_popups
   type: bool
@@ -2334,12 +2326,6 @@
 - name: dom.block_reload_from_resize_event_handler
   type: bool
   value: false
-  mirror: always
-
-# SW Cache API
-- name: dom.caches.enabled
-  type: RelaxedAtomicBool
-  value: true
   mirror: always
 
 # Exposes window.caches and skips SecureContext check.
@@ -3116,12 +3102,6 @@
   value: @IS_NIGHTLY_BUILD@
   mirror: always
 
-# Is support for HTMLInputElement.showPicker enabled?
-- name: dom.input.showPicker
-  type: bool
-  value: true
-  mirror: always
-
 # Whether to allow or disallow web apps to cancel `beforeinput` events caused
 # by MozEditableElement#setUserInput() which is used by autocomplete, autofill
 # and password manager.
@@ -3299,12 +3279,6 @@
 
 # B2G specific CellBroadcast API.
 - name: dom.cellbroadcast.enabled
-  type: bool
-  value: true
-  mirror: always
-
-# Is support for module scripts (<script type="module">) enabled for content?
-- name: dom.moduleScripts.enabled
   type: bool
   value: true
   mirror: always
@@ -3508,7 +3482,7 @@
 # Push
 - name: dom.push.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: true
   mirror: always
 
 # This enables the SVGPathSeg APIs
@@ -4051,7 +4025,7 @@
 
 - name: dom.serviceWorkers.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: true
   mirror: always
 
 - name: dom.serviceWorkers.navigationPreload.enabled
@@ -4793,7 +4767,7 @@
   type: RelaxedAtomicBool
   value: @IS_NOT_ANDROID@
   mirror: always
-  
+
 # Is the 'assign' API for slot element enabled?
 - name: dom.shadowdom.slot.assign.enabled
   type: bool
@@ -4878,7 +4852,11 @@
 
 - name: dom.webnotifications.requireinteraction.enabled
   type: RelaxedAtomicBool
+#if defined(XP_WIN)
+  value: true
+#else
   value: @IS_NIGHTLY_BUILD@
+#endif
   mirror: always
 
 - name: dom.webnotifications.silent.enabled
@@ -4905,7 +4883,7 @@
   type: bool
   value: true
   mirror: always
-  
+
 - name: dom.window.clientinformation.enabled
   type: bool
   value: true
@@ -4949,11 +4927,6 @@
 - name: dom.workers.testing.enabled
   type: RelaxedAtomicBool
   value: false
-  mirror: always
-
-- name: dom.worklet.enabled
-  type: bool
-  value: true
   mirror: always
 
 # When this pref is set, parent documents may consider child iframes have
@@ -6785,6 +6758,11 @@
     type: RelaxedAtomicBool
     value: true
     mirror: always
+  # Force triple buffering in overlay's video swap chain
+-   name: gfx.webrender.dcomp-video-force-triple-buffering
+    type: RelaxedAtomicBool
+    value: false
+    mirror: always
 -   name: gfx.video.convert-i420-to-nv12.force-enabled
     type: bool
     value: false
@@ -8422,12 +8400,6 @@
   mirror: always
   rust: true
 
-# Whether Constructable Stylesheets are enabled in script.
-- name: layout.css.constructable-stylesheets.enabled
-  type: bool
-  value: true
-  mirror: always
-
 # Whether trigonometric constants and functions are enabled in calc().
 - name: layout.css.trig.enabled
   type: RelaxedAtomicBool
@@ -8497,20 +8469,6 @@
 - name: layout.css.moz-control-character-visibility.enabled
   type: RelaxedAtomicBool
   value: false
-  mirror: always
-  rust: true
-
-# Whether the `accent-color` css property is enabled.
-- name: layout.css.accent-color.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-  rust: true
-
-# Whether the `color-scheme` css property and meta tags are enabled.
-- name: layout.css.color-scheme.enabled
-  type: RelaxedAtomicBool
-  value: true
   mirror: always
   rust: true
 
@@ -8627,6 +8585,13 @@
   value: false
   mirror: always
 
+# Is support for rect() enabled?
+- name: layout.css.basic-shape-rect.enabled
+  type: RelaxedAtomicBool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+  rust: true
+
 # Is support for xywh() enabled?
 - name: layout.css.basic-shape-xywh.enabled
   type: RelaxedAtomicBool
@@ -8677,6 +8642,13 @@
 - name: layout.css.color-mix.enabled
   type: RelaxedAtomicBool
   value: true
+  mirror: always
+  rust: true
+
+# Is support for light-dark() on content enabled?
+- name: layout.css.light-dark.enabled
+  type: RelaxedAtomicBool
+  value: false
   mirror: always
   rust: true
 
@@ -8913,15 +8885,14 @@
 # Is support for math-style enabled?
 - name: layout.css.math-style.enabled
   type: RelaxedAtomicBool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
   rust: true
 
 # Is support for math-depth enabled?
-# This must not be enabled until implementation is complete (see bug 1667090).
 - name: layout.css.math-depth.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: true
   mirror: always
   rust: true
 
@@ -9688,45 +9659,11 @@
 # Prefs starting with "mathml."
 #---------------------------------------------------------------------------
 
-# Whether to disable layout of invalid markup as an error message.
-- name: mathml.error_message_layout_for_invalid_markup.disabled
-  type: bool
-  value: true
-  mirror: always
-
-# Whether to disable MathML3 implementations for maction and semantics.
-- name: mathml.legacy_maction_and_semantics_implementations.disabled
-  type: bool
-  value: true
-  mirror: always
-  rust: true
-
-# Whether to disable the lquote/rquote attributes of the <ms> element.
-- name: mathml.ms_lquote_rquote_attributes.disabled
-  type: bool
-  value: true
-  mirror: always
-  rust: true
-
 # Whether to disable legacy names "thickmathspace", "mediummathspace",
 # "thickmathspace" etc for length attributes.
 - name: mathml.mathspace_names.disabled
   type: bool
   value: @IS_NIGHTLY_BUILD@
-  mirror: always
-
-# Whether to disable the scriptminsize attribute.
-# Note that this only disables parsing, not the default effect when no attribute
-# is unspecified.
-- name: mathml.scriptminsize_attribute.disabled
-  type: bool
-  value: true
-  mirror: always
-
-# Whether to disable the scriptsizemultiplier attribute.
-- name: mathml.scriptsizemultiplier_attribute.disabled
-  type: bool
-  value: true
   mirror: always
 
 # Whether to disable support for stretching operators with STIXGeneral fonts.
@@ -10516,12 +10453,7 @@
 
 -   name: media.wmf.low-latency.enabled
     type: RelaxedAtomicBool
-    value: false
-    mirror: always
-
--   name: media.wmf.low-latency.force-disabled
-    type: RelaxedAtomicBool
-    value: false
+    value: true
     mirror: always
 
 -   name: media.wmf.skip-blacklist
@@ -11047,12 +10979,12 @@
 # navigator.mediaDevices and getUserMedia() support as well.
 # See also media.navigator.enabled
 - name: media.peerconnection.enabled
-  type: bool
+  type: RelaxedAtomicBool
   value: true
   mirror: always
 
-- name: media.peerconnection.identity.enabled
-  type: bool
+- name: media.peerconnection.scripttransform.enabled
+  type: RelaxedAtomicBool
   value: true
   mirror: always
 
@@ -11429,6 +11361,11 @@
 -   name: media.gonkmediacodec.bufferqueue.max.acquired.count
     type: RelaxedAtomicInt32
     value: 4
+    mirror: always
+
+-   name: media.gonk.h265.enabled
+    type: RelaxedAtomicBool
+    value: true
     mirror: always
 
 -   name: media.gonk.video.max_video_decode_width
@@ -12141,6 +12078,13 @@
 # Enables `<link rel="preload">` tag and `Link: rel=preload` response header
 # handling.
 - name: network.preload
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
+
+# Enables `<link rel="preconnect">` tag and `Link: rel=preconnect` response header
+# handling.
+- name: network.preconnect
   type: RelaxedAtomicBool
   value: true
   mirror: always
@@ -13924,6 +13868,18 @@
   value: true
   mirror: always
 
+# Limit the number of CSP reports that are send in a specific timespan.
+- name: security.csp.reporting.limit.count
+  type: uint32_t
+  value: 100
+  mirror: always
+
+# Time span in seconds for reporting limit.
+- name: security.csp.reporting.limit.timespan
+  type: uint32_t
+  value: 2
+  mirror: always
+
 # If true, all toplevel data: URI navigations will be blocked.
 # Please note that manually entering a data: URI in the
 # URL-Bar will not be blocked when flipping this pref.
@@ -14349,17 +14305,6 @@
   type: bool
   value: false
   mirror: once
-
-# On Windows 8.1, if the following preference is 2, we will attempt to detect
-# whether the Family Safety TLS interception feature has been enabled.
-# If so, we will behave as if the enterprise roots feature has been enabled
-# (i.e. import and trust third party root certificates from the OS).
-# With any other value of the pref or on any other platform, this does nothing.
-# This preference takes precedence over "security.enterprise_roots.enabled".
-- name: security.family_safety.mode
-  type: RelaxedAtomicUint32
-  value: 2
-  mirror: always
 
 # Whether or not to import and trust third party root certificates from the OS.
 - name: security.enterprise_roots.enabled
@@ -16047,24 +15992,11 @@
   value: false
   mirror: always
 
-# Whether to apply logic intended to improve taskbar behavior involving
-# non-foreground fullscreen windows. (See bug 1732517.)
-- name: widget.windows.alternate_fullscreen_heuristics
+# Whether to give explorer.exe a delated nudge to recalculate the fullscreenness
+# of a window after maximizing it.
+- name: widget.windows.fullscreen_remind_taskbar
   type: RelaxedAtomicBool
   value: true
-  mirror: always
-
-# Whether to apply a workaround intended to prevent Windows from treating
-# non-foreground-marked fullscreen windows as fullscreen on Windows 7 and
-# earlier. (See bug 1732517.)
-#
-# Valid values:
-#  * -1: the workaround is never used.
-#  *  1: the workaround is always used.
-#  *  0: the workaround is used if we think it should be. (Default.)
-- name: widget.windows.fullscreen_marking_workaround
-  type: RelaxedAtomicInt32
-  value: 0
   mirror: always
 
 # The number of messages of each type to keep for display in

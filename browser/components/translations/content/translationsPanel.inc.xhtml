@@ -9,7 +9,10 @@
        role="alertdialog"
        noautofocus="true"
        aria-labelledby="translations-panel-header"
-       orient="vertical">
+       orient="vertical"
+       onclick="TranslationsPanel.handlePanelButtonEvent(event)"
+       onpopupshown="TranslationsPanel.handlePanelPopupShownEvent(event)"
+       onpopuphidden="TranslationsPanel.handlePanelPopupHiddenEvent(event)">
   <panelmultiview id="translations-panel-multiview"
                   mainViewId="translations-panel-view-default">
     <panelview id="translations-panel-view-default"
@@ -17,9 +20,12 @@
                role="document"
                showheader="true">
       <hbox class="panel-header translations-panel-header">
-        <html:h1>
+        <html:h1 class="translations-panel-header-wrapper">
           <html:span id="translations-panel-header"></html:span>
         </html:h1>
+        <hbox class="translations-panel-beta">
+          <image class="translations-panel-beta-icon"></image>
+        </hbox>
         <toolbarbutton id="translations-panel-settings" class="panel-info-button"
                        data-l10n-id="translations-panel-settings-button"
                        closemenu="none"
@@ -27,6 +33,13 @@
       </hbox>
 
       <vbox class="translations-panel-content">
+        <html:div id="translations-panel-intro">
+          <html:span data-l10n-id="translations-panel-intro-description"></html:span>
+          <html:a is="moz-support-link"
+                  data-l10n-id="translations-panel-learn-more-link"
+                  support-page="website-translation"
+                  onclick="TranslationsPanel.onLearnMoreLink()" />
+        </html:div>
         <vbox id="translations-panel-lang-selection">
           <label data-l10n-id="translations-panel-from-label" id="translations-panel-from-label"></label>
           <menulist id="translations-panel-from"
@@ -34,7 +47,7 @@
                     value="detect"
                     size="large"
                     aria-labelledby="translations-panel-from-label"
-                    oncommand="TranslationsPanel.onChangeLanguages(event)">
+                    oncommand="TranslationsPanel.onChangeFromLanguage(event)">
             <menupopup id="translations-panel-from-menupopup"
                       class="translations-panel-language-menupopup-from">
               <menuitem data-l10n-id="translations-panel-choose-language" value=""></menuitem>
@@ -48,7 +61,7 @@
                     value="detect"
                     size="large"
                     aria-labelledby="translations-panel-to-label"
-                    oncommand="TranslationsPanel.onChangeLanguages(event)">
+                    oncommand="TranslationsPanel.onChangeToLanguage(event)">
             <menupopup id="translations-panel-to-menupopup"
                       class="translations-panel-language-menupopup-to">
               <menuitem data-l10n-id="translations-panel-choose-language" value=""></menuitem>
@@ -101,15 +114,23 @@
       </hbox>
 
       <vbox class="translations-panel-content">
-        <description id="translations-panel-error-unsupported-hint"></description>
+        <html:div>
+          <html:span id="translations-panel-error-unsupported-hint"></html:span>
+          <html:a is="moz-support-link"
+                  data-l10n-id="translations-panel-learn-more-link"
+                  support-page="website-translation"
+                  onclick="TranslationsPanel.onLearnMoreLink()" />
+        </html:div>
       </vbox>
 
       <hbox class="panel-footer translations-panel-footer">
-        <button class="subviewbutton panel-subview-footer-button"
+        <button id="translations-panel-change-source-language"
+                class="subviewbutton panel-subview-footer-button"
                 oncommand="TranslationsPanel.onChangeSourceLanguage(event);"
                 data-l10n-id="translations-panel-error-change-button">
         </button>
-        <button class="subviewbutton panel-subview-footer-button"
+        <button id="translations-panel-dismiss-error"
+                class="subviewbutton panel-subview-footer-button"
                 oncommand="TranslationsPanel.onCancel(event);"
                 data-l10n-id="translations-panel-error-dismiss-button"
                 default="true">

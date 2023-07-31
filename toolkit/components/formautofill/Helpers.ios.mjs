@@ -79,7 +79,7 @@ const internalModuleResolvers = {
 // Define mock for XPCOMUtils
 export const XPCOMUtils = withNotImplementedError({
   defineLazyGetter: (obj, prop, getFn) => {
-    obj[prop] = getFn?.();
+    obj[prop] = getFn?.call(obj);
   },
   defineLazyPreferenceGetter: (
     obj,
@@ -101,6 +101,9 @@ export const XPCOMUtils = withNotImplementedError({
 
 // eslint-disable-next-line no-shadow
 export const ChromeUtils = withNotImplementedError({
+  defineLazyGetter: (obj, prop, getFn) => {
+    obj[prop] = getFn?.call(obj);
+  },
   defineESModuleGetters(obj, modules) {
     internalModuleResolvers.resolveModules(obj, modules);
   },

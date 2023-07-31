@@ -1017,15 +1017,26 @@ var basicShapeUnbalancedValues = [
   "inset(1px 2px 3px 4px round 5px / 6px",
 ];
 
-var basicShapeXywhValues = [];
+var basicShapeXywhRectValues = [];
 if (IsCSSPropertyPrefEnabled("layout.css.basic-shape-xywh.enabled")) {
-  basicShapeXywhValues = [
+  basicShapeXywhRectValues.push(
     "xywh(1px 2% 3px 4em)",
     "xywh(1px 2% 3px 4em round 0px)",
     "xywh(1px 2% 3px 4em round 0px 1%)",
     "xywh(1px 2% 3px 4em round 0px 1% 2px)",
-    "xywh(1px 2% 3px 4em round 0px 1% 2px 3em)",
-  ];
+    "xywh(1px 2% 3px 4em round 0px 1% 2px 3em)"
+  );
+}
+
+if (IsCSSPropertyPrefEnabled("layout.css.basic-shape-rect.enabled")) {
+  basicShapeXywhRectValues.push(
+    "rect(auto auto auto auto)",
+    "rect(1px 2% auto 4em)",
+    "rect(1px 2% auto 4em round 0px)",
+    "rect(1px 2% auto 4em round 0px 1%)",
+    "rect(1px 2% auto 4em round 0px 1% 2px)",
+    "rect(1px 2% auto 4em round 0px 1% 2px 3em)"
+  );
 }
 
 if (/* mozGradientsEnabled */ true) {
@@ -2603,6 +2614,24 @@ var gCSSProperties = {
     type: CSS_TYPE_SHORTHAND_AND_LONGHAND,
     alias_for: "print-color-adjust",
     subproperties: ["print-color-adjust"],
+  },
+  "color-scheme": {
+    domProp: "colorScheme",
+    inherited: true,
+    type: CSS_TYPE_LONGHAND,
+    initial_values: ["normal"],
+    other_values: [
+      "light",
+      "dark",
+      "light dark",
+      "light dark purple",
+      "light light dark",
+      "only light",
+      "only light dark",
+      "only light dark purple",
+      "light only",
+    ],
+    invalid_values: ["only normal", "normal only", "only light only"],
   },
   columns: {
     domProp: "columns",
@@ -8709,7 +8738,7 @@ var gCSSProperties = {
       .concat(basicShapeSVGBoxValues)
       .concat(basicShapeOtherValues)
       .concat(basicShapeOtherValuesWithFillRule)
-      .concat(basicShapeXywhValues),
+      .concat(basicShapeXywhRectValues),
     invalid_values: [
       "path(nonzero)",
       "path(abs, 'M 10 10 L 10 10 z')",
@@ -13502,7 +13531,7 @@ if (IsCSSPropertyPrefEnabled("layout.css.motion-path.enabled")) {
   if (IsCSSPropertyPrefEnabled("layout.css.motion-path-basic-shapes.enabled")) {
     gCSSProperties["offset-path"]["other_values"].push(
       ...basicShapeOtherValues,
-      ...basicShapeXywhValues
+      ...basicShapeXywhRectValues
     );
   }
 
@@ -13638,13 +13667,14 @@ if (IsCSSPropertyPrefEnabled("layout.css.math-depth.enabled")) {
     type: CSS_TYPE_LONGHAND,
     initial_values: ["0"],
     other_values: [
-      "auto-add",
+      // auto-add cannot be tested here because it has no effect when the
+      // inherited math-style is equal to the default (normal).
       "123",
       "-123",
       "add(123)",
       "add(-123)",
       "calc(1 + 2*3)",
-      "add(calc(1 - 2/3))",
+      "add(calc(4 - 2/3))",
     ],
     invalid_values: ["auto", "1,23", "1.23", "add(1,23)", "add(1.23)"],
   };
@@ -13677,27 +13707,6 @@ if (IsCSSPropertyPrefEnabled("layout.css.color-mix.enabled")) {
     "color-mix(in srgb, red blue)",
     "color-mix(in srgb, red 10% blue)"
   );
-}
-
-if (IsCSSPropertyPrefEnabled("layout.css.color-scheme.enabled")) {
-  gCSSProperties["color-scheme"] = {
-    domProp: "colorScheme",
-    inherited: true,
-    type: CSS_TYPE_LONGHAND,
-    initial_values: ["normal"],
-    other_values: [
-      "light",
-      "dark",
-      "light dark",
-      "light dark purple",
-      "light light dark",
-      "only light",
-      "only light dark",
-      "only light dark purple",
-      "light only",
-    ],
-    invalid_values: ["only normal", "normal only", "only light only"],
-  };
 }
 
 if (IsCSSPropertyPrefEnabled("layout.css.forced-color-adjust.enabled")) {

@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { ShoppingProduct } from "chrome://global/content/shopping/ShoppingProduct.mjs";
+/* eslint-env mozilla/remote-page */
+
 import { MozLitElement } from "chrome://global/content/lit-utils.mjs";
 import { html } from "chrome://global/content/vendor/lit.all.mjs";
 
@@ -14,35 +15,60 @@ import "chrome://browser/content/shopping/settings.mjs";
 import "chrome://browser/content/shopping/adjusted-rating.mjs";
 // eslint-disable-next-line import/no-unassigned-import
 import "chrome://browser/content/shopping/reliability.mjs";
+// eslint-disable-next-line import/no-unassigned-import
+import "chrome://browser/content/shopping/analysis-explainer.mjs";
+// eslint-disable-next-line import/no-unassigned-import
+import "chrome://browser/content/shopping/shopping-message-bar.mjs";
 
 export class ShoppingContainer extends MozLitElement {
   static properties = {
     data: { type: Object },
+    showOnboarding: { type: Boolean },
   };
+
+  static get queries() {
+    return {
+      reviewReliabilityEl: "review-reliability",
+      adjustedRatingEl: "adjusted-rating",
+      highlightsEl: "review-highlights",
+      settingsEl: "shopping-settings",
+    };
+  }
 
   connectedCallback() {
     super.connectedCallback();
-    if (!this.data) {
-      this.fetchAnalysis();
-    }
-  }
-
-  async fetchAnalysis() {
-    let searchParams = new URLSearchParams(window.location.search);
-    let productPage = searchParams.get("url");
-    if (!productPage) {
-      // Nothing to do - we're navigating to a non-product page.
+    if (this.initialized) {
       return;
     }
-    let productURL = new URL(productPage);
-    let product = new ShoppingProduct(productURL);
-    this.data = await product.requestAnalysis();
+    this.initialized = true;
+
+    window.document.addEventListener("Update", this);
+
+    window.dispatchEvent(
+      new CustomEvent("ContentReady", {
+        bubbles: true,
+        composed: true,
+      })
+    );
   }
 
-  render() {
-    if (!this.data) {
-      return html`<p>loading...</p>`;
+  async _update({ data, showOnboarding }) {
+    // If we're not opted in or there's no shopping URL in the main browser,
+    // the actor will pass `null`, which means this will clear out any existing
+    // content in the sidebar.
+    this.data = data;
+    this.showOnboarding = showOnboarding;
+  }
+
+  handleEvent(event) {
+    switch (event.type) {
+      case "Update":
+        this._update(event.detail);
+        break;
     }
+  }
+
+  renderContainer(sidebarContent) {
     return html`<link
         rel="stylesheet"
         href="chrome://browser/content/shopping/shopping-container.css"
@@ -66,15 +92,32 @@ export class ShoppingContainer extends MozLitElement {
             data-l10n-id="shopping-close-button"
           ></button>
         </div>
-        <div id="content">
-          <review-reliability letter=${this.data.grade}></review-reliability>
-          <adjusted-rating
-            rating=${this.data.adjusted_rating}
-          ></adjusted-rating>
-          <review-highlights></review-highlights>
-          <shopping-settings></shopping-settings>
-        </div>
+        <div id="content">${sidebarContent}</div>
       </div>`;
+  }
+
+  render() {
+    let content;
+    if (this.showOnboarding) {
+      content = html`<slot name="multi-stage-message-slot"></slot>`;
+    } else if (!this.data) {
+      // TODO: Replace with loading UI component (bug 1840161).
+      content = html`<p>Loading UI goes here</p>`;
+    } else {
+      content = html`
+        ${this.data.needs_analysis && this.data.product_id
+          ? html`<shopping-message-bar type="stale"></shopping-message-bar>`
+          : null}
+        <review-reliability letter=${this.data.grade}></review-reliability>
+        <adjusted-rating rating=${this.data.adjusted_rating}></adjusted-rating>
+        <review-highlights
+          .highlights=${this.data.highlights}
+        ></review-highlights>
+        <analysis-explainer></analysis-explainer>
+        <shopping-settings></shopping-settings>
+      `;
+    }
+    return this.renderContainer(content);
   }
 }
 

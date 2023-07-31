@@ -17,7 +17,7 @@ XPCOMUtils.defineLazyPreferenceGetter(
   "browser.translations.logLevel"
 );
 
-XPCOMUtils.defineLazyGetter(lazy, "console", () => {
+ChromeUtils.defineLazyGetter(lazy, "console", () => {
   return console.createInstance({
     maxLogLevelPref: "browser.translations.logLevel",
     prefix: "Translations",
@@ -27,8 +27,6 @@ XPCOMUtils.defineLazyGetter(lazy, "console", () => {
 ChromeUtils.defineESModuleGetters(lazy, {
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
   clearTimeout: "resource://gre/modules/Timer.sys.mjs",
-  TranslationsTelemetry:
-    "chrome://global/content/translations/TranslationsTelemetry.sys.mjs",
   TranslationsDocument:
     "chrome://global/content/translations/translations-document.sys.mjs",
 });
@@ -191,7 +189,7 @@ export class TranslationsEngine {
       TranslationsEngine.getOrCreate(actor, fromLanguage, toLanguage);
 
     getEngine().catch(error => {
-      lazy.TranslationsTelemetry.onError(error);
+      actor.sendTelemetryError(error);
     });
 
     // Wait for the engine to be ready.

@@ -11,7 +11,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   SessionStore: "resource:///modules/sessionstore/SessionStore.sys.mjs",
 });
 
-XPCOMUtils.defineLazyGetter(lazy, "l10n", () => {
+ChromeUtils.defineLazyGetter(lazy, "l10n", () => {
   return new Localization(["browser/recentlyClosed.ftl"], true);
 });
 
@@ -274,7 +274,6 @@ function createRestoreAllEntry(
   aPrefixRestoreAll,
   aIsWindowsFragment,
   aRestoreAllLabel,
-  aEntryCount,
   aTagName
 ) {
   let restoreAllElements = aDocument.createXULElement(aTagName);

@@ -167,21 +167,6 @@ readermode:
       label: The type of button clicked.
     products:
       - "firefox"
-  pocket_cta:
-    objects: ["close_cta", "sign_up_click", "rec_click", "minimize_recs_click", "cta_seen", "rec_saved"]
-    release_channel_collection: opt-out
-    record_in_processes: ["content"]
-    description: >
-      Reader Mode Pocket CTA events
-    bug_numbers: [1726395]
-    notification_emails:
-      - "kirill@getpocket.com"
-      - "sdowne@getpocket.com"
-    expiry_version: never
-    extra_keys:
-      logged_in: Pocket user login status.
-    products:
-      - "firefox"
 
 addonsManager:
   install:
@@ -1620,25 +1605,6 @@ messaging_experiments:
       - 1644743
     notification_emails:
       - ujet@mozilla.com
-    expiry_version: never
-  feature_callout:
-    objects:
-      - create_failed
-    methods:
-      - feature_callout
-    release_channel_collection: opt-out
-    products:
-      - firefox
-    record_in_processes:
-      - main
-    description: >
-      Record errors when the feature callout surface is unable to be
-      created due to a missing parent element. The value field contains a
-      concatenation of the Message ID and the parent selector.
-    bug_numbers:
-      - 1788996
-    notification_emails:
-      - omc@mozilla.com
     expiry_version: never
 
 telemetry:

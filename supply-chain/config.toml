@@ -39,10 +39,6 @@ notes = "This is a pinned version of the upstream code, presumably to get a fix 
 audit-as-crates-io = true
 notes = "This is upstream plus a warning fix from bug 1823866."
 
-[policy.d3d12]
-audit-as-crates-io = true
-notes = "Unpublished wgpu revisions point to unpublished d3d12 revisions."
-
 [policy.firefox-on-glean]
 audit-as-crates-io = false
 notes = "The crates.io version of this is just a placeholder to allow public crates to depend on firefox-on-glean."
@@ -90,9 +86,20 @@ notes = "This was originally servo code which Bobby Holley put on crates.io some
 audit-as-crates-io = false
 notes = "This is a first-party crate which is also published to crates.io. We certify audits for this crate as part of the documented release process, but that step happens after the version bump lands on central so we don't enforce it here."
 
+[policy.metal]
+audit-as-crates-io = false
+
 [policy.midir]
 audit-as-crates-io = true
 notes = "This is a pinned version of the upstream code, presumably to get a fix that hadn't been released yet. We should consider switching to the latest official release."
+
+[policy."minidump-common:0.17.0@git:87a29fba5e19cfae5ebf73a57ba31504a3872545"]
+audit-as-crates-io = true
+notes = "Unreleased upstream."
+
+[policy.minidump-writer]
+audit-as-crates-io = true
+notes = "Unreleased upstream."
 
 [policy."mio:0.6.23"]
 audit-as-crates-io = true
@@ -216,10 +223,6 @@ notes = "Upstream project which we pin."
 [policy.wr_malloc_size_of]
 audit-as-crates-io = false
 
-[[exemptions.adler]]
-version = "1.0.2"
-criteria = "safe-to-deploy"
-
 [[exemptions.ahash]]
 version = "0.7.6"
 criteria = "safe-to-deploy"
@@ -242,10 +245,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.askama_escape]]
 version = "0.10.3"
-criteria = "safe-to-deploy"
-
-[[exemptions.askama_shared]]
-version = "0.12.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.async-task]]
@@ -616,10 +615,6 @@ criteria = "safe-to-deploy"
 version = "0.6.5"
 criteria = "safe-to-deploy"
 
-[[exemptions.metal]]
-version = "0.23.1"
-criteria = "safe-to-deploy"
-
 [[exemptions.midir]]
 version = "0.7.0"
 criteria = "safe-to-deploy"
@@ -724,10 +719,6 @@ criteria = "safe-to-deploy"
 version = "0.10.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.pin-project-lite]]
-version = "0.2.9"
-criteria = "safe-to-deploy"
-
 [[exemptions.plain]]
 version = "0.2.3"
 criteria = "safe-to-deploy"
@@ -778,10 +769,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.rand_core]]
 version = "0.6.3"
-criteria = "safe-to-deploy"
-
-[[exemptions.redox_syscall]]
-version = "0.2.13"
 criteria = "safe-to-deploy"
 
 [[exemptions.remove_dir_all]]

@@ -614,6 +614,10 @@ pref("browser.urlbar.addons.featureGate", false);
 // addons suggestions are turned on.
 pref("browser.urlbar.suggest.addons", true);
 
+// If `browser.urlbar.mdn.featureGate` is true, this controls whether
+// mdn suggestions are turned on.
+pref("browser.urlbar.suggest.mdn", true);
+
 // The minimum prefix length of addons keyword the user must type to trigger
 // the suggestion. 0 means the min length should be taken from Nimbus.
 pref("browser.urlbar.addons.minKeywordLength", 0);
@@ -716,9 +720,12 @@ pref("browser.search.serpEventTelemetry.enabled", false);
 // rolled out. There will be separate controls for user opt-in/opt-out.
 pref("browser.shopping.experience2023.enabled", false);
 
-// True if the user opted into the new experimental shopping feature.
-// By default, users are opted out.
-pref("browser.shopping.experience2023.optedIn", false);
+// Ternary int-valued pref indicating if the user has opted into the new
+// experimental shopping feature.
+// 0 means the user has not opted in or out.
+// 1 means the user has opted in.
+// 2 means the user has opted out.
+pref("browser.shopping.experience2023.optedIn", 0);
 
 // Enables the display of the Mozilla VPN banner in private browsing windows
 pref("browser.privatebrowsing.vpnpromourl", "https://vpn.mozilla.org/?utm_source=firefox-browser&utm_medium=firefox-%CHANNEL%-browser&utm_campaign=private-browsing-vpn-link");
@@ -1455,6 +1462,7 @@ pref("services.sync.prefs.sync.browser.search.update", true);
 pref("services.sync.prefs.sync.browser.search.widget.inNavBar", true);
 pref("services.sync.prefs.sync.browser.startup.homepage", true);
 pref("services.sync.prefs.sync.browser.startup.page", true);
+pref("services.sync.prefs.sync.browser.startup.upgradeDialog.enabled", true);
 pref("services.sync.prefs.sync.browser.tabs.loadInBackground", true);
 pref("services.sync.prefs.sync.browser.tabs.warnOnClose", true);
 pref("services.sync.prefs.sync.browser.tabs.warnOnOpen", true);
@@ -1852,9 +1860,7 @@ pref("browser.translation.neverForLanguages", "");
 
 // Enable Firefox translations powered by the Bergamot translations
 // engine https://browser.mt/.
-#ifdef NIGHTLY_BUILD
 pref("browser.translations.enable", true);
-#endif
 
 // Telemetry settings.
 // Determines if Telemetry pings can be archived locally.
@@ -2134,15 +2140,7 @@ pref("reader.parse-node-limit", 0);
 // and because (normally) these errors are not persisted anywhere.
 pref("reader.errors.includeURLs", true);
 
-// What version of Pocket CTA to show in Reader Mode (Empty string is no CTA)
-pref("reader.pocket.ctaVersion", "");
-
 pref("view_source.tab", true);
-
-pref("dom.serviceWorkers.enabled", true);
-
-// Enable Push API.
-pref("dom.push.enabled", true);
 
 // These are the thumbnail width/height set in about:newtab.
 // If you change this, ENSURE IT IS THE SAME SIZE SET

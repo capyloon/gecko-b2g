@@ -785,7 +785,6 @@ Statistics::Statistics(GCRuntime* gc)
       startingMajorGCNumber(0),
       startingSliceNumber(0),
       sliceCallback(nullptr),
-      nurseryCollectionCallback(nullptr),
       aborted(false),
       enableProfiling_(false),
       sliceCount_(0) {
@@ -873,13 +872,6 @@ JS::GCSliceCallback Statistics::setSliceCallback(
     JS::GCSliceCallback newCallback) {
   JS::GCSliceCallback oldCallback = sliceCallback;
   sliceCallback = newCallback;
-  return oldCallback;
-}
-
-JS::GCNurseryCollectionCallback Statistics::setNurseryCollectionCallback(
-    JS::GCNurseryCollectionCallback newCallback) {
-  auto oldCallback = nurseryCollectionCallback;
-  nurseryCollectionCallback = newCallback;
   return oldCallback;
 }
 
@@ -1151,23 +1143,12 @@ void Statistics::sendGCTelemetry() {
   }
 }
 
-void Statistics::beginNurseryCollection(JS::GCReason reason) {
+void Statistics::beginNurseryCollection() {
   count(COUNT_MINOR_GC);
   startingMinorGCNumber = gc->minorGCCount();
-  if (nurseryCollectionCallback) {
-    (*nurseryCollectionCallback)(
-        context(), JS::GCNurseryProgress::GC_NURSERY_COLLECTION_START, reason);
-  }
 }
 
-void Statistics::endNurseryCollection(JS::GCReason reason) {
-  if (nurseryCollectionCallback) {
-    (*nurseryCollectionCallback)(
-        context(), JS::GCNurseryProgress::GC_NURSERY_COLLECTION_END, reason);
-  }
-
-  tenuredAllocsSinceMinorGC = 0;
-}
+void Statistics::endNurseryCollection() { tenuredAllocsSinceMinorGC = 0; }
 
 Statistics::SliceData::SliceData(const SliceBudget& budget,
                                  Maybe<Trigger> trigger, JS::GCReason reason,
@@ -1570,40 +1551,56 @@ void Statistics::endSCC(unsigned scc, TimeStamp start) {
  * as long as the total time it spends is at most 10ms.
  */
 double Statistics::computeMMU(TimeDuration window) const {
-  MOZ_ASSERT(!slices_.empty());
+  MOZ_ASSERT(window > TimeDuration::Zero());
+  MOZ_ASSERT(!slices().empty());
 
-  TimeDuration gc = slices_[0].duration();
-  TimeDuration gcMax = gc;
+  // Examine all ranges of slices from |startIndex| to |endIndex| inclusive
+  // whose timestamps span less than the window duration. The time spent in GC
+  // in each range is stored in |gcInRange| by maintaining a running total. The
+  // maximum value of this after adjustment to the window size is recorded in
+  // |maxGCInWindow|.
 
-  if (gc >= window) {
+  size_t startIndex = 0;
+  const SliceData* startSlice = &sliceAt(startIndex);
+  TimeDuration gcInRange = startSlice->duration();
+  if (gcInRange >= window) {
     return 0.0;
   }
 
-  int startIndex = 0;
-  for (size_t endIndex = 1; endIndex < slices_.length(); endIndex++) {
-    const auto* startSlice = &slices_[startIndex];
-    const auto& endSlice = slices_[endIndex];
-    gc += endSlice.duration();
+  TimeDuration maxGCInWindow = gcInRange;
 
-    while (TimeBetween(startSlice->end, endSlice.end) >= window) {
-      gc -= startSlice->duration();
-      startSlice = &slices_[++startIndex];
+  for (size_t endIndex = 1; endIndex < slices().length(); endIndex++) {
+    const SliceData* endSlice = &sliceAt(endIndex);
+    if (endSlice->duration() >= window) {
+      return 0.0;
     }
 
-    TimeDuration cur = gc;
-    TimeDuration sliceRange = TimeBetween(startSlice->start, endSlice.end);
-    if (sliceRange > window) {
-      cur -= (sliceRange - window);
+    gcInRange += endSlice->duration();
+
+    while (TimeBetween(startSlice->end, endSlice->end) >= window) {
+      gcInRange -= startSlice->duration();
+      ++startIndex;
+      MOZ_ASSERT(startIndex <= endIndex);
+      startSlice = &sliceAt(startIndex);
     }
 
-    if (cur > gcMax) {
-      gcMax = cur;
+    TimeDuration totalInRange = TimeBetween(startSlice->start, endSlice->end);
+    MOZ_ASSERT(gcInRange <= totalInRange);
+
+    TimeDuration gcInWindow = gcInRange;
+    if (totalInRange > window) {
+      gcInWindow -= (totalInRange - window);
+    }
+    MOZ_ASSERT(gcInWindow <= window);
+
+    if (gcInWindow > maxGCInWindow) {
+      maxGCInWindow = gcInWindow;
     }
   }
 
-  MOZ_ASSERT(gcMax >= TimeDuration::Zero());
-  MOZ_ASSERT(gcMax <= window);
-  return (window - gcMax) / window;
+  MOZ_ASSERT(maxGCInWindow >= TimeDuration::Zero());
+  MOZ_ASSERT(maxGCInWindow <= window);
+  return (window - maxGCInWindow) / window;
 }
 
 void Statistics::maybePrintProfileHeaders() {

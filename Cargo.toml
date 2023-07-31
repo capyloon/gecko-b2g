@@ -44,7 +44,7 @@ exclude = [
   "dom/origin-trials/ffi",
 
   # Excluded because we don't want to vendor their dependencies.
-  "intl/l10n/rust/l10nregistry-tests"
+  "intl/l10n/rust/l10nregistry-tests",
 ]
 
 # Use the new dependency resolver to reduce some of the platform-specific dependencies.
@@ -53,7 +53,7 @@ resolver = "2"
 
 [workspace.dependencies]
 # Shared across multiple UniFFI consumers.
-uniffi = "0.23"
+uniffi = "0.24.2"
 
 # Explicitly specify what our profiles use.  The opt-level setting here is
 # a total fiction; see the setup of MOZ_RUST_DEFAULT_FLAGS for what the
@@ -100,6 +100,10 @@ mozbuild = { path = "build/rust/mozbuild" }
 # Workspace hack
 mozilla-central-workspace-hack = { path = "build/workspace-hack" }
 
+# windows-targets replacement. It avoids the large dependencies of the original
+# crate, which we don't really need as we require MSVC anyways.
+windows-targets = { path = "build/rust/windows-targets" }
+
 # Dummy oslog replacement. It's only used by glean in code that is not actually used.
 oslog = { path = "build/rust/oslog" }
 
@@ -118,12 +122,12 @@ serde_with = { path = "build/rust/serde_with" }
 # Patch redox_users to an empty crate
 redox_users = { path = "build/rust/redox_users" }
 
+# Patch redox_syscall to an empty crate
+redox_syscall_0_2 = { package = "redox_syscall", path = "build/rust/redox_syscall_0_2" }
+redox_syscall = { path = "build/rust/redox_syscall" }
+
 # Patch env_logger 0.9 to 0.10
 env_logger = { path = "build/rust/env_logger" }
-
-# Patch parking_lot 0.12 down to 0.11, which is compatible for most crates that use it, to avoid
-# dependencies on windows-sys.
-parking_lot = { path = "build/rust/parking_lot" }
 
 # Override tinyvec with smallvec
 tinyvec = { path = "build/rust/tinyvec" }
@@ -144,8 +148,18 @@ ntapi = { path = "build/rust/ntapi" }
 # Patch nix 0.24 to 0.26
 nix = { path = "build/rust/nix" }
 
+# Patch indexmap 2.0 to 1.0
+indexmap = { path = "build/rust/indexmap" }
+
 # Patch autocfg to hide rustc output. Workaround for https://github.com/cuviper/autocfg/issues/30
 autocfg = { path = "third_party/rust/autocfg" }
+
+# Patch goblin 0.6.0 to 0.7.0 because uniffi crates still use the older version
+# and we want to avoid duplications
+goblin = { path = "build/rust/goblin" }
+
+# Patch memoffset from 0.8.0 to 0.9.0 since it's compatible and it avoids duplication
+memoffset = { path = "build/rust/memoffset" }
 
 # The following overrides point to dummy projects, as a temporary measure until this is resolved:
 # https://github.com/rust-lang/cargo/issues/6179
@@ -164,14 +178,18 @@ moz_asserts = { path = "mozglue/static/rust/moz_asserts" }
 rure = { path = "third_party/rust/rure" }
 
 # Other overrides
-chardetng = { git = "https://github.com/hsivonen/chardetng", rev="3484d3e3ebdc8931493aa5df4d7ee9360a90e76b" }
-chardetng_c = { git = "https://github.com/hsivonen/chardetng_c", rev="ed8a4c6f900a90d4dbc1d64b856e61490a1c3570" }
-coremidi = { git = "https://github.com/chris-zen/coremidi.git", rev="fc68464b5445caf111e41f643a2e69ccce0b4f83" }
+chardetng = { git = "https://github.com/hsivonen/chardetng", rev = "3484d3e3ebdc8931493aa5df4d7ee9360a90e76b" }
+chardetng_c = { git = "https://github.com/hsivonen/chardetng_c", rev = "ed8a4c6f900a90d4dbc1d64b856e61490a1c3570" }
+coremidi = { git = "https://github.com/chris-zen/coremidi.git", rev = "fc68464b5445caf111e41f643a2e69ccce0b4f83" }
 cose = { git = "https://github.com/franziskuskiefer/cose-rust", rev = "43c22248d136c8b38fe42ea709d08da6355cf04b" }
 firefox-on-glean = { path = "toolkit/components/glean/api" }
 libudev-sys = { path = "dom/webauthn/libudev-sys" }
-packed_simd = { package = "packed_simd_2", git = "https://github.com/hsivonen/packed_simd", rev="412f9a0aa556611de021bde89dee8fefe6e0fbbd" }
+packed_simd = { package = "packed_simd_2", git = "https://github.com/hsivonen/packed_simd", rev = "412f9a0aa556611de021bde89dee8fefe6e0fbbd" }
 midir = { git = "https://github.com/mozilla/midir.git", rev = "519e651241e867af3391db08f9ae6400bc023e18" }
+# Avoid the dependency on chrono
+minidump-writer = { git = "https://github.com/rust-minidump/minidump-writer.git", rev = "a15bd5cab6a3de251c0c23264be14b977c0af09c" }
+# Bump some dependencies
+minidump-common = { git = "https://github.com/rust-minidump/rust-minidump", rev = "87a29fba5e19cfae5ebf73a57ba31504a3872545" }
 # warp 0.3.3 + https://github.com/seanmonstar/warp/pull/1007
 warp = { git = "https://github.com/glandium/warp", rev = "4af45fae95bc98b0eba1ef0db17e1dac471bb23d" }
 
@@ -180,12 +198,12 @@ fluent-fallback = { path = "b2g/forks/fluent-fallback" }
 glean-core = { path = "b2g/forks/glean-core" }
 
 # application-services overrides to make updating them all simpler.
-interrupt-support = { git = "https://github.com/mozilla/application-services", rev = "86c84c217036c12283d19368867323a66bf35883" }
-sql-support = { git = "https://github.com/mozilla/application-services", rev = "86c84c217036c12283d19368867323a66bf35883" }
-sync15 = { git = "https://github.com/mozilla/application-services", rev = "86c84c217036c12283d19368867323a66bf35883" }
-tabs = { git = "https://github.com/mozilla/application-services", rev = "86c84c217036c12283d19368867323a66bf35883" }
-viaduct = { git = "https://github.com/mozilla/application-services", rev = "86c84c217036c12283d19368867323a66bf35883" }
-webext-storage = { git = "https://github.com/mozilla/application-services", rev = "86c84c217036c12283d19368867323a66bf35883" }
+interrupt-support = { git = "https://github.com/mozilla/application-services", rev = "14fae5c7f01bb2645a3f09e91c64033ed796a862" }
+sql-support = { git = "https://github.com/mozilla/application-services", rev = "14fae5c7f01bb2645a3f09e91c64033ed796a862" }
+sync15 = { git = "https://github.com/mozilla/application-services", rev = "14fae5c7f01bb2645a3f09e91c64033ed796a862" }
+tabs = { git = "https://github.com/mozilla/application-services", rev = "14fae5c7f01bb2645a3f09e91c64033ed796a862" }
+viaduct = { git = "https://github.com/mozilla/application-services", rev = "14fae5c7f01bb2645a3f09e91c64033ed796a862" }
+webext-storage = { git = "https://github.com/mozilla/application-services", rev = "14fae5c7f01bb2645a3f09e91c64033ed796a862" }
 
 # Patch mio 0.6 to use winapi 0.3 and miow 0.3, getting rid of winapi 0.2.
 # There is not going to be new version of mio 0.6, mio now being >= 0.7.11.
@@ -193,8 +211,8 @@ webext-storage = { git = "https://github.com/mozilla/application-services", rev 
 path = "third_party/rust/mio-0.6.23"
 
 [patch."https://github.com/mozilla/uniffi-rs.git"]
-uniffi = "=0.23.0"
-uniffi_bindgen = "=0.23.0"
-uniffi_build = "=0.23.0"
-uniffi_macros = "=0.23.0"
+uniffi = "=0.24.2"
+uniffi_bindgen = "=0.24.2"
+uniffi_build = "=0.24.2"
+uniffi_macros = "=0.24.2"
 weedle2 = "=4.0.0"

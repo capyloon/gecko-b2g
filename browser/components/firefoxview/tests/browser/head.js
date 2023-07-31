@@ -31,12 +31,12 @@ const { TelemetryTestUtils } = ChromeUtils.importESModule(
 );
 
 ChromeUtils.defineESModuleGetters(this, {
+  BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
   SyncedTabs: "resource://services-sync/SyncedTabs.sys.mjs",
 });
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   AboutWelcomeParent: "resource:///actors/AboutWelcomeParent.jsm",
-  BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.jsm",
 });
 
 const MOBILE_PROMO_DISMISSED_PREF =
@@ -48,7 +48,7 @@ const TAB_PICKUP_STATE_PREF =
 
 const calloutId = "multi-stage-message-root";
 const calloutSelector = `#${calloutId}.featureCallout`;
-const primaryButtonSelector = `#${calloutId} .primary`;
+const CTASelector = `#${calloutId} :is(.primary, .secondary)`;
 
 /**
  * URLs used for browser_recently_closed_tabs_keyboard and
@@ -337,7 +337,10 @@ function setupMocks({ fxaDevices = null, state, syncEnabled = true }) {
     };
   });
   sandbox.stub(SyncedTabs, "getTabClients").callsFake(() => {
-    return Promise.resolve(fxaDevices);
+    // The real getTabClients does not return the current device
+    return Promise.resolve(
+      fxaDevices.filter(device => !device.isCurrentDevice)
+    );
   });
   return sandbox;
 }
@@ -412,8 +415,8 @@ const waitForCalloutRemoved = async doc => {
  *
  * @param {document} doc Firefox View document
  */
-const clickPrimaryButton = async doc => {
-  doc.querySelector(primaryButtonSelector).click();
+const clickCTA = async doc => {
+  doc.querySelector(CTASelector).click();
 };
 
 /**

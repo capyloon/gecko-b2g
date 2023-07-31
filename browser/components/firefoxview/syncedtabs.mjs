@@ -160,7 +160,10 @@ class SyncedTabsInView extends ViewPage {
       header: "firefoxview-syncedtabs-adddevice-header",
       description: "firefoxview-syncedtabs-adddevice-description",
       buttonLabel: "firefoxview-syncedtabs-adddevice-primarybutton",
-      link: "https://support.mozilla.org/kb/how-do-i-set-sync-my-computer#w_connect-additional-devices-to-sync",
+      descriptionLink: {
+        name: "url",
+        url: "https://support.mozilla.org/kb/how-do-i-set-sync-my-computer#w_connect-additional-devices-to-sync",
+      },
     },
     "sync-tabs-disabled": {
       header: "firefoxview-syncedtabs-synctabs-header",
@@ -201,7 +204,7 @@ class SyncedTabsInView extends ViewPage {
       description = this.actionMappings[action].description;
       buttonLabel = this.actionMappings[action].buttonLabel;
       checkboxLabel = this.actionMappings[action].checkboxLabel;
-      descriptionLink = this.actionMappings[action];
+      descriptionLink = this.actionMappings[action].descriptionLink;
       mainImageUrl =
         "chrome://browser/content/firefoxview/synced-tabs-error.svg";
       descriptionArray = [description];
@@ -251,8 +254,32 @@ class SyncedTabsInView extends ViewPage {
     }
   }
 
-  onContextMenu(event) {
-    //TODO bug 1833664
+  onContextMenu(e) {
+    this.triggerNode = e.originalTarget;
+    e.target.querySelector("panel-list").toggle(e.detail.originalEvent);
+  }
+
+  panelListTemplate() {
+    return html`
+      <panel-list slot="menu">
+        <panel-item
+          @click=${this.openInNewWindow}
+          data-l10n-id="fxviewtabrow-open-in-window"
+          data-l10n-attrs="accesskey"
+        ></panel-item>
+        <panel-item
+          @click=${this.openInNewPrivateWindow}
+          data-l10n-id="fxviewtabrow-open-in-private-window"
+          data-l10n-attrs="accesskey"
+        ></panel-item>
+        <hr />
+        <panel-item
+          @click=${this.copyLink}
+          data-l10n-id="fxviewtabrow-copy-link"
+          data-l10n-attrs="accesskey"
+        ></panel-item>
+      </panel-list>
+    `;
   }
 
   noDeviceTabsTemplate(deviceName, deviceType) {
@@ -278,11 +305,7 @@ class SyncedTabsInView extends ViewPage {
       renderInfo[tab.device].tabs.push(tab);
     }
     // Add devices without tabs
-    let currentDevice = TabsSetupFlowManager.currentDevice;
     for (let device of this.devices) {
-      if (device.name == currentDevice) {
-        continue;
-      }
       if (!(device.name in renderInfo)) {
         renderInfo[device.name] = {
           deviceType: device.type,
@@ -302,13 +325,17 @@ class SyncedTabsInView extends ViewPage {
           </h2>
           <fxview-tab-list
             slot="main"
+            class="syncedtabs"
+            hasPopup="menu"
             .tabItems=${ifDefined(
               this.getTabItems(renderInfo[deviceName].tabs)
             )}
             maxTabsLength=${this.maxTabsLength}
-            @fxview-tab-list-secondary-action=${this.onContextMenu}
             @fxview-tab-list-primary-action=${this.onOpenLink}
-          ></fxview-tab-list>
+            @fxview-tab-list-secondary-action=${this.onContextMenu}
+          >
+            ${this.panelListTemplate()}
+          </fxview-tab-list>
         </card-container>`);
       } else {
         renderArray.push(
@@ -426,6 +453,7 @@ class SyncedTabsInView extends ViewPage {
   }
 
   sendTabTelemetry(numTabs) {
+    /*
     Services.telemetry.recordEvent(
       "firefoxview-next",
       "synced_tabs",
@@ -435,6 +463,7 @@ class SyncedTabsInView extends ViewPage {
         count: numTabs.toString(),
       }
     );
+*/
   }
 }
 customElements.define("view-syncedtabs", SyncedTabsInView);

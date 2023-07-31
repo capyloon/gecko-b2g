@@ -13,7 +13,7 @@ const { BuiltInThemes } = ChromeUtils.importESModule(
 const defaultPrefValue = getPrefValueByScreen(1);
 
 add_setup(async function () {
-  requestLongerTimeout(2);
+  requestLongerTimeout(3);
   registerCleanupFunction(() => ASRouter.resetMessageState());
 });
 
@@ -100,7 +100,7 @@ add_task(async function feature_callout_syncs_across_visits_and_tabs() {
     "Second tab's Feature Callout shows the tour screen saved in the user pref"
   );
 
-  await clickPrimaryButton(tab2Doc);
+  await clickCTA(tab2Doc);
   await waitForCalloutScreen(tab2Doc, "FEATURE_CALLOUT_2");
 
   gBrowser.selectedTab = tab1;
@@ -111,7 +111,7 @@ add_task(async function feature_callout_syncs_across_visits_and_tabs() {
     "First tab's Feature Callout advances to the next screen when the tour is advanced in second tab"
   );
 
-  await clickPrimaryButton(tab1Doc);
+  await clickCTA(tab1Doc);
   gBrowser.selectedTab = tab1;
   await waitForCalloutRemoved(tab1Doc);
 
@@ -192,78 +192,6 @@ add_task(async function feature_callout_closes_on_dismiss() {
   sandbox.restore();
 });
 
-add_task(async function feature_callout_not_rendered_when_it_has_no_parent() {
-  Services.telemetry.clearEvents();
-  const testMessage = getCalloutMessageById("FIREFOX_VIEW_FEATURE_TOUR");
-  testMessage.message.content.screens[0].parent_selector = "#fake-selector";
-  const sandbox = createSandboxWithCalloutTriggerStub(testMessage);
-
-  await BrowserTestUtils.withNewTab(
-    {
-      gBrowser,
-      url: "about:firefoxview",
-    },
-    async browser => {
-      const { document } = browser.contentWindow;
-
-      launchFeatureTourIn(browser.contentWindow);
-
-      const CONTAINER_NOT_CREATED_EVENT = [
-        [
-          "messaging_experiments",
-          "feature_callout",
-          "create_failed",
-          `${testMessage.message.id}-${testMessage.message.content.screens[0].parent_selector}`,
-        ],
-      ];
-      await TestUtils.waitForCondition(() => {
-        let events = Services.telemetry.snapshotEvents(
-          Ci.nsITelemetry.DATASET_PRERELEASE_CHANNELS,
-          false
-        ).parent;
-        return events && events.length >= 2;
-      }, "Waiting for container_not_created event");
-
-      TelemetryTestUtils.assertEvents(
-        CONTAINER_NOT_CREATED_EVENT,
-        { method: "feature_callout" },
-        { clear: true, process: "parent" }
-      );
-
-      ok(
-        !document.querySelector(`${calloutSelector}:not(.hidden)`),
-        "Feature Callout screen does not render if its parent element does not exist"
-      );
-    }
-  );
-
-  sandbox.restore();
-});
-
-add_task(async function feature_callout_only_highlights_existing_elements() {
-  const testMessage = getCalloutMessageById("FIREFOX_VIEW_FEATURE_TOUR");
-  testMessage.message.content.screens[0].parent_selector = "#fake-selector";
-  const sandbox = createSandboxWithCalloutTriggerStub(testMessage);
-
-  await BrowserTestUtils.withNewTab(
-    {
-      gBrowser,
-      url: "about:firefoxview",
-    },
-    async browser => {
-      const { document } = browser.contentWindow;
-
-      launchFeatureTourIn(browser.contentWindow);
-
-      ok(
-        !document.querySelector(`${calloutSelector}:not(.hidden)`),
-        "Feature Callout screen does not render if its parent element does not exist"
-      );
-    }
-  );
-  sandbox.restore();
-});
-
 add_task(async function feature_callout_arrow_class_exists() {
   const testMessage = getCalloutMessageById("FIREFOX_VIEW_FEATURE_TOUR");
   const sandbox = createSandboxWithCalloutTriggerStub(testMessage);
@@ -289,8 +217,9 @@ add_task(async function feature_callout_arrow_class_exists() {
 
 add_task(async function feature_callout_arrow_is_not_flipped_on_ltr() {
   const testMessage = getCalloutMessageById("FIREFOX_VIEW_FEATURE_TOUR");
-  testMessage.message.content.screens[0].content.arrow_position = "start";
-  testMessage.message.content.screens[0].parent_selector = "span.brand-icon";
+  testMessage.message.content.screens[0].anchors[0].arrow_position = "start";
+  testMessage.message.content.screens[0].anchors[0].selector =
+    "span.brand-icon";
   const sandbox = createSandboxWithCalloutTriggerStub(testMessage);
   await BrowserTestUtils.withNewTab(
     {
@@ -421,7 +350,7 @@ add_task(
 
         info("Clicking primary button");
         let calloutRemoved = waitForCalloutRemoved(document);
-        await clickPrimaryButton(document);
+        await clickCTA(document);
         let openedTab = await tabOpened;
         ok(openedTab, "FxA sign in page opened");
         // The callout should be removed when primary CTA is clicked
@@ -434,27 +363,21 @@ add_task(
   }
 );
 
-add_task(async function feature_callout_dismiss_on_page_click() {
+add_task(async function feature_callout_dismiss_on_timeout() {
   await SpecialPowers.pushPrefEnv({
     set: [[featureTourPref, `{"screen":"","complete":true}`]],
   });
   const screenId = "FIREFOX_VIEW_TAB_PICKUP_REMINDER";
-  const testClickSelector = "#recently-closed-tabs-container";
   let testMessage = getCalloutMessageById(screenId);
   // Configure message with a dismiss action on tab container click
   testMessage.message.content.screens[0].content.page_event_listeners = [
     {
-      params: {
-        type: "click",
-        selectors: testClickSelector,
-      },
-      action: {
-        dismiss: true,
-      },
+      params: { type: "timeout", options: { once: true, interval: 5000 } },
+      action: { dismiss: true, type: "CANCEL" },
     },
   ];
   const sandbox = createSandboxWithCalloutTriggerStub(testMessage);
-  const spy = new TelemetrySpy(sandbox);
+  const telemetrySpy = new TelemetrySpy(sandbox);
 
   await BrowserTestUtils.withNewTab(
     {
@@ -464,40 +387,47 @@ add_task(async function feature_callout_dismiss_on_page_click() {
     async browser => {
       const { document } = browser.contentWindow;
 
+      let onInterval;
+      let startedInterval = new Promise(resolve => {
+        sandbox
+          .stub(browser.contentWindow, "setInterval")
+          .callsFake((fn, ms) => {
+            ok(ms === 5000, "setInterval called with 5 second interval");
+            onInterval = fn;
+            resolve();
+            return 1;
+          });
+      });
+
       launchFeatureTourIn(browser.contentWindow);
 
       info("Waiting for callout to render");
+      await startedInterval;
       await waitForCalloutScreen(document, screenId);
 
-      info("Clicking page element");
-      document.querySelector(testClickSelector).click();
+      info("Ending timeout");
+      onInterval();
       await waitForCalloutRemoved(document);
 
       // Test that appropriate telemetry is sent
-      spy.assertCalledWith({
+      telemetrySpy.assertCalledWith({
         event: "PAGE_EVENT",
         event_context: {
-          action: "DISMISS",
-          reason: "CLICK",
-          source: sinon.match(testClickSelector),
+          action: "CANCEL",
+          reason: "TIMEOUT",
+          source: "timeout",
           page: "about:firefoxview",
         },
         message_id: screenId,
       });
-      spy.assertCalledWith({
+      telemetrySpy.assertCalledWith({
         event: "DISMISS",
         event_context: {
-          source: sinon
-            .match("PAGE_EVENT:")
-            .and(sinon.match(testClickSelector)),
+          source: "PAGE_EVENT:timeout",
           page: "about:firefoxview",
         },
         message_id: screenId,
       });
-
-      browser.tabDialogBox
-        ?.getTabDialogManager()
-        .dialogs.forEach(dialog => dialog.close());
     }
   );
   Services.prefs.clearUserPref("browser.firefox-view.view-count");
@@ -658,7 +588,7 @@ add_task(async function test_firefox_view_spotlight_promo() {
         "Feature Callout element exists"
       );
       info("Feature tour started");
-      await clickPrimaryButton(document);
+      await clickCTA(document);
     }
   );
 
@@ -754,7 +684,7 @@ add_task(async function feature_callout_does_not_display_arrow_if_hidden() {
     set: [[featureTourPref, defaultPrefValue]],
   });
   const testMessage = getCalloutMessageById("FIREFOX_VIEW_FEATURE_TOUR");
-  testMessage.message.content.screens[0].content.hide_arrow = true;
+  testMessage.message.content.screens[0].anchors[0].hide_arrow = true;
   const sandbox = createSandboxWithCalloutTriggerStub(testMessage);
   await BrowserTestUtils.withNewTab(
     {

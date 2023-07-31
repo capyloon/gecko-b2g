@@ -379,6 +379,10 @@ const SNAPSHOT_SCHEMA = {
         diskAvailableBytes: {
           type: "number",
         },
+        pointingDevices: {
+          required: false,
+          type: "array",
+        },
       },
     },
     crashes: {
@@ -1045,11 +1049,11 @@ const SNAPSHOT_SCHEMA = {
           type: "number",
         },
         contentWin32kLockdownState: {
-          required: AppConstants.MOZ_SANDBOX,
+          required: AppConstants.MOZ_SANDBOX && AppConstants.platform == "win",
           type: "string",
         },
         supportSandboxGpuLevel: {
-          required: AppConstants.MOZ_SANDBOX,
+          required: AppConstants.MOZ_SANDBOX && AppConstants.platform == "win",
           type: "number",
         },
         syscallLog: {
