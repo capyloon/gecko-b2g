@@ -228,8 +228,11 @@ def Libxul(name, output_category=None):
             )
         if CONFIG["ANDROID_VERSION"] == "33":
             AOSPSharedObjects(
+                "android.frameworks.sensorservice@1.0",
                 "android.hardware.power-V3-cpp",
                 "android.hardware.vibrator-V2-cpp",
+                "libsensor",
+                "libsensorservicehidl",
             )
         if CONFIG["B2G_OEMHOOK"]:
             AOSPSharedObjects(
