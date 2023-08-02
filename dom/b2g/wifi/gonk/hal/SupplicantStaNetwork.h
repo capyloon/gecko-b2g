@@ -10,39 +10,27 @@
 #include "WifiCommon.h"
 
 #include <string.h>
-#include <android/hardware/wifi/supplicant/1.0/ISupplicantNetwork.h>
-#include <android/hardware/wifi/supplicant/1.0/types.h>
-#if ANDROID_VERSION >= 30
-#  include <android/hardware/wifi/supplicant/1.3/ISupplicantStaNetwork.h>
-#else
-#  include <android/hardware/wifi/supplicant/1.2/ISupplicantStaNetwork.h>
-#endif
 
 #include "mozilla/Mutex.h"
 
-using ::android::hardware::wifi::supplicant::V1_0::ISupplicantNetwork;
-using ::android::hardware::wifi::supplicant::V1_0::ISupplicantStaNetwork;
-using ::android::hardware::wifi::supplicant::V1_0::
-    ISupplicantStaNetworkCallback;
-using ::android::hardware::wifi::supplicant::V1_0::SupplicantStatus;
-using ::android::hardware::wifi::supplicant::V1_0::SupplicantStatusCode;
+#include <android/hardware/wifi/supplicant/ISupplicantStaNetwork.h>
+#include <android/hardware/wifi/supplicant/ISupplicantStaNetworkCallback.h>
+#include <android/hardware/wifi/supplicant/BnSupplicantStaNetworkCallback.h>
+#include <android/hardware/wifi/supplicant/SupplicantStatusCode.h>
 
-using ISupplicantStaNetworkV1_1 =
-    ::android::hardware::wifi::supplicant::V1_1::ISupplicantStaNetwork;
-using ISupplicantStaNetworkV1_2 =
-    ::android::hardware::wifi::supplicant::V1_2::ISupplicantStaNetwork;
-#if ANDROID_VERSION >= 30
-using ISupplicantStaNetworkV1_3 =
-    ::android::hardware::wifi::supplicant::V1_3::ISupplicantStaNetwork;
-#endif
+using ::android::hardware::wifi::supplicant::ISupplicantStaNetwork;
+using ::android::hardware::wifi::supplicant::ISupplicantStaNetworkCallback;
+using ::android::hardware::wifi::supplicant::NetworkRequestEapSimGsmAuthParams;
+using ::android::hardware::wifi::supplicant::NetworkRequestEapSimUmtsAuthParams;
+using ::android::hardware::wifi::supplicant::BnSupplicantStaNetworkCallback;
+using ::android::hardware::wifi::supplicant::SupplicantStatusCode;
+using ::android::hardware::wifi::supplicant::TransitionDisableIndication;
 
-using RequestGsmAuthParams =
-    ISupplicantStaNetworkCallback::NetworkRequestEapSimGsmAuthParams;
-using RequestUmtsAuthParams =
-    ISupplicantStaNetworkCallback::NetworkRequestEapSimUmtsAuthParams;
+using RequestGsmAuthParams = NetworkRequestEapSimGsmAuthParams;
+using RequestUmtsAuthParams = NetworkRequestEapSimUmtsAuthParams;
 
 constexpr uint32_t max_wep_key_num =
-    (ISupplicantStaNetwork::ParamSizeLimits::WEP_KEYS_MAX_NUM | 0x0);
+    (ISupplicantStaNetwork::WEP_KEYS_MAX_NUM | 0x0);
 
 BEGIN_WIFI_NAMESPACE
 
@@ -236,8 +224,7 @@ class NetworkConfiguration {
  */
 class SupplicantStaNetwork
     : virtual public android::RefBase,
-      virtual public android::hardware::wifi::supplicant::V1_0::
-          ISupplicantStaNetworkCallback {
+      public BnSupplicantStaNetworkCallback {
  public:
   explicit SupplicantStaNetwork(
       const std::string& aInterfaceName,
@@ -264,11 +251,7 @@ class SupplicantStaNetwork
  private:
   virtual ~SupplicantStaNetwork();
 
-  android::sp<ISupplicantStaNetworkV1_1> GetSupplicantStaNetworkV1_1() const;
-  android::sp<ISupplicantStaNetworkV1_2> GetSupplicantStaNetworkV1_2() const;
-#if ANDROID_VERSION >= 30
-  android::sp<ISupplicantStaNetworkV1_3> GetSupplicantStaNetworkV1_3() const;
-#endif
+  android::sp<ISupplicantStaNetwork> GetSupplicantStaNetwork() const;
 
   //..................... ISupplicantStaNetworkCallback ......................./
   /**
@@ -279,8 +262,8 @@ class SupplicantStaNetwork
    *
    * @param params Params associated with the request.
    */
-  Return<void> onNetworkEapSimGsmAuthRequest(
-      const ISupplicantStaNetworkCallback::NetworkRequestEapSimGsmAuthParams&
+  ::android::binder::Status onNetworkEapSimGsmAuthRequest(
+      const NetworkRequestEapSimGsmAuthParams&
           params) override;
   /**
    * Used to request EAP UMTS SIM authentication for this particular network.
@@ -290,8 +273,8 @@ class SupplicantStaNetwork
    *
    * @param params Params associated with the request.
    */
-  Return<void> onNetworkEapSimUmtsAuthRequest(
-      const ISupplicantStaNetworkCallback::NetworkRequestEapSimUmtsAuthParams&
+  ::android::binder::Status onNetworkEapSimUmtsAuthRequest(
+      const NetworkRequestEapSimUmtsAuthParams&
           params) override;
   /**
    * Used to request EAP Identity for this particular network.
@@ -299,7 +282,15 @@ class SupplicantStaNetwork
    * The response for the request must be sent using the corresponding
    * |ISupplicantNetwork.sendNetworkEapIdentityResponse| call.
    */
-  Return<void> onNetworkEapIdentityRequest() override;
+  ::android::binder::Status onNetworkEapIdentityRequest() override;
+
+  ::android::binder::Status onTransitionDisable(
+        TransitionDisableIndication ind) override;
+
+  ::android::binder::Status onServerCertificateAvailable(
+            int32_t depth, const std::vector<uint8_t>& subject,
+            const std::vector<uint8_t>& certHash,
+            const std::vector<uint8_t>& certBlob) override;
 
   SupplicantStatusCode SetSsid(const std::string& aSsid);
   SupplicantStatusCode SetBssid(const std::string& aBssid);

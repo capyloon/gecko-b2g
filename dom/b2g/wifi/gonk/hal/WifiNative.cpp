@@ -12,6 +12,7 @@
 #include <string.h>
 #include "js/CharacterEncoding.h"
 
+using ::android::hardware::wifi::supplicant::DebugLevel;
 using namespace mozilla::dom;
 using namespace mozilla::dom::wifi;
 
@@ -21,7 +22,6 @@ static const int32_t CONNECTION_RETRY_TIMES = 50;
 /* static */
 WifiHal* WifiNative::sWifiHal = nullptr;
 WificondControl* WifiNative::sWificondControl = nullptr;
-SoftapManager* WifiNative::sSoftapManager = nullptr;
 SupplicantStaManager* WifiNative::sSupplicantStaManager = nullptr;
 RefPtr<PasspointHandler> WifiNative::sPasspointHandler;
 android::sp<WifiEventCallback> WifiNative::sCallback;
@@ -29,7 +29,6 @@ android::sp<WifiEventCallback> WifiNative::sCallback;
 WifiNative::WifiNative() : mSupportedFeatures(0) {
   sWifiHal = WifiHal::Get();
   sWificondControl = WificondControl::Get();
-  sSoftapManager = SoftapManager::Get();
   sSupplicantStaManager = SupplicantStaManager::Get();
   sPasspointHandler = PasspointHandler::Get();
 }
@@ -148,8 +147,6 @@ bool WifiNative::ExecuteCommand(CommandOptions& aOptions, nsWifiResult* aResult,
     aResult->mStatus = StopSoftAp();
   } else if (aOptions.mCmd == nsIWifiCommand::GET_AP_IFACE) {
     aResult->mStatus = GetSoftApInterfaceName(aResult->mApInterface);
-  } else if (aOptions.mCmd == nsIWifiCommand::GET_SOFTAP_STATION_NUMBER) {
-    aResult->mStatus = GetSoftapStations(aResult->mNumStations);
   } else {
     WIFI_LOGE(LOG_TAG, "ExecuteCommand: Unknown command %d", aOptions.mCmd);
     return false;
@@ -188,6 +185,7 @@ Result_t WifiNative::InitHal() {
   // init supplicant hal
   if (!sSupplicantStaManager->IsInterfaceInitializing()) {
     result = sSupplicantStaManager->InitInterface();
+    //result = sSupplicantStaManager->InitSupplicantInterface();
     if (result != nsIWifiResult::SUCCESS) {
       return result;
     }
@@ -349,20 +347,23 @@ Result_t WifiNative::StopWifi() {
 Result_t WifiNative::StartSupplicant() {
   Result_t result = nsIWifiResult::ERROR_UNKNOWN;
 
-  // start supplicant hal
-  if (!sSupplicantStaManager->IsInterfaceReady()) {
-    result = sSupplicantStaManager->InitInterface();
-    if (result != nsIWifiResult::SUCCESS) {
-      WIFI_LOGE(LOG_TAG, "Failed to initialize supplicant hal");
-      return result;
-    }
-  }
-
   // start supplicant from wificond.
+  WIFI_LOGE(LOG_TAG, "start supplicant from wificond");
   result = sWificondControl->StartSupplicant();
   if (result != nsIWifiResult::SUCCESS) {
     WIFI_LOGE(LOG_TAG, "Failed to start supplicant daemon");
     return result;
+  }
+
+  // start supplicant hal
+  WIFI_LOGE(LOG_TAG, "start supplicant hal");
+  if (!sSupplicantStaManager->IsInterfaceReady()) {
+    //result = sSupplicantStaManager->InitInterface();
+    result = sSupplicantStaManager->InitSupplicantInterface();
+    if (result != nsIWifiResult::SUCCESS) {
+      WIFI_LOGE(LOG_TAG, "Failed to initialize supplicant hal");
+      return result;
+    }
   }
 
   bool connected = false;
@@ -770,11 +771,6 @@ Result_t WifiNative::StartSoftAp(SoftapConfigurationOptions* aSoftapConfig,
     return result;
   }
 
-  result = StartAndConnectHostapd();
-  if (result != nsIWifiResult::SUCCESS) {
-    return result;
-  }
-
   result = sWifiHal->ConfigChipAndCreateIface(wifiNameSpaceV1_0::IfaceType::AP,
                                               mApInterfaceName);
   if (result != nsIWifiResult::SUCCESS) {
@@ -797,14 +793,6 @@ Result_t WifiNative::StartSoftAp(SoftapConfigurationOptions* aSoftapConfig,
     WIFI_LOGE(LOG_TAG, "Failed to set country code");
   }
 
-  // start softap from hostapd.
-  result =
-      sSoftapManager->StartSoftap(mApInterfaceName, countryCode, aSoftapConfig);
-  if (result != nsIWifiResult::SUCCESS) {
-    WIFI_LOGE(LOG_TAG, "Failed to start softap");
-    return result;
-  }
-
   nsString iface(NS_ConvertUTF8toUTF16(mApInterfaceName.c_str()));
   aIfaceName.Assign(iface);
   return CHECK_SUCCESS(aIfaceName.Length() > 0);
@@ -820,12 +808,6 @@ Result_t WifiNative::StartSoftAp(SoftapConfigurationOptions* aSoftapConfig,
 Result_t WifiNative::StopSoftAp() {
   Result_t result = nsIWifiResult::ERROR_UNKNOWN;
 
-  result = sSoftapManager->StopSoftap(mApInterfaceName);
-  if (result != nsIWifiResult::SUCCESS) {
-    WIFI_LOGE(LOG_TAG, "Failed to stop softap");
-    return result;
-  }
-
   // TODO: It's the only method to unsubscribe regulatory domain change event,
   //       implement remain interface check if we support multiple interfaces
   //       case such as p2p or concurrent mode.
@@ -835,53 +817,12 @@ Result_t WifiNative::StopSoftAp() {
     return result;
   }
 
-  result = StopHostapd();
-  if (result != nsIWifiResult::SUCCESS) {
-    WIFI_LOGE(LOG_TAG, "Failed to stop hostapd");
-    return result;
-  }
-
   result = sWifiHal->TearDownInterface(wifiNameSpaceV1_0::IfaceType::AP);
   if (result != nsIWifiResult::SUCCESS) {
     WIFI_LOGE(LOG_TAG, "Failed to teardown softap interface");
     return result;
   }
   return nsIWifiResult::SUCCESS;
-}
-
-Result_t WifiNative::StartAndConnectHostapd() {
-  Result_t result = nsIWifiResult::ERROR_UNKNOWN;
-
-  result = sSoftapManager->InitInterface();
-  if (result != nsIWifiResult::SUCCESS) {
-    WIFI_LOGE(LOG_TAG, "Failed to initialize hostapd interface");
-    return result;
-  }
-
-  bool connected = false;
-  int32_t connectTries = 0;
-  while (!connected && connectTries++ < CONNECTION_RETRY_TIMES) {
-    // Check if the initialization is complete.
-    if (sSoftapManager->IsInterfaceReady()) {
-      connected = true;
-      break;
-    }
-    usleep(CONNECTION_RETRY_INTERVAL_US);
-  }
-  return CHECK_SUCCESS(connected);
-}
-
-Result_t WifiNative::StopHostapd() {
-  Result_t result = sSoftapManager->DeinitInterface();
-  if (result != nsIWifiResult::SUCCESS) {
-    WIFI_LOGE(LOG_TAG, "Failed to tear down hostapd interface");
-    return result;
-  }
-  return nsIWifiResult::SUCCESS;
-}
-
-Result_t WifiNative::GetSoftapStations(uint32_t& aNumStations) {
-  return sWificondControl->GetSoftapStations(aNumStations);
 }
 
 void WifiNative::SupplicantDeathHandler::OnDeath() {

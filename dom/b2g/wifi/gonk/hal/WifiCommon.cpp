@@ -10,7 +10,7 @@
 #include "WifiCommon.h"
 #include <iomanip>
 
-bool gWifiDebug = false;
+bool gWifiDebug = true;
 
 static int32_t HexToNum(char c) {
   if (c >= '0' && c <= '9') return c - '0';

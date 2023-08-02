@@ -10,7 +10,7 @@
 #include "WifiCommon.h"
 #include "WifiEventCallback.h"
 #include "SupplicantStaNetwork.h"
-#include "SupplicantCallback.h"
+#include "SupplicantAIDLCallback.h"
 
 // There is a conflict with the value of DEBUG in DEBUG builds.
 #if defined(DEBUG)
@@ -20,16 +20,13 @@
 
 #include <android/hidl/manager/1.0/IServiceManager.h>
 #include <android/hidl/manager/1.0/IServiceNotification.h>
-#include <android/hardware/wifi/supplicant/1.0/ISupplicantIface.h>
-#include <android/hardware/wifi/supplicant/1.0/types.h>
-#if ANDROID_VERSION >= 30
-#  include <android/hardware/wifi/supplicant/1.3/ISupplicant.h>
-#  include <android/hardware/wifi/supplicant/1.3/ISupplicantStaIface.h>
-#else
-#  include <android/hardware/wifi/supplicant/1.2/ISupplicant.h>
-#  include <android/hardware/wifi/supplicant/1.2/ISupplicantStaIface.h>
-#endif
-#include <android/hardware/wifi/supplicant/1.2/ISupplicantP2pIface.h>
+
+//AIDL
+#include <android/hardware/wifi/supplicant/ISupplicant.h>
+#include <android/hardware/wifi/supplicant/ISupplicantCallback.h>
+#include <android/hardware/wifi/supplicant/ISupplicantP2pIface.h>
+#include <android/hardware/wifi/supplicant/ISupplicantStaIface.h>
+#include <android/hardware/wifi/supplicant/BnSupplicantCallback.h>
 
 #if defined(OLD_DEBUG)
 #  define DEBUG = OLD_DEBUG
@@ -43,44 +40,23 @@ using ::android::hardware::hidl_death_recipient;
 using ::android::hardware::hidl_string;
 using ::android::hardware::hidl_vec;
 using ::android::hardware::Return;
-using ::android::hardware::wifi::supplicant::V1_0::Bssid;
-using ::android::hardware::wifi::supplicant::V1_0::ISupplicant;
-using ::android::hardware::wifi::supplicant::V1_0::ISupplicantIface;
-using ::android::hardware::wifi::supplicant::V1_0::ISupplicantP2pIface;
-using ::android::hardware::wifi::supplicant::V1_0::ISupplicantStaIface;
-using ::android::hardware::wifi::supplicant::V1_0::ISupplicantStaIfaceCallback;
-using ::android::hardware::wifi::supplicant::V1_0::SupplicantStatus;
-using ::android::hardware::wifi::supplicant::V1_0::SupplicantStatusCode;
 using ::android::hidl::base::V1_0::IBase;
 using ::android::hidl::manager::V1_0::IServiceManager;
 
-using ISupplicantV1_1 = android::hardware::wifi::supplicant::V1_1::ISupplicant;
-using ISupplicantV1_2 = android::hardware::wifi::supplicant::V1_2::ISupplicant;
-using ISupplicantStaIfaceV1_1 =
-    android::hardware::wifi::supplicant::V1_1::ISupplicantStaIface;
-using ISupplicantStaIfaceV1_2 =
-    android::hardware::wifi::supplicant::V1_2::ISupplicantStaIface;
-#if ANDROID_VERSION >= 30
-using ISupplicantV1_3 = android::hardware::wifi::supplicant::V1_3::ISupplicant;
-using ISupplicantStaIfaceV1_3 =
-    android::hardware::wifi::supplicant::V1_3::ISupplicantStaIface;
-#endif
-
-using AnqpInfoId = ::android::hardware::wifi::supplicant::V1_0::
-    ISupplicantStaIface::AnqpInfoId;
-using Hs20AnqpSubtypes = ::android::hardware::wifi::supplicant::V1_0::
-    ISupplicantStaIface::Hs20AnqpSubtypes;
-
-namespace SupplicantNameSpaceV1_0 = ::android::hardware::wifi::supplicant::V1_0;
+//AIDL
+using ::android::hardware::wifi::supplicant::IfaceInfo;
+using ::android::hardware::wifi::supplicant::IfaceType;
+using ::android::hardware::wifi::supplicant::ISupplicant;
+using ::android::hardware::wifi::supplicant::ISupplicantP2pIface;
+using ::android::hardware::wifi::supplicant::ISupplicantStaIface;
 
 BEGIN_WIFI_NAMESPACE
 
 /**
- * Class for supplicant HIDL client implementation.
+ * Class for supplicant AIDL client implementation.
  */
 class SupplicantStaManager
-    : virtual public android::hidl::manager::V1_0::IServiceNotification,
-      virtual public SupplicantNameSpaceV1_0::ISupplicantCallback {
+ : public ::android::hardware::wifi::supplicant::BnSupplicantCallback {
  public:
   static SupplicantStaManager* Get();
   static void CleanUp();
@@ -155,32 +131,18 @@ class SupplicantStaManager
   void RegisterDeathHandler(SupplicantDeathEventHandler* aHandler);
   void UnregisterDeathHandler();
 
+  Result_t InitSupplicantInterface();
+
   virtual ~SupplicantStaManager() {}
 
-  // IServiceNotification::onRegistration
-  virtual Return<void> onRegistration(const hidl_string& fqName,
-                                      const hidl_string& name,
-                                      bool preexisting) override;
-
- private:
   //...................... ISupplicantCallback ......................../
-  /**
-   * Used to indicate that a new interface has been created.
-   *
-   * @param ifName Name of the network interface, e.g., wlan0
-   */
-  Return<void> onInterfaceCreated(const hidl_string& ifName) override;
-  /**
-   * Used to indicate that an interface has been removed.
-   *
-   * @param ifName Name of the network interface, e.g., wlan0
-   */
-  Return<void> onInterfaceRemoved(const hidl_string& ifName) override;
-  /**
-   * Used to indicate that the supplicant daemon is terminating.
-   */
-  Return<void> onTerminating() override;
 
+  ::android::binder::Status
+  onInterfaceCreated(const ::android::String16 & /*ifaceName*/) override;
+  ::android::binder::Status
+  onInterfaceRemoved(const ::android::String16 & /*ifaceName*/) override;
+
+private:
   struct ServiceManagerDeathRecipient : public hidl_death_recipient {
     explicit ServiceManagerDeathRecipient(SupplicantStaManager* aOuter)
         : mOuter(aOuter) {}
@@ -206,7 +168,6 @@ class SupplicantStaManager
   SupplicantStaManager();
 
   Result_t InitServiceManager();
-  Result_t InitSupplicantInterface();
   Result_t TearDownInterface();
 
   Result_t SetWpsDeviceName(const std::string& aDeviceName);
@@ -219,26 +180,15 @@ class SupplicantStaManager
 
   android::sp<IServiceManager> GetServiceManager();
   android::sp<ISupplicant> GetSupplicant();
-  android::sp<ISupplicantV1_1> GetSupplicantV1_1();
-  android::sp<ISupplicantV1_2> GetSupplicantV1_2();
-  android::sp<ISupplicantStaIfaceV1_1> GetSupplicantStaIfaceV1_1();
-  android::sp<ISupplicantStaIfaceV1_2> GetSupplicantStaIfaceV1_2();
-#if ANDROID_VERSION >= 30
-  android::sp<ISupplicantV1_3> GetSupplicantV1_3();
-  android::sp<ISupplicantStaIfaceV1_3> GetSupplicantStaIfaceV1_3();
 
   bool IsSupplicantV1_3();
-#endif
-
   bool IsSupplicantV1_1();
   bool IsSupplicantV1_2();
   bool SupplicantVersionSupported(const std::string& name);
 
   android::sp<ISupplicantStaIface> GetSupplicantStaIface();
-  android::sp<ISupplicantStaIface> AddSupplicantStaIface();
   android::sp<ISupplicantP2pIface> GetSupplicantP2pIface();
-  Result_t FindIfaceOfType(SupplicantNameSpaceV1_0::IfaceType aDesired,
-                           ISupplicant::IfaceInfo* aInfo);
+  Result_t FindIfaceOfType(IfaceType aDesired, IfaceInfo* aInfo);
   android::sp<SupplicantStaNetwork> CreateStaNetwork();
   android::sp<SupplicantStaNetwork> GetStaNetwork(uint32_t aNetId) const;
   android::sp<SupplicantStaNetwork> GetCurrentNetwork() const;
@@ -258,7 +208,7 @@ class SupplicantStaManager
   android::sp<::android::hidl::manager::V1_0::IServiceManager> mServiceManager;
   android::sp<ISupplicant> mSupplicant;
   android::sp<ISupplicantStaIface> mSupplicantStaIface;
-  android::sp<ISupplicantStaIfaceCallback> mSupplicantStaIfaceCallback;
+  android::sp<SupplicantStaIfaceCallback> mSupplicantStaIfaceCallback;
   android::sp<ServiceManagerDeathRecipient> mServiceManagerDeathRecipient;
   android::sp<SupplicantDeathRecipient> mSupplicantDeathRecipient;
 

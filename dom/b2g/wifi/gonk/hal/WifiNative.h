@@ -11,7 +11,6 @@
 #include "WifiEventCallback.h"
 #include "WifiHalManager.h"
 #include "WificondControl.h"
-#include "SoftapManager.h"
 #include "SupplicantStaManager.h"
 #include "nsString.h"
 #include "nsWifiElement.h"
@@ -116,7 +115,6 @@ class WifiNative {
   static WifiHal* sWifiHal;
   static WificondControl* sWificondControl;
   static SupplicantStaManager* sSupplicantStaManager;
-  static SoftapManager* sSoftapManager;
   static android::sp<WifiEventCallback> sCallback;
   static RefPtr<PasspointHandler> sPasspointHandler;
 
