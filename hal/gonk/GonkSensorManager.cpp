@@ -18,7 +18,7 @@
 
 #include <android/log.h>
 
-#define SENSOR_LOG_TAG "ZZZ_HidlSensorManager"
+#define SENSOR_LOG_TAG "HidlSensorManager"
 
 #define SENSOR_LOG(args...) \
   __android_log_print(ANDROID_LOG_INFO, SENSOR_LOG_TAG, args)
@@ -150,9 +150,7 @@ Return<void> SensorManager::createGrallocDirectChannel(
 
 /* One global looper for all event queues created from this SensorManager. */
 sp<Looper> SensorManager::getLooper() {
-  SENSOR_INFO("SensorManager::getLooper start");
   std::lock_guard<std::mutex> lock(mThreadMutex);
-  SENSOR_INFO("SensorManager::getLooper 1");
 
   if (!mPollThread.joinable()) {
     // if thread not initialized, start thread
@@ -189,14 +187,11 @@ sp<Looper> SensorManager::getLooper() {
     }};
     mPollThread = std::move(pollThread);
   }
-  SENSOR_INFO("SensorManager::getLooper end");
   return mLooper;
 }
 
 ::android::SensorManager& SensorManager::getInternalManager() {
-  SENSOR_INFO("SensorManager::getInternalManager start");
   std::lock_guard<std::mutex> lock(mInternalManagerMutex);
-  SENSOR_INFO("SensorManager::getInternalManager 1");
   if (mInternalManager == nullptr) {
     SENSOR_INFO("SensorManager::getInternalManager about to get new manager.");
     mInternalManager = &::android::SensorManager::getInstanceForPackage(
@@ -204,7 +199,6 @@ sp<Looper> SensorManager::getLooper() {
     SENSOR_INFO("SensorManager::getInternalManager mInternalManager=%p",
                 mInternalManager);
   }
-  SENSOR_INFO("SensorManager::getInternalManager end");
   return *mInternalManager;
 }
 
