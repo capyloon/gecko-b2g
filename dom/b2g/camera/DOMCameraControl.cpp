@@ -1153,7 +1153,9 @@ void nsDOMCameraControl::OnHardwareStateChange(
 
   switch (aState) {
     case CameraControlListener::kHardwareOpen:
-      DOM_CAMERA_LOGI("DOM OnHardwareStateChange: open\n");
+      DOM_CAMERA_LOGI(
+          "DOM OnHardwareStateChange: open, reason=%s, mSetInitialConfig=%d\n",
+          aReason == NS_OK ? "ok" : "unknown", mSetInitialConfig);
       MOZ_ASSERT(aReason == NS_OK);
       if (!mSetInitialConfig) {
         // The hardware is open, so we can return a camera to JS, even if

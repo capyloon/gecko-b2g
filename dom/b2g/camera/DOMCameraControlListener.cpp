@@ -154,6 +154,7 @@ void DOMCameraControlListener::OnRecorderStateChange(RecorderState aState,
 
 void DOMCameraControlListener::OnConfigurationChange(
     const CameraListenerConfiguration& aConfiguration) {
+  DOM_CAMERA_LOGI("DOMCameraControlListener::OnConfigurationChange");
   class Callback : public DOMCallback {
    public:
     Callback(nsMainThreadPtrHandle<nsISupports> aDOMCameraControl,

@@ -32,6 +32,9 @@ class GonkCameraListener : virtual public RefBase {
                                  const sp<IMemory>& dataPtr) = 0;
   virtual bool postRecordingFrameHandleTimestamp(int64_t timestampUs,
                                                  native_handle_t* handle) = 0;
+  virtual void postRecordingFrameHandleTimestampBatch(
+      const std::vector<nsecs_t>& timestamps,
+      const std::vector<native_handle_t*>& handles) = 0;
 };
 
 };  // namespace android

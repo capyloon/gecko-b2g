@@ -71,6 +71,10 @@ struct GonkCameraSourceListener : public GonkCameraListener {
   virtual bool postRecordingFrameHandleTimestamp(nsecs_t timestamp,
                                                  native_handle_t* handle);
 
+  virtual void postRecordingFrameHandleTimestampBatch(
+      const std::vector<nsecs_t>& timestamps,
+      const std::vector<native_handle_t*>& handles);
+
  protected:
   virtual ~GonkCameraSourceListener();
 
@@ -125,6 +129,14 @@ bool GonkCameraSourceListener::postRecordingFrameHandleTimestamp(
     return true;
   }
   return false;
+}
+
+void GonkCameraSourceListener::postRecordingFrameHandleTimestampBatch(
+    const std::vector<nsecs_t>& timestamps,
+    const std::vector<native_handle_t*>& handles) {
+  // TODO: implement this callback function.
+  // Currently we don't need this during camera integration.
+  DOM_CAMERA_LOGW("%s", __FUNCTION__);
 }
 
 static int32_t getColorFormat(const char* colorFormat) {
