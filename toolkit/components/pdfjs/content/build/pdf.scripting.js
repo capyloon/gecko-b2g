@@ -51,6 +51,7 @@ var _color = __w_pdfjs_require__(5);
 var _console = __w_pdfjs_require__(14);
 var _doc = __w_pdfjs_require__(15);
 var _proxy = __w_pdfjs_require__(17);
+var _app_utils = __w_pdfjs_require__(10);
 var _util = __w_pdfjs_require__(18);
 function initSandbox(params) {
   delete globalThis.pdfjsScripting;
@@ -216,11 +217,7 @@ function initSandbox(params) {
     try {
       functions[name](args);
     } catch (error) {
-      const value = `${error.toString()}\n${error.stack}`;
-      send({
-        command: "error",
-        value
-      });
+      send((0, _app_utils.serializeError)(error));
     }
   };
 }
@@ -1124,6 +1121,9 @@ exports.ColorConverters = void 0;
 function makeColorComp(n) {
   return Math.floor(Math.max(0, Math.min(1, n)) * 255).toString(16).padStart(2, "0");
 }
+function scaleAndClamp(x) {
+  return Math.max(0, Math.min(255, 255 * x));
+}
 class ColorConverters {
   static CMYK_G([c, y, m, k]) {
     return ["G", 1 - Math.min(1, 0.3 * c + 0.59 * m + 0.11 * y + k)];
@@ -1134,6 +1134,10 @@ class ColorConverters {
   static G_RGB([g]) {
     return ["RGB", g, g, g];
   }
+  static G_rgb([g]) {
+    g = scaleAndClamp(g);
+    return [g, g, g];
+  }
   static G_HTML([g]) {
     const G = makeColorComp(g);
     return `#${G}${G}${G}`;
@@ -1141,17 +1145,23 @@ class ColorConverters {
   static RGB_G([r, g, b]) {
     return ["G", 0.3 * r + 0.59 * g + 0.11 * b];
   }
-  static RGB_HTML([r, g, b]) {
-    const R = makeColorComp(r);
-    const G = makeColorComp(g);
-    const B = makeColorComp(b);
-    return `#${R}${G}${B}`;
+  static RGB_rgb(color) {
+    return color.map(scaleAndClamp);
+  }
+  static RGB_HTML(color) {
+    return `#${color.map(makeColorComp).join("")}`;
   }
   static T_HTML() {
     return "#00000000";
   }
+  static T_rgb() {
+    return [null];
+  }
   static CMYK_RGB([c, y, m, k]) {
     return ["RGB", 1 - Math.min(1, c + k), 1 - Math.min(1, m + k), 1 - Math.min(1, y + k)];
+  }
+  static CMYK_rgb([c, y, m, k]) {
+    return [scaleAndClamp(1 - Math.min(1, c + k)), scaleAndClamp(1 - Math.min(1, m + k)), scaleAndClamp(1 - Math.min(1, y + k))];
   }
   static CMYK_HTML(components) {
     const rgb = this.CMYK_RGB(components).slice(1);
@@ -1296,11 +1306,7 @@ class AForm {
     } catch {}
     if (!date) {
       date = Date.parse(cDate);
-      if (isNaN(date)) {
-        date = this._tryToGuessDate(cFormat, cDate);
-      } else {
-        date = new Date(date);
-      }
+      date = isNaN(date) ? this._tryToGuessDate(cFormat, cDate) : new Date(date);
     }
     return date;
   }
@@ -1438,11 +1444,7 @@ class AForm {
     }
     const formatStr = `%,${sepStyle}.${nDec}f`;
     value = this._util.printf(formatStr, value * 100);
-    if (percentPrepend) {
-      event.value = `%${value}`;
-    } else {
-      event.value = `${value}%`;
-    }
+    event.value = percentPrepend ? `%${value}` : `${value}%`;
   }
   AFPercent_Keystroke(nDec, sepStyle) {
     this.AFNumber_Keystroke(nDec, sepStyle, 0, 0, "", true);
@@ -1596,11 +1598,7 @@ class AForm {
         formatStr = "99999-9999";
         break;
       case 2:
-        if (this._util.printx("9999999999", event.value).length >= 10) {
-          formatStr = "(999) 999-9999";
-        } else {
-          formatStr = "999-9999";
-        }
+        formatStr = this._util.printx("9999999999", event.value).length >= 10 ? "(999) 999-9999" : "999-9999";
         break;
       case 3:
         formatStr = "999-99-9999";
@@ -1676,11 +1674,7 @@ class AForm {
         break;
       case 2:
         const value = this.AFMergeChange(event);
-        if (value.length > 8 || value.startsWith("(")) {
-          formatStr = "(999) 999-9999";
-        } else {
-          formatStr = "999-9999";
-        }
+        formatStr = value.length > 8 || value.startsWith("(") ? "(999) 999-9999" : "999-9999";
         break;
       case 3:
         formatStr = "999-99-9999";
@@ -2187,6 +2181,7 @@ Object.defineProperty(exports, "__esModule", ({
   value: true
 }));
 exports.VIEWER_VERSION = exports.VIEWER_VARIATION = exports.VIEWER_TYPE = exports.USERACTIVATION_MAXTIME_VALIDITY = exports.USERACTIVATION_CALLBACKID = exports.FORMS_VERSION = void 0;
+exports.serializeError = serializeError;
 const VIEWER_TYPE = "PDF.js";
 exports.VIEWER_TYPE = VIEWER_TYPE;
 const VIEWER_VARIATION = "Full";
@@ -2199,6 +2194,13 @@ const USERACTIVATION_CALLBACKID = 0;
 exports.USERACTIVATION_CALLBACKID = USERACTIVATION_CALLBACKID;
 const USERACTIVATION_MAXTIME_VALIDITY = 5000;
 exports.USERACTIVATION_MAXTIME_VALIDITY = USERACTIVATION_MAXTIME_VALIDITY;
+function serializeError(error) {
+  const value = `${error.toString()}\n${error.stack}`;
+  return {
+    command: "error",
+    value
+  };
+}
 
 /***/ }),
 /* 11 */
@@ -2652,6 +2654,7 @@ exports.Doc = void 0;
 var _common = __w_pdfjs_require__(4);
 var _pdf_object = __w_pdfjs_require__(7);
 var _print_params = __w_pdfjs_require__(16);
+var _app_utils = __w_pdfjs_require__(10);
 var _constants = __w_pdfjs_require__(2);
 const DOC_EXTERNAL = false;
 class InfoProxyHandler {
@@ -2731,20 +2734,31 @@ class Doc extends _pdf_object.PDFObject {
     this._disableSaving = false;
   }
   _dispatchDocEvent(name) {
-    if (name === "Open") {
-      this._disableSaving = true;
-      this._runActions("OpenAction");
-      this._disableSaving = false;
-    } else if (name === "WillPrint") {
-      this._disablePrinting = true;
-      this._runActions(name);
-      this._disablePrinting = false;
-    } else if (name === "WillSave") {
-      this._disableSaving = true;
-      this._runActions(name);
-      this._disableSaving = false;
-    } else {
-      this._runActions(name);
+    switch (name) {
+      case "Open":
+        this._disableSaving = true;
+        this._runActions("OpenAction");
+        this._disableSaving = false;
+        break;
+      case "WillPrint":
+        this._disablePrinting = true;
+        try {
+          this._runActions(name);
+        } catch (error) {
+          this._send((0, _app_utils.serializeError)(error));
+        }
+        this._send({
+          command: "WillPrintFinished"
+        });
+        this._disablePrinting = false;
+        break;
+      case "WillSave":
+        this._disableSaving = true;
+        this._runActions(name);
+        this._disableSaving = false;
+        break;
+      default:
+        this._runActions(name);
     }
   }
   _dispatchPageEvent(name, actions, pageNumber) {
@@ -3384,16 +3398,8 @@ class Doc extends _pdf_object.PDFObject {
       nStart = printParams.firstPage;
       nEnd = printParams.lastPage;
     }
-    if (typeof nStart === "number") {
-      nStart = Math.max(0, Math.trunc(nStart));
-    } else {
-      nStart = 0;
-    }
-    if (typeof nEnd === "number") {
-      nEnd = Math.max(0, Math.trunc(nEnd));
-    } else {
-      nEnd = -1;
-    }
+    nStart = typeof nStart === "number" ? Math.max(0, Math.trunc(nStart)) : 0;
+    nEnd = typeof nEnd === "number" ? Math.max(0, Math.trunc(nEnd)) : -1;
     this._send({
       command: "print",
       start: nStart,
@@ -3820,11 +3826,7 @@ class Util extends _pdf_object.PDFObject {
       const [thousandSep, decimalSep] = separators[nDecSep];
       let decPart = "";
       if (cConvChar === "f") {
-        if (nPrecision !== undefined) {
-          decPart = Math.abs(arg - intPart).toFixed(nPrecision);
-        } else {
-          decPart = Math.abs(arg - intPart).toString();
-        }
+        decPart = nPrecision !== undefined ? Math.abs(arg - intPart).toFixed(nPrecision) : Math.abs(arg - intPart).toString();
         if (decPart.length > 2) {
           decPart = `${decimalSep}${decPart.substring(2)}`;
         } else {
@@ -4248,8 +4250,8 @@ Object.defineProperty(exports, "initSandbox", ({
   }
 }));
 var _initialization = __w_pdfjs_require__(1);
-const pdfjsVersion = '3.9.146';
-const pdfjsBuild = '48cc67f17';
+const pdfjsVersion = '3.10.17';
+const pdfjsBuild = '4735ed8f1';
 })();
 
 /******/ 	return __webpack_exports__;

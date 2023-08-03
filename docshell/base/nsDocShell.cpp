@@ -205,7 +205,8 @@
 #include "nsError.h"
 #include "nsEscape.h"
 #include "nsFocusManager.h"
-#include "nsGlobalWindow.h"
+#include "nsGlobalWindowInner.h"
+#include "nsGlobalWindowOuter.h"
 #include "nsJSEnvironment.h"
 #include "nsNetCID.h"
 #include "nsNetUtil.h"
@@ -784,7 +785,8 @@ nsresult nsDocShell::LoadURI(nsDocShellLoadState* aLoadState,
             ("nsDocShell[%p]: loading from session history", this));
 
     if (!mozilla::SessionHistoryInParent()) {
-      return LoadHistoryEntry(aLoadState->SHEntry(), aLoadState->LoadType(),
+      nsCOMPtr<nsISHEntry> entry = aLoadState->SHEntry();
+      return LoadHistoryEntry(entry, aLoadState->LoadType(),
                               aLoadState->HasValidUserGestureActivation());
     }
 
@@ -1279,9 +1281,8 @@ void nsDocShell::ThawFreezeNonRecursive(bool aThaw) {
     return;
   }
 
-  RefPtr<nsGlobalWindowInner> inner =
-      mScriptGlobal->GetCurrentInnerWindowInternal();
-  if (inner) {
+  if (RefPtr<nsGlobalWindowInner> inner =
+          nsGlobalWindowInner::Cast(mScriptGlobal->GetCurrentInnerWindow())) {
     if (aThaw) {
       inner->Thaw(false);
     } else {
@@ -1310,9 +1311,8 @@ void nsDocShell::FirePageHideShowNonRecursive(bool aShow) {
     RefPtr<Document> doc = contentViewer->GetDocument();
     if (doc) {
       doc->NotifyActivityChanged();
-      RefPtr<nsGlobalWindowInner> inner =
-          mScriptGlobal ? mScriptGlobal->GetCurrentInnerWindowInternal()
-                        : nullptr;
+      nsCOMPtr<nsPIDOMWindowInner> inner =
+          mScriptGlobal ? mScriptGlobal->GetCurrentInnerWindow() : nullptr;
       if (mBrowsingContext->IsTop()) {
         doc->NotifyPossibleTitleChange(false);
         if (inner) {
@@ -2428,8 +2428,8 @@ nsDocShell::SetCustomUserAgent(const nsAString& aCustomUserAgent) {
 
 NS_IMETHODIMP
 nsDocShell::ClearCachedPlatform() {
-  RefPtr<nsGlobalWindowInner> win =
-      mScriptGlobal ? mScriptGlobal->GetCurrentInnerWindowInternal() : nullptr;
+  nsCOMPtr<nsPIDOMWindowInner> win =
+      mScriptGlobal ? mScriptGlobal->GetCurrentInnerWindow() : nullptr;
   if (win) {
     Navigator* navigator = win->Navigator();
     if (navigator) {
@@ -2442,8 +2442,8 @@ nsDocShell::ClearCachedPlatform() {
 
 NS_IMETHODIMP
 nsDocShell::ClearCachedUserAgent() {
-  RefPtr<nsGlobalWindowInner> win =
-      mScriptGlobal ? mScriptGlobal->GetCurrentInnerWindowInternal() : nullptr;
+  nsCOMPtr<nsPIDOMWindowInner> win =
+      mScriptGlobal ? mScriptGlobal->GetCurrentInnerWindow() : nullptr;
   if (win) {
     Navigator* navigator = win->Navigator();
     if (navigator) {
@@ -2527,11 +2527,10 @@ void nsDocShell::MaybeCreateInitialClientSource(nsIPrincipal* aPrincipal) {
 
   // If there is an existing document then there is no need to create
   // a client for a future initial about:blank document.
-  if (mScriptGlobal && mScriptGlobal->GetCurrentInnerWindowInternal() &&
-      mScriptGlobal->GetCurrentInnerWindowInternal()->GetExtantDoc()) {
-    MOZ_DIAGNOSTIC_ASSERT(mScriptGlobal->GetCurrentInnerWindowInternal()
-                              ->GetClientInfo()
-                              .isSome());
+  if (mScriptGlobal && mScriptGlobal->GetCurrentInnerWindow() &&
+      mScriptGlobal->GetCurrentInnerWindow()->GetExtantDoc()) {
+    MOZ_DIAGNOSTIC_ASSERT(
+        mScriptGlobal->GetCurrentInnerWindow()->GetClientInfo().isSome());
     MOZ_DIAGNOSTIC_ASSERT(!mInitialClientSource);
     return;
   }
@@ -2613,8 +2612,8 @@ Maybe<ClientInfo> nsDocShell::GetInitialClientInfo() const {
     return result;
   }
 
-  nsGlobalWindowInner* innerWindow =
-      mScriptGlobal ? mScriptGlobal->GetCurrentInnerWindowInternal() : nullptr;
+  nsPIDOMWindowInner* innerWindow =
+      mScriptGlobal ? mScriptGlobal->GetCurrentInnerWindow() : nullptr;
   Document* doc = innerWindow ? innerWindow->GetExtantDoc() : nullptr;
 
   if (!doc || !doc->IsInitialDocument()) {
@@ -4138,8 +4137,11 @@ nsDocShell::Reload(uint32_t aReloadFlags) {
         } else {
           MOZ_LOG(gSHLog, LogLevel::Debug,
                   ("nsDocShell %p ReloadDocument", this));
-          ReloadDocument(this, GetDocument(), loadType, mBrowsingContext,
-                         mCurrentURI, mReferrerInfo);
+          RefPtr<Document> doc = GetDocument();
+          RefPtr<BrowsingContext> bc = mBrowsingContext;
+          nsCOMPtr<nsIURI> currentURI = mCurrentURI;
+          nsCOMPtr<nsIReferrerInfo> referrerInfo = mReferrerInfo;
+          ReloadDocument(this, doc, loadType, bc, currentURI, referrerInfo);
         }
       }
     }
@@ -4157,19 +4159,24 @@ nsDocShell::Reload(uint32_t aReloadFlags) {
 
   /* If you change this part of code, make sure bug 45297 does not re-occur */
   if (mOSHE) {
+    nsCOMPtr<nsISHEntry> oshe = mOSHE;
     return LoadHistoryEntry(
-        mOSHE, loadType,
+        oshe, loadType,
         aReloadFlags & nsIWebNavigation::LOAD_FLAGS_USER_ACTIVATION);
   }
 
   if (mLSHE) {  // In case a reload happened before the current load is done
+    nsCOMPtr<nsISHEntry> lshe = mLSHE;
     return LoadHistoryEntry(
-        mLSHE, loadType,
+        lshe, loadType,
         aReloadFlags & nsIWebNavigation::LOAD_FLAGS_USER_ACTIVATION);
   }
 
-  return ReloadDocument(this, GetDocument(), loadType, mBrowsingContext,
-                        mCurrentURI, mReferrerInfo);
+  RefPtr<Document> doc = GetDocument();
+  RefPtr<BrowsingContext> bc = mBrowsingContext;
+  nsCOMPtr<nsIURI> currentURI = mCurrentURI;
+  nsCOMPtr<nsIReferrerInfo> referrerInfo = mReferrerInfo;
+  return ReloadDocument(this, doc, loadType, bc, currentURI, referrerInfo);
 }
 
 /* static */
@@ -9164,8 +9171,8 @@ nsresult nsDocShell::HandleSameDocumentNavigation(
   CopyFavicon(currentURI, newURI, UsePrivateBrowsing());
 
   RefPtr<nsGlobalWindowOuter> scriptGlobal = mScriptGlobal;
-  RefPtr<nsGlobalWindowInner> win =
-      scriptGlobal ? scriptGlobal->GetCurrentInnerWindowInternal() : nullptr;
+  nsCOMPtr<nsPIDOMWindowInner> win =
+      scriptGlobal ? scriptGlobal->GetCurrentInnerWindow() : nullptr;
 
   // ScrollToAnchor doesn't necessarily cause us to scroll the window;
   // the function decides whether a scroll is appropriate based on the
@@ -9697,7 +9704,8 @@ nsresult nsDocShell::InternalLoad(nsDocShellLoadState* aLoadState,
   if (NS_FAILED(rv)) {
     nsCOMPtr<nsIChannel> chan(do_QueryInterface(req));
     UnblockEmbedderLoadEventForFailure();
-    if (DisplayLoadError(rv, aLoadState->URI(), nullptr, chan) &&
+    nsCOMPtr<nsIURI> uri = aLoadState->URI();
+    if (DisplayLoadError(rv, uri, nullptr, chan) &&
         // FIXME: At this point code was using internal load flags, but checking
         // non-internal load flags?
         aLoadState->HasLoadFlags(LOAD_FLAGS_ERROR_LOAD_CHANGES_RV)) {

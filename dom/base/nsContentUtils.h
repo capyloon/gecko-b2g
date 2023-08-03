@@ -242,9 +242,6 @@ struct EventNameMapping {
   int32_t mType;
   mozilla::EventMessage mMessage;
   mozilla::EventClassID mEventClassID;
-  // True if mAtom is possibly used by special SVG/SMIL events, but
-  // mMessage is eUnidentifiedEvent. See EventNameList.h
-  bool mMaybeSpecialSVGorSMILEvent;
 };
 
 namespace mozilla {
@@ -2775,20 +2772,20 @@ class nsContentUtils {
 
   class ParsedRange {
    public:
-    explicit ParsedRange(mozilla::Maybe<uint32_t> aStart,
-                         mozilla::Maybe<uint32_t> aEnd)
+    explicit ParsedRange(mozilla::Maybe<uint64_t> aStart,
+                         mozilla::Maybe<uint64_t> aEnd)
         : mStart(aStart), mEnd(aEnd) {}
 
-    mozilla::Maybe<uint32_t> Start() const { return mStart; }
-    mozilla::Maybe<uint32_t> End() const { return mEnd; }
+    mozilla::Maybe<uint64_t> Start() const { return mStart; }
+    mozilla::Maybe<uint64_t> End() const { return mEnd; }
 
     bool operator==(const ParsedRange& aOther) const {
       return Start() == aOther.Start() && End() == aOther.End();
     }
 
    private:
-    mozilla::Maybe<uint32_t> mStart;
-    mozilla::Maybe<uint32_t> mEnd;
+    mozilla::Maybe<uint64_t> mStart;
+    mozilla::Maybe<uint64_t> mEnd;
   };
 
   /**
@@ -3448,6 +3445,33 @@ class nsContentUtils {
   static nsIContent* GetClosestLinkInFlatTree(nsIContent* aContent);
 
   static bool IsExternalProtocol(nsIURI* aURI);
+
+  /**
+   * Add an element to a list, keeping the list sorted by tree order.
+   * Can take a potential ancestor of the elements in order to speed up
+   * tree-order comparisons, if such an ancestor exists.
+   * Returns true if the element is appended to the end of the list.
+   */
+  template <typename ElementType, typename ElementPtr>
+  static bool AddElementToListByTreeOrder(nsTArray<ElementType>& aList,
+                                          ElementPtr aChild,
+                                          nsIContent* aCommonAncestor);
+
+  /**
+   * Compares the position of aContent1 and aContent2 in the document
+   * @param aContent1 First content to compare.
+   * @param aContent2 Second content to compare.
+   * @param aCommonAncestor Potential ancestor of the contents, if one exists.
+   *                        This is only a hint; if it's not an ancestor of
+   *                        aContent1 or aContent2, this function will still
+   *                        work, but it will be slower than normal.
+   * @return < 0 if aContent1 is before aContent2,
+   *         > 0 if aContent1 is after aContent2,
+   *         0 otherwise
+   */
+  static int32_t CompareTreePosition(nsIContent* aContent1,
+                                     nsIContent* aContent2,
+                                     const nsIContent* aCommonAncestor);
 
  private:
   static bool InitializeEventTable();

@@ -83,6 +83,7 @@ import org.mozilla.geckoview.CompositorController;
 import org.mozilla.geckoview.ContentBlocking;
 import org.mozilla.geckoview.ContentBlockingController;
 import org.mozilla.geckoview.CrashHandler;
+import org.mozilla.geckoview.ExperimentDelegate;
 import org.mozilla.geckoview.GeckoDisplay;
 import org.mozilla.geckoview.GeckoResult;
 import org.mozilla.geckoview.GeckoRuntime;
@@ -650,6 +651,24 @@ package org.mozilla.geckoview {
     element public int version();
   }
 
+  public interface ExperimentDelegate {
+    method @AnyThread @NonNull default public GeckoResult<JSONObject> onGetExperimentFeature(@NonNull String);
+    method @AnyThread @NonNull default public GeckoResult<Void> onRecordExperimentExposureEvent(@NonNull String, @NonNull String);
+    method @AnyThread @NonNull default public GeckoResult<Void> onRecordExposureEvent(@NonNull String);
+    method @AnyThread @NonNull default public GeckoResult<Void> onRecordMalformedConfigurationEvent(@NonNull String, @NonNull String);
+  }
+
+  public static class ExperimentDelegate.ExperimentException extends Exception {
+    ctor public ExperimentException(int);
+    field public static final int ERROR_EXPERIMENT_SLUG_NOT_FOUND = -3;
+    field public static final int ERROR_FEATURE_NOT_FOUND = -2;
+    field public static final int ERROR_UNKNOWN = -1;
+    field public final int code;
+  }
+
+  @Retention(value=RetentionPolicy.SOURCE) public static interface ExperimentDelegate.ExperimentException.Codes {
+  }
+
   public class GeckoDisplay {
     ctor protected GeckoDisplay(GeckoSession);
     method @NonNull @UiThread public GeckoResult<Bitmap> capturePixels();
@@ -812,6 +831,7 @@ package org.mozilla.geckoview {
     method @Nullable public Integer getDisplayDpiOverride();
     method public boolean getDoubleTapZoomingEnabled();
     method public boolean getEnterpriseRootsEnabled();
+    method @AnyThread @Nullable public ExperimentDelegate getExperimentDelegate();
     method @NonNull public Bundle getExtras();
     method public boolean getFontInflationEnabled();
     method public float getFontSizeFactor();
@@ -874,6 +894,7 @@ package org.mozilla.geckoview {
     method @NonNull public GeckoRuntimeSettings.Builder displayDpiOverride(int);
     method @NonNull public GeckoRuntimeSettings.Builder doubleTapZoomingEnabled(boolean);
     method @NonNull public GeckoRuntimeSettings.Builder enterpriseRootsEnabled(boolean);
+    method @AnyThread @NonNull public GeckoRuntimeSettings.Builder experimentDelegate(@Nullable ExperimentDelegate);
     method @NonNull public GeckoRuntimeSettings.Builder extras(@NonNull Bundle);
     method @NonNull public GeckoRuntimeSettings.Builder fontInflation(boolean);
     method @NonNull public GeckoRuntimeSettings.Builder fontSizeFactor(float);
@@ -955,6 +976,7 @@ package org.mozilla.geckoview {
     method @UiThread public void releaseDisplay(@NonNull GeckoDisplay);
     method @AnyThread public void reload();
     method @AnyThread public void reload(int);
+    method @NonNull @UiThread public GeckoResult<GeckoSession.ReviewAnalysis> requestAnalysis(@NonNull String);
     method @AnyThread public void restoreState(@NonNull GeckoSession.SessionState);
     method @AnyThread @NonNull public GeckoResult<InputStream> saveAsPdf();
     method @AnyThread public void setActive(boolean);
@@ -1018,6 +1040,7 @@ package org.mozilla.geckoview {
     method @UiThread default public void onPaintStatusReset(@NonNull GeckoSession);
     method @UiThread default public void onPointerIconChange(@NonNull GeckoSession, @NonNull PointerIcon);
     method @UiThread default public void onPreviewImage(@NonNull GeckoSession, @NonNull String);
+    method @UiThread default public void onProductUrl(@NonNull GeckoSession);
     method @UiThread default public void onShowDynamicToolbar(@NonNull GeckoSession);
     method @Nullable @UiThread default public GeckoResult<SlowScriptResponse> onSlowScript(@NonNull GeckoSession, @NonNull String);
     method @UiThread default public void onTitleChange(@NonNull GeckoSession, @Nullable String);
@@ -1572,6 +1595,36 @@ package org.mozilla.geckoview {
   }
 
   @Retention(value=RetentionPolicy.SOURCE) public static interface GeckoSession.RestartReason {
+  }
+
+  @AnyThread public static class GeckoSession.ReviewAnalysis {
+    ctor protected ReviewAnalysis();
+    field public static final String GRADE_A = "A";
+    field public static final String GRADE_B = "B";
+    field public static final String GRADE_C = "C";
+    field public static final String GRADE_D = "D";
+    field public static final String GRADE_E = "E";
+    field @NonNull public final Double adjustedRating;
+    field @Nullable public final String analysisURL;
+    field public final boolean deletedProduct;
+    field public final boolean deletedProductReported;
+    field @Nullable public final String grade;
+    field @Nullable public final GeckoSession.ReviewAnalysis.Highlight highlights;
+    field public final int lastAnalysisTime;
+    field public final boolean needsAnalysis;
+    field @Nullable public final String productId;
+  }
+
+  @Retention(value=RetentionPolicy.SOURCE) public static interface GeckoSession.ReviewAnalysis.Grade {
+  }
+
+  public class GeckoSession.ReviewAnalysis.Highlight {
+    ctor protected Highlight();
+    field @Nullable public final String[] appearance;
+    field @Nullable public final String[] competitiveness;
+    field @Nullable public final String[] price;
+    field @Nullable public final String[] quality;
+    field @Nullable public final String[] shipping;
   }
 
   public static interface GeckoSession.ScrollDelegate {
@@ -2291,6 +2344,7 @@ package org.mozilla.geckoview {
 
   public static class WebExtension.InstallException.ErrorCodes {
     ctor protected ErrorCodes();
+    field public static final int ERROR_BLOCKLISTED = -10;
     field public static final int ERROR_CORRUPT_FILE = -3;
     field public static final int ERROR_FILE_ACCESS = -4;
     field public static final int ERROR_INCORRECT_HASH = -2;

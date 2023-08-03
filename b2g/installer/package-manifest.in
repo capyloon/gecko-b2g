@@ -161,72 +161,11 @@
 @RESPATH@/components/UiccConnector.manifest
 #endif
 
-; WiFi, NetworkManager, NetworkStats
-#ifdef MOZ_WIDGET_GONK
-#ifndef DISABLE_WIFI
-@RESPATH@/components/DOMWifiP2pManager.js
-@RESPATH@/components/DOMWifiP2pManager.manifest
-#endif // DISABLE_WIFI
-@RESPATH@/components/EthernetManager.js
-@RESPATH@/components/EthernetManager.manifest
-@RESPATH@/components/NetworkStatsManager.js
-@RESPATH@/components/NetworkStatsManager.manifest
-@RESPATH@/components/NetworkStatsServiceProxy.js
-@RESPATH@/components/NetworkStatsServiceProxy.manifest
-#endif // MOZ_WIDGET_GONK
-
 ; Camera
 #ifdef MOZ_B2G_CAMERA
 @RESPATH@/components/CameraTestHardware.js
 @RESPATH@/components/CameraTestHardware.manifest
 #endif // MOZ_B2G_CAMERA
-
-; ResourceStats
-#ifdef MOZ_WIDGET_GONK
-@RESPATH@/components/ResourceStats.js
-@RESPATH@/components/ResourceStats.manifest
-@RESPATH@/components/ResourceStatsManager.js
-@RESPATH@/components/ResourceStatsManager.manifest
-#endif // MOZ_WIDGET_GONK
-
-; RIL
-#if defined(MOZ_WIDGET_GONK) && defined(MOZ_B2G_RIL)
-@RESPATH@/components/CellBroadcastService.js
-@RESPATH@/components/CellBroadcastService.manifest
-@RESPATH@/components/GonkCellBroadcastConfigService.js
-@RESPATH@/components/GonkCellBroadcastConfigService.manifest
-@RESPATH@/components/IccService.js
-@RESPATH@/components/IccService.manifest
-@RESPATH@/components/MmsService.js
-@RESPATH@/components/MmsService.manifest
-@RESPATH@/components/MobileMessageDatabaseService.js
-@RESPATH@/components/MobileMessageDatabaseService.manifest
-#ifndef DISABLE_MOZ_RIL_GEOLOC
-#ifndef DISABLE_MOZ_RIL
-@RESPATH@/components/MobileConnectionService.js
-@RESPATH@/components/MobileConnectionService.manifest
-@RESPATH@/components/SmsService.manifest
-@RESPATH@/components/SubsidyLockService.js
-@RESPATH@/components/SubsidyLockService.manifest
-#endif // DISABLE_MOZ_RIL
-#endif // DISABLE_MOZ_RIL_GEOLOC
-@RESPATH@/components/StkCmdFactory.js
-@RESPATH@/components/StkCmdFactory.manifest
-@RESPATH@/components/RILSystemMessengerHelper.js
-@RESPATH@/components/RILSystemMessengerHelper.manifest
-@RESPATH@/components/TelephonyAudioService.js
-@RESPATH@/components/TelephonyAudioService.manifest
-@RESPATH@/components/USSDReceivedWrapper.js
-@RESPATH@/components/USSDReceivedWrapper.manifest
-#ifndef DISABLE_MOZ_RIL_GEOLOC
-#ifndef DISABLE_MOZ_RIL
-@RESPATH@/components/TelephonyService.js
-@RESPATH@/components/TelephonyService.manifest
-@RESPATH@/components/VoicemailService.js
-@RESPATH@/components/VoicemailService.manifest
-#endif // DISABLE_MOZ_RIL
-#endif // DISABLE_MOZ_RIL_GEOLOC
-#endif // MOZ_WIDGET_GONK && MOZ_B2G_RIL
 
 @RESPATH@/components/extensions.manifest
 
@@ -263,8 +202,9 @@
 @RESPATH@/components/Push.manifest
 @RESPATH@/components/l10n-registry.manifest
 
-#ifdef HAS_KOOST_MODULES
-@RESPATH@/components/AuthorizationService.js
+#ifdef MOZ_DEBUG
+@RESPATH@/components/TestInterfaceJS.js
+@RESPATH@/components/TestInterfaceJS.manifest
 #endif
 
 ; Modules

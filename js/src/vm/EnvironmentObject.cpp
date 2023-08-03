@@ -1654,12 +1654,12 @@ class DebugEnvironmentProxyHandler : public BaseProxyHandler {
      */
     if (env->is<LexicalEnvironmentObject>() ||
         env->is<VarEnvironmentObject>()) {
-      // Currently consider all global and non-syntactic top-level lexical
-      // bindings to be aliased.
+      // Currently consider all non-syntactic top-level lexical bindings to be
+      // aliased.
       if (env->is<LexicalEnvironmentObject>() &&
+          !env->is<GlobalLexicalEnvironmentObject>() &&
           env->as<LexicalEnvironmentObject>().isExtensible()) {
-        MOZ_ASSERT(IsGlobalLexicalEnvironment(env) ||
-                   !IsSyntacticEnvironment(env));
+        MOZ_ASSERT(!IsSyntacticEnvironment(env));
         return true;
       }
 
@@ -1707,6 +1707,11 @@ class DebugEnvironmentProxyHandler : public BaseProxyHandler {
         if (action == GET) {
           vp.set(frame.unaliasedLocal(local));
         } else {
+          if (frame.unaliasedLocal(local).isMagic(JS_UNINITIALIZED_LEXICAL)) {
+            ReportRuntimeLexicalError(cx, JSMSG_UNINITIALIZED_LEXICAL, id);
+            return false;
+          }
+
           frame.unaliasedLocal(local) = vp;
         }
       } else if (AbstractGeneratorObject* genObj =
@@ -1865,6 +1870,11 @@ class DebugEnvironmentProxyHandler : public BaseProxyHandler {
     }
     if (env.is<WasmFunctionCallObject>()) {
       return &env.as<WasmFunctionCallObject>().scope();
+    }
+    if (env.is<GlobalLexicalEnvironmentObject>()) {
+      return &env.as<GlobalLexicalEnvironmentObject>()
+                  .global()
+                  .emptyGlobalScope();
     }
     return nullptr;
   }
@@ -2252,6 +2262,15 @@ class DebugEnvironmentProxyHandler : public BaseProxyHandler {
         return result.succeed();
       case ACCESS_GENERIC: {
         RootedValue envVal(cx, ObjectValue(*env));
+        RootedValue initialVal(cx);
+        if (!GetProperty(cx, env, env, id, &initialVal)) {
+          return false;
+        }
+        if (initialVal.isMagic(JS_UNINITIALIZED_LEXICAL)) {
+          ReportRuntimeLexicalErrorId(cx, JSMSG_UNINITIALIZED_LEXICAL, id);
+          return false;
+        }
+
         return SetProperty(cx, env, id, v, envVal, result);
       }
       default:

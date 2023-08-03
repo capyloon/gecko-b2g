@@ -1188,10 +1188,17 @@ bitflags! {
         /* The following flags are currently not used in Rust code, they
          * only need to be listed in corresponding properties so that
          * they can be checked in the C++ side via ServoCSSPropList.h. */
+
         /// This property can be animated on the compositor.
         const CAN_ANIMATE_ON_COMPOSITOR = 0;
         /// This shorthand property is accessible from getComputedStyle.
         const SHORTHAND_IN_GETCS = 0;
+        /// See data.py's documentation about the affects_flags.
+        const AFFECTS_LAYOUT = 0;
+        #[allow(missing_docs)]
+        const AFFECTS_OVERFLOW = 0;
+        #[allow(missing_docs)]
+        const AFFECTS_PAINT = 0;
     }
 }
 
@@ -1917,13 +1924,13 @@ impl CountedUnknownProperty {
     /// Parse the counted unknown property, for testing purposes only.
     pub fn parse_for_testing(property_name: &str) -> Option<Self> {
         ascii_case_insensitive_phf_map! {
-            unknown_id -> CountedUnknownProperty = {
+            unknown_ids -> CountedUnknownProperty = {
                 % for property in data.counted_unknown_properties:
                 "${property.name}" => CountedUnknownProperty::${property.camel_case},
                 % endfor
             }
         }
-        unknown_id(property_name).cloned()
+        unknown_ids::get(property_name).cloned()
     }
 
     /// Returns the underlying index, used for use counter.
@@ -1970,7 +1977,7 @@ impl PropertyId {
             CountedUnknown(CountedUnknownProperty),
         }
         ascii_case_insensitive_phf_map! {
-            static_id -> StaticId = {
+            static_ids -> StaticId = {
                 % for (kind, properties) in [("Longhand", data.longhands), ("Shorthand", data.shorthands)]:
                 % for property in properties:
                 "${property.name}" => StaticId::${kind}(${kind}Id::${property.camel_case}),
@@ -1992,7 +1999,7 @@ impl PropertyId {
             }
         }
 
-        if let Some(id) = static_id(property_name) {
+        if let Some(id) = static_ids::get(property_name) {
             return Ok(match *id {
                 StaticId::Longhand(id) => PropertyId::Longhand(id),
                 StaticId::Shorthand(id) => {

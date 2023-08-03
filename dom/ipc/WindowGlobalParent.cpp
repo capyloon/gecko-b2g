@@ -42,7 +42,6 @@
 #include "nsError.h"
 #include "nsFrameLoader.h"
 #include "nsFrameLoaderOwner.h"
-#include "nsGlobalWindowInner.h"
 #include "nsQueryObject.h"
 #include "nsNetUtil.h"
 #include "nsSandboxFlags.h"
@@ -321,7 +320,7 @@ mozilla::ipc::IPCResult WindowGlobalParent::RecvLoadURI(
     return IPC_FAIL(this, "Illegal cross-process javascript: load attempt");
   }
 
-  CanonicalBrowsingContext* targetBC = aTargetBC.get_canonical();
+  RefPtr<CanonicalBrowsingContext> targetBC = aTargetBC.get_canonical();
 
   // FIXME: For cross-process loads, we should double check CanAccess() for the
   // source browsing context in the parent process.
@@ -354,7 +353,7 @@ mozilla::ipc::IPCResult WindowGlobalParent::RecvInternalLoad(
     return IPC_FAIL(this, "Illegal cross-process javascript: load attempt");
   }
 
-  CanonicalBrowsingContext* targetBC =
+  RefPtr<CanonicalBrowsingContext> targetBC =
       aLoadState->TargetBrowsingContext().get_canonical();
 
   // FIXME: For cross-process loads, we should double check CanAccess() for the
@@ -1356,7 +1355,8 @@ mozilla::ipc::IPCResult WindowGlobalParent::RecvReloadWithHttpsOnlyException() {
   loadState->SetTriggeringPrincipal(nsContentUtils::GetSystemPrincipal());
   loadState->SetLoadType(LOAD_NORMAL_REPLACE);
 
-  BrowsingContext()->Top()->LoadURI(loadState, /* setNavigating */ true);
+  RefPtr<CanonicalBrowsingContext> topBC = BrowsingContext()->Top();
+  topBC->LoadURI(loadState, /* setNavigating */ true);
 
   return IPC_OK();
 }

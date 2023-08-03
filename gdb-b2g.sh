@@ -15,6 +15,8 @@ case "$TARGET_ARCH" in
         ;;
 esac
 
+GDB=/usr/bin/gdb-multiarch
+
 if [ -z "$GECKO_OBJDIR" -o ! -e "$GECKO_OBJDIR/config.log" ]; then
     echo "GECKO_OBJDIR is invalid!" >&2
     exit 255
@@ -36,4 +38,4 @@ echo
 echo
 
 adb forward tcp:8859 tcp:8859
-$GDB --data-directory=$(dirname $GDB)/gdb-share -n -ex "set sysroot $SYSROOT" -ex "set debug-file-directory $SYSROOT" -ex 'target remote localhost:8859'
+$GDB --data-directory=/usr/share/gdb/python -n -ex "set sysroot $SYSROOT" -ex "set debug-file-directory $SYSROOT" -ex 'target remote localhost:8859'

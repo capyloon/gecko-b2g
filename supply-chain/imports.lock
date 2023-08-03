@@ -463,6 +463,13 @@ user-login = "dtolnay"
 user-name = "David Tolnay"
 
 [[publisher.syn]]
+version = "1.0.109"
+when = "2023-02-24"
+user-id = 3618
+user-login = "dtolnay"
+user-name = "David Tolnay"
+
+[[publisher.syn]]
 version = "2.0.18"
 when = "2023-05-26"
 user-id = 3618
@@ -533,57 +540,57 @@ user-login = "Manishearth"
 user-name = "Manish Goregaokar"
 
 [[publisher.uniffi]]
-version = "0.24.2"
-when = "2023-07-25"
+version = "0.24.3"
+when = "2023-08-01"
 user-id = 48
 user-login = "badboy"
 user-name = "Jan-Erik Rediger"
 
 [[publisher.uniffi_bindgen]]
-version = "0.24.2"
-when = "2023-07-25"
+version = "0.24.3"
+when = "2023-08-01"
 user-id = 48
 user-login = "badboy"
 user-name = "Jan-Erik Rediger"
 
 [[publisher.uniffi_build]]
-version = "0.24.2"
-when = "2023-07-25"
+version = "0.24.3"
+when = "2023-08-01"
 user-id = 48
 user-login = "badboy"
 user-name = "Jan-Erik Rediger"
 
 [[publisher.uniffi_checksum_derive]]
-version = "0.24.2"
-when = "2023-07-25"
+version = "0.24.3"
+when = "2023-08-01"
 user-id = 48
 user-login = "badboy"
 user-name = "Jan-Erik Rediger"
 
 [[publisher.uniffi_core]]
-version = "0.24.2"
-when = "2023-07-25"
+version = "0.24.3"
+when = "2023-08-01"
 user-id = 48
 user-login = "badboy"
 user-name = "Jan-Erik Rediger"
 
 [[publisher.uniffi_macros]]
-version = "0.24.2"
-when = "2023-07-25"
+version = "0.24.3"
+when = "2023-08-01"
 user-id = 48
 user-login = "badboy"
 user-name = "Jan-Erik Rediger"
 
 [[publisher.uniffi_meta]]
-version = "0.24.2"
-when = "2023-07-25"
+version = "0.24.3"
+when = "2023-08-01"
 user-id = 48
 user-login = "badboy"
 user-name = "Jan-Erik Rediger"
 
 [[publisher.uniffi_testing]]
-version = "0.24.2"
-when = "2023-07-25"
+version = "0.24.3"
+when = "2023-08-01"
 user-id = 48
 user-login = "badboy"
 user-name = "Jan-Erik Rediger"
@@ -1089,18 +1096,18 @@ criteria = "safe-to-run"
 version = "1.0.12"
 aggregated-from = "https://chromium.googlesource.com/chromiumos/third_party/rust_crates/+/refs/heads/main/cargo-vet/audits.toml?format=TEXT"
 
-[[audits.google.audits.proc-macro-error-attr]]
-who = "George Burgess IV <gbiv@google.com>"
-criteria = "safe-to-deploy"
-version = "1.0.4"
-aggregated-from = "https://chromium.googlesource.com/chromiumos/third_party/rust_crates/+/refs/heads/main/cargo-vet/audits.toml?format=TEXT"
-
 [[audits.google.audits.pin-project-lite]]
 who = "David Koloski <dkoloski@google.com>"
 criteria = "safe-to-deploy"
 version = "0.2.9"
 notes = "Reviewed on https://fxrev.dev/824504"
 aggregated-from = "https://fuchsia.googlesource.com/fuchsia/+/refs/heads/main/third_party/rust_crates/supply-chain/audits.toml?format=TEXT"
+
+[[audits.google.audits.proc-macro-error-attr]]
+who = "George Burgess IV <gbiv@google.com>"
+criteria = "safe-to-deploy"
+version = "1.0.4"
+aggregated-from = "https://chromium.googlesource.com/chromiumos/third_party/rust_crates/+/refs/heads/main/cargo-vet/audits.toml?format=TEXT"
 
 [[audits.google.audits.scoped-tls]]
 who = "George Burgess IV <gbiv@google.com>"
@@ -1190,10 +1197,20 @@ who = "David Cook <dcook@divviup.org>"
 criteria = "safe-to-deploy"
 delta = "1.17.2 -> 1.18.0"
 
+[[audits.isrg.audits.rand_core]]
+who = "David Cook <dcook@divviup.org>"
+criteria = "safe-to-deploy"
+version = "0.6.3"
+
 [[audits.isrg.audits.rayon-core]]
 who = "Brandon Pitman <bran@bran.land>"
 criteria = "safe-to-deploy"
 delta = "1.10.2 -> 1.11.0"
+
+[[audits.isrg.audits.sha2]]
+who = "David Cook <dcook@divviup.org>"
+criteria = "safe-to-deploy"
+version = "0.10.2"
 
 [[audits.isrg.audits.sha3]]
 who = "David Cook <dcook@divviup.org>"

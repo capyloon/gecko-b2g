@@ -175,6 +175,7 @@
 #include "mozilla/dom/FromParser.h"
 #include "mozilla/dom/HTMLElement.h"
 #include "mozilla/dom/HTMLFormElement.h"
+#include "mozilla/dom/HTMLImageElement.h"
 #include "mozilla/dom/HTMLInputElement.h"
 #include "mozilla/dom/HTMLTextAreaElement.h"
 #include "mozilla/dom/IPCBlob.h"
@@ -976,20 +977,13 @@ static nsAtom* GetEventTypeFromMessage(EventMessage aEventMessage) {
   }
 }
 
-// Because of SVG/SMIL we have several atoms mapped to the same
-// id, but we can rely on MESSAGE_TO_EVENT to map id to only one atom.
-static bool ShouldAddEventToStringEventTable(const EventNameMapping& aMapping) {
-  MOZ_ASSERT(aMapping.mAtom);
-  return GetEventTypeFromMessage(aMapping.mMessage) == aMapping.mAtom;
-}
-
 bool nsContentUtils::InitializeEventTable() {
   NS_ASSERTION(!sAtomEventTable, "EventTable already initialized!");
   NS_ASSERTION(!sStringEventTable, "EventTable already initialized!");
 
   static const EventNameMapping eventArray[] = {
 #define EVENT(name_, _message, _type, _class) \
-  {nsGkAtoms::on##name_, _type, _message, _class, false},
+  {nsGkAtoms::on##name_, _type, _message, _class},
 #define WINDOW_ONLY_EVENT EVENT
 #define DOCUMENT_ONLY_EVENT EVENT
 #define NON_IDL_EVENT EVENT
@@ -1010,11 +1004,9 @@ bool nsContentUtils::InitializeEventTable() {
     MOZ_ASSERT(!sAtomEventTable->Contains(eventArray[i].mAtom),
                "Double-defining event name; fix your EventNameList.h");
     sAtomEventTable->InsertOrUpdate(eventArray[i].mAtom, eventArray[i]);
-    if (ShouldAddEventToStringEventTable(eventArray[i])) {
-      sStringEventTable->InsertOrUpdate(
-          Substring(nsDependentAtomString(eventArray[i].mAtom), 2),
-          eventArray[i]);
-    }
+    sStringEventTable->InsertOrUpdate(
+        Substring(nsDependentAtomString(eventArray[i].mAtom), 2),
+        eventArray[i]);
   }
 
   return true;
@@ -4593,13 +4585,6 @@ nsAtom* nsContentUtils::GetEventMessageAndAtom(
   mapping.mMessage = eUnidentifiedEvent;
   mapping.mType = EventNameType_None;
   mapping.mEventClassID = eBasicEventClass;
-  // This is a slow hashtable call, but at least we cache the result for the
-  // following calls. Because GetEventMessageAndAtomForListener utilizes
-  // sStringEventTable, it needs to know in which cases sStringEventTable
-  // doesn't contain the information it needs so that it can use
-  // sAtomEventTable instead.
-  mapping.mMaybeSpecialSVGorSMILEvent =
-      GetEventMessage(atom) != eUnidentifiedEvent;
   sStringEventTable->InsertOrUpdate(aName, mapping);
   return mapping.mAtom;
 }
@@ -4609,33 +4594,22 @@ EventMessage nsContentUtils::GetEventMessageAndAtomForListener(
     const nsAString& aName, nsAtom** aOnName) {
   MOZ_ASSERT(NS_IsMainThread(), "Our hashtables are not threadsafe");
 
-  // Because of SVG/SMIL sStringEventTable contains a subset of the event names
-  // comparing to the sAtomEventTable. However, usually sStringEventTable
-  // contains the information we need, so in order to reduce hashtable
-  // lookups, start from it.
+  // Check sStringEventTable for a matching entry. This will only fail for
+  // user-defined event types.
   EventNameMapping mapping;
-  EventMessage msg = eUnidentifiedEvent;
-  RefPtr<nsAtom> atom;
   if (sStringEventTable->Get(aName, &mapping)) {
-    if (mapping.mMaybeSpecialSVGorSMILEvent) {
-      // Try the atom version so that we should get the right message for
-      // SVG/SMIL.
-      atom = NS_AtomizeMainThread(u"on"_ns + aName);
-      msg = GetEventMessage(atom);
-    } else {
-      atom = mapping.mAtom;
-      msg = mapping.mMessage;
-    }
+    RefPtr<nsAtom> atom = mapping.mAtom;
     atom.forget(aOnName);
-    return msg;
+    return mapping.mMessage;
   }
 
-  // GetEventMessageAndAtom will cache the event type for the future usage...
-  GetEventMessageAndAtom(aName, eBasicEventClass, &msg);
-
-  // ...and then call this method recursively to get the message and atom from
-  // now updated sStringEventTable.
-  return GetEventMessageAndAtomForListener(aName, aOnName);
+  // sStringEventTable did not contain an entry for this event type string.
+  // Call GetEventMessageAndAtom, which will create an event type atom and
+  // cache it in sStringEventTable for future calls.
+  EventMessage msg = eUnidentifiedEvent;
+  RefPtr<nsAtom> atom = GetEventMessageAndAtom(aName, eBasicEventClass, &msg);
+  atom.forget(aOnName);
+  return msg;
 }
 
 static nsresult GetEventAndTarget(Document* aDoc, nsISupports* aTarget,
@@ -7602,8 +7576,8 @@ Maybe<nsContentUtils::ParsedRange> nsContentUtils::ParseSingleRangeRequest(
     const nsACString& aHeaderValue, bool aAllowWhitespace) {
   // See https://fetch.spec.whatwg.org/#simple-range-header-value
   mozilla::Tokenizer p(aHeaderValue);
-  Maybe<uint32_t> rangeStart;
-  Maybe<uint32_t> rangeEnd;
+  Maybe<uint64_t> rangeStart;
+  Maybe<uint64_t> rangeEnd;
 
   // Step 2 and 3
   if (!p.CheckWord("bytes")) {
@@ -7626,7 +7600,7 @@ Maybe<nsContentUtils::ParsedRange> nsContentUtils::ParseSingleRangeRequest(
   }
 
   // Step 8 and 9
-  int32_t res;
+  uint64_t res;
   if (p.ReadInteger(&res)) {
     rangeStart = Some(res);
   }
@@ -11305,6 +11279,84 @@ nsIContent* nsContentUtils::GetClosestLinkInFlatTree(nsIContent* aContent) {
   }
   return nullptr;
 }
+
+namespace {
+
+struct TreePositionComparator {
+  Element* const mChild;
+  nsIContent* const mAncestor;
+  TreePositionComparator(Element* aChild, nsIContent* aAncestor)
+      : mChild(aChild), mAncestor(aAncestor) {}
+  int operator()(Element* aElement) const {
+    return nsLayoutUtils::CompareTreePosition(mChild, aElement, mAncestor);
+  }
+};
+
+}  // namespace
+
+/* static */
+int32_t nsContentUtils::CompareTreePosition(nsIContent* aContent1,
+                                            nsIContent* aContent2,
+                                            const nsIContent* aCommonAncestor) {
+  NS_ASSERTION(aContent1 != aContent2, "Comparing content to itself");
+
+  // TODO: remove the prevent asserts fix, see bug 598468.
+#ifdef DEBUG
+  nsLayoutUtils::gPreventAssertInCompareTreePosition = true;
+  int32_t rVal =
+      nsLayoutUtils::CompareTreePosition(aContent1, aContent2, aCommonAncestor);
+  nsLayoutUtils::gPreventAssertInCompareTreePosition = false;
+
+  return rVal;
+#else   // DEBUG
+  return nsLayoutUtils::CompareTreePosition(aContent1, aContent2,
+                                            aCommonAncestor);
+#endif  // DEBUG
+}
+
+/* static */
+template <typename ElementType, typename ElementPtr>
+bool nsContentUtils::AddElementToListByTreeOrder(nsTArray<ElementType>& aList,
+                                                 ElementPtr aChild,
+                                                 nsIContent* aCommonAncestor) {
+  NS_ASSERTION(aList.IndexOf(aChild) == aList.NoIndex,
+               "aChild already in aList");
+
+  const uint32_t count = aList.Length();
+  ElementType element;
+
+  // Optimize most common case where we insert at the end.
+  int32_t position = -1;
+  if (count > 0) {
+    element = aList[count - 1];
+    position = CompareTreePosition(aChild, element, aCommonAncestor);
+  }
+
+  // If this item comes after the last element, or the elements array is
+  // empty, we append to the end. Otherwise, we do a binary search to
+  // determine where the element should go.
+  if (position >= 0 || count == 0) {
+    aList.AppendElement(aChild);
+    return true;
+  }
+
+  size_t idx;
+  BinarySearchIf(aList, 0, count,
+                 TreePositionComparator(aChild, aCommonAncestor), &idx);
+
+  aList.InsertElementAt(idx, aChild);
+  return false;
+}
+
+template bool nsContentUtils::AddElementToListByTreeOrder(
+    nsTArray<nsGenericHTMLFormElement*>& aList,
+    nsGenericHTMLFormElement* aChild, nsIContent* aAncestor);
+template bool nsContentUtils::AddElementToListByTreeOrder(
+    nsTArray<HTMLImageElement*>& aList, HTMLImageElement* aChild,
+    nsIContent* aAncestor);
+template bool nsContentUtils::AddElementToListByTreeOrder(
+    nsTArray<RefPtr<HTMLInputElement>>& aList, HTMLInputElement* aChild,
+    nsIContent* aAncestor);
 
 namespace mozilla {
 std::ostream& operator<<(std::ostream& aOut,

@@ -941,6 +941,12 @@ who = "Mike Hommey <mh+mozilla@glandium.org>"
 criteria = "safe-to-deploy"
 delta = "0.31.0 -> 0.31.2"
 
+[[audits.cssparser]]
+who = "Emilio Cobos Álvarez <emilio@crisal.io>"
+criteria = "safe-to-deploy"
+delta = "0.31.2 -> 0.32.0"
+notes = "All changes were either authored or reviewed by Mozilla employees."
+
 [[audits.cssparser-macros]]
 who = "Emilio Cobos Álvarez <emilio@crisal.io>"
 criteria = "safe-to-deploy"
@@ -1158,6 +1164,11 @@ delta = "1.2.1 -> 1.2.3"
 who = "Mike Hommey <mh+mozilla@glandium.org>"
 criteria = "safe-to-run"
 delta = "1.3.0 -> 1.3.1"
+
+[[audits.derive_more]]
+who = "Mike Hommey <mh+mozilla@glandium.org>"
+criteria = "safe-to-deploy"
+delta = "0.99.17 -> 1.0.0-beta.2"
 
 [[audits.devd-rs]]
 who = "Mike Hommey <mh+mozilla@glandium.org>"
@@ -1987,6 +1998,12 @@ delta = "0.8.0 -> 0.9.0"
 [[audits.metal]]
 who = "Jim Blandy <jimb@red-bean.com>"
 criteria = "safe-to-deploy"
+version = "0.23.1"
+notes = "This audit treats Dzmitry Malyshau (kvark) as a trusted reviewer."
+
+[[audits.metal]]
+who = "Jim Blandy <jimb@red-bean.com>"
+criteria = "safe-to-deploy"
 delta = "0.23.1 -> 0.24.0"
 notes = "This audit treats Dzmitry Malyshau (kvark) as a trusted reviewer."
 
@@ -2495,6 +2512,12 @@ who = "Jan-Erik Rediger <jrediger@mozilla.com>"
 criteria = "safe-to-deploy"
 delta = "0.8.0 -> 0.11.9"
 notes = "Documentation and internal refactoring changes only"
+
+[[audits.prost-derive]]
+who = "Mike Hommey <mh+mozilla@glandium.org>"
+criteria = "safe-to-deploy"
+delta = "0.11.9 -> 0.11.9@git:95964e9d33df3c2a9c3f14285e262867cab6f96b"
+notes = "Changes against 0.11.9 are mine."
 
 [[audits.qcms]]
 who = "Jeff Muizelaar <jmuizelaar@mozilla.com>"
@@ -3100,14 +3123,29 @@ criteria = "safe-to-deploy"
 delta = "0.1.44 -> 0.1.45"
 
 [[audits.time]]
+who = "Kershaw Chang <kershaw@mozilla.com>"
+criteria = "safe-to-deploy"
+delta = "0.1.45 -> 0.3.17"
+
+[[audits.time]]
 who = "Mike Hommey <mh+mozilla@glandium.org>"
 criteria = "safe-to-run"
 delta = "0.3.9 -> 0.3.17"
 
 [[audits.time-core]]
+who = "Kershaw Chang <kershaw@mozilla.com>"
+criteria = "safe-to-deploy"
+version = "0.1.0"
+
+[[audits.time-core]]
 who = "Mike Hommey <mh+mozilla@glandium.org>"
 criteria = "safe-to-run"
 version = "0.1.0"
+
+[[audits.time-macros]]
+who = "Kershaw Chang <kershaw@mozilla.com>"
+criteria = "safe-to-deploy"
+version = "0.2.6"
 
 [[audits.time-macros]]
 who = "Mike Hommey <mh+mozilla@glandium.org>"

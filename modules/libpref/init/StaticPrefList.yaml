@@ -1830,6 +1830,12 @@
   value: true
   mirror: always
 
+# Whether or not to save and restore zoom levels on a per-site basis.
+- name: browser.zoom.siteSpecific
+  type: bool
+  value: @IS_NOT_ANDROID@
+  mirror: always
+
 #---------------------------------------------------------------------------
 # Prefs starting with "canvas."
 #---------------------------------------------------------------------------
@@ -4178,6 +4184,12 @@
   value: false
   mirror: always
 
+# Only grant storage access to secure contexts.
+- name: dom.storage_access.dont_grant_insecure_contexts
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
+
 # Whether the Storage API is enabled.
 - name: dom.storageManager.enabled
   type: RelaxedAtomicBool
@@ -4337,7 +4349,7 @@
 
 - name: dom.textMetrics.emHeight.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: true
   mirror: always
 
 - name: dom.textMetrics.fontBoundingBox.enabled
@@ -7721,18 +7733,6 @@
     mirror: always
 #endif  // NIGHTLY_BUILD
 
-  # Experimental support for change-array-by-copy methods
-- name: javascript.options.experimental.enable_change_array_by_copy
-  type: bool
-  value: true
-  mirror: always
-
-# Support Array.fromAsync
-- name: javascript.options.experimental.enable_array_from_async
-  type: bool
-  value: true
-  mirror: always
-
 #if defined(ENABLE_NEW_SET_METHODS)
   # Experimental support for New Set methods
 - name: javascript.options.experimental.enable_new_set_methods
@@ -7869,6 +7869,13 @@
     mirror: always
 #endif // defined(ENABLE_WASM_GC)
 
+#if defined(ENABLE_WASM_GC)
+-   name: javascript.options.wasm_final_types
+    type: bool
+    value: false
+    mirror: always
+#endif // defined(ENABLE_WASM_GC)
+
 #if defined(ENABLE_WASM_MEMORY_CONTROL)
 -   name: javascript.options.wasm_memory_control
     type: bool
@@ -7893,6 +7900,13 @@
     value: @IS_NIGHTLY_BUILD@
     mirror: always
 #endif  // defined(ENABLE_WASM_MEMORY64)
+
+#if defined(ENABLE_WASM_TAIL_CALLS)
+-   name: javascript.options.wasm_tail_calls
+    type: bool
+    value: @IS_NIGHTLY_BUILD@
+    mirror: always
+#endif  // defined(ENABLE_WASM_TAIL_CALLS)
 
 # Support for pretenuring allocations based on their allocation site.
 - name: javascript.options.site_based_pretenuring
@@ -8442,13 +8456,6 @@
   mirror: always
   rust: true
 
-# Whether CSS nesting is enabled.
-- name: layout.css.nesting.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-  rust: true
-
 # Should we look for counter ancestor scopes first?
 - name: layout.css.counter-ancestor-scope.enabled
   type: bool
@@ -8724,13 +8731,6 @@
 
 # Is support for the size-adjust @font-face descriptor enabled?
 - name: layout.css.size-adjust.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-  rust: true
-
-# Is the optional adjustment-basis value for font-size-adjust enabled?
-- name: layout.css.font-size-adjust.basis.enabled
   type: RelaxedAtomicBool
   value: true
   mirror: always
@@ -13811,6 +13811,26 @@
   value: 10000
   mirror: always
 
+# How long user activations will protect a site host from storage deletion.
+- name: privacy.bounceTrackingProtection.bounceTrackingActivationLifetimeSec
+  type: uint32_t
+  value: 3888000
+  mirror: always
+
+# How long to wait for interaction after a possible bounce tracking event before
+# deleting a site host's storage.
+- name: privacy.bounceTrackingProtection.bounceTrackingGracePeriodSec
+  type: uint32_t
+  value: 3600
+  mirror: always
+
+# How often to run the bounce tracking timer algorithm  which purges bounce
+# tracker state periodically. Set to 0 to disable purging.
+- name: privacy.bounceTrackingProtection.bounceTrackingPurgeTimerPeriodSec
+  type: uint32_t
+  value: 3600
+  mirror: always
+
 # Whether only bounces that access storage should be considered trackers.
 - name: privacy.bounceTrackingProtection.requireStatefulBounces
   type: bool
@@ -14436,6 +14456,13 @@
   value: 100
   mirror: always
 
+# Whether to apply GREASE settings to HTTP3/QUIC connections
+- name: security.tls.grease_http3_enable
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+  rust: true
+
 - name: security.tls.hello_downgrade_check
   type: RelaxedAtomicBool
   value: true
@@ -14598,7 +14625,7 @@
 #else
   value: 0
 #endif
-  mirror: once
+  mirror: always
 
 #---------------------------------------------------------------------------
 # Prefs starting with "storage."

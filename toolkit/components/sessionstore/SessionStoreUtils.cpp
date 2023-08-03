@@ -49,7 +49,7 @@
 #include "nsContentList.h"
 #include "nsContentUtils.h"
 #include "nsFocusManager.h"
-#include "nsGlobalWindowOuter.h"
+#include "nsGlobalWindowInner.h"
 #include "nsIContentInlines.h"
 #include "nsIDocShell.h"
 #include "nsIFormControl.h"
@@ -1666,8 +1666,9 @@ already_AddRefed<Promise> SessionStoreUtils::InitializeRestore(
     return nullptr;
   }
 
-  MOZ_DIAGNOSTIC_ASSERT(aContext.GetSessionHistory());
-  aContext.GetSessionHistory()->ReloadCurrentEntry();
+  nsCOMPtr<nsISHistory> shistory = aContext.GetSessionHistory();
+  MOZ_DIAGNOSTIC_ASSERT(shistory);
+  shistory->ReloadCurrentEntry();
 
   return aContext.GetRestorePromise();
 }

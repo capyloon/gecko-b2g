@@ -41,7 +41,8 @@
 #include "nsIAppWindow.h"
 #include "nsIMozBrowserFrame.h"
 #include "nsIScriptError.h"
-#include "nsGlobalWindow.h"
+#include "nsGlobalWindowInner.h"
+#include "nsGlobalWindowOuter.h"
 #include "nsHTMLDocument.h"
 #include "nsPIWindowRoot.h"
 #include "nsLayoutUtils.h"
@@ -766,7 +767,8 @@ nsresult nsFrameLoader::ReallyStartLoadingInternal() {
   bool tmpState = mNeedsAsyncDestroy;
   mNeedsAsyncDestroy = true;
 
-  rv = GetDocShell()->LoadURI(loadState, false);
+  RefPtr<nsDocShell> docShell = GetDocShell();
+  rv = docShell->LoadURI(loadState, false);
   mNeedsAsyncDestroy = tmpState;
   mURIToLoad = nullptr;
   NS_ENSURE_SUCCESS(rv, rv);

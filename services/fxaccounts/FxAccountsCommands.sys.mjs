@@ -2,21 +2,23 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { COMMAND_SENDTAB, COMMAND_SENDTAB_TAIL, SCOPE_OLD_SYNC, log } =
-  ChromeUtils.import("resource://gre/modules/FxAccountsCommon.js");
-const lazy = {};
-ChromeUtils.defineModuleGetter(
-  lazy,
-  "PushCrypto",
-  "resource://gre/modules/PushCrypto.jsm"
-);
+import {
+  COMMAND_SENDTAB,
+  COMMAND_SENDTAB_TAIL,
+  SCOPE_OLD_SYNC,
+  log,
+} from "resource://gre/modules/FxAccountsCommon.sys.mjs";
+
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 import { Observers } from "resource://services-common/observers.sys.mjs";
 
+const lazy = {};
+
 ChromeUtils.defineESModuleGetters(lazy, {
   BulkKeyBundle: "resource://services-sync/keys.sys.mjs",
   CryptoWrapper: "resource://services-sync/record.sys.mjs",
+  PushCrypto: "resource://gre/modules/PushCrypto.sys.mjs",
 });
 
 XPCOMUtils.defineLazyPreferenceGetter(

@@ -5,7 +5,7 @@
 /* eslint-env mozilla/remote-page */
 
 import { MozLitElement } from "chrome://global/content/lit-utils.mjs";
-import { html } from "chrome://global/content/vendor/lit.all.mjs";
+import { html, ifDefined } from "chrome://global/content/vendor/lit.all.mjs";
 
 // eslint-disable-next-line import/no-unassigned-import
 import "chrome://browser/content/shopping/highlights.mjs";
@@ -19,11 +19,14 @@ import "chrome://browser/content/shopping/reliability.mjs";
 import "chrome://browser/content/shopping/analysis-explainer.mjs";
 // eslint-disable-next-line import/no-unassigned-import
 import "chrome://browser/content/shopping/shopping-message-bar.mjs";
+// eslint-disable-next-line import/no-unassigned-import
+import "chrome://browser/content/shopping/unanalyzed.mjs";
 
 export class ShoppingContainer extends MozLitElement {
   static properties = {
     data: { type: Object },
     showOnboarding: { type: Boolean },
+    productUrl: { type: String },
   };
 
   static get queries() {
@@ -32,6 +35,9 @@ export class ShoppingContainer extends MozLitElement {
       adjustedRatingEl: "adjusted-rating",
       highlightsEl: "review-highlights",
       settingsEl: "shopping-settings",
+      analysisExplainerEl: "analysis-explainer",
+      unanalyzedProductEl: "unanalyzed-product-card",
+      shoppingMessageBarEl: "shopping-message-bar",
     };
   }
 
@@ -52,12 +58,13 @@ export class ShoppingContainer extends MozLitElement {
     );
   }
 
-  async _update({ data, showOnboarding }) {
+  async _update({ data, showOnboarding, productUrl }) {
     // If we're not opted in or there's no shopping URL in the main browser,
     // the actor will pass `null`, which means this will clear out any existing
     // content in the sidebar.
     this.data = data;
     this.showOnboarding = showOnboarding;
+    this.productUrl = productUrl;
   }
 
   handleEvent(event) {
@@ -66,6 +73,66 @@ export class ShoppingContainer extends MozLitElement {
         this._update(event.detail);
         break;
     }
+  }
+
+  getAnalysisDetailsTemplate() {
+    return html`
+      <review-reliability letter=${this.data.grade}></review-reliability>
+      <adjusted-rating rating=${this.data.adjusted_rating}></adjusted-rating>
+      <review-highlights
+        .highlights=${this.data.highlights}
+      ></review-highlights>
+      <analysis-explainer></analysis-explainer>
+    `;
+  }
+
+  getContentTemplate() {
+    if (this.data?.error) {
+      return html`<shopping-message-bar
+        type="generic-error"
+      ></shopping-message-bar>`;
+    }
+
+    if (this.data.needs_analysis) {
+      if (!this.data.product_id) {
+        // Product is not yet registered to our db and thus we cannot show any data.
+        return html`<unanalyzed-product-card
+          productUrl=${ifDefined(this.productUrl)}
+        ></unanalyzed-product-card>`;
+      }
+
+      if (!this.data.grade || !this.data.adjusted_rating) {
+        // We already saw and tried to analyze this product before, but there are not enough reviews
+        // to make a detailed analysis.
+        return html`<shopping-message-bar
+          type="not-enough-reviews"
+        ></shopping-message-bar>`;
+      }
+      // We successfully analyzed the product before, but the current analysis is outdated and can be updated
+      // via a re-analysis.
+      return html`
+        <shopping-message-bar type="stale"></shopping-message-bar>
+        ${this.getAnalysisDetailsTemplate()}
+      `;
+    }
+
+    return this.getAnalysisDetailsTemplate();
+  }
+
+  getLoadingTemplate() {
+    /* Due to limitations with aria-busy for certain screen readers
+     * (see Bug 1682063), mark loading container as a pseudo image and
+     * use aria-label as a workaround. */
+    return html`
+      <div id="loading-wrapper" data-l10n-id="shopping-a11y-loading" role="img">
+        <div class="loading-box medium"></div>
+        <div class="loading-box medium"></div>
+        <div class="loading-box large"></div>
+        <div class="loading-box small"></div>
+        <div class="loading-box large"></div>
+        <div class="loading-box small"></div>
+      </div>
+    `;
   }
 
   renderContainer(sidebarContent) {
@@ -92,7 +159,7 @@ export class ShoppingContainer extends MozLitElement {
             data-l10n-id="shopping-close-button"
           ></button>
         </div>
-        <div id="content">${sidebarContent}</div>
+        <div id="content" aria-busy=${!this.data}>${sidebarContent}</div>
       </div>`;
   }
 
@@ -101,19 +168,10 @@ export class ShoppingContainer extends MozLitElement {
     if (this.showOnboarding) {
       content = html`<slot name="multi-stage-message-slot"></slot>`;
     } else if (!this.data) {
-      // TODO: Replace with loading UI component (bug 1840161).
-      content = html`<p>Loading UI goes here</p>`;
+      content = this.getLoadingTemplate();
     } else {
       content = html`
-        ${this.data.needs_analysis && this.data.product_id
-          ? html`<shopping-message-bar type="stale"></shopping-message-bar>`
-          : null}
-        <review-reliability letter=${this.data.grade}></review-reliability>
-        <adjusted-rating rating=${this.data.adjusted_rating}></adjusted-rating>
-        <review-highlights
-          .highlights=${this.data.highlights}
-        ></review-highlights>
-        <analysis-explainer></analysis-explainer>
+        ${this.getContentTemplate()}
         <shopping-settings></shopping-settings>
       `;
     }

@@ -47,6 +47,7 @@
 #include "mozilla/dom/XMLHttpRequestEventTarget.h"
 #include "mozilla/dom/XMLHttpRequestString.h"
 #include "mozilla/Encoding.h"
+#include "nsBaseChannel.h"
 
 #ifdef Status
 /* Xlib headers insist on this for some reason... Nuke it because
@@ -476,6 +477,9 @@ class XMLHttpRequestMainThread final : public XMLHttpRequest,
   // set to "text/xml".
   void EnsureChannelContentType();
 
+  // Gets the value of the final content-type header from the channel.
+  bool GetContentType(nsACString& aValue) const;
+
   already_AddRefed<nsIHttpChannel> GetCurrentHttpChannel();
   already_AddRefed<nsIJARChannel> GetCurrentJARChannel();
 
@@ -507,6 +511,9 @@ class XMLHttpRequestMainThread final : public XMLHttpRequest,
   void ResumeEventDispatching();
 
   void AbortInternal(ErrorResult& aRv);
+
+  Maybe<nsBaseChannel::ContentRange> GetRequestedContentRange() const;
+  void GetContentRangeHeader(nsACString&) const;
 
   struct PendingEvent {
     RefPtr<DOMEventTargetHelper> mTarget;

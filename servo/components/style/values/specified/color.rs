@@ -6,7 +6,7 @@
 
 use super::AllowQuirks;
 use crate::color::mix::ColorInterpolationMethod;
-use crate::color::{AbsoluteColor, ColorComponents, ColorFlags, ColorSpace};
+use crate::color::{AbsoluteColor, ColorFlags, ColorSpace};
 use crate::media_queries::Device;
 use crate::parser::{Parse, ParserContext};
 use crate::values::computed::{Color as ComputedColor, Context, ToComputedValue};
@@ -436,28 +436,8 @@ fn new_absolute(
     c3: Option<f32>,
     alpha: Option<f32>,
 ) -> Color {
-    let mut flags = ColorFlags::empty();
-
-    macro_rules! c {
-        ($v:expr,$flag:tt) => {{
-            if let Some(value) = $v {
-                value
-            } else {
-                flags |= ColorFlags::$flag;
-                0.0
-            }
-        }};
-    }
-
-    let c1 = c!(c1, C1_IS_NONE);
-    let c2 = c!(c2, C2_IS_NONE);
-    let c3 = c!(c3, C3_IS_NONE);
-    let alpha = c!(alpha, ALPHA_IS_NONE);
-
-    let mut color = AbsoluteColor::new(color_space, ColorComponents(c1, c2, c3), alpha);
-    color.flags |= flags;
     Color::Absolute(Box::new(Absolute {
-        color,
+        color: AbsoluteColor::new(color_space, c1, c2, c3, alpha),
         authored: None,
     }))
 }
@@ -467,14 +447,11 @@ impl cssparser::FromParsedColor for Color {
         Color::CurrentColor
     }
 
-    fn from_rgba(red: Option<u8>, green: Option<u8>, blue: Option<u8>, alpha: Option<f32>) -> Self {
-        new_absolute(
-            ColorSpace::Srgb,
-            red.map(|r| r as f32 / 255.0),
-            green.map(|g| g as f32 / 255.0),
-            blue.map(|b| b as f32 / 255.0),
-            alpha,
-        )
+    fn from_rgba(r: u8, g: u8, b: u8, a: f32) -> Self {
+        Self::Absolute(Box::new(Absolute {
+            color: AbsoluteColor::new(ColorSpace::Srgb, r, g, b, a),
+            authored: None,
+        }))
     }
 
     fn from_hsl(
@@ -801,7 +778,7 @@ impl Color {
     #[inline]
     pub fn transparent() -> Self {
         // We should probably set authored to "transparent", but maybe it doesn't matter.
-        Self::from_absolute_color(AbsoluteColor::transparent())
+        Self::from_absolute_color(AbsoluteColor::TRANSPARENT)
     }
 
     /// Create a color from an [`AbsoluteColor`].
@@ -974,7 +951,7 @@ impl ToComputedValue for MozFontSmoothingBackgroundColor {
     fn to_computed_value(&self, context: &Context) -> Self::ComputedValue {
         self.0
             .to_computed_value(context)
-            .resolve_to_absolute(&AbsoluteColor::transparent())
+            .resolve_to_absolute(&AbsoluteColor::TRANSPARENT)
     }
 
     fn from_computed_value(computed: &Self::ComputedValue) -> Self {
