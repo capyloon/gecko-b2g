@@ -109,6 +109,7 @@ class nsScreenGonk : public nsIScreen {
   int32_t GetSurfaceFormat();
   ANativeWindow* GetNativeWindow();
   LayoutDeviceIntRect GetNaturalBounds();
+  LayoutDeviceIntRect GetVirtualBounds();
   uint32_t EffectiveScreenRotation();
   bool IsPrimaryScreen();
 
@@ -215,9 +216,6 @@ class ScreenHelperGonk final : public ScreenManager::Helper {
   static ScreenHelperGonk* GetSingleton();
 
   // Generic
-  already_AddRefed<Screen> MakeScreen(
-      uint32_t id, NotifyDisplayChangedEvent aEventVisibility =
-                       NotifyDisplayChangedEvent::Observable);
   void Refresh();
 
   void AddScreen(uint32_t aScreenId, DisplayType aDisplayType,
@@ -225,8 +223,9 @@ class ScreenHelperGonk final : public ScreenManager::Helper {
                  float aDensity = 1.0f,
                  NotifyDisplayChangedEvent aEventVisibility =
                      NotifyDisplayChangedEvent::Observable);
-  void RemoveScreen(uint32_t aId);
-  already_AddRefed<Screen> ScreenForId(uint32_t aScreenId);
+
+  void RemoveScreen(uint32_t aScreenId);
+
   already_AddRefed<nsScreenGonk> ScreenGonkForId(uint32_t aScreenId);
   uint32_t GetNumberOfScreens();
 
@@ -238,15 +237,21 @@ class ScreenHelperGonk final : public ScreenManager::Helper {
 
   void DisplayEnabled(bool aEnabled);
 
-  bool IsScreenConnected(uint32_t aId);
+  bool IsScreenConnected(uint32_t aScreenId);
 
   void SetCompositorVsyncScheduler(
       mozilla::layers::CompositorVsyncScheduler* aObserver);
 
  private:
-  nsTHashMap<nsUint32HashKey, RefPtr<Screen>> mScreens;
-
   nsTHashMap<nsUint32HashKey, RefPtr<nsScreenGonk>> mScreenGonks;
+
+  void EnsureScreenGonk(uint32_t aScreenId);
+
+  already_AddRefed<nsScreenGonk> MakeScreenGonk(
+      uint32_t aScreenId, NotifyDisplayChangedEvent aEventVisibility =
+                              NotifyDisplayChangedEvent::Observable);
+
+  already_AddRefed<Screen> MakeScreen(nsScreenGonk* aScreenGonk);
 
   // nsScreenManagerGonk
   void VsyncControl(bool aEnabled);
