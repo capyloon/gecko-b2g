@@ -218,6 +218,8 @@ nsresult nsDeviceContext::GetDeviceSurfaceDimensions(nscoord& aWidth,
     aHeight = area.Height();
   }
 
+  printf_stderr("ZZZ nsDeviceContext::GetDeviceSurfaceDimensions %dx%d", aWidth, aHeight);
+
   return NS_OK;
 }
 
@@ -227,6 +229,8 @@ nsresult nsDeviceContext::GetRect(nsRect& aRect) {
   } else
     ComputeFullAreaUsingScreen(&aRect);
 
+  printf_stderr("ZZZ nsDeviceContext::GetRect %dx%d", aRect.Width(), aRect.Height());
+
   return NS_OK;
 }
 
@@ -235,6 +239,8 @@ nsresult nsDeviceContext::GetClientRect(nsRect& aRect) {
     aRect.SetRect(0, 0, mWidth, mHeight);
   } else
     ComputeClientRectUsingScreen(&aRect);
+
+  printf_stderr("ZZZ nsDeviceContext::GetClientRect %dx%d", aRect.Width(), aRect.Height());
 
   return NS_OK;
 }

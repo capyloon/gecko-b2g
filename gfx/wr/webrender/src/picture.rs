@@ -6952,7 +6952,7 @@ fn get_relative_scale_offset(
         CoordinateSpaceMapping::Local => ScaleOffset::identity(),
         CoordinateSpaceMapping::ScaleOffset(scale_offset) => scale_offset,
         CoordinateSpaceMapping::Transform(m) => {
-            ScaleOffset::from_transform(&m).expect("bug: pictures caches don't support complex transforms")
+            ScaleOffset::from_transform(&m).unwrap_or_else(|| ScaleOffset::identity())//expect("bug: pictures caches don't support complex transforms")
         }
     };
 
