@@ -118,7 +118,8 @@ export var TabManager = {
    * @param {object} options
    * @param {boolean=} options.focus
    *     Set to true if the new tab should be focused (selected). Defaults to
-   *     false.
+   *     false. `false` value is not properly supported on Android, additional
+   *     focus of previously selected tab is required after initial navigation.
    * @param {Tab=} options.referenceTab
    *     The reference tab after which the new tab will be added. If no
    *     reference tab is provided, the new tab will be added after all the
@@ -305,6 +306,20 @@ export var TabManager = {
 
     const tabBrowser = this.getTabBrowser(browser.ownerGlobal);
     return tabBrowser.getTabForBrowser(browser);
+  },
+
+  /**
+   * Retrieve the list of tabs for a given window.
+   *
+   * @param {ChromeWindow} win
+   *     Window whose <code>tabs</code> need to be returned.
+   *
+   * @returns {Array<Tab>}
+   *     The list of tabs. Will return an empty list if tab browser is not available.
+   */
+  getTabsForWindow(win) {
+    const tabBrowser = this.getTabBrowser(win);
+    return tabBrowser ? tabBrowser.tabs : [];
   },
 
   getWindowForTab(tab) {

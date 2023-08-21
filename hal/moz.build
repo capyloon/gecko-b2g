@@ -37,6 +37,7 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "android":
         "/widget/android",
     ]
     UNIFIED_SOURCES += [
+        "android/AndroidPerformanceHintManager.cpp",
         "android/AndroidProcessPriority.cpp",
         "android/AndroidSensor.cpp",
         "fallback/FallbackAlarm.cpp",
@@ -67,9 +68,9 @@ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "gonk":
         "gonk/GonkHal.cpp",
     ]
     EXPORTS.gonk += [
-      "gonk/android_sensors/ISensorsWrapper.h",
-      "gonk/GonkSensorManager.h",
-      "gonk/GonkSensorsHal.h",
+        "gonk/android_sensors/ISensorsWrapper.h",
+        "gonk/GonkSensorManager.h",
+        "gonk/GonkSensorsHal.h",
     ]
     XPCOM_MANIFESTS += [
         "gonk/components.conf",
@@ -102,7 +103,6 @@ elif CONFIG["OS_TARGET"] == "Linux":
         "fallback/FallbackAlarm.cpp",
         "fallback/FallbackFlipManager.cpp",
         "fallback/FallbackFMRadio.cpp",
-        "fallback/FallbackNetwork.cpp",
         "fallback/FallbackPowerSupply.cpp",
         "fallback/FallbackScreenConfiguration.cpp",
         "fallback/FallbackSensor.cpp",
@@ -142,7 +142,6 @@ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
         "fallback/FallbackFlashlightManager.cpp",
         "fallback/FallbackFlipManager.cpp",
         "fallback/FallbackMemory.cpp",
-        "fallback/FallbackNetwork.cpp",
         "fallback/FallbackPowerSupply.cpp",
         "fallback/FallbackProcessPriority.cpp",
         "fallback/FallbackScreenConfiguration.cpp",
@@ -155,7 +154,6 @@ elif CONFIG["OS_TARGET"] in ("OpenBSD", "NetBSD", "FreeBSD", "DragonFly"):
         "fallback/FallbackFlashlightManager.cpp",
         "fallback/FallbackFlipManager.cpp",
         "fallback/FallbackMemory.cpp",
-        "fallback/FallbackNetwork.cpp",
         "fallback/FallbackPowerSupply.cpp",
         "fallback/FallbackProcessPriority.cpp",
         "fallback/FallbackScreenConfiguration.cpp",
@@ -178,7 +176,6 @@ else:
         "fallback/FallbackFlashlightManager.cpp",
         "fallback/FallbackFlipManager.cpp",
         "fallback/FallbackMemory.cpp",
-        "fallback/FallbackNetwork.cpp",
         "fallback/FallbackPowerSupply.cpp",
         "fallback/FallbackProcessPriority.cpp",
         "fallback/FallbackScreenConfiguration.cpp",
@@ -192,6 +189,18 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] != "gonk":
     UNIFIED_SOURCES += [
         "fallback/FallbackDiskSpaceWatcher.cpp",
         "fallback/FallbackSystemService.cpp",
+    ]
+
+# Fallbacks for backends implemented on Android and Gonk only.
+if CONFIG["MOZ_WIDGET_TOOLKIT"] != "android" and CONFIG["MOZ_WIDGET_TOOLKIT"] != "gonk":
+    UNIFIED_SOURCES += [
+        "fallback/FallbackNetwork.cpp",
+    ]
+
+# Fallbacks for backends implemented on Android only.
+if CONFIG["MOZ_WIDGET_TOOLKIT"] != "android":
+    UNIFIED_SOURCES += [
+        "fallback/FallbackPerformanceHintManager.cpp",
     ]
 
 if CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":

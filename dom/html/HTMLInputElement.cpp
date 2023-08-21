@@ -3537,8 +3537,16 @@ nsresult HTMLInputElement::MaybeInitPickers(EventChainPostVisitor& aVisitor) {
  */
 static bool IgnoreInputEventWithModifier(const WidgetInputEvent& aEvent,
                                          bool ignoreControl) {
-  return (ignoreControl && aEvent.IsControl()) || aEvent.IsAltGraph() ||
-         aEvent.IsFn() || aEvent.IsOS();
+  return (ignoreControl && aEvent.IsControl()) ||
+         aEvent.IsAltGraph()
+#if defined(XP_WIN) || defined(MOZ_WIDGET_GTK)
+         // Meta key is the Windows Logo key on Windows and Linux which may
+         // assign some special meaning for the events while it's pressed.
+         // On the other hand, it's a normal modifier in macOS and Android.
+         // Therefore, We should ignore it only in Win/Linux.
+         || aEvent.IsMeta()
+#endif
+         || aEvent.IsFn();
 }
 
 bool HTMLInputElement::StepsInputValue(
@@ -3618,6 +3626,7 @@ nsresult HTMLInputElement::PostHandleEvent(EventChainPostVisitor& aVisitor) {
       !IsSingleLineTextControl(true) && mType != FormControlType::InputNumber) {
     WidgetMouseEvent* mouseEvent = aVisitor.mEvent->AsMouseEvent();
     if (mouseEvent && mouseEvent->IsLeftClickEvent() &&
+        OwnerDoc()->MayHaveDOMActivateListeners() &&
         !ShouldPreventDOMActivateDispatch(aVisitor.mEvent->mOriginalTarget)) {
       // DOMActive event should be trusted since the activation is actually
       // occurred even if the cause is an untrusted click event.

@@ -43,7 +43,6 @@
 #include "mozilla/fallible.h"
 #include "mozilla/gfx/Point.h"
 #include "nsCOMPtr.h"
-#include "nsHashtablesFwd.h"
 #include "nsIContentPolicy.h"
 #include "nsINode.h"
 #include "nsIScriptError.h"
@@ -118,16 +117,12 @@ class nsParser;
 class nsPIWindowRoot;
 class nsPresContext;
 class nsStringBuffer;
-class nsStringHashKey;
 class nsTextFragment;
 class nsView;
 class nsWrapperCache;
 
 struct JSContext;
 struct nsPoint;
-
-template <class T>
-class nsRefPtrHashKey;
 
 namespace IPC {
 class Message;
@@ -1695,6 +1690,11 @@ class nsContentUtils {
   static EventMessage GetEventMessage(nsAtom* aName);
 
   /**
+   * Return the event type atom for a given event message.
+   */
+  static nsAtom* GetEventTypeFromMessage(EventMessage aEventMessage);
+
+  /**
    * Returns the EventMessage and nsAtom to be used for event listener
    * registration.
    */
@@ -2476,8 +2476,7 @@ class nsContentUtils {
 
   static void GetShiftText(nsAString& text);
   static void GetControlText(nsAString& text);
-  static void GetMetaText(nsAString& text);
-  static void GetOSText(nsAString& text);
+  static void GetCommandOrWinText(nsAString& text);
   static void GetAltText(nsAString& text);
   static void GetModifierSeparatorText(nsAString& text);
 
@@ -3536,10 +3535,6 @@ class nsContentUtils {
 
   static nsIConsoleService* sConsoleService;
 
-  static nsTHashMap<nsRefPtrHashKey<nsAtom>, EventNameMapping>* sAtomEventTable;
-  static nsTHashMap<nsStringHashKey, EventNameMapping>* sStringEventTable;
-  static nsTArray<RefPtr<nsAtom>>* sUserDefinedEvents;
-
   static nsIStringBundleService* sStringBundleService;
   class nsContentUtilsReporter;
 
@@ -3578,8 +3573,7 @@ class nsContentUtils {
 
   static nsString* sShiftText;
   static nsString* sControlText;
-  static nsString* sMetaText;
-  static nsString* sOSText;
+  static nsString* sCommandOrWinText;
   static nsString* sAltText;
   static nsString* sModifierSeparator;
 

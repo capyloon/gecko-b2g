@@ -36,9 +36,20 @@ size_t gluesmith(uint8_t* data, size_t size, uint8_t* out, size_t maxsize);
 }
 
 static int testWasmInit(int* argc, char*** argv) {
-  if (!wasm::HasSupport(gCx) ||
-      !GlobalObject::getOrCreateConstructor(gCx, JSProto_WebAssembly)) {
-    MOZ_CRASH("Failed to initialize wasm support");
+  if (!wasm::HasSupport(gCx)) {
+    MOZ_CRASH("Wasm is not supported");
+  }
+
+  JS::ContextOptionsRef(gCx)
+#define WASM_FEATURE(NAME, LOWER_NAME, STAGE, COMPILE_PRED, COMPILER_PRED, \
+                     FLAG_PRED, FLAG_FORCE_ON, FLAG_FUZZ_ON, SHELL, PREF)  \
+  .setWasm##NAME(FLAG_FUZZ_ON)
+      JS_FOR_WASM_FEATURES(WASM_FEATURE)
+#undef WASM_FEATURE
+          ;
+
+  if (!GlobalObject::getOrCreateConstructor(gCx, JSProto_WebAssembly)) {
+    MOZ_CRASH("Failed to initialize wasm engine");
   }
 
   return 0;

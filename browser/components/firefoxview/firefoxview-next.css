@@ -60,13 +60,20 @@ body {
 }
 
 #pages {
+  overflow-y: auto;
+  max-height: 100vh;
+  max-width: 100%;
+}
+
+.main-container {
   width: 90%;
   margin: 0 auto;
-  max-width: 1136px;
+  min-width: 43rem;
+  max-width: 71rem;
 }
 
 @media (min-width: 120rem) {
-  #pages {
+  .main-container {
     margin-inline-start: 148px;
   }
 }
@@ -76,8 +83,8 @@ body {
   font-weight: 400;
 }
 
-fxview-category-button[name="overview"]::part(icon) {
-  background-image: url("chrome://browser/content/firefoxview/category-overview.svg");
+fxview-category-button[name="recentbrowsing"]::part(icon) {
+  background-image: url("chrome://browser/content/firefoxview/category-recentbrowsing.svg");
 }
 fxview-category-button[name="opentabs"]::part(icon) {
   background-image: url("chrome://browser/content/firefoxview/category-opentabs.svg");
@@ -96,9 +103,8 @@ fxview-tab-list.with-dismiss-button::part(secondary-button) {
   background-image: url("chrome://global/skin/icons/close.svg");
 }
 
-fxview-tab-list.history::part(secondary-button),
-fxview-tab-list.syncedtabs::part(secondary-button) {
-    background-image: url("chrome://global/skin/icons/more.svg");
+fxview-tab-list.with-context-menu::part(secondary-button) {
+  background-image: url("chrome://global/skin/icons/more.svg");
 }
 
 .sticky-container {
@@ -116,6 +122,10 @@ fxview-tab-list.syncedtabs::part(secondary-button) {
     var(--fxview-background-color) 95%,
     transparent 100%
   );
+  /* When you use HCM or set custom colors, you can't use a gradient. */
+  @media (forced-colors) {
+    background: var(--fxview-background-color);
+  }
 }
 
 .cards-container {
@@ -135,4 +145,13 @@ panel-item::part(button):hover {
 
 panel-item::part(button):hover:active {
   background-color: var(--fxview-element-background-active);
+}
+
+fxview-category-navigation {
+  overflow-y: auto;
+}
+
+fxview-category-navigation h1 {
+  font-size: 1.6em;
+  font-weight: 700;
 }

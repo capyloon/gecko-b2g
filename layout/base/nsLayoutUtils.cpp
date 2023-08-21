@@ -3192,13 +3192,9 @@ void nsLayoutUtils::PaintFrame(gfxContext* aRenderingContext, nsIFrame* aFrame,
   // If we are in a remote browser, then apply clipping from ancestor browsers
   if (BrowserChild* browserChild = BrowserChild::GetFrom(presShell)) {
     if (!browserChild->IsTopLevel()) {
-      Maybe<nsRect> unscaledVisibleRect = browserChild->GetVisibleRect();
-
-      if (!unscaledVisibleRect) {
-        unscaledVisibleRect = Some(nsRect());
-      }
-
-      rootInkOverflow.IntersectRect(rootInkOverflow, *unscaledVisibleRect);
+      const nsRect unscaledVisibleRect =
+          browserChild->GetVisibleRect().valueOr(nsRect());
+      rootInkOverflow.IntersectRect(rootInkOverflow, unscaledVisibleRect);
     }
   }
 
@@ -7154,12 +7150,35 @@ bool nsLayoutUtils::IsInPositionFixedSubtree(const nsIFrame* aFrame) {
   return false;
 }
 
+static RefPtr<SourceSurface> ScaleSourceSurface(SourceSurface& aSurface,
+                                                const IntSize& aTargetSize) {
+  const IntSize surfaceSize = aSurface.GetSize();
+
+  MOZ_ASSERT(surfaceSize != aTargetSize);
+  MOZ_ASSERT(!surfaceSize.IsEmpty());
+  MOZ_ASSERT(!aTargetSize.IsEmpty());
+
+  RefPtr<DrawTarget> dt = Factory::CreateDrawTarget(
+      gfxVars::ContentBackend(), aTargetSize, aSurface.GetFormat());
+
+  if (!dt || !dt->IsValid()) {
+    return nullptr;
+  }
+
+  dt->DrawSurface(&aSurface, Rect(Point(), Size(aTargetSize)),
+                  Rect(Point(), Size(surfaceSize)));
+  return dt->GetBackingSurface();
+}
+
 SurfaceFromElementResult nsLayoutUtils::SurfaceFromOffscreenCanvas(
     OffscreenCanvas* aOffscreenCanvas, uint32_t aSurfaceFlags,
     RefPtr<DrawTarget>& aTarget) {
   SurfaceFromElementResult result;
 
   IntSize size = aOffscreenCanvas->GetWidthHeight();
+  if (size.IsEmpty()) {
+    return result;
+  }
 
   result.mSourceSurface =
       aOffscreenCanvas->GetSurfaceSnapshot(&result.mAlphaType);
@@ -7167,6 +7186,7 @@ SurfaceFromElementResult nsLayoutUtils::SurfaceFromOffscreenCanvas(
     // If the element doesn't have a context then we won't get a snapshot. The
     // canvas spec wants us to not error and just draw nothing, so return an
     // empty surface.
+    result.mSize = size;
     result.mAlphaType = gfxAlphaType::Opaque;
     RefPtr<DrawTarget> ref =
         aTarget ? aTarget : gfxPlatform::ThreadLocalScreenReferenceDrawTarget();
@@ -7177,16 +7197,27 @@ SurfaceFromElementResult nsLayoutUtils::SurfaceFromOffscreenCanvas(
         result.mSourceSurface = dt->Snapshot();
       }
     }
-  } else if (aTarget) {
-    RefPtr<SourceSurface> opt =
-        aTarget->OptimizeSourceSurface(result.mSourceSurface);
-    if (opt) {
-      result.mSourceSurface = opt;
+  } else {
+    result.mSize = result.mSourceSurface->GetSize();
+
+    // If we want an exact sized surface, then we need to scale if we don't
+    // match the intrinsic size.
+    const bool exactSize = aSurfaceFlags & SFE_EXACT_SIZE_SURFACE;
+    if (exactSize && size != result.mSize) {
+      result.mSize = size;
+      result.mSourceSurface = ScaleSourceSurface(*result.mSourceSurface, size);
+    }
+
+    if (aTarget && result.mSourceSurface) {
+      RefPtr<SourceSurface> opt =
+          aTarget->OptimizeSourceSurface(result.mSourceSurface);
+      if (opt) {
+        result.mSourceSurface = opt;
+      }
     }
   }
 
   result.mHasSize = true;
-  result.mSize = size;
   result.mIntrinsicSize = size;
   result.mIsWriteOnly = aOffscreenCanvas->IsWriteOnly();
 
@@ -7301,26 +7332,6 @@ SurfaceFromElementResult nsLayoutUtils::SurfaceFromVideoFrame(
 SurfaceFromElementResult nsLayoutUtils::SurfaceFromImageBitmap(
     mozilla::dom::ImageBitmap* aImageBitmap, uint32_t aSurfaceFlags) {
   return aImageBitmap->SurfaceFrom(aSurfaceFlags);
-}
-
-static RefPtr<SourceSurface> ScaleSourceSurface(SourceSurface& aSurface,
-                                                const IntSize& aTargetSize) {
-  const IntSize surfaceSize = aSurface.GetSize();
-
-  MOZ_ASSERT(surfaceSize != aTargetSize);
-  MOZ_ASSERT(!surfaceSize.IsEmpty());
-  MOZ_ASSERT(!aTargetSize.IsEmpty());
-
-  RefPtr<DrawTarget> dt = Factory::CreateDrawTarget(
-      gfxVars::ContentBackend(), aTargetSize, aSurface.GetFormat());
-
-  if (!dt || !dt->IsValid()) {
-    return nullptr;
-  }
-
-  dt->DrawSurface(&aSurface, Rect(Point(), Size(aTargetSize)),
-                  Rect(Point(), Size(surfaceSize)));
-  return dt->GetBackingSurface();
 }
 
 SurfaceFromElementResult nsLayoutUtils::SurfaceFromElement(
@@ -7496,6 +7507,9 @@ SurfaceFromElementResult nsLayoutUtils::SurfaceFromElement(
   SurfaceFromElementResult result;
 
   IntSize size = aElement->GetSize();
+  if (size.IsEmpty()) {
+    return result;
+  }
 
   auto pAlphaType = &result.mAlphaType;
   if (!(aSurfaceFlags & SFE_ALLOW_NON_PREMULT)) {
@@ -7507,6 +7521,7 @@ SurfaceFromElementResult nsLayoutUtils::SurfaceFromElement(
     // If the element doesn't have a context then we won't get a snapshot. The
     // canvas spec wants us to not error and just draw nothing, so return an
     // empty surface.
+    result.mSize = size;
     result.mAlphaType = gfxAlphaType::Opaque;
     RefPtr<DrawTarget> ref =
         aTarget ? aTarget
@@ -7518,11 +7533,23 @@ SurfaceFromElementResult nsLayoutUtils::SurfaceFromElement(
         result.mSourceSurface = dt->Snapshot();
       }
     }
-  } else if (aTarget) {
-    RefPtr<SourceSurface> opt =
-        aTarget->OptimizeSourceSurface(result.mSourceSurface);
-    if (opt) {
-      result.mSourceSurface = opt;
+  } else {
+    result.mSize = result.mSourceSurface->GetSize();
+
+    // If we want an exact sized surface, then we need to scale if we don't
+    // match the intrinsic size.
+    const bool exactSize = aSurfaceFlags & SFE_EXACT_SIZE_SURFACE;
+    if (exactSize && size != result.mSize) {
+      result.mSize = size;
+      result.mSourceSurface = ScaleSourceSurface(*result.mSourceSurface, size);
+    }
+
+    if (aTarget && result.mSourceSurface) {
+      RefPtr<SourceSurface> opt =
+          aTarget->OptimizeSourceSurface(result.mSourceSurface);
+      if (opt) {
+        result.mSourceSurface = opt;
+      }
     }
   }
 
@@ -7531,7 +7558,6 @@ SurfaceFromElementResult nsLayoutUtils::SurfaceFromElement(
   aElement->MarkContextClean();
 
   result.mHasSize = true;
-  result.mSize = size;
   result.mIntrinsicSize = size;
   result.mPrincipal = aElement->NodePrincipal();
   result.mHadCrossOriginRedirects = false;
@@ -9595,8 +9621,12 @@ static nsRect ComputeSVGReferenceRect(nsIFrame* aFrame,
   nsRect r;
 
   // For SVG elements without associated CSS layout box, the used value for
-  // content-box, padding-box, border-box and margin-box is fill-box.
+  // content-box and padding-box is fill-box and for
+  // border-box and margin-box is stroke-box.
   switch (aGeometryBox) {
+    case StyleGeometryBox::NoBox:
+    case StyleGeometryBox::BorderBox:
+    case StyleGeometryBox::MarginBox:
     case StyleGeometryBox::StrokeBox: {
       // XXX Bug 1299876
       // The size of stroke-box is not correct if this graphic element has
@@ -9617,11 +9647,8 @@ static nsRect ComputeSVGReferenceRect(nsIFrame* aFrame,
       r = nsLayoutUtils::ComputeSVGViewBox(viewportElement);
       break;
     }
-    case StyleGeometryBox::NoBox:
-    case StyleGeometryBox::BorderBox:
     case StyleGeometryBox::ContentBox:
     case StyleGeometryBox::PaddingBox:
-    case StyleGeometryBox::MarginBox:
     case StyleGeometryBox::FillBox: {
       gfxRect bbox =
           SVGUtils::GetBBox(aFrame, SVGUtils::eBBoxIncludeFillGeometry);

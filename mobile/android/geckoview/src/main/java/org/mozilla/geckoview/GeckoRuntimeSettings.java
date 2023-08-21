@@ -86,6 +86,18 @@ public final class GeckoRuntimeSettings extends RuntimeSettings {
     }
 
     /**
+     * Set whether Extensions Process support should be enabled.
+     *
+     * @param flag A flag determining whether Extensions Process support should be enabled. Default
+     *     is false.
+     * @return This Builder instance.
+     */
+    public @NonNull Builder extensionsProcessEnabled(final boolean flag) {
+      getSettings().mExtensionsProcess.set(flag);
+      return this;
+    }
+
+    /**
      * Set whether JavaScript support should be enabled.
      *
      * @param flag A flag determining whether JavaScript should be enabled. Default is true.
@@ -467,6 +479,17 @@ public final class GeckoRuntimeSettings extends RuntimeSettings {
       getSettings().setAllowInsecureConnections(level);
       return this;
     }
+
+    /**
+     * Sets whether the Add-on Manager web API (`mozAddonManager`) is enabled.
+     *
+     * @param flag True if the web API should be enabled, false otherwise.
+     * @return This Builder instance.
+     */
+    public @NonNull Builder extensionsWebAPIEnabled(final boolean flag) {
+      getSettings().mExtensionsWebAPIEnabled.set(flag);
+      return this;
+    }
   }
 
   private GeckoRuntime mRuntime;
@@ -515,6 +538,10 @@ public final class GeckoRuntimeSettings extends RuntimeSettings {
   /* package */ final Pref<Boolean> mHttpsOnlyPrivateMode =
       new Pref<Boolean>("dom.security.https_only_mode_pbm", false);
   /* package */ final Pref<Integer> mProcessCount = new Pref<>("dom.ipc.processCount", 2);
+  /* package */ final Pref<Boolean> mExtensionsWebAPIEnabled =
+      new Pref<>("extensions.webapi.enabled", false);
+  /* package */ final PrefWithoutDefault<Boolean> mExtensionsProcess =
+      new PrefWithoutDefault<Boolean>("extensions.webextensions.remote");
 
   /* package */ int mPreferredColorScheme = COLOR_SCHEME_SYSTEM;
 
@@ -641,6 +668,26 @@ public final class GeckoRuntimeSettings extends RuntimeSettings {
    */
   public @NonNull GeckoRuntimeSettings setJavaScriptEnabled(final boolean flag) {
     mJavaScript.commit(flag);
+    return this;
+  }
+
+  /**
+   * Get whether Extensions Process support is enabled.
+   *
+   * @return Whether Extensions Process support is enabled.
+   */
+  public @Nullable Boolean getExtensionsProcessEnabled() {
+    return mExtensionsProcess.get();
+  }
+
+  /**
+   * Set whether Extensions Process support should be enabled.
+   *
+   * @param flag A flag determining whether Extensions Process support should be enabled.
+   * @return This GeckoRuntimeSettings instance.
+   */
+  public @NonNull GeckoRuntimeSettings setExtensionsProcessEnabled(final boolean flag) {
+    mExtensionsProcess.commit(flag);
     return this;
   }
 
@@ -784,6 +831,26 @@ public final class GeckoRuntimeSettings extends RuntimeSettings {
   public void setLocales(final @Nullable String[] requestedLocales) {
     mRequestedLocales = requestedLocales;
     commitLocales();
+  }
+
+  /**
+   * Gets whether the Add-on Manager web API (`mozAddonManager`) is enabled.
+   *
+   * @return True when the web API is enabled, false otherwise.
+   */
+  public boolean getExtensionsWebAPIEnabled() {
+    return mExtensionsWebAPIEnabled.get();
+  }
+
+  /**
+   * Sets whether the Add-on Manager web API (`mozAddonManager`) is enabled.
+   *
+   * @param flag True if the web API should be enabled, false otherwise.
+   * @return This GeckoRuntimeSettings instance.
+   */
+  public @NonNull GeckoRuntimeSettings setExtensionsWebAPIEnabled(final boolean flag) {
+    mExtensionsWebAPIEnabled.commit(flag);
+    return this;
   }
 
   private void commitLocales() {

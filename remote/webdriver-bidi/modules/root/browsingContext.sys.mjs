@@ -15,10 +15,14 @@ ChromeUtils.defineESModuleGetters(lazy, {
   ContextDescriptorType:
     "chrome://remote/content/shared/messagehandler/MessageHandler.sys.mjs",
   error: "chrome://remote/content/shared/webdriver/Errors.sys.mjs",
+  EventPromise: "chrome://remote/content/shared/Sync.sys.mjs",
   Log: "chrome://remote/content/shared/Log.sys.mjs",
+  modal: "chrome://remote/content/shared/Prompt.sys.mjs",
   pprint: "chrome://remote/content/shared/Format.sys.mjs",
   print: "chrome://remote/content/shared/PDF.sys.mjs",
   ProgressListener: "chrome://remote/content/shared/Navigate.sys.mjs",
+  PromptListener:
+    "chrome://remote/content/shared/listeners/PromptListener.sys.mjs",
   TabManager: "chrome://remote/content/shared/TabManager.sys.mjs",
   waitForInitialNavigationCompleted:
     "chrome://remote/content/shared/Navigate.sys.mjs",
@@ -65,6 +69,20 @@ const CreateType = {
 };
 
 /**
+ * Enum of user prompt types supported by the browsingContext.handleUserPrompt
+ * command, these types can be retrieved from `dialog.args.promptType`.
+ *
+ * @readonly
+ * @enum {UserPromptType}
+ */
+const UserPromptType = {
+  alert: "alert",
+  confirm: "confirm",
+  prompt: "prompt",
+  beforeunload: "beforeunload",
+};
+
+/**
  * An object that contains details of a viewport.
  *
  * @typedef {object} Viewport
@@ -92,6 +110,7 @@ const WaitCondition = {
 
 class BrowsingContextModule extends Module {
   #contextListener;
+  #promptListener;
   #subscribedEvents;
 
   /**
@@ -103,9 +122,13 @@ class BrowsingContextModule extends Module {
   constructor(messageHandler) {
     super(messageHandler);
 
-    // Create the console-api listener and listen on "message" events.
+    // Create the browsing context listener and listen to "attached" events.
     this.#contextListener = new lazy.BrowsingContextListener();
     this.#contextListener.on("attached", this.#onContextAttached);
+
+    // Create the prompt listener and listen to "opened" events.
+    this.#promptListener = new lazy.PromptListener();
+    this.#promptListener.on("opened", this.#onPromptOpened);
 
     // Set of event names which have active subscriptions.
     this.#subscribedEvents = new Set();
@@ -370,6 +393,14 @@ class BrowsingContextModule extends Module {
     );
 
     let browser;
+
+    // Since each tab in GeckoView has its own Gecko instance running,
+    // which means also its own window object, for Android we will need to focus
+    // a previously focused window in case of opening the tab in the background.
+    const previousWindow = Services.wm.getMostRecentBrowserWindow();
+    const previousTab =
+      lazy.TabManager.getTabBrowser(previousWindow).selectedTab;
+
     switch (type) {
       case "window":
         const newWindow = await lazy.windowManager.openBrowserWindow({
@@ -424,6 +455,19 @@ class BrowsingContextModule extends Module {
         unloadTimeout: 5000,
       }
     );
+
+    // The tab on Android is always opened in the foreground,
+    // so we need to select the previous tab,
+    // and we have to wait until is fully loaded.
+    // TODO: Bug 1845559. This workaround can be removed,
+    // when the API to create a tab for Android supports the background option.
+    if (lazy.AppInfo.isAndroid && background) {
+      await lazy.windowManager.focusWindow(previousWindow);
+      await lazy.TabManager.selectTab(previousTab);
+    }
+
+    // Force a reflow by accessing `clientHeight` (see Bug 1847044).
+    browser.parentElement.clientHeight;
 
     return {
       context: lazy.TabManager.getIdForBrowser(browser),
@@ -503,6 +547,106 @@ class BrowsingContextModule extends Module {
     });
 
     return { contexts: contextsInfo };
+  }
+
+  /**
+   * Closes an open prompt.
+   *
+   * @param {object=} options
+   * @param {string} options.context
+   *     Id of the browsing context.
+   * @param {boolean=} options.accept
+   *     Whether user prompt should be accepted or dismissed.
+   *     Defaults to true.
+   * @param {string=} options.userText
+   *     Input to the user prompt's value field.
+   *     Defaults to an empty string.
+   *
+   * @throws {InvalidArgumentError}
+   *     Raised if an argument is of an invalid type or value.
+   * @throws {NoSuchAlertError}
+   *     If there is no current user prompt.
+   * @throws {NoSuchFrameError}
+   *     If the browsing context cannot be found.
+   * @throws {UnsupportedOperationError}
+   *     Raised when the command is called for "beforeunload" prompt.
+   */
+  async handleUserPrompt(options = {}) {
+    const { accept = true, context: contextId, userText = "" } = options;
+
+    lazy.assert.string(
+      contextId,
+      `Expected "context" to be a string, got ${contextId}`
+    );
+
+    const context = this.#getBrowsingContext(contextId);
+
+    lazy.assert.boolean(
+      accept,
+      `Expected "accept" to be a boolean, got ${accept}`
+    );
+
+    lazy.assert.string(
+      userText,
+      `Expected "userText" to be a string, got ${userText}`
+    );
+
+    const tab = lazy.TabManager.getTabForBrowsingContext(context);
+    const browser = lazy.TabManager.getBrowserForTab(tab);
+    const window = lazy.TabManager.getWindowForTab(tab);
+    const dialog = lazy.modal.findPrompt({
+      window,
+      contentBrowser: browser,
+    });
+
+    const closePrompt = async callback => {
+      const dialogClosed = new lazy.EventPromise(
+        window,
+        "DOMModalDialogClosed"
+      );
+      callback();
+      await dialogClosed;
+    };
+
+    if (dialog && dialog.isOpen) {
+      switch (dialog.promptType) {
+        case UserPromptType.alert: {
+          await closePrompt(() => dialog.accept());
+          return;
+        }
+        case UserPromptType.confirm: {
+          await closePrompt(() => {
+            if (accept) {
+              dialog.accept();
+            } else {
+              dialog.dismiss();
+            }
+          });
+
+          return;
+        }
+        case UserPromptType.prompt: {
+          await closePrompt(() => {
+            if (accept) {
+              dialog.text = userText;
+              dialog.accept();
+            } else {
+              dialog.dismiss();
+            }
+          });
+
+          return;
+        }
+        case UserPromptType.beforeunload: {
+          // TODO: Bug 1824220. Implement support for "beforeunload" prompts.
+          throw new lazy.error.UnsupportedOperationError(
+            '"beforeunload" prompts are not supported yet.'
+          );
+        }
+      }
+    }
+
+    throw new lazy.error.NoSuchAlertError();
   }
 
   /**
@@ -907,7 +1051,7 @@ class BrowsingContextModule extends Module {
         webProgress.browsingContext
       );
     return {
-      navigation: navigation ? navigation.id : null,
+      navigation: navigation ? navigation.navigationId : null,
       url,
     };
   }
@@ -1016,7 +1160,7 @@ class BrowsingContextModule extends Module {
   };
 
   #onLocationChange = async (eventName, data) => {
-    const { id, navigableId, url } = data;
+    const { navigationId, navigableId, url } = data;
     const context = this.#getBrowsingContext(navigableId);
 
     if (this.#subscribedEvents.has("browsingContext.fragmentNavigated")) {
@@ -1028,13 +1172,35 @@ class BrowsingContextModule extends Module {
         "browsingContext.fragmentNavigated",
         {
           context: navigableId,
-          navigation: id,
+          navigation: navigationId,
           timestamp: Date.now(),
           url,
         },
         contextInfo
       );
     }
+  };
+
+  #onPromptOpened = async (eventName, data) => {
+    const { contentBrowser, prompt } = data;
+    const contextId = lazy.TabManager.getIdForBrowser(contentBrowser);
+    // This event is emitted from the parent process but for a given browsing
+    // context. Set the event's contextInfo to the message handler corresponding
+    // to this browsing context.
+    const contextInfo = {
+      contextId,
+      type: lazy.WindowGlobalMessageHandler.type,
+    };
+
+    this.emitEvent(
+      "browsingContext.userPromptOpened",
+      {
+        context: contextId,
+        type: prompt.promptType,
+        message: await prompt.getText(),
+      },
+      contextInfo
+    );
   };
 
   #startListeningLocationChanged() {
@@ -1067,6 +1233,11 @@ class BrowsingContextModule extends Module {
         this.#subscribedEvents.add(event);
         break;
       }
+      case "browsingContext.userPromptOpened": {
+        this.#promptListener.startListening();
+        this.#subscribedEvents.add(event);
+        break;
+      }
     }
   }
 
@@ -1079,6 +1250,11 @@ class BrowsingContextModule extends Module {
       }
       case "browsingContext.fragmentNavigated": {
         this.#stopListeningLocationChanged();
+        this.#subscribedEvents.delete(event);
+        break;
+      }
+      case "browsingContext.userPromptOpened": {
+        this.#promptListener.stopListening();
         this.#subscribedEvents.delete(event);
         break;
       }
@@ -1120,6 +1296,7 @@ class BrowsingContextModule extends Module {
       "browsingContext.domContentLoaded",
       "browsingContext.fragmentNavigated",
       "browsingContext.load",
+      "browsingContext.userPromptOpened",
     ];
   }
 }

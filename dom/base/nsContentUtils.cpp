@@ -218,7 +218,7 @@
 #include "nsAboutProtocolUtils.h"
 #include "nsAlgorithm.h"
 #include "nsArrayUtils.h"
-#include "nsAtom.h"
+#include "nsAtomHashKeys.h"
 #include "nsAttrName.h"
 #include "nsAttrValue.h"
 #include "nsAttrValueInlines.h"
@@ -426,11 +426,10 @@ nsIPrincipal* nsContentUtils::sSystemPrincipal;
 nsIPrincipal* nsContentUtils::sNullSubjectPrincipal;
 nsIIOService* nsContentUtils::sIOService;
 nsIConsoleService* nsContentUtils::sConsoleService;
-nsTHashMap<nsRefPtrHashKey<nsAtom>, EventNameMapping>*
-    nsContentUtils::sAtomEventTable = nullptr;
-nsTHashMap<nsStringHashKey, EventNameMapping>*
-    nsContentUtils::sStringEventTable = nullptr;
-nsTArray<RefPtr<nsAtom>>* nsContentUtils::sUserDefinedEvents = nullptr;
+
+static nsTHashMap<RefPtr<nsAtom>, EventNameMapping>* sAtomEventTable;
+static nsTHashMap<nsStringHashKey, EventNameMapping>* sStringEventTable;
+static nsTArray<RefPtr<nsAtom>>* sUserDefinedEvents;
 nsIStringBundleService* nsContentUtils::sStringBundleService;
 
 static StaticRefPtr<nsIStringBundle>
@@ -450,8 +449,7 @@ bool nsContentUtils::sIsHandlingKeyBoardEvent = false;
 
 nsString* nsContentUtils::sShiftText = nullptr;
 nsString* nsContentUtils::sControlText = nullptr;
-nsString* nsContentUtils::sMetaText = nullptr;
-nsString* nsContentUtils::sOSText = nullptr;
+nsString* nsContentUtils::sCommandOrWinText = nullptr;
 nsString* nsContentUtils::sAltText = nullptr;
 nsString* nsContentUtils::sModifierSeparator = nullptr;
 
@@ -882,16 +880,11 @@ void nsContentUtils::GetControlText(nsAString& text) {
   text.Assign(*sControlText);
 }
 
-void nsContentUtils::GetMetaText(nsAString& text) {
-  if (!sMetaText) InitializeModifierStrings();
-  text.Assign(*sMetaText);
-}
-
-void nsContentUtils::GetOSText(nsAString& text) {
-  if (!sOSText) {
+void nsContentUtils::GetCommandOrWinText(nsAString& text) {
+  if (!sCommandOrWinText) {
     InitializeModifierStrings();
   }
-  text.Assign(*sOSText);
+  text.Assign(*sCommandOrWinText);
 }
 
 void nsContentUtils::GetAltText(nsAString& text) {
@@ -920,8 +913,7 @@ void nsContentUtils::InitializeModifierStrings() {
       NS_SUCCEEDED(rv) && bundle,
       "chrome://global/locale/platformKeys.properties could not be loaded");
   nsAutoString shiftModifier;
-  nsAutoString metaModifier;
-  nsAutoString osModifier;
+  nsAutoString commandOrWinModifier;
   nsAutoString altModifier;
   nsAutoString controlModifier;
   nsAutoString modifierSeparator;
@@ -929,16 +921,14 @@ void nsContentUtils::InitializeModifierStrings() {
     // macs use symbols for each modifier key, so fetch each from the bundle,
     // which also covers i18n
     bundle->GetStringFromName("VK_SHIFT", shiftModifier);
-    bundle->GetStringFromName("VK_META", metaModifier);
-    bundle->GetStringFromName("VK_WIN", osModifier);
+    bundle->GetStringFromName("VK_COMMAND_OR_WIN", commandOrWinModifier);
     bundle->GetStringFromName("VK_ALT", altModifier);
     bundle->GetStringFromName("VK_CONTROL", controlModifier);
     bundle->GetStringFromName("MODIFIER_SEPARATOR", modifierSeparator);
   }
   // if any of these don't exist, we get  an empty string
   sShiftText = new nsString(shiftModifier);
-  sMetaText = new nsString(metaModifier);
-  sOSText = new nsString(osModifier);
+  sCommandOrWinText = new nsString(commandOrWinModifier);
   sAltText = new nsString(altModifier);
   sControlText = new nsString(controlModifier);
   sModifierSeparator = new nsString(modifierSeparator);
@@ -965,7 +955,8 @@ bool nsContentUtils::IsExternalProtocol(nsIURI* aURI) {
   return NS_SUCCEEDED(rv) && doesNotReturnData;
 }
 
-static nsAtom* GetEventTypeFromMessage(EventMessage aEventMessage) {
+/* static */
+nsAtom* nsContentUtils::GetEventTypeFromMessage(EventMessage aEventMessage) {
   switch (aEventMessage) {
 #define MESSAGE_TO_EVENT(name_, message_, type_, struct_) \
   case message_:                                          \
@@ -993,8 +984,8 @@ bool nsContentUtils::InitializeEventTable() {
 #undef EVENT
       {nullptr}};
 
-  sAtomEventTable = new nsTHashMap<nsRefPtrHashKey<nsAtom>, EventNameMapping>(
-      ArrayLength(eventArray));
+  sAtomEventTable =
+      new nsTHashMap<RefPtr<nsAtom>, EventNameMapping>(ArrayLength(eventArray));
   sStringEventTable = new nsTHashMap<nsStringHashKey, EventNameMapping>(
       ArrayLength(eventArray));
   sUserDefinedEvents = new nsTArray<RefPtr<nsAtom>>(64);
@@ -1963,10 +1954,8 @@ void nsContentUtils::Shutdown() {
   sShiftText = nullptr;
   delete sControlText;
   sControlText = nullptr;
-  delete sMetaText;
-  sMetaText = nullptr;
-  delete sOSText;
-  sOSText = nullptr;
+  delete sCommandOrWinText;
+  sCommandOrWinText = nullptr;
   delete sAltText;
   sAltText = nullptr;
   delete sModifierSeparator;
@@ -2900,11 +2889,13 @@ static Node* GetCommonAncestorInternal(Node* aNode1, Node* aNode2,
   // Find where the parent chain differs
   uint32_t pos1 = parents1.Length();
   uint32_t pos2 = parents2.Length();
+  Node** data1 = parents1.Elements();
+  Node** data2 = parents2.Elements();
   Node* parent = nullptr;
   uint32_t len;
   for (len = std::min(pos1, pos2); len > 0; --len) {
-    Node* child1 = parents1.ElementAt(--pos1);
-    Node* child2 = parents2.ElementAt(--pos2);
+    Node* child1 = data1[--pos1];
+    Node* child2 = data2[--pos2];
     if (child1 != child2) {
       break;
     }
@@ -6806,7 +6797,7 @@ void* nsContentUtils::AllocClassMatchingInfo(nsINode* aRootNode,
   // nsAttrValue::Equals is sensitive to order, so we'll send an array
   auto* info = new ClassMatchingInfo;
   if (attrValue.Type() == nsAttrValue::eAtomArray) {
-    info->mClasses = std::move(attrValue.GetAtomArrayValue()->mArray);
+    info->mClasses = attrValue.GetAtomArrayValue()->mArray.Clone();
   } else if (attrValue.Type() == nsAttrValue::eAtom) {
     info->mClasses.AppendElement(attrValue.GetAtomValue());
   }
@@ -8545,9 +8536,6 @@ Modifiers nsContentUtils::GetWidgetModifiers(int32_t aModifiers) {
   }
   if (aModifiers & nsIDOMWindowUtils::MODIFIER_SYMBOLLOCK) {
     result |= mozilla::MODIFIER_SYMBOLLOCK;
-  }
-  if (aModifiers & nsIDOMWindowUtils::MODIFIER_OS) {
-    result |= mozilla::MODIFIER_OS;
   }
   return result;
 }

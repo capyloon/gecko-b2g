@@ -247,6 +247,7 @@
 #  include "mozilla/CodeCoverageHandler.h"
 #endif
 
+#include "GMPProcessChild.h"
 #include "SafeMode.h"
 
 #ifdef MOZ_BACKGROUNDTASKS
@@ -5983,12 +5984,16 @@ nsresult XRE_InitCommandLine(int aArgc, char* aArgv[]) {
 #endif
 
 #if defined(MOZ_WIDGET_ANDROID)
-  nsCOMPtr<nsIFile> greOmni =
-      gAppData ? gAppData->xreDirectory : GreOmniPath(aArgc, aArgv);
-  if (!greOmni) {
-    return NS_ERROR_FAILURE;
+  // gAppData is non-null iff this is the parent process.  Otherwise,
+  // the `-greomni`/`-appomni` flags are cross-platform and handled in
+  // ContentProcess::Init.
+  if (gAppData) {
+    nsCOMPtr<nsIFile> greOmni = gAppData->xreDirectory;
+    if (!greOmni) {
+      return NS_ERROR_FAILURE;
+    }
+    mozilla::Omnijar::Init(greOmni, greOmni);
   }
-  mozilla::Omnijar::Init(greOmni, greOmni);
 #endif
 
   return rv;
@@ -6044,6 +6049,8 @@ bool XRE_UseNativeEventProcessing() {
 #  endif  // defined(XP_WIN)
     }
 #endif  // defined(XP_MACOSX) || defined(XP_WIN)
+    case GeckoProcessType_GMPlugin:
+      return mozilla::gmp::GMPProcessChild::UseNativeEventProcessing();
     case GeckoProcessType_Content:
       return StaticPrefs::dom_ipc_useNativeEventProcessing_content();
     default:
