@@ -1031,7 +1031,7 @@ Return<void> GnssCallback::gnssSvStatusCb(
 
 Return<void> GnssCallback::gnssNmeaCb(
     int64_t timestamp, const ::android::hardware::hidl_string& nmea) {
-  DBG("%s: timestamp: %ld", __FUNCTION__, timestamp);
+  DBG("%s: timestamp: %lu", __FUNCTION__, timestamp);
 
 #ifdef HAS_KOOST_MODULES
   NS_DispatchToMainThread(
@@ -1471,7 +1471,7 @@ void GonkGPSGeolocationProvider::UpdateNetworkState(nsISupports* aNetworkInfo,
     networkAttributes.capabilities = capabilities;
     networkAttributes.apn = apn;
 
-    DBG("updateNetworkState, netId: %d, netHandle: %llu, connected: %d, "
+    DBG("updateNetworkState, netId: %d, netHandle: %lu, connected: %d, "
         "capabilities: %u, apn: %s)",
         netId, netHandle, connected, capabilities, apn);
     auto result = mAidlAgnssRil->updateNetworkState(networkAttributes);
@@ -1632,7 +1632,7 @@ void GonkGPSGeolocationProvider::AGpsDataConnectionOpen(bool isEmergencySupl) {
     ipType = isEmergencySupl ? sIpTypeSuplEs : sIpTypeSupl;
   }
 
-  LOG("mAGnssHal_V2_0->data_conn_open_with_apn_ip_type(%llu, %s, %hhu)"
+  LOG("mAGnssHal_V2_0->data_conn_open_with_apn_ip_type(%lu, %s, %hhu)"
       ", netId: %d",
       netHandle, apn.get(), ipType, mSuplNetId);
 

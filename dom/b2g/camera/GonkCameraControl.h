@@ -41,7 +41,7 @@ class nsITimer;
 
 namespace android {
 class GonkCameraHardware;
-class GonkRecorder;
+struct GonkRecorder;
 class GonkCameraSource;
 }  // namespace android
 

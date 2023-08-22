@@ -3547,6 +3547,7 @@ name = "mime-guess-ffi"
 version = "0.1.0"
 dependencies = [
  "mime_guess",
+ "nserror",
  "nsstring",
 ]
 
