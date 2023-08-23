@@ -266,6 +266,8 @@ nsresult GfxInfo::GetFeatureStatusImpl(
   OperatingSystem os = OperatingSystem::Android;
   if (aOS) *aOS = os;
 
+  auto glStrings = new GLStrings();
+
   if (aFeature == nsIGfxInfo::FEATURE_WEBRENDER) {
     *aStatus = nsIGfxInfo::FEATURE_ALLOW_ALWAYS;
   } else if (aFeature == FEATURE_WEBRTC_HW_ACCELERATION_ENCODE) {
@@ -282,19 +284,31 @@ nsresult GfxInfo::GetFeatureStatusImpl(
     // encountered any correctness or stability issues with them, loading them
     // fails more often than not, so is a waste of time. Better to just not
     // even attempt to cache them. See bug 1615574.
-    auto glStrings = new GLStrings();
-    const bool isAdreno3xx =
-        glStrings->Renderer().Find("Adreno (TM) 3") >= 0;
+    const bool isAdreno3xx = glStrings->Renderer().Find("Adreno (TM) 3") >= 0;
     if (isAdreno3xx) {
       *aStatus = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;
       aFailureId = "FEATURE_FAILURE_ADRENO_3XX";
     } else {
       *aStatus = nsIGfxInfo::FEATURE_STATUS_OK;
     }
+  } else if (aFeature == FEATURE_WEBRENDER_OPTIMIZED_SHADERS) {
+    // Optimized shaders result in completely broken rendering on some Mali-T
+    // devices. We have seen this on T6xx, T7xx, and T8xx on android versions
+    // up to 5.1, and on T6xx on versions up to android 7.1. As a precaution
+    // disable for all Mali-T regardless of version. See bug 1689064 and bug
+    // 1707283 for details.
+    const bool isMaliT =
+        glStrings->Renderer().LowerCaseFindASCII("mali-t") >= 0;
+    if (isMaliT) {
+      *aStatus = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;
+      aFailureId = "FEATURE_FAILURE_BUG_1689064";
+    } else {
+      *aStatus = nsIGfxInfo::FEATURE_STATUS_OK;
+    }
+    return NS_OK;
   } else if (aFeature == FEATURE_GL_SWIZZLE) {
     // Swizzling appears to be buggy on PowerVR Rogue devices with webrender.
     // See bug 1704783.
-    auto glStrings = new GLStrings();
     const bool isPowerVRRogue =
         glStrings->Renderer().Find("PowerVR Rogue") >= 0;
     if (isPowerVRRogue) {
@@ -303,7 +317,37 @@ nsresult GfxInfo::GetFeatureStatusImpl(
     } else {
       *aStatus = nsIGfxInfo::FEATURE_STATUS_OK;
     }
+  } else if (aFeature == FEATURE_WEBRENDER_PARTIAL_PRESENT) {
+    // Block partial present on some devices due to rendering issues.
+    // On Mali-Txxx due to bug 1680087 and bug 1707815.
+    // On Adreno 3xx GPUs due to bug 1695771.
+    const bool isMaliT =
+        glStrings->Renderer().LowerCaseFindASCII("mali-t") >= 0;
+    const bool isAdreno3xx =
+        glStrings->Renderer().LowerCaseFindASCII("adreno (tm) 3") >= 0;
+    if (isMaliT || isAdreno3xx) {
+      *aStatus = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;
+      aFailureId = "FEATURE_FAILURE_BUG_1680087_1695771_1707815";
+    } else {
+      *aStatus = nsIGfxInfo::FEATURE_STATUS_OK;
+    }
   } else if (aFeature == FEATURE_WEBGL_OPENGL) {
+    *aStatus = nsIGfxInfo::FEATURE_STATUS_OK;
+  } else if (aFeature == FEATURE_WEBRENDER_COMPOSITOR) {
+    *aStatus = nsIGfxInfo::FEATURE_STATUS_OK;
+  } else if (aFeature == FEATURE_WEBRENDER_SCISSORED_CACHE_CLEARS) {
+    // Emulator with SwiftShader is buggy when attempting to clear picture
+    // cache textures with a scissor rect set.
+    const bool isEmulatorSwiftShader =
+        glStrings->Renderer().Find(
+            "Android Emulator OpenGL ES Translator (Google SwiftShader)") >= 0;
+    if (isEmulatorSwiftShader) {
+      *aStatus = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;
+      aFailureId = "FEATURE_FAILURE_BUG_1603515";
+    } else {
+      *aStatus = nsIGfxInfo::FEATURE_STATUS_OK;
+    }
+  } else if (aFeature == FEATURE_BACKDROP_FILTER) {
     *aStatus = nsIGfxInfo::FEATURE_STATUS_OK;
   } else {
     return GfxInfoBase::GetFeatureStatusImpl(aFeature, aStatus,
