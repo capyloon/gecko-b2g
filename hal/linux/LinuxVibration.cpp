@@ -4,11 +4,22 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include <unistd.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <linux/input.h>
+#include "mozilla/Monitor.h"
+#include "mozilla/Services.h"
+#include "mozilla/Sprintf.h"
+#include "mozilla/StaticPtr.h"
+#include "mozilla/Unused.h"
 #include "nsIObserver.h"
 #include "nsIObserverService.h"
+#include "nsIRunnable.h"
+#include "nsIThread.h"
+#include "nsTArray.h"
+#include "nsThreadUtils.h"
+#include "WindowIdentifier.h"
 
 // Minimum time for the vibration to be felt on the pinephone, in ms. :(
 #define MIN_VIBRATION_DURATION 50

@@ -4,6 +4,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#undef KEY_DOWN
+#undef KEY_UP
+
 #include "Hal.h"
 #include "HalLog.h"
 #include "mozilla/dom/ContentChild.h"
