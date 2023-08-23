@@ -1312,3 +1312,6 @@ pref("network.protocol-handler.tile.csp", "default-src 'self' ipfs: ipns: http:/
 #ifdef MOZ_WIDGET_GONK
 pref("browser.download.start_downloads_in_tmp_dir", true);
 #endif
+
+pref("extensions.webapi.enabled", true);
+
