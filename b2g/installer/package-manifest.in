@@ -200,6 +200,14 @@
 @RESPATH@/components/cryptoComponents.manifest
 @RESPATH@/components/TelemetryStartup.manifest
 
+#ifdef MOZ_B2G_RIL
+@RESPATH@/components/DataCallManager.manifest
+@RESPATH@/components/DataCallService.manifest
+@RESPATH@/components/RadioInterfaceLayer.manifest
+@RESPATH@/components/TelephonyService.manifest
+@RESPATH@/components/VoicemailService.manifest
+#endif
+
 @RESPATH@/components/Push.manifest
 @RESPATH@/components/l10n-registry.manifest
 
