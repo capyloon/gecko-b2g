@@ -1277,6 +1277,11 @@ class AsyncPanZoomController {
     return mScrollMetadata.GetMetrics().GetScrollableRect();
   }
 
+  CSSToParentLayerScale GetZoom() const {
+    RecursiveMutexAutoLock lock(mRecursiveMutex);
+    return Metrics().GetZoom();
+  }
+
   // Returns the delta for the given InputData.
   ParentLayerPoint GetDeltaForEvent(const InputData& aEvent) const;
 
