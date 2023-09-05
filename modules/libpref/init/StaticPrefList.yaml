@@ -3134,7 +3134,7 @@
 # disabled.
 - name: dom.keyboardevent.init_key_event.enabled_in_addons
   type: bool
-  value: @IS_NOT_EARLY_BETA_OR_EARLIER@
+  value: @IS_NOT_NIGHTLY_BUILD@
   mirror: always
 
 # If this is true, keypress events for non-printable keys are dispatched only
@@ -8645,24 +8645,11 @@
   mirror: always
   rust: true
 
-# Is support for document.fonts enabled?
-- name: layout.css.font-loading-api.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
 # Is support for workerGlobalScope.fonts enabled?
 - name: layout.css.font-loading-api.workers.enabled
   type: RelaxedAtomicBool
   value: true
   mirror: always
-
-# Is support for the @font-face metrics override descriptors enabled?
-- name: layout.css.font-metrics-overrides.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-  rust: true
 
 # Is support for the @font-palette-values rule and font-palette property enabled?
 - name: layout.css.font-palette.enabled
@@ -8740,12 +8727,6 @@
   value: false
   mirror: always
   rust: true
-
-# Is support for CSS hyphenate-character enabled?
-- name: layout.css.hyphenate-character.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
 
 # Is support for CSS individual transform enabled?
 - name: layout.css.individual-transform.enabled
@@ -8876,22 +8857,10 @@
   value: true
   mirror: always
 
-- name: layout.css.overflow-logical.enabled
-  type: bool
-  value: true
-  mirror: always
-
 # Enables support for the page-orientation  property inside of CSS @page rules.
 - name: layout.css.page-orientation.enabled
   type: RelaxedAtomicBool
   value: @IS_NIGHTLY_BUILD@
-  mirror: always
-  rust: true
-
-# Enables support for the size property inside of CSS @page rules.
-- name: layout.css.page-size.enabled
-  type: RelaxedAtomicBool
-  value: true
   mirror: always
   rust: true
 
@@ -9474,17 +9443,17 @@
   value: false
   mirror: always
 
-# Whether the `scrollbar-gutter` CSS property is enabled.
-- name: layout.css.scrollbar-gutter.enabled
+# Whether supports() conditions in @import is enabled
+- name: layout.css.import-supports.enabled
   type: RelaxedAtomicBool
   value: true
   mirror: always
   rust: true
 
-# Whether supports() conditions in @import is enabled
-- name: layout.css.import-supports.enabled
+# Whether :-moz-broken is supported in content.
+- name: layout.css.moz-broken.content.enabled
   type: RelaxedAtomicBool
-  value: true
+  value: false
   mirror: always
   rust: true
 
@@ -11155,7 +11124,7 @@
 
 - name: media.webrtc.capture.allow-wgc
   type: RelaxedAtomicBool
-  value: @IS_EARLY_BETA_OR_EARLIER@
+  value: false
   mirror: always
 #endif
 
@@ -15428,6 +15397,11 @@
   value: 1024
   mirror: always
 
+- name: webgl.max-vert-ids-per-draw
+  type: RelaxedAtomicUint32
+  value: 30*1000*1000
+  mirror: always
+
 - name: webgl.max-warnings-per-context
   type: RelaxedAtomicUint32
   value: 32
@@ -15966,6 +15940,13 @@
   value: false
   mirror: always
 
+# Whether to use the accent color for the titlebar, if the relevant Windows
+# setting says so. See bug 1851155.
+- name: widget.windows.titlebar-accent.enabled
+  type: bool
+  value: false
+  mirror: always
+
 - name: widget.windows.window_occlusion_tracking_display_state.enabled
   type: bool
   value: false
@@ -15974,11 +15955,6 @@
 - name: widget.windows.window_occlusion_tracking_session_lock.enabled
   type: bool
   value: true
-  mirror: always
-
-- name: widget.windows.hide_cursor_when_typing
-  type: bool
-  value: false
   mirror: always
 
 # Whether to give explorer.exe a delated nudge to recalculate the fullscreenness

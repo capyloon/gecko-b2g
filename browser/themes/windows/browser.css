@@ -375,7 +375,7 @@ menuitem.bookmark-item {
 
   /* Address bar results view */
   :root:not(:-moz-lwtheme) {
-    --urlbar-popup-action-color: -moz-nativehyperlinktext;
+    --urlbar-popup-action-color: LinkText;
   }
 }
 
@@ -476,10 +476,6 @@ toolbarbutton.bookmark-item[dragover="true"][open="true"] {
  * bar. */
 #TabsToolbar > .titlebar-buttonbox-container {
   margin-bottom: var(--tabs-navbar-shadow-size);
-}
-
-.private-browsing-indicator {
-  margin-inline: 12px;
 }
 
 #UITourTooltipButtons {

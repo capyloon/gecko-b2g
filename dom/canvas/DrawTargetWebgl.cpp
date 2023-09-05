@@ -194,9 +194,11 @@ static Atomic<int64_t> sDrawTargetWebglCount(0);
 
 DrawTargetWebgl::DrawTargetWebgl() { sDrawTargetWebglCount++; }
 
-inline void DrawTargetWebgl::SharedContext::ClearLastTexture() {
+inline void DrawTargetWebgl::SharedContext::ClearLastTexture(bool aFullClear) {
   mLastTexture = nullptr;
-  mLastClipMask = nullptr;
+  if (aFullClear) {
+    mLastClipMask = nullptr;
+  }
 }
 
 // Attempts to clear the snapshot state. If the snapshot is only referenced by
@@ -239,6 +241,7 @@ DrawTargetWebgl::~DrawTargetWebgl() {
         child->DeallocShmem(mShmem);
       }
     }
+    mSharedContext->ClearLastTexture(true);
     if (mClipMask) {
       mSharedContext->mWebgl->DeleteTexture(mClipMask);
     }
@@ -3118,6 +3121,10 @@ already_AddRefed<TextureHandle> DrawTargetWebgl::SharedContext::DrawStrokeMask(
   mWebgl->UniformData(LOCAL_GL_FLOAT_VEC2, mSolidProgramTransform, false,
                       {(const uint8_t*)xformData, sizeof(xformData)});
 
+  // Ensure the current clip mask is ignored.
+  RefPtr<WebGLTextureJS> prevClipMask = mLastClipMask;
+  SetNoClipMask();
+
   // Draw the mask using the supplied path vertex range.
   mWebgl->DrawArrays(LOCAL_GL_TRIANGLES, GLint(aVertexRange.mOffset),
                      GLsizei(aVertexRange.mLength));
@@ -3128,6 +3135,9 @@ already_AddRefed<TextureHandle> DrawTargetWebgl::SharedContext::DrawStrokeMask(
   mDirtyViewport = true;
   mDirtyAA = true;
   mDirtyClip = true;
+  if (prevClipMask) {
+    SetClipMask(prevClipMask);
+  }
 
   return handle.forget();
 }

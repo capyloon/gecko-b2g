@@ -2475,7 +2475,9 @@ static void OnDefaultAgentRemoteSettingsPrefChanged(const char* aPref,
 
   nsAutoString prefVal;
   rv = Preferences::GetString(aPref, prefVal);
-  NS_ENSURE_SUCCESS_VOID(rv);
+  if (NS_FAILED(rv)) {
+    return;
+  }
 
   if (prefVal.IsEmpty()) {
     rv = regKey->RemoveValue(valueName);
@@ -4000,7 +4002,7 @@ int XREMain::XRE_mainInit(bool* aExitFlag) {
 #endif
   }
 
-  gKioskMode = CheckArg("kiosk");
+  gKioskMode = CheckArg("kiosk", nullptr, CheckArgFlag::None);
   const char* kioskMonitorNumber = nullptr;
   if (CheckArg("kiosk-monitor", &kioskMonitorNumber, CheckArgFlag::None)) {
     gKioskMode = true;

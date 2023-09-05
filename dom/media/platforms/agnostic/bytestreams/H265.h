@@ -2,298 +2,149 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#ifndef H265_H
-#define H265_H
+#ifndef DOM_MEDIA_PLATFORMS_AGNOSTIC_BYTESTREAMS_H265_H_
+#define DOM_MEDIA_PLATFORMS_AGNOSTIC_BYTESTREAMS_H265_H_
 
-#include "DecoderData.h"
-#include "mozilla/gfx/Types.h"
+#include <stdint.h>
+
+#include "mozilla/Result.h"
+#include "mozilla/Span.h"
+#include "nsTArray.h"
 
 namespace mozilla {
+
 class BitReader;
+class MediaByteBuffer;
+class MediaRawData;
 
-// 7.4.3.1: vps_max_sub_layers_minus1 is in [0, 6].
-#define HEVC_MAX_SUB_LAYERS 7
+// H265 spec
+// https://www.itu.int/rec/T-REC-H.265-202108-I/en
 
-// 7.4.2.1: vps_video_parameter_set_id is u(4).
-#define HEVC_MAX_VPS_COUNT 16
-
-// 7.4.3.2.1: sps_seq_parameter_set_id is in [0, 15].
-#define HEVC_MAX_SPS_COUNT 16
-
-// 7.4.3.3.1: pps_pic_parameter_set_id is in [0, 63].
-#define HEVC_MAX_PPS_COUNT 64
-
-// A.4.2: MaxDpbSize is bounded above by 16.
-#define HEVC_MAX_DPB_SIZE 16
-
-// 7.4.3.2.1: num_short_term_ref_pic_sets is in [0, 64].
-#define HEVC_MAX_SHORT_TERM_REF_PIC_SETS 64
-
-// 7.4.3.2.1: num_long_term_ref_pics_sps is in [0, 32].
-#define HEVC_MAX_LONG_TERM_REF_PICS 32
-
-class H265 {
+// Spec 7.3.1 NAL unit syntax
+class H265NALU final {
  public:
-  // NAL unit types
+  H265NALU(const uint8_t* aData, uint32_t aSize);
+
+  // Table 7-1
   enum NAL_TYPES {
-    H265_NAL_VPS = 32,
-    H265_NAL_SPS = 33,
-    H265_NAL_PPS = 34,
-    H265_NAL_PREFIX_SEI = 39,
-    H265_NAL_SUFFIX_SEI = 40,
+    TRAIL_N = 0,
+    TRAIL_R = 1,
+    TSA_N = 2,
+    TSA_R = 3,
+    STSA_N = 4,
+    STSA_R = 5,
+    RADL_N = 6,
+    RADL_R = 7,
+    RASL_N = 8,
+    RASL_R = 9,
+    RSV_VCL_N10 = 10,
+    RSV_VCL_R11 = 11,
+    RSV_VCL_N12 = 12,
+    RSV_VCL_R13 = 13,
+    RSV_VCL_N14 = 14,
+    RSV_VCL_R15 = 15,
+    BLA_W_LP = 16,
+    BLA_W_RADL = 17,
+    BLA_N_LP = 18,
+    IDR_W_RADL = 19,
+    IDR_N_LP = 20,
+    CRA_NUT = 21,
+    RSV_IRAP_VCL22 = 22,
+    RSV_IRAP_VCL23 = 23,
+    RSV_VCL24 = 24,
+    RSV_VCL25 = 25,
+    RSV_VCL26 = 26,
+    RSV_VCL27 = 27,
+    RSV_VCL28 = 28,
+    RSV_VCL29 = 29,
+    RSV_VCL30 = 30,
+    RSV_VCL31 = 31,
+    VPS_NUT = 32,
+    SPS_NUT = 33,
+    PPS_NUT = 34,
+    AUD_NUT = 35,
+    EOS_NUT = 36,
+    EOB_NUT = 37,
+    FD_NUT = 38,
+    PREFIX_SEI_NUT = 39,
+    SUFFIX_SEI_NUT = 40,
+    RSV_NVCL41 = 41,
+    RSV_NVCL42 = 42,
+    RSV_NVCL43 = 43,
+    RSV_NVCL44 = 44,
+    RSV_NVCL45 = 45,
+    RSV_NVCL46 = 46,
+    RSV_NVCL47 = 47,
+    UNSPEC48 = 48,
+    UNSPEC49 = 49,
+    UNSPEC50 = 50,
+    UNSPEC51 = 51,
+    UNSPEC52 = 52,
+    UNSPEC53 = 53,
+    UNSPEC54 = 54,
+    UNSPEC55 = 55,
+    UNSPEC56 = 56,
+    UNSPEC57 = 57,
+    UNSPEC58 = 58,
+    UNSPEC59 = 59,
+    UNSPEC60 = 60,
+    UNSPEC61 = 61,
+    UNSPEC62 = 62,
+    UNSPEC63 = 63,
   };
 
-  struct PTLData {
-    struct Common {
-      uint8_t profile_space;
-      bool tier_flag;
-      uint8_t profile_idc;
-      bool profile_compatibility_flag[32];
-      bool progressive_source_flag;
-      bool interlaced_source_flag;
-      bool non_packed_constraint_flag;
-      bool frame_only_constraint_flag;
-      bool max_12bit_constraint_flag;
-      bool max_10bit_constraint_flag;
-      bool max_8bit_constraint_flag;
-      bool max_422chroma_constraint_flag;
-      bool max_420chroma_constraint_flag;
-      bool max_monochrome_constraint_flag;
-      bool intra_constraint_flag;
-      bool one_picture_only_constraint_flag;
-      bool lower_bit_rate_constraint_flag;
-      bool max_14bit_constraint_flag;
-      bool inbld_flag;
-      uint8_t level_idc;
-    };
+  bool IsIframe() const {
+    return mNalUnitType == NAL_TYPES::IDR_W_RADL ||
+           mNalUnitType == NAL_TYPES::IDR_N_LP;
+  }
 
-    Common general_ptl;
-    Common sub_layer_ptl[HEVC_MAX_SUB_LAYERS];
-    bool sub_layer_profile_present_flag[HEVC_MAX_SUB_LAYERS];
-    bool sub_layer_level_present_flag[HEVC_MAX_SUB_LAYERS];
-  };
+  bool IsSPS() const { return mNalUnitType == NAL_TYPES::SPS_NUT; }
 
-  struct ScalingList {
-    uint8_t scaling_list_4x4[6][16];
-    uint8_t scaling_list_8x8[6][64];
-    uint8_t scaling_list_16x16[6][64];
-    uint8_t scaling_list_32x32[2][64];
+  uint8_t mNalUnitType;
+  uint8_t mNuhLayerId;
+  uint8_t mNuhTemporalIdPlus1;
+  // This contain the full content of NALU, which can be used to decode rbsp.
+  const Span<const uint8_t> mNALU;
+};
 
-    int16_t scaling_list_dc_coef_16x16[6];
-    int16_t scaling_list_dc_coef_32x32[2];
+// ISO/IEC 14496-15 : hvcC.
+struct HVCCConfig final {
+ public:
+  static Result<HVCCConfig, nsresult> Parse(
+      const mozilla::MediaRawData* aSample);
+  static Result<HVCCConfig, nsresult> Parse(
+      const mozilla::MediaByteBuffer* aExtraData);
 
-    bool Get(int aSizeId, int aMatrixId, Span<uint8_t>* aSl, int16_t** aSlDc);
+  uint8_t NALUSize() const { return mLengthSizeMinusOne + 1; }
 
-    bool UseDefault(int aSizeId, int aMatrixId);
+  uint8_t mConfigurationVersion;
+  uint8_t mGeneralProfileSpace;
+  bool mGeneralTierFlag;
+  uint8_t mGeneralProfileIdc;
+  uint32_t mGeneralProfileCompatibilityFlags;
+  uint64_t mGeneralConstraintIndicatorFlags;
+  uint8_t mGeneralLevelIdc;
+  uint16_t mMinSpatialSegmentationIdc;
+  uint8_t mParallelismType;
+  uint8_t mChromaFormatIdc;
+  uint8_t mBitDepthLumaMinus8;
+  uint8_t mBitDepthChromaMinus8;
+  uint16_t mAvgFrameRate;
+  uint8_t mConstantFrameRate;
+  uint8_t mNumTemporalLayers;
+  bool mTemporalIdNested;
+  uint8_t mLengthSizeMinusOne;
 
-    bool UseReference(int aSizeId, int aMatrixId, int aRefMatrixId);
-  };
+  nsTArray<H265NALU> mNALUs;
 
-  struct ShortTermRPS {
-    uint8_t NumDeltaPocs;
-    uint8_t NumNegativePics;
-    uint8_t NumPositivePics;
-    bool UsedByCurrPicS0[16];
-    bool UsedByCurrPicS1[16];
-    int32_t DeltaPocS0[16];
-    int32_t DeltaPocS1[16];
-  };
-
-  struct VUIData {
-    bool aspect_ratio_info_present_flag;
-    uint8_t aspect_ratio_idc;
-    uint32_t sar_width;
-    uint32_t sar_height;
-    float sample_ratio;
-
-    bool overscan_appropriate_flag;
-    uint8_t video_format;
-    bool video_full_range_flag;
-    bool colour_description_present_flag;
-    uint8_t colour_primaries;
-    uint8_t transfer_characteristics;
-    uint8_t matrix_coefficients;
-
-    bool chroma_loc_info_present_flag;
-    uint8_t chroma_sample_loc_type_top_field;
-    uint8_t chroma_sample_loc_type_bottom_field;
-
-    bool neutral_chroma_indication_flag;
-    bool field_seq_flag;
-    bool frame_field_info_present_flag;
-
-    bool default_display_window_flag;
-    uint32_t def_disp_win_left_offset;
-    uint32_t def_disp_win_right_offset;
-    uint32_t def_disp_win_top_offset;
-    uint32_t def_disp_win_bottom_offset;
-
-    bool timing_info_present_flag;
-    uint32_t num_units_in_tick;
-    uint32_t time_scale;
-
-    bool poc_proportional_to_timing_flag;
-    uint32_t num_ticks_poc_diff_one;
-
-    bool hrd_parameters_present_flag;
-
-    bool tiles_fixed_structure_flag;
-    bool motion_vectors_over_pic_boundaries_flag;
-    bool restricted_ref_pic_lists_flag;
-    uint32_t min_spatial_segmentation_idc;
-    uint32_t max_bytes_per_pic_denom;
-    uint32_t max_bits_per_min_cu_denom;
-    uint32_t log2_max_mv_length_horizontal;
-    uint32_t log2_max_mv_length_vertical;
-  };
-
-  struct VPSData {
-    uint8_t vps_video_parameter_set_id;
-    bool vps_base_layer_internal_flag;
-    bool vps_base_layer_available_flag;
-    uint8_t vps_max_layers;
-    uint8_t vps_max_sub_layers;
-    bool vps_temporal_id_nesting_flag;
-
-    PTLData ptl;
-    bool vps_sub_layer_ordering_info_present_flag;
-    uint32_t vps_max_dec_pic_buffering[HEVC_MAX_SUB_LAYERS];
-    uint32_t vps_max_num_reorder_pics[HEVC_MAX_SUB_LAYERS];
-    uint32_t vps_max_latency_increase[HEVC_MAX_SUB_LAYERS];
-    uint8_t vps_max_layer_id;
-    uint32_t vps_num_layer_sets;
-    bool vps_timing_info_present_flag;
-    uint32_t vps_num_units_in_tick;
-    uint32_t vps_time_scale;
-    bool vps_poc_proportional_to_timing_flag;
-    uint32_t vps_num_ticks_poc_diff_one;
-    uint32_t vps_num_hrd_parameters;
-
-    VPSData();
-  };
-
-  struct SPSData {
-    uint8_t sps_video_parameter_set_id;
-    uint8_t sps_max_sub_layers;
-    bool sps_temporal_id_nesting_flag;
-    uint32_t sps_seq_parameter_set_id;
-    uint32_t chroma_format_idc;
-    bool separate_colour_plane_flag;
-
-    int pic_width_in_luma_samples;
-    int pic_height_in_luma_samples;
-
-    bool conformance_window_flag;
-    uint32_t conf_win_left_offset;
-    uint32_t conf_win_right_offset;
-    uint32_t conf_win_top_offset;
-    uint32_t conf_win_bottom_offset;
-
-    uint32_t bit_depth_luma;
-    uint32_t bit_depth_chroma;
-    uint32_t log2_max_pic_order_cnt_lsb;
-
-    uint32_t sps_max_dec_pic_buffering[HEVC_MAX_SUB_LAYERS];
-    uint32_t sps_max_num_reorder_pics[HEVC_MAX_SUB_LAYERS];
-    uint32_t sps_max_latency_increase[HEVC_MAX_SUB_LAYERS];
-
-    uint32_t log2_min_luma_coding_block_size;
-    uint32_t log2_diff_max_min_luma_coding_block_size;
-    uint32_t log2_min_luma_transform_block_size;
-    uint32_t log2_diff_max_min_luma_transform_block_size;
-
-    uint32_t max_transform_hierarchy_depth_inter;
-    uint32_t max_transform_hierarchy_depth_intra;
-
-    bool scaling_list_enable_flag;
-    bool sps_scaling_list_data_present_flag;
-    ScalingList scaling_list;
-
-    bool amp_enabled_flag;
-    bool sample_adaptive_offset_enabled_flag;
-    bool pcm_enabled_flag;
-
-    uint8_t pcm_sample_bit_depth_luma;
-    uint8_t pcm_sample_bit_depth_chroma;
-    uint32_t log2_min_pcm_luma_coding_block_size;
-    uint32_t log2_diff_max_min_pcm_luma_coding_block_size;
-    bool pcm_loop_filter_disabled_flag;
-
-    uint32_t num_short_term_ref_pic_sets;
-    ShortTermRPS st_rps[HEVC_MAX_SHORT_TERM_REF_PIC_SETS];
-    bool long_term_ref_pics_present_flag;
-    uint32_t num_long_term_ref_pics_sps;
-    uint16_t lt_ref_pic_poc_lsb_sps[HEVC_MAX_LONG_TERM_REF_PICS];
-    uint8_t used_by_curr_pic_lt_sps_flag[HEVC_MAX_LONG_TERM_REF_PICS];
-
-    bool sps_temporal_mvp_enabled_flag;
-    bool sps_strong_intra_smoothing_enable_flag;
-
-    VUIData vui;
-    PTLData ptl;
-
-    SPSData();
-    gfx::YUVColorSpace ColorSpace() const;
-    gfx::ColorDepth ColorDepth() const;
-  };
-
-  // Check if out of band extradata contains a SPS NAL.
-  static bool HasParamSets(const MediaByteBuffer* aExtraData);
-
-  // Extract SPS and PPS NALs from aSample by looking into each NALs.
-  // aSample must be in HVCC format.
-  static already_AddRefed<MediaByteBuffer> ExtractExtraData(
-      const MediaRawData* aSample);
-
-  static bool DecodeVPSFromExtraData(const MediaByteBuffer* aExtraData,
-                                     VPSData& aDest);
-
-  static bool DecodeSPSFromExtraData(const MediaByteBuffer* aExtraData,
-                                     SPSData& aDest);
-
-  static bool DecodeVPS(const MediaByteBuffer* aVPS, VPSData& aDest);
-
-  static bool DecodeSPS(const MediaByteBuffer* aSPS, SPSData& aDest);
-
-  enum class FrameType {
-    I_FRAME,
-    OTHER,
-    INVALID,
-  };
-
-  static FrameType GetFrameType(const MediaRawData* aSample);
+  // Keep the orginal buffer alive in order to let H265NALU always access to
+  // valid data if there is any NALU.
+  RefPtr<const MediaByteBuffer> mByteBuffer;
 
  private:
-  static bool DecodeNALUnitFromExtraData(
-      const MediaByteBuffer* aExtraData, uint8_t aNALType,
-      const std::function<bool(const uint8_t*, size_t)>& aNALDecoder);
-
-  static already_AddRefed<MediaByteBuffer> DecodeNALUnit(const uint8_t* aNAL,
-                                                         size_t aLength);
-
-  static bool video_parameter_set_rbsp(BitReader& aBr, VPSData& aDest);
-
-  static bool seq_parameter_set_rbsp(BitReader& aBr, SPSData& aDest);
-
-  static bool profile_tier_level(BitReader& aBr, PTLData& aDest,
-                                 bool aProfilePresentFlag,
-                                 uint8_t aMaxNumSubLayers);
-
-  static bool scaling_list_data(BitReader& aBr, ScalingList& aDest);
-
-  static bool st_ref_pic_set(BitReader& aBr, ShortTermRPS& aStRps,
-                             SPSData& aSps, int aStRpsIdx);
-
-  static bool vui_parameters(BitReader& aBr, VUIData& aDest,
-                             uint8_t aMaxNumSubLayers);
-  // All data is ignored.
-  static bool hrd_parameters(BitReader& aBr, bool aCommonInfPresentFlag,
-                             uint8_t aMaxNumSubLayers);
-  // All data is ignored.
-  static bool sub_layer_hrd_parameters(BitReader& aBr, uint32_t aCpbCnt,
-                                       bool aSubPicHRDParamsPresentFlag);
+  HVCCConfig() = default;
 };
 
 }  // namespace mozilla
 
-#endif  // H265_H
+#endif  // DOM_MEDIA_PLATFORMS_AGNOSTIC_BYTESTREAMS_H265_H_

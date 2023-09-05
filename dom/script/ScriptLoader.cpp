@@ -594,9 +594,10 @@ static bool IsWebExtensionRequest(ScriptLoadRequest* aRequest) {
   return loader->GetKind() == ModuleLoader::WebExtension;
 }
 
-nsresult ScriptLoader::StartLoadInternal(
-    ScriptLoadRequest* aRequest, nsSecurityFlags securityFlags,
-    const Maybe<nsAutoString>& aCharsetForPreload) {
+static nsresult CreateChannelForScriptLoading(nsIChannel** aOutChannel,
+                                              Document* aDocument,
+                                              ScriptLoadRequest* aRequest,
+                                              nsSecurityFlags aSecurityFlags) {
   nsContentPolicyType contentPolicyType =
       ScriptLoadRequestToContentPolicyType(aRequest);
   nsCOMPtr<nsINode> context;
@@ -604,35 +605,25 @@ nsresult ScriptLoader::StartLoadInternal(
     context =
         do_QueryInterface(aRequest->GetScriptLoadContext()->GetScriptElement());
   } else {
-    context = mDocument;
+    context = aDocument;
   }
 
-  nsCOMPtr<nsILoadGroup> loadGroup = mDocument->GetDocumentLoadGroup();
-  nsCOMPtr<nsPIDOMWindowOuter> window = mDocument->GetWindow();
+  nsCOMPtr<nsILoadGroup> loadGroup = aDocument->GetDocumentLoadGroup();
+  nsCOMPtr<nsPIDOMWindowOuter> window = aDocument->GetWindow();
   NS_ENSURE_TRUE(window, NS_ERROR_NULL_POINTER);
   nsIDocShell* docshell = window->GetDocShell();
   nsCOMPtr<nsIInterfaceRequestor> prompter(do_QueryInterface(docshell));
 
-  nsCOMPtr<nsIChannel> channel;
-  nsresult rv = NS_NewChannelWithTriggeringPrincipal(
-      getter_AddRefs(channel), aRequest->mURI, context,
-      aRequest->TriggeringPrincipal(), securityFlags, contentPolicyType,
+  return NS_NewChannelWithTriggeringPrincipal(
+      aOutChannel, aRequest->mURI, context, aRequest->TriggeringPrincipal(),
+      aSecurityFlags, contentPolicyType,
       nullptr,  // aPerformanceStorage
       loadGroup, prompter);
+}
 
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  if (aRequest->mEarlyHintPreloaderId) {
-    nsCOMPtr<nsIHttpChannelInternal> channelInternal =
-        do_QueryInterface(channel);
-    NS_ENSURE_TRUE(channelInternal != nullptr, NS_ERROR_FAILURE);
-
-    rv = channelInternal->SetEarlyHintPreloaderId(
-        aRequest->mEarlyHintPreloaderId);
-    NS_ENSURE_SUCCESS(rv, rv);
-  }
-
-  nsCOMPtr<nsILoadInfo> loadInfo = channel->LoadInfo();
+static void PrepareLoadInfoForScriptLoading(nsIChannel* aChannel,
+                                            const ScriptLoadRequest* aRequest) {
+  nsCOMPtr<nsILoadInfo> loadInfo = aChannel->LoadInfo();
   loadInfo->SetParserCreatedScript(aRequest->ParserMetadata() ==
                                    ParserMetadata::ParserInserted);
   loadInfo->SetCspNonce(aRequest->Nonce());
@@ -640,16 +631,15 @@ nsresult ScriptLoader::StartLoadInternal(
     MOZ_ASSERT(!aRequest->mIntegrity.IsEmpty());
     loadInfo->SetIntegrityMetadata(aRequest->mIntegrity.GetIntegrityString());
   }
+}
 
-  nsCOMPtr<nsIScriptGlobalObject> scriptGlobal = GetScriptGlobalObject();
-  if (!scriptGlobal) {
-    return NS_ERROR_FAILURE;
-  }
-
+// static
+void ScriptLoader::PrepareCacheInfoChannel(nsIChannel* aChannel,
+                                           ScriptLoadRequest* aRequest) {
   // To avoid decoding issues, the build-id is part of the bytecode MIME type
   // constant.
   aRequest->mCacheInfo = nullptr;
-  nsCOMPtr<nsICacheInfoChannel> cic(do_QueryInterface(channel));
+  nsCOMPtr<nsICacheInfoChannel> cic(do_QueryInterface(aChannel));
   if (cic && StaticPrefs::dom_script_loader_bytecode_cache_enabled()) {
     MOZ_ASSERT(!IsWebExtensionRequest(aRequest),
                "Can not bytecode cache WebExt code");
@@ -659,7 +649,7 @@ nsresult ScriptLoader::StartLoadInternal(
       // registered.
       LOG(("ScriptLoadRequest (%p): Maybe request bytecode", aRequest));
       cic->PreferAlternativeDataType(
-          BytecodeMimeTypeFor(aRequest), ""_ns,
+          ScriptLoader::BytecodeMimeTypeFor(aRequest), ""_ns,
           nsICacheInfoChannel::PreferredAlternativeDataDeliveryType::ASYNC);
     } else {
       // If we are explicitly loading from the sources, such as after a
@@ -674,6 +664,35 @@ nsresult ScriptLoader::StartLoadInternal(
           nsICacheInfoChannel::PreferredAlternativeDataDeliveryType::ASYNC);
     }
   }
+}
+
+nsresult ScriptLoader::StartLoadInternal(
+    ScriptLoadRequest* aRequest, nsSecurityFlags securityFlags,
+    const Maybe<nsAutoString>& aCharsetForPreload) {
+  nsCOMPtr<nsIChannel> channel;
+  nsresult rv = CreateChannelForScriptLoading(
+      getter_AddRefs(channel), mDocument, aRequest, securityFlags);
+
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  if (aRequest->mEarlyHintPreloaderId) {
+    nsCOMPtr<nsIHttpChannelInternal> channelInternal =
+        do_QueryInterface(channel);
+    NS_ENSURE_TRUE(channelInternal != nullptr, NS_ERROR_FAILURE);
+
+    rv = channelInternal->SetEarlyHintPreloaderId(
+        aRequest->mEarlyHintPreloaderId);
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
+
+  PrepareLoadInfoForScriptLoading(channel, aRequest);
+
+  nsCOMPtr<nsIScriptGlobalObject> scriptGlobal = GetScriptGlobalObject();
+  if (!scriptGlobal) {
+    return NS_ERROR_FAILURE;
+  }
+
+  ScriptLoader::PrepareCacheInfoChannel(channel, aRequest);
 
   LOG(("ScriptLoadRequest (%p): mode=%u tracking=%d", aRequest,
        unsigned(aRequest->GetScriptLoadContext()->mScriptMode),
@@ -794,15 +813,6 @@ nsresult ScriptLoader::StartLoadInternal(
       aRequest->GetScriptLoadContext()->IsLinkPreloadScript(),
       aRequest->IsModuleRequest());
 
-  if (aRequest->mEarlyHintPreloaderId) {
-    nsCOMPtr<nsIHttpChannelInternal> channelInternal =
-        do_QueryInterface(channel);
-    NS_ENSURE_TRUE(channelInternal != nullptr, NS_ERROR_FAILURE);
-
-    rv = channelInternal->SetEarlyHintPreloaderId(
-        aRequest->mEarlyHintPreloaderId);
-    NS_ENSURE_SUCCESS(rv, rv);
-  }
   rv = channel->AsyncOpen(loader);
 
   if (NS_FAILED(rv)) {
@@ -2272,8 +2282,6 @@ nsresult ScriptLoader::FillCompileOptionsForRequest(
   aOptions->setDeferDebugMetadata(true);
 
   aOptions->borrowBuffer = true;
-
-  aOptions->allocateInstantiationStorage = true;
 
   return NS_OK;
 }
