@@ -3097,7 +3097,7 @@ nsDOMWindowUtils::ZoomToFocusedInput() {
       layers::TouchActionHelper::GetAllowedTouchBehaviorForFrame(
           element->GetPrimaryFrame());
 
-  uint32_t flags = layers::DISABLE_ZOOM_OUT;
+  uint32_t flags = layers::DISABLE_ZOOM_OUT | layers::ZOOM_TO_FOCUSED_INPUT;
   if (!Preferences::GetBool("formhelper.autozoom") ||
       Preferences::GetBool("formhelper.autozoom.force-disable.test-only",
                            /* aFallback = */ false) ||
@@ -3139,8 +3139,6 @@ nsDOMWindowUtils::ZoomToFocusedInput() {
     // Do not zoom on empty bounds. Bail out.
     return NS_OK;
   }
-
-  bounds.Inflate(15.0f, 0.0f);
 
   bool waitForRefresh = false;
   for (nsIScrollableFrame* scrollAncestor :
@@ -4305,10 +4303,8 @@ nsDOMWindowUtils::LeaveChaosMode() {
 
 NS_IMETHODIMP
 nsDOMWindowUtils::TriggerDeviceReset() {
-  ContentChild* cc = ContentChild::GetSingleton();
-  if (cc) {
-    cc->SendDeviceReset();
-    return NS_OK;
+  if (!XRE_IsParentProcess()) {
+    return NS_ERROR_NOT_AVAILABLE;
   }
 
   GPUProcessManager* pm = GPUProcessManager::Get();
@@ -4408,7 +4404,7 @@ nsDOMWindowUtils::AddManuallyManagedState(Element* aElement,
     return NS_ERROR_INVALID_ARG;
   }
 
-  aElement->AddManuallyManagedStates(state);
+  aElement->AddStates(state);
   return NS_OK;
 }
 
@@ -4424,7 +4420,7 @@ nsDOMWindowUtils::RemoveManuallyManagedState(Element* aElement,
     return NS_ERROR_INVALID_ARG;
   }
 
-  aElement->RemoveManuallyManagedStates(state);
+  aElement->RemoveStates(state);
   return NS_OK;
 }
 

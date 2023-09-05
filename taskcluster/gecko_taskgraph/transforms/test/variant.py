@@ -23,6 +23,7 @@ variant_description_schema = Schema(
         str: {
             Required("description"): str,
             Required("suffix"): str,
+            Optional("mozinfo"): str,
             Required("component"): str,
             Required("expiration"): str,
             Optional("when"): {Any("$eval", "$if"): str},
@@ -46,6 +47,16 @@ def split_variants(config, tasks):
 
     def find_expired_variants(variants):
         expired = []
+
+        # do not expire on esr/beta/release
+        if config.params.get("release_type", "") in [
+            "release",
+            "beta",
+        ]:
+            return []
+
+        if "esr" in config.params.get("release_type", ""):
+            return []
 
         today = datetime.datetime.today()
         for variant in variants:

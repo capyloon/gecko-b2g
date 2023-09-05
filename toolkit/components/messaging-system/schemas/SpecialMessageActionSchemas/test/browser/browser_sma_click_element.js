@@ -42,8 +42,7 @@ const TEST_MESSAGE = {
               action: {
                 type: "CLICK_ELEMENT",
                 data: {
-                  selector:
-                    "#tab-pickup-container button.primary:not(#error-state-button)",
+                  selector: "span.brand-feature-name",
                 },
               },
             },
@@ -58,7 +57,10 @@ let sandbox;
 
 add_setup(async () => {
   await SpecialPowers.pushPrefEnv({
-    set: [["browser.tabs.firefox-view", true]],
+    set: [
+      ["browser.tabs.firefox-view", true],
+      ["browser.tabs.firefox-view-next", false],
+    ],
   });
 
   sandbox = sinon.createSandbox();
@@ -85,7 +87,8 @@ add_task(async function test_CLICK_ELEMENT() {
       theme: { preset: "themed-content" },
     });
     callout.showFeatureCallout();
-    const calloutSelector = "#multi-stage-message-root.featureCallout";
+    const calloutId = "feature-callout";
+    const calloutSelector = `#${calloutId}.featureCallout`;
 
     await BrowserTestUtils.waitForCondition(() => {
       return document.querySelector(

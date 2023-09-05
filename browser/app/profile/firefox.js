@@ -441,6 +441,10 @@ pref("browser.urlbar.weather.minKeywordLength", 0);
 // weather suggestions are turned on.
 pref("browser.urlbar.suggest.weather", true);
 
+// If `browser.urlbar.trending.featureGate` is true, this controls whether
+// trending suggestions are turned on.
+pref("browser.urlbar.suggest.trending", true);
+
 // When `browser.urlbar.bestMatch.enabled` is true, this controls whether best
 // match results are shown in the urlbar. This pref is exposed to the user in
 // the UI, and it's sticky so that its user-branch value persists regardless of
@@ -733,21 +737,23 @@ pref("browser.shopping.experience2023.enabled", false);
 pref("browser.shopping.experience2023.optedIn", 0);
 
 // Activates the new experimental shopping sidebar.
-// True by default, will be set to false on opt out.
+// True by default. This is handled by ShoppingUtils.handleAutoActivateOnProduct
+// to auto-activate the sidebar for non-opted-in users up to 2 times.
 pref("browser.shopping.experience2023.active", true);
 
-// Activates the ad card in the shopping sidebar.
-// True by default, will be set to false on opt out.
+// Enables the ad / recommended product feature for the shopping sidebar.
+// If enabled, users can disable the ad card using the separate pref
+// `browser.shopping.experience2023.ads.userEnabled` and visible toggle
+// (this is just the feature flag).
 pref("browser.shopping.experience2023.ads.enabled", true);
+
+// Activates the ad card in the shopping sidebar.
+// Unlike `browser.shopping.experience2023.ads.enabled`, this pref is controlled by users
+// using the visible toggle.
+pref("browser.shopping.experience2023.ads.userEnabled", true);
 
 // Enables the display of the Mozilla VPN banner in private browsing windows
 pref("browser.privatebrowsing.vpnpromourl", "https://vpn.mozilla.org/?utm_source=firefox-browser&utm_medium=firefox-%CHANNEL%-browser&utm_campaign=private-browsing-vpn-link");
-
-// Enables the new private browsing indicator.
-pref("browser.privatebrowsing.enable-new-indicator", true);
-
-// Enables the new about:privatebrowsing logo.
-pref("browser.privatebrowsing.enable-new-logo", true);
 
 // Whether the user has opted-in to recommended settings for data features.
 pref("browser.dataFeatureRecommendations.enabled", false);
@@ -873,7 +879,7 @@ pref("browser.tabs.tooltipsShowPidAndActiveness", false);
 #endif
 
 pref("browser.tabs.firefox-view", true);
-pref("browser.tabs.firefox-view-next", false);
+pref("browser.tabs.firefox-view-next", true);
 pref("browser.tabs.firefox-view.logLevel", "Warn");
 pref("browser.tabs.firefox-view.notify-for-tabs", false);
 

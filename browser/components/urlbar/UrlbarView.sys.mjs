@@ -1772,7 +1772,7 @@ export class UrlbarView {
               id: "urlbar-result-action-visit-from-your-clipboard",
             });
           };
-          title.setAttribute("isurl", "true");
+          title.toggleAttribute("is-url", true);
           break;
         }
       // fall-through
@@ -1790,43 +1790,31 @@ export class UrlbarView {
 
     this.#setRowSelectable(item, isRowSelectable);
 
-    if (result.providerName == "TabToSearch") {
-      action.toggleAttribute("slide-in", true);
-    } else {
-      action.removeAttribute("slide-in");
-    }
+    action.toggleAttribute("slide-in", result.providerName == "TabToSearch");
 
-    if (result.payload.isPinned) {
-      item.toggleAttribute("pinned", true);
-    } else {
-      item.removeAttribute("pinned");
-    }
+    item.toggleAttribute("pinned", !!result.payload.isPinned);
 
-    if (
+    let sponsored =
       result.payload.isSponsored &&
       result.type != lazy.UrlbarUtils.RESULT_TYPE.TAB_SWITCH &&
-      result.providerName != lazy.UrlbarProviderQuickSuggest.name
-    ) {
-      item.toggleAttribute("sponsored", true);
+      result.providerName != lazy.UrlbarProviderQuickSuggest.name;
+    item.toggleAttribute("sponsored", !!sponsored);
+    if (sponsored) {
       actionSetter = () => {
         this.#setElementL10n(action, {
           id: "urlbar-result-action-sponsored",
         });
       };
-    } else {
-      item.removeAttribute("sponsored");
     }
 
+    item.toggleAttribute("rich-suggestion", !!result.isRichSuggestion);
     if (result.isRichSuggestion) {
-      item.toggleAttribute("rich-suggestion", true);
       this.#updateRowForRichSuggestion(item, result);
-    } else {
-      item.removeAttribute("rich-suggestion");
     }
 
+    item.toggleAttribute("has-url", setURL);
     let url = item._elements.get("url");
     if (setURL) {
-      item.setAttribute("has-url", "true");
       this.#addTextContentWithHighlights(
         url,
         result.payload.displayUrl,
@@ -1834,36 +1822,32 @@ export class UrlbarView {
       );
       this.#updateOverflowTooltip(url, result.payload.displayUrl);
     } else {
-      item.removeAttribute("has-url");
       url.textContent = "";
       this.#updateOverflowTooltip(url, "");
     }
 
+    title.toggleAttribute("is-url", isVisitAction);
     if (isVisitAction) {
       actionSetter = () => {
         this.#setElementL10n(action, {
           id: "urlbar-result-action-visit",
         });
       };
-      title.setAttribute("isurl", "true");
-    } else {
-      title.removeAttribute("isurl");
     }
 
+    item.toggleAttribute("has-action", actionSetter);
     if (actionSetter) {
       actionSetter();
       item._originalActionSetter = actionSetter;
-      item.setAttribute("has-action", "true");
     } else {
       item._originalActionSetter = () => {
         this.#removeElementL10n(action);
         action.textContent = "";
       };
       item._originalActionSetter();
-      item.removeAttribute("has-action");
     }
 
-    if (!title.hasAttribute("isurl")) {
+    if (!title.hasAttribute("is-url")) {
       title.setAttribute("dir", "auto");
     } else {
       title.removeAttribute("dir");
@@ -1959,10 +1943,13 @@ export class UrlbarView {
   #updateRowForRichSuggestion(item, result) {
     this.#setRowSelectable(item, true);
 
+    let favicon = item._elements.get("favicon");
     if (result.richSuggestionIconSize) {
       item.setAttribute("icon-size", result.richSuggestionIconSize);
+      favicon.setAttribute("icon-size", result.richSuggestionIconSize);
     } else {
       item.removeAttribute("icon-size");
+      favicon.removeAttribute("icon-size");
     }
 
     let description = item._elements.get("description");
@@ -2114,6 +2101,16 @@ export class UrlbarView {
       return null;
     }
 
+    let engineName =
+      row.result.payload.engine || Services.search.defaultEngine.name;
+
+    if (row.result.payload.trending) {
+      return {
+        id: "urlbar-group-trending",
+        args: { engine: engineName },
+      };
+    }
+
     if (
       row.result.isBestMatch &&
       row.result.providerName == lazy.UrlbarProviderQuickSuggest.name
@@ -2152,8 +2149,6 @@ export class UrlbarView {
       case lazy.UrlbarUtils.RESULT_TYPE.SEARCH:
         // Show "{ $engine } suggestions" if it's not the first label.
         if (currentLabel && row.result.payload.suggestion) {
-          let engineName =
-            row.result.payload.engine || Services.search.defaultEngine.name;
           return {
             id: "urlbar-group-search-suggestions",
             args: { engine: engineName },
@@ -2971,9 +2966,9 @@ export class UrlbarView {
         continue;
       }
 
-      let action = item.querySelector(".urlbarView-action");
-      let favicon = item.querySelector(".urlbarView-favicon");
-      let title = item.querySelector(".urlbarView-title");
+      let action = item._elements.get("action");
+      let favicon = item._elements.get("favicon");
+      let title = item._elements.get("title");
 
       // If a one-off button is the only selection, force the heuristic result
       // to show its action text, so the engine name is visible.

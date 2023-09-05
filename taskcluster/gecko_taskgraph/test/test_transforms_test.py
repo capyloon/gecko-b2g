@@ -34,7 +34,7 @@ def make_test_task():
     return inner
 
 
-def test_split_variants(monkeypatch, run_transform, make_test_task):
+def test_split_variants(monkeypatch, run_full_config_transform, make_test_task):
     # mock out variant definitions
     monkeypatch.setattr(
         test_transforms.variant,
@@ -43,6 +43,7 @@ def test_split_variants(monkeypatch, run_transform, make_test_task):
             "foo": {
                 "description": "foo variant",
                 "suffix": "foo",
+                "mozinfo": "foo",
                 "component": "foo bar",
                 "expiration": "never",
                 "merge": {
@@ -56,6 +57,7 @@ def test_split_variants(monkeypatch, run_transform, make_test_task):
             "bar": {
                 "description": "bar variant",
                 "suffix": "bar",
+                "mozinfo": "bar",
                 "component": "foo bar",
                 "expiration": "never",
                 "when": {
@@ -87,7 +89,9 @@ def test_split_variants(monkeypatch, run_transform, make_test_task):
             }
         )
 
-    run_split_variants = partial(run_transform, test_transforms.variant.split_variants)
+    run_split_variants = partial(
+        run_full_config_transform, test_transforms.variant.split_variants
+    )
 
     # test no variants
     input_task = make_test_task(

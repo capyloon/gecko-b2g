@@ -323,6 +323,9 @@ bool gRestartedByOS = false;
 
 bool gIsGtest = false;
 
+bool gKioskMode = false;
+int gKioskMonitor = -1;
+
 nsString gAbsoluteArgv0Path;
 
 #if defined(XP_WIN)
@@ -2472,7 +2475,9 @@ static void OnDefaultAgentRemoteSettingsPrefChanged(const char* aPref,
 
   nsAutoString prefVal;
   rv = Preferences::GetString(aPref, prefVal);
-  NS_ENSURE_SUCCESS_VOID(rv);
+  if (NS_FAILED(rv)) {
+    return;
+  }
 
   if (prefVal.IsEmpty()) {
     rv = regKey->RemoveValue(valueName);
@@ -3995,6 +4000,13 @@ int XREMain::XRE_mainInit(bool* aExitFlag) {
       return 1;
     }
 #endif
+  }
+
+  gKioskMode = CheckArg("kiosk", nullptr, CheckArgFlag::None);
+  const char* kioskMonitorNumber = nullptr;
+  if (CheckArg("kiosk-monitor", &kioskMonitorNumber, CheckArgFlag::None)) {
+    gKioskMode = true;
+    gKioskMonitor = atoi(kioskMonitorNumber);
   }
 
   nsresult rv;

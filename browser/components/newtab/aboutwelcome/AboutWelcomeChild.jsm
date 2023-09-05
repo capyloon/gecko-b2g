@@ -345,14 +345,26 @@ const OPTIN_DEFAULT = {
   id: "FAKESPOT_OPTIN_DEFAULT",
   template: "multistage",
   backdrop: "transparent",
-  transitions: true,
   screens: [
     {
       id: "FS_OPT_IN",
       content: {
         position: "split",
         title: { string_id: "shopping-onboarding-headline" },
-        subtitle: `Not all reviews are created equal. To help you find real reviews, from real people, Firefox can use AI technology to analyze this product’s reviews.`,
+        subtitle: { string_id: "shopping-onboarding-dynamic-subtitle" },
+        cta_paragraph: {
+          text: {
+            string_id: "shopping-onboarding-body",
+            string_name: "learn-more-link",
+          },
+          action: {
+            type: "OPEN_URL",
+            data: {
+              args: "https://www.support.mozilla.org",
+              where: "tab",
+            },
+          },
+        },
         legal_paragraph: {
           text: {
             // fluent ids required to render copy
@@ -365,7 +377,7 @@ const OPTIN_DEFAULT = {
           action: {
             type: "OPEN_URL",
             data: {
-              args: "https://www.mozilla.org/privacy/firefox/",
+              args: "https://www.fakespot.com/privacy-policy",
               where: "tab",
             },
           },
@@ -374,13 +386,13 @@ const OPTIN_DEFAULT = {
           action: {
             type: "OPEN_URL",
             data: {
-              args: "https://www.mozilla.org/about/legal/terms/firefox/",
+              args: "https://www.fakespot.com/terms",
               where: "tab",
             },
           },
         },
         primary_button: {
-          label: "Analyze Reviews",
+          label: { string_id: "shopping-onboarding-opt-in-button" },
           action: {
             type: "SET_PREF",
             data: {
@@ -392,7 +404,9 @@ const OPTIN_DEFAULT = {
           },
         },
         secondary_button: {
-          label: "Not Now",
+          label: {
+            string_id: "shopping-onboarding-not-now-button",
+          },
           action: {
             type: "SET_PREF",
             data: {
@@ -407,15 +421,23 @@ const OPTIN_DEFAULT = {
           url: "chrome://browser/content/shopping/assets/temp-fakespot-rating.svg",
           height: "auto",
         },
-        info_text: {
-          raw: "Review quality check is available when you shop on Amazon, Best Buy, and Walmart.",
-        },
       },
     },
   ],
 };
 
+let optInDynamicContent;
+
 class AboutWelcomeShoppingChild extends AboutWelcomeChild {
+  exportFunctions() {
+    let window = this.contentWindow;
+
+    Cu.exportFunction(this.AWSetProductURL.bind(this), window, {
+      defineAs: "AWSetProductURL",
+    });
+    super.exportFunctions();
+  }
+
   // TODO - Add dismiss: true to the primary CTA so it cleans up the React
   // content, which will stop being rendered on opt-in. See bug 1848429.
   AWFinish() {
@@ -434,9 +456,50 @@ class AboutWelcomeShoppingChild extends AboutWelcomeChild {
     }
   }
 
+  AWSetProductURL(productUrl) {
+    let content = JSON.parse(JSON.stringify(OPTIN_DEFAULT));
+    const [optInScreen] = content.screens;
+
+    if (productUrl) {
+      switch (
+        productUrl // Insert the productUrl into content
+      ) {
+        case "www.amazon.com":
+          optInScreen.content.subtitle.args = {
+            currentSite: "Amazon",
+            secondSite: "Walmart",
+            thirdSite: "Best Buy",
+          };
+          break;
+        case "www.walmart.com":
+          optInScreen.content.subtitle.args = {
+            currentSite: "Walmart",
+            secondSite: "Amazon",
+            thirdSite: "Best Buy",
+          };
+          break;
+        case "www.bestbuy.com":
+          optInScreen.content.subtitle.args = {
+            currentSite: "Best Buy",
+            secondSite: "Amazon",
+            thirdSite: "Walmart",
+          };
+          break;
+        default:
+          optInScreen.content.subtitle.args = {
+            currentSite: "Amazon",
+            secondSite: "Walmart",
+            thirdSite: "Best Buy",
+          };
+      }
+    }
+
+    optInDynamicContent = content;
+  }
+
   // TODO - Move messages into an ASRouter message provider. See bug 1848251.
   AWGetFeatureConfig() {
-    return Cu.cloneInto(OPTIN_DEFAULT, this.contentWindow);
+    return Cu.cloneInto(optInDynamicContent, this.contentWindow);
   }
 
   AWEnsureLangPackInstalled() {}

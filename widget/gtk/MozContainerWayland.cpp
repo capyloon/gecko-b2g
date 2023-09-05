@@ -167,7 +167,15 @@ static bool moz_container_wayland_egl_window_needs_size_update_locked(
   nsIntSize recentSize;
   wl_egl_window_get_attached_size(wl_container->eglwindow, &recentSize.width,
                                   &recentSize.height);
-  return aSize != recentSize;
+  if (aSize != recentSize) {
+    return true;
+  }
+
+  return recentSize.width % aScale != 0 || recentSize.height % aScale != 0;
+}
+
+static int adjust_size_for_scale(int aSize, int aScale) {
+  return aSize - (aSize % aScale);
 }
 
 // This is called from layout/compositor code only with
@@ -186,6 +194,11 @@ void moz_container_wayland_egl_window_set_size(MozContainer* container,
           lock, wl_container, aSize, aScale)) {
     return;
   }
+
+  // See Bug 1832760. Width/height has to be divided by scale factor,
+  // we're getting compositor errors otherwise.
+  aSize.width = adjust_size_for_scale(aSize.width, aScale);
+  aSize.height = adjust_size_for_scale(aSize.height, aScale);
 
   LOGCONTAINER(
       "moz_container_wayland_egl_window_set_size [%p] %d x %d scale %d "
@@ -579,7 +592,7 @@ static void fractional_scale_handle_preferred_scale(
   LOGWAYLAND("%s [%p] scale: %f\n", __func__, window.get(),
              wl_container->current_fractional_scale);
   MOZ_DIAGNOSTIC_ASSERT(window);
-  window->OnScaleChanged(/* aForce = */ true);
+  window->OnScaleChanged(/* aNotify = */ true);
 }
 
 static const struct wp_fractional_scale_v1_listener fractional_scale_listener =
@@ -814,12 +827,8 @@ double moz_container_wayland_get_fractional_scale(MozContainer* container) {
 }
 
 double moz_container_wayland_get_scale(MozContainer* container) {
-  double scale = moz_container_wayland_get_fractional_scale(container);
-  if (scale != 0.0) {
-    return scale;
-  }
   nsWindow* window = moz_container_get_nsWindow(container);
-  return window ? window->FractionalScaleFactor() : 1;
+  return window ? window->FractionalScaleFactor() : 1.0;
 }
 
 void moz_container_wayland_set_commit_to_parent(MozContainer* container) {

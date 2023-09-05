@@ -1876,6 +1876,23 @@ pwmgr:
     record_in_processes:
       - main
 
+bloburl:
+  resolve_stopped:
+    bug_numbers:
+      - 1843158
+    description: >
+      Counts how many times we do not resolve a blob URL
+      because of different partition keys
+    expires: "127"
+    kind: uint
+    notification_emails:
+      - amadan@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - content
+
 contentblocking:
   cryptomining_blocking_enabled:
     bug_numbers:
@@ -7116,6 +7133,22 @@ policies:
     kind: boolean
     notification_emails:
       - mkaply@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - main
+
+urlbar.trending:
+  block:
+    bug_numbers:
+      - 1848048
+    description: >-
+      User has blocked seeing trending results.
+    expires: never
+    kind: uint
+    notification_emails:
+      - fx-search-telemetry@mozilla.com
     release_channel_collection: opt-out
     products:
       - 'firefox'

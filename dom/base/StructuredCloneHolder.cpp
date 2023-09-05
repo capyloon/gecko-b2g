@@ -174,7 +174,7 @@ bool StructuredCloneCallbacksSharedArrayBuffer(JSContext* cx, bool aReceiving,
 
     nsPIDOMWindowInner* innerWindow = nullptr;
     if (global) {
-      innerWindow = global->AsInnerWindow();
+      innerWindow = global->GetAsInnerWindow();
     }
 
     DocGroup* docGroup = nullptr;
@@ -1034,14 +1034,9 @@ JSObject* StructuredCloneHolder::CustomReadHandler(
   MOZ_ASSERT(mSupportsCloning);
 
   if (aTag == SCTAG_DOM_BLOB) {
-#if !defined(MOZ_B2G)
-    // The WebActivityRequestHandler creates object in a 'Sandbox'
-    // global to use structured clone when returning activity results.
-    // This makes CheckExposedGlobals() fail.
     if (!CheckExposedGlobals(aCx, mGlobal, sWindowOrWorker)) {
       return nullptr;
     }
-#endif
     return ReadBlob(aCx, aIndex, this);
   }
 
