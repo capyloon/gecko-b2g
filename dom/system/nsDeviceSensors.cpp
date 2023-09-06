@@ -27,8 +27,9 @@
 #include <cmath>
 
 #ifdef MOZ_B2G
-  #include "mozilla/dom/AtmPressureEvent.h"
-  #include "mozilla/dom/B2G.h"
+#  include "mozilla/dom/AtmPressureEvent.h"
+#  include "mozilla/dom/DevicePickupEvent.h"
+#  include "mozilla/dom/B2G.h"
 #endif
 
 using namespace mozilla;
@@ -349,6 +350,8 @@ void nsDeviceSensors::Notify(const mozilla::hal::SensorData& aSensorData) {
 #ifdef MOZ_B2G
       } else if (type == nsIDeviceSensorData::TYPE_PRESSURE) {
         FireDOMAtmPressureEvent(target, x);
+      } else if (type == nsIDeviceSensorData::TYPE_DEVICE_PICKUP) {
+        FireDOMDevicePickupEvent(target);
 #endif
       }
     }
@@ -364,6 +367,19 @@ void nsDeviceSensors::FireDOMAtmPressureEvent(
   init.mValue = aValue;
   RefPtr<AtmPressureEvent> event =
       AtmPressureEvent::Constructor(aTarget, u"atmpressure"_ns, init);
+
+  event->SetTrusted(true);
+
+  aTarget->DispatchEvent(*event);
+}
+
+void nsDeviceSensors::FireDOMDevicePickupEvent(
+    mozilla::dom::EventTarget* aTarget) {
+  DevicePickupEventInit init;
+  init.mBubbles = true;
+  init.mCancelable = false;
+  RefPtr<DevicePickupEvent> event =
+      DevicePickupEvent::Constructor(aTarget, u"devicepickup"_ns, init);
 
   event->SetTrusted(true);
 
@@ -593,6 +609,12 @@ bool nsDeviceSensors::IsSensorAllowedByPref(uint32_t aType,
         return false;
       }
       break;
+    case nsIDeviceSensorData::TYPE_DEVICE_PICKUP:
+      // checks "device.sensors.devicePickup.enabled" pref
+      if (!StaticPrefs::device_sensors_devicePickup_enabled()) {
+        return false;
+      }
+      break;
 #endif
     default:
       MOZ_ASSERT_UNREACHABLE("Device sensor type not recognised");
@@ -605,8 +627,7 @@ bool nsDeviceSensors::IsSensorAllowedByPref(uint32_t aType,
 
 #ifndef MOZ_B2G
   return !nsGlobalWindowInner::Cast(window)->ShouldResistFingerprinting(
-      RFPTarget::DeviceSensors
-  );
+      RFPTarget::DeviceSensors);
 #else
   return true;
 #endif

@@ -2118,6 +2118,11 @@
   type: bool
   value: false
   mirror: always
+
+- name: device.sensors.devicePickup.enabled
+  type: bool
+  value: true
+  mirror: always
 #endif
 
 - name: device.sensors.test.events

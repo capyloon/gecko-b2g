@@ -413,7 +413,8 @@ void EventListenerManager::AddEventListenerInternal(
 #endif  // #if defined(MOZ_ANDROID)
 #if defined(MOZ_B2G)
       case eAtmPressure:
-#endif // #if defined(MOZ_B2G)
+      case eDevicePickup:
+#endif  // #if defined(MOZ_B2G)
         EnableDevice(aTypeAtom);
         break;
       case eTouchStart:
@@ -700,6 +701,7 @@ bool EventListenerManager::IsDeviceType(nsAtom* aTypeAtom) {
 #endif
 #ifdef MOZ_B2G
          || aTypeAtom == nsGkAtoms::onatmpressure
+         || aTypeAtom == nsGkAtoms::ondevicepickup
 #endif
          || aTypeAtom == nsGkAtoms::onuserproximity;
 }
@@ -761,6 +763,11 @@ void EventListenerManager::EnableDevice(nsAtom* aTypeAtom) {
     window->EnableDeviceSensor(SENSOR_PRESSURE);
     return;
   }
+
+  if (aTypeAtom == nsGkAtoms::ondevicepickup) {
+    window->EnableDeviceSensor(SENSOR_PICKUP);
+    return;
+  }
 #endif
 
   NS_WARNING("Enabling an unknown device sensor.");
@@ -817,6 +824,11 @@ void EventListenerManager::DisableDevice(nsAtom* aTypeAtom) {
 #ifdef MOZ_B2G
   if (aTypeAtom == nsGkAtoms::onatmpressure) {
     window->DisableDeviceSensor(SENSOR_PRESSURE);
+    return;
+  }
+
+  if (aTypeAtom == nsGkAtoms::ondevicepickup) {
+    window->DisableDeviceSensor(SENSOR_PICKUP);
     return;
   }
 #endif

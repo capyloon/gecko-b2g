@@ -42,7 +42,9 @@ class nsDeviceSensors : public nsIDeviceSensors,
   nsTArray<nsTArray<nsIDOMWindow*>*> mWindowListeners;
 
 #ifdef MOZ_B2G
-  void FireDOMAtmPressureEvent(mozilla::dom::EventTarget* aTarget, double value);
+  void FireDOMAtmPressureEvent(mozilla::dom::EventTarget* aTarget,
+                               double value);
+  void FireDOMDevicePickupEvent(mozilla::dom::EventTarget* aTarget);
 #endif
 
   void FireDOMLightEvent(mozilla::dom::EventTarget* aTarget, double value);

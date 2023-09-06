@@ -1977,6 +1977,8 @@ STATIC_ATOMS = [
     Atom("ondevicelight", "ondevicelight"),
     # atmospheric pressure support
     Atom("onatmpressure", "onatmpressure"),
+    # device pickup event
+    Atom("ondevicepickup", "ondevicepickup"),
     # Audio channel events
     Atom("onmozinterruptbegin", "onmozinterruptbegin"),
     Atom("onmozinterruptend", "onmozinterruptend"),
