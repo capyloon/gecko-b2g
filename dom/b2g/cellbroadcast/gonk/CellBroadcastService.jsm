@@ -13,7 +13,7 @@ const RIL = ChromeUtils.import("resource://gre/modules/ril_consts.js");
 
 const lazy = {};
 
-XPCOMUtils.defineLazyGetter(lazy, "RIL_DEBUG", function() {
+XPCOMUtils.defineLazyGetter(lazy, "RIL_DEBUG", function () {
   // eslint-disable-next-line mozilla/reject-chromeutils-import-params
   let obj = ChromeUtils.import("resource://gre/modules/ril_consts_debug.js");
   return obj;
@@ -21,6 +21,7 @@ XPCOMUtils.defineLazyGetter(lazy, "RIL_DEBUG", function() {
 
 const kSettingsCellBroadcastDisabled = "ril.cellbroadcast.disabled";
 const kSettingsCellBroadcastSearchList = "ril.cellbroadcast.searchlist";
+const kSettingsGeolocationEnabled = "geolocation.enabled";
 const kPrefAppCBConfigurationEnabled = "dom.app_cb_configuration";
 //Geo-Fencing Maximum wait time(second).
 const kPrefCellBroadcastMaxWaitTime = "dom.cellbroadcast.maximumWaitTime";
@@ -28,6 +29,7 @@ const kPrefCellBroadcastMaxWaitTime = "dom.cellbroadcast.maximumWaitTime";
 const kPrefCellBroadcastGeoFencingThreshold =
   "dom.cellbroadcast.geoFencingThreshold";
 
+const kSettingsCmasMultiLanguageSupport = "cmas.multi.language.support";
 const DEFAULT_MAXIMUM_WAIT_TIME = 30; // 30 seconds
 
 XPCOMUtils.defineLazyServiceGetter(
@@ -44,7 +46,7 @@ XPCOMUtils.defineLazyServiceGetter(
   "nsISettingsManager"
 );
 
-XPCOMUtils.defineLazyGetter(lazy, "gRadioInterfaceLayer", function() {
+XPCOMUtils.defineLazyGetter(lazy, "gRadioInterfaceLayer", function () {
   let ril = { numRadioInterfaces: 0 };
   try {
     ril = Cc["@mozilla.org/ril;1"].getService(Ci.nsIRadioInterfaceLayer);
@@ -66,7 +68,7 @@ XPCOMUtils.defineLazyServiceGetter(
   "nsIGonkMobileMessageDatabaseService"
 );
 
-XPCOMUtils.defineLazyGetter(lazy, "gGeolocation", function() {
+XPCOMUtils.defineLazyGetter(lazy, "gGeolocation", function () {
   let geolocation = {};
   try {
     geolocation = Cc["@mozilla.org/geolocation;1"].getService(Ci.nsISupports);
@@ -127,9 +129,11 @@ function CellBroadcastService() {
      *   2. set search list per RadioInterface.
      */
     this.getSettingValue(kSettingsCellBroadcastSearchList);
+    this.getSettingValue(kSettingsGeolocationEnabled);
 
     this.addSettingObserver(kSettingsCellBroadcastDisabled);
     this.addSettingObserver(kSettingsCellBroadcastSearchList);
+    this.addSettingObserver(kSettingsGeolocationEnabled);
   }
 }
 CellBroadcastService.prototype = {
@@ -147,6 +151,8 @@ CellBroadcastService.prototype = {
 
   // Setting values of Cell Broadcast SearchList.
   _cellBroadcastSearchList: null,
+
+  _isGeolocationEnabled: false,
 
   _updateDebugFlag() {
     try {
@@ -399,12 +405,47 @@ CellBroadcastService.prototype = {
         debug("Failed to delete cellbroadcast message");
       }
     };
-    lazy.gMobileMessageDBService.deleteCellBroadcastMessage(
-      aGeometryMessage.serialNumber,
-      aGeometryMessage.messageId,
-      callback
-    );
-    this._broadcastCellBroadcastMessage(aServiceId, aGeometryMessage);
+
+    let self = this;
+    if (aGeometryMessage.language.toLowerCase() === "en") {
+      if (DEBUG) {
+        debug("notify en message directly");
+      }
+      lazy.gMobileMessageDBService.deleteCellBroadcastMessage(
+        aGeometryMessage.serialNumber,
+        aGeometryMessage.messageId,
+        callback
+      );
+      this._broadcastCellBroadcastMessage(aServiceId, aGeometryMessage);
+    } else {
+      lazy.gSettingsManager.get(kSettingsCmasMultiLanguageSupport, {
+        resolve: info => {
+          if (DEBUG) {
+            debug(
+              "kSettingsCmasMultiLanguageSupport info:" + JSON.stringify(info)
+            );
+          }
+          if (info.value.toLowerCase() === "true") {
+            if (DEBUG) {
+              debug("Notify non en message");
+            }
+            lazy.gMobileMessageDBService.deleteCellBroadcastMessage(
+              aGeometryMessage.serialNumber,
+              aGeometryMessage.messageId,
+              callback
+            );
+            self._broadcastCellBroadcastMessage(aServiceId, aGeometryMessage);
+          } else if (DEBUG) {
+            debug("No support multi language cmas, ignore");
+          }
+        },
+        reject: () => {
+          if (DEBUG) {
+            debug("get " + kSettingsCmasMultiLanguageSupport + " failed.");
+          }
+        },
+      });
+    }
   },
 
   _performGeoFencing(
@@ -442,7 +483,7 @@ CellBroadcastService.prototype = {
         lazy.gMobileMessageDBService.getCellBroadcastMessage(
           identity.serialNumber,
           identity.messageIdentifier,
-          function(aRv, aMessageRecord, aCellBroadCastMessage) {
+          function (aRv, aMessageRecord, aCellBroadCastMessage) {
             if (Components.isSuccessCode(aRv) && aMessageRecord) {
               allBroadcastMessages.push(aMessageRecord);
             }
@@ -477,7 +518,16 @@ CellBroadcastService.prototype = {
     aGeometryMessage,
     aBroadcastArea = aGeometryMessage.geometries
   ) {
-    if (aGeometryMessage.maximumWaitingTimeSec > 0) {
+    if (DEBUG) {
+      debug(
+        "_handleGeometryMessage: this._isGeolocationEnabled = " +
+          this._isGeolocationEnabled
+      );
+    }
+    if (
+      aGeometryMessage.maximumWaitingTimeSec > 0 &&
+      this._isGeolocationEnabled === "true"
+    ) {
       let timeout = aGeometryMessage.maximumWaitingTimeSec * 1000;
       if (
         aGeometryMessage.maximumWaitingTimeSec ==
@@ -532,6 +582,10 @@ CellBroadcastService.prototype = {
   _broadcastCellBroadcastMessage(aServiceId, aCellBroadcastMessage) {
     this._acquireCbHandledWakeLock();
     // Broadcast CBS System message
+    let updateNumber = 0;
+    if (aCellBroadcastMessage.serialNumber) {
+      updateNumber = aCellBroadcastMessage.serialNumber & 0x0f;
+    }
     lazy.gCellbroadcastMessenger.notifyCbMessageReceived(
       aServiceId,
       aCellBroadcastMessage.gsmGeographicalScope,
@@ -545,7 +599,8 @@ CellBroadcastService.prototype = {
       aCellBroadcastMessage.hasEtwsInfo,
       aCellBroadcastMessage.etwsWarningType,
       aCellBroadcastMessage.etwsEmergencyUserAlert,
-      aCellBroadcastMessage.etwsPopup
+      aCellBroadcastMessage.etwsPopup,
+      updateNumber
     );
 
     // Notify received message to registered listener
@@ -564,7 +619,8 @@ CellBroadcastService.prototype = {
           aCellBroadcastMessage.hasEtwsInfo,
           aCellBroadcastMessage.etwsWarningType,
           aCellBroadcastMessage.etwsEmergencyUserAlert,
-          aCellBroadcastMessage.etwsPopup
+          aCellBroadcastMessage.etwsPopup,
+          updateNumber
         );
       } catch (e) {
         debug("listener threw an exception: " + e);
@@ -614,6 +670,7 @@ CellBroadcastService.prototype = {
         Services.obs.removeObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID);
         this.removeSettingObserver(kSettingsCellBroadcastDisabled);
         this.removeSettingObserver(kSettingsCellBroadcastSearchList);
+        this.removeSettingObserver(kSettingsGeolocationEnabled);
 
         // Remove all listeners.
         this._listeners = [];
@@ -646,6 +703,12 @@ CellBroadcastService.prototype = {
         }
         let resultDisableObj = JSON.parse(aResult);
         this.setCellBroadcastDisabled(resultDisableObj);
+        break;
+      case kSettingsGeolocationEnabled:
+        this._isGeolocationEnabled = aResult;
+        if (DEBUG) {
+          debug("'" + kSettingsGeolocationEnabled + "' is now " + aResult);
+        }
         break;
     }
   },
