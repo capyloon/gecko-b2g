@@ -492,6 +492,7 @@ partial interface Window {
            attribute EventHandler ondevicelight;
 #ifdef MOZ_B2G
            attribute EventHandler onatmpressure;
+           attribute EventHandler ondevicepickup;
 #endif
 
   undefined                 dump(DOMString str);

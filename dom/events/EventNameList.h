@@ -339,6 +339,8 @@ WINDOW_ONLY_EVENT(devicelight, eDeviceLight, EventNameType_None,
 #ifdef MOZ_B2G
 WINDOW_ONLY_EVENT(atmpressure, eAtmPressure, EventNameType_None,
                   eBasicEventClass)
+WINDOW_ONLY_EVENT(devicepickup, eDevicePickup, EventNameType_None,
+                  eBasicEventClass)
 #endif
 WINDOW_ONLY_EVENT(vrdisplayactivate, eVRDisplayActivate, EventNameType_None,
                   eBasicEventClass)

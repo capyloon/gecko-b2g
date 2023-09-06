@@ -372,6 +372,7 @@ NS_EVENT_MESSAGE(eUserProximity)
 NS_EVENT_MESSAGE(eDeviceLight)
 #ifdef MOZ_B2G
 NS_EVENT_MESSAGE(eAtmPressure)
+NS_EVENT_MESSAGE(eDevicePickup)
 #endif
 #if defined(MOZ_WIDGET_ANDROID)
 NS_EVENT_MESSAGE(eOrientationChange)

@@ -26,6 +26,7 @@ interface nsIDeviceSensorData : nsISupports
   const unsigned long TYPE_ROTATION_VECTOR = 6;
   const unsigned long TYPE_GAME_ROTATION_VECTOR = 7;
   const unsigned long TYPE_PRESSURE = 8;
+  const unsigned long TYPE_DEVICE_PICKUP = 9;
 
   readonly attribute unsigned long type;
 

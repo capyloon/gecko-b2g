@@ -40,6 +40,8 @@ SensorType getSensorType(V1_0::SensorType aHidlSensorType) {
       return SENSOR_GAME_ROTATION_VECTOR;
     case SensorType::PRESSURE:
       return SENSOR_PRESSURE;
+    case SensorType::PICK_UP_GESTURE:
+      return SENSOR_PICKUP;
     default:
       return SENSOR_UNKNOWN;
   }
@@ -76,6 +78,9 @@ const char* getSensorName(SensorType aType) {
       break;
     case SENSOR_PRESSURE:
       return "Pressure";
+      break;
+    case SENSOR_PICKUP:
+      return "DevicePickup";
       break;
     default:
       return "Invalid";
@@ -177,6 +182,11 @@ SensorData GonkSensorsHal::CreateSensorData(const Event aEvent) {
       break;
     case SENSOR_PRESSURE:
       values.AppendElement(aEvent.u.scalar);
+      break;
+    case SENSOR_PICKUP:
+      // The device pickup sensor deactivate itself once it fires,
+      // so we reactivate it to keep DOM events working.
+      ActivateSensor(SENSOR_PICKUP);
       break;
     case SENSOR_UNKNOWN:
     default:
@@ -419,6 +429,11 @@ bool GonkSensorsHal::InitSensorsList() {
     bool canWakeUp = sensorInfo.flags & SensorFlagBits::WAKE_UP;
     bool isValid = false;
 
+    HAL_LOG("Found sensor %s (%d) canWakeUp=%d onChange=%d continuous=%d",
+            sensorInfo.name.c_str(), sensorInfo.type, canWakeUp,
+            mode == SensorFlagBits::ON_CHANGE_MODE,
+            mode == SensorFlagBits::CONTINUOUS_MODE);
+
     // check sensor reporting mode and wake-up capability
     switch (sensorType) {
       case SENSOR_PROXIMITY:
@@ -428,6 +443,12 @@ bool GonkSensorsHal::InitSensorsList() {
         break;
       case SENSOR_LIGHT:
         if (mode == SensorFlagBits::ON_CHANGE_MODE && !canWakeUp) {
+          isValid = true;
+        }
+        break;
+      case SENSOR_PICKUP:
+        if (mode != SensorFlagBits::ON_CHANGE_MODE &&
+            mode != SensorFlagBits::CONTINUOUS_MODE && canWakeUp) {
           isValid = true;
         }
         break;
@@ -482,6 +503,7 @@ bool GonkSensorsHal::ActivateSensor(const SensorType aSensorType) {
   int64_t samplingPeriodNs;
   switch (aSensorType) {
     // no sampling period for on-change sensors
+    case SENSOR_PICKUP:
     case SENSOR_PROXIMITY:
     case SENSOR_LIGHT:
       samplingPeriodNs = 0;
