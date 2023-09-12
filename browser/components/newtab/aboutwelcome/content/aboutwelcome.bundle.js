@@ -400,7 +400,9 @@ const MultiStageAboutWelcome = props => {
       autoAdvance: screen.auto_advance,
       negotiatedLanguage: negotiatedLanguage,
       langPackInstallPhase: langPackInstallPhase,
-      forceHideStepsIndicator: screen.force_hide_steps_indicator
+      forceHideStepsIndicator: screen.force_hide_steps_indicator,
+      ariaRole: props.ariaRole,
+      aboveButtonStepsIndicator: screen.above_button_steps_indicator
     }) : null;
   })));
 };
@@ -659,7 +661,9 @@ class WelcomeScreen extends (react__WEBPACK_IMPORTED_MODULE_0___default().PureCo
       isSingleScreen: this.props.isSingleScreen,
       startsWithCorner: this.props.startsWithCorner,
       autoAdvance: this.props.autoAdvance,
-      forceHideStepsIndicator: this.props.forceHideStepsIndicator
+      forceHideStepsIndicator: this.props.forceHideStepsIndicator,
+      ariaRole: this.props.ariaRole,
+      aboveButtonStepsIndicator: this.props.aboveButtonStepsIndicator
     });
   }
 
@@ -862,11 +866,13 @@ const MultiStageProtonScreen = props => {
     messageId: props.messageId,
     negotiatedLanguage: props.negotiatedLanguage,
     langPackInstallPhase: props.langPackInstallPhase,
-    forceHideStepsIndicator: props.forceHideStepsIndicator
+    forceHideStepsIndicator: props.forceHideStepsIndicator,
+    ariaRole: props.ariaRole,
+    aboveButtonStepsIndicator: props.aboveButtonStepsIndicator
   });
 };
 const ProtonScreenActionButtons = props => {
-  var _content$checkbox, _content$additional_b, _content$primary_butt, _content$primary_butt2, _content$primary_butt3, _content$primary_butt4;
+  var _content$checkbox, _content$primary_butt, _content$additional_b, _content$primary_butt2, _content$primary_butt3, _content$primary_butt4, _content$primary_butt5;
 
   const {
     content,
@@ -875,6 +881,15 @@ const ProtonScreenActionButtons = props => {
   } = props;
   const defaultValue = (_content$checkbox = content.checkbox) === null || _content$checkbox === void 0 ? void 0 : _content$checkbox.defaultValue;
   const [isChecked, setIsChecked] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)(defaultValue || false);
+  const buttonRef = react__WEBPACK_IMPORTED_MODULE_0___default().useRef(null);
+  const shouldFocusButton = content === null || content === void 0 ? void 0 : (_content$primary_butt = content.primary_button) === null || _content$primary_butt === void 0 ? void 0 : _content$primary_butt.should_focus_button;
+  (0,react__WEBPACK_IMPORTED_MODULE_0__.useEffect)(() => {
+    if (shouldFocusButton) {
+      var _buttonRef$current;
+
+      (_buttonRef$current = buttonRef.current) === null || _buttonRef$current === void 0 ? void 0 : _buttonRef$current.focus();
+    }
+  }, [shouldFocusButton]);
 
   if (!content.primary_button && !content.secondary_button && !content.additional_button) {
     return null;
@@ -888,15 +903,16 @@ const ProtonScreenActionButtons = props => {
     className: `action-buttons ${content.additional_button ? "additional-cta-container" : ""}`,
     flow: (_content$additional_b = content.additional_button) === null || _content$additional_b === void 0 ? void 0 : _content$additional_b.flow
   }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement(_MSLocalized__WEBPACK_IMPORTED_MODULE_1__.Localized, {
-    text: (_content$primary_butt = content.primary_button) === null || _content$primary_butt === void 0 ? void 0 : _content$primary_butt.label
+    text: (_content$primary_butt2 = content.primary_button) === null || _content$primary_butt2 === void 0 ? void 0 : _content$primary_butt2.label
   }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("button", {
-    className: `${((_content$primary_butt2 = content.primary_button) === null || _content$primary_butt2 === void 0 ? void 0 : _content$primary_butt2.style) ?? "primary"}${(_content$primary_butt3 = content.primary_button) !== null && _content$primary_butt3 !== void 0 && _content$primary_butt3.has_arrow_icon ? " arrow-icon" : ""}` // Whether or not the checkbox is checked determines which action
+    ref: buttonRef,
+    className: `${((_content$primary_butt3 = content.primary_button) === null || _content$primary_butt3 === void 0 ? void 0 : _content$primary_butt3.style) ?? "primary"}${(_content$primary_butt4 = content.primary_button) !== null && _content$primary_butt4 !== void 0 && _content$primary_butt4.has_arrow_icon ? " arrow-icon" : ""}` // Whether or not the checkbox is checked determines which action
     // should be handled. By setting value here, we indicate to
     // this.handleAction() where in the content tree it should take
     // the action to execute from.
     ,
     value: isChecked ? "checkbox" : "primary_button",
-    disabled: isPrimaryDisabled((_content$primary_butt4 = content.primary_button) === null || _content$primary_butt4 === void 0 ? void 0 : _content$primary_butt4.disabled),
+    disabled: isPrimaryDisabled((_content$primary_butt5 = content.primary_button) === null || _content$primary_butt5 === void 0 ? void 0 : _content$primary_butt5.disabled),
     onClick: props.handleAction,
     "data-l10n-args": addonName ? JSON.stringify({
       "addon-name": addonName
@@ -1121,6 +1137,32 @@ class ProtonScreen extends (react__WEBPACK_IMPORTED_MODULE_0___default().PureCom
     }))));
   }
 
+  renderOrderedContent(content) {
+    const elements = [];
+
+    for (const item of content) {
+      switch (item.type) {
+        case "text":
+          elements.push( /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement(_LegalParagraph__WEBPACK_IMPORTED_MODULE_15__.LegalParagraph, {
+            text_content: item,
+            handleAction: this.props.handleAction
+          }));
+          break;
+
+        case "image":
+          elements.push(this.renderPicture({
+            imageURL: item.url,
+            darkModeImageURL: item.darkModeImageURL,
+            height: item.height,
+            alt: item.alt_text,
+            className: "inline-image"
+          }));
+      }
+    }
+
+    return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement((react__WEBPACK_IMPORTED_MODULE_0___default().Fragment), null, elements);
+  }
+
   render() {
     var _content$tiles, _content$tiles2, _this$props$appAndSys, _this$props$messageId;
 
@@ -1132,7 +1174,9 @@ class ProtonScreen extends (react__WEBPACK_IMPORTED_MODULE_0___default().PureCom
       isFirstScreen,
       isLastScreen,
       isSingleScreen,
-      forceHideStepsIndicator
+      forceHideStepsIndicator,
+      ariaRole,
+      aboveButtonStepsIndicator
     } = this.props;
     const includeNoodles = content.has_noodles; // The default screen position is "center"
 
@@ -1146,7 +1190,7 @@ class ProtonScreen extends (react__WEBPACK_IMPORTED_MODULE_0___default().PureCom
     return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("main", {
       className: `screen ${this.props.id || ""}
           ${screenClassName} ${textColorClass}`,
-      role: "alertdialog",
+      role: ariaRole ?? "alertdialog",
       layout: content.layout,
       pos: content.position || "center",
       tabIndex: "-1",
@@ -1193,21 +1237,12 @@ class ProtonScreen extends (react__WEBPACK_IMPORTED_MODULE_0___default().PureCom
     }) : null), content.video_container ? /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement(_OnboardingVideo__WEBPACK_IMPORTED_MODULE_11__.OnboardingVideo, {
       content: content.video_container,
       handleAction: this.props.handleAction
-    }) : null, content.inline_image ? this.renderPicture({
-      imageURL: content.inline_image.url,
-      darkModeImageURL: content.inline_image.darkModeImageURL,
-      height: content.inline_image.height,
-      alt: content.inline_image.alt_text,
-      className: "inline-image"
-    }) : null, content.legal_paragraph ? /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement(_LegalParagraph__WEBPACK_IMPORTED_MODULE_15__.LegalParagraph, {
-      content: content,
-      handleAction: this.props.handleAction
-    }) : null, this.renderContentTiles(), this.renderLanguageSwitcher(), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement(ProtonScreenActionButtons, {
+    }) : null, content.above_button_content ? this.renderOrderedContent(content.above_button_content) : null, this.renderContentTiles(), this.renderLanguageSwitcher(), !hideStepsIndicator && aboveButtonStepsIndicator ? this.renderStepsIndicator() : null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement(ProtonScreenActionButtons, {
       content: content,
       addonName: this.props.addonName,
       handleAction: this.props.handleAction,
       activeMultiSelect: this.props.activeMultiSelect
-    })), !hideStepsIndicator ? this.renderStepsIndicator() : null), content.dismiss_button ? this.renderDismissButton() : null), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement(_MSLocalized__WEBPACK_IMPORTED_MODULE_1__.Localized, {
+    })), !hideStepsIndicator && !aboveButtonStepsIndicator ? this.renderStepsIndicator() : null), content.dismiss_button ? this.renderDismissButton() : null), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement(_MSLocalized__WEBPACK_IMPORTED_MODULE_1__.Localized, {
       text: content.info_text
     }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("span", {
       className: "info-text"
@@ -2198,10 +2233,10 @@ __webpack_require__.r(__webpack_exports__);
 
 
 const LegalParagraph = props => {
-  var _legal_paragraph$link;
+  var _text_content$link_ke;
 
   const {
-    content,
+    text_content,
     handleAction
   } = props;
   const handleParagraphAction = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)(event => {
@@ -2216,17 +2251,14 @@ const LegalParagraph = props => {
       handleParagraphAction(event);
     }
   }, [handleParagraphAction]);
-  const {
-    legal_paragraph
-  } = content;
   return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement(_MSLocalized__WEBPACK_IMPORTED_MODULE_1__.Localized, {
-    text: legal_paragraph.text
+    text: text_content.text
   }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("span", {
     className: "legal-paragraph",
     onClick: handleParagraphAction,
     value: "legal_paragraph",
     onKeyPress: onKeyPress
-  }, (_legal_paragraph$link = legal_paragraph.link_keys) === null || _legal_paragraph$link === void 0 ? void 0 : _legal_paragraph$link.map(link => /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("a", {
+  }, (_text_content$link_ke = text_content.link_keys) === null || _text_content$link_ke === void 0 ? void 0 : _text_content$link_ke.map(link => /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0___default().createElement("a", {
     key: link,
     value: link,
     "data-l10n-name": link,
@@ -2581,7 +2613,8 @@ class AboutWelcome extends (react__WEBPACK_IMPORTED_MODULE_0___default().PureCom
       transitions: props.transitions,
       backdrop: props.backdrop,
       startScreen: props.startScreen || 0,
-      appAndSystemLocaleInfo: props.appAndSystemLocaleInfo
+      appAndSystemLocaleInfo: props.appAndSystemLocaleInfo,
+      ariaRole: props.aria_role
     });
   }
 

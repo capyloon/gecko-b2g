@@ -319,7 +319,7 @@ pref("browser.startup.preXulSkeletonUI", true);
 #endif
 
 // Show an upgrade dialog on major upgrades.
-pref("browser.startup.upgradeDialog.enabled", true);
+pref("browser.startup.upgradeDialog.enabled", false);
 
 // Don't create the hidden window during startup on
 // platforms that don't always need it (Win/Linux).
@@ -617,7 +617,7 @@ pref("browser.urlbar.bestMatch.blockingEnabled", true);
 pref("browser.urlbar.contextualSearch.enabled", false);
 
 // Feature gate pref for addon suggestions in the urlbar.
-pref("browser.urlbar.addons.featureGate", false);
+pref("browser.urlbar.addons.featureGate", true);
 
 // If `browser.urlbar.addons.featureGate` is true, this controls whether
 // addons suggestions are turned on.
@@ -718,11 +718,7 @@ pref("browser.search.separatePrivateDefault.ui.enabled", false);
 pref("browser.search.separatePrivateDefault.ui.banner.max", 0);
 
 // Enables search SERP telemetry (impressions, engagements and abandonment)
-#ifdef NIGHTLY_BUILD
 pref("browser.search.serpEventTelemetry.enabled", true);
-#else
-pref("browser.search.serpEventTelemetry.enabled", false);
-#endif
 
 // Enables search SERP telemetry page categorization.
 pref("browser.search.serpEventTelemetryCategorization.enabled", false);
@@ -748,12 +744,17 @@ pref("browser.shopping.experience2023.active", true);
 // If enabled, users can disable the ad card using the separate pref
 // `browser.shopping.experience2023.ads.userEnabled` and visible toggle
 // (this is just the feature flag).
-pref("browser.shopping.experience2023.ads.enabled", true);
+pref("browser.shopping.experience2023.ads.enabled", false);
 
 // Activates the ad card in the shopping sidebar.
 // Unlike `browser.shopping.experience2023.ads.enabled`, this pref is controlled by users
 // using the visible toggle.
-pref("browser.shopping.experience2023.ads.userEnabled", true);
+pref("browser.shopping.experience2023.ads.userEnabled", false);
+// Saves if shopping survey is seen.
+pref("browser.shopping.experience2023.survey.hasSeen", false);
+
+// Number of PDP visits used to display shopping survey
+pref("browser.shopping.experience2023.survey.pdpVisits", 0);
 
 // Enables the display of the Mozilla VPN banner in private browsing windows
 pref("browser.privatebrowsing.vpnpromourl", "https://vpn.mozilla.org/?utm_source=firefox-browser&utm_medium=firefox-%CHANNEL%-browser&utm_campaign=private-browsing-vpn-link");
@@ -883,6 +884,7 @@ pref("browser.tabs.tooltipsShowPidAndActiveness", false);
 
 pref("browser.tabs.firefox-view", true);
 pref("browser.tabs.firefox-view-next", true);
+pref("browser.tabs.firefox-view-newIcon", true);
 pref("browser.tabs.firefox-view.logLevel", "Warn");
 pref("browser.tabs.firefox-view.notify-for-tabs", false);
 
@@ -1976,6 +1978,12 @@ pref("browser.contentblocking.reject-and-isolate-cookies.preferences.ui.enabled"
 //   Query parameter stripping for private windows:
 //     "qpsPBM": Query parameter stripping enabled in private windows
 //     "-qpsPBM": Query parameter stripping disabled in private windows
+//   Fingerprinting Protection:
+//     "fpp": Fingerprinting Protection enabled
+//     "-fpp": Fingerprinting Protection disabled
+//   Fingerprinting Protection for private windows:
+//     "fppPrivate": Fingerprinting Protection enabled in private windows
+//     "-fppPrivate": Fingerprinting Protection disabled in private windows
 //   Cookie behavior:
 //     "cookieBehavior0": cookie behaviour BEHAVIOR_ACCEPT
 //     "cookieBehavior1": cookie behaviour BEHAVIOR_REJECT_FOREIGN
@@ -1991,7 +1999,7 @@ pref("browser.contentblocking.reject-and-isolate-cookies.preferences.ui.enabled"
 //     "cookieBehaviorPBM4": cookie behaviour BEHAVIOR_REJECT_TRACKER
 //     "cookieBehaviorPBM5": cookie behaviour BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN
 // One value from each section must be included in the browser.contentblocking.features.strict pref.
-pref("browser.contentblocking.features.strict", "tp,tpPrivate,cookieBehavior5,cookieBehaviorPBM5,cm,fp,stp,emailTP,emailTPPrivate,lvl2,rp,rpTop,ocsp,qps,qpsPBM");
+pref("browser.contentblocking.features.strict", "tp,tpPrivate,cookieBehavior5,cookieBehaviorPBM5,cm,fp,stp,emailTP,emailTPPrivate,lvl2,rp,rpTop,ocsp,qps,qpsPBM,fpp,fppPrivate");
 
 // Hide the "Change Block List" link for trackers/tracking content in the custom
 // Content Blocking/ETP panel. By default, it will not be visible. There is also
@@ -2470,8 +2478,6 @@ pref("devtools.inspector.imagePreviewTooltipSize", 300);
 pref("devtools.inspector.showUserAgentStyles", false);
 // Show native anonymous content and user agent shadow roots
 pref("devtools.inspector.showAllAnonymousContent", false);
-// Enable the inline CSS compatiblity warning in inspector rule view
-pref("devtools.inspector.ruleview.inline-compatibility-warning.enabled", true);
 // Enable the compatibility tool in the inspector.
 pref("devtools.inspector.compatibility.enabled", true);
 // Enable overflow debugging in the inspector.
@@ -2813,10 +2819,8 @@ pref("svg.context-properties.content.allowed-domains", "profile.accounts.firefox
   pref("extensions.translations.disabled", true);
 #endif
 
-// Turn on interaction measurements in Nightly only
-#ifdef NIGHTLY_BUILD
-  pref("browser.places.interactions.enabled", true);
-#endif
+// Turn on interaction measurements
+pref("browser.places.interactions.enabled", true);
 
 // If the user has seen the Firefox View feature tour this value reflects
 // the id of the last screen they saw and whether they completed the tour
@@ -2834,6 +2838,7 @@ pref("browser.pdfjs.feature-tour", "{\"screen\":\"\",\"complete\":false}");
 // StaticPrefList.yaml for a description of the prefs.
 #ifdef NIGHTLY_BUILD
   pref("cookiebanners.service.mode.privateBrowsing", 1);
+  pref("cookiebanners.service.enableGlobalRules", true);
 #endif
 
 #if defined(EARLY_BETA_OR_EARLIER)

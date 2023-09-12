@@ -98,7 +98,6 @@ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "gonk":
         ]
 
 elif CONFIG["OS_TARGET"] == "Linux":
-
     UNIFIED_SOURCES += [
         "fallback/FallbackAlarm.cpp",
         "fallback/FallbackFlipManager.cpp",

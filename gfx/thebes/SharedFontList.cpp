@@ -725,6 +725,24 @@ FontList::FontList(uint32_t aGeneration) {
 
 FontList::~FontList() { DetachShmBlocks(); }
 
+FontList::Header& FontList::GetHeader() const MOZ_NO_THREAD_SAFETY_ANALYSIS {
+  // We only need to lock if we're not on the main thread.
+  bool isMainThread = NS_IsMainThread();
+  if (!isMainThread) {
+    gfxPlatformFontList::PlatformFontList()->Lock();
+  }
+
+  // It's invalid to try and access this before the first block exists.
+  MOZ_ASSERT(mBlocks.Length() > 0);
+  auto& result = *static_cast<Header*>(mBlocks[0]->Memory());
+
+  if (!isMainThread) {
+    gfxPlatformFontList::PlatformFontList()->Unlock();
+  }
+
+  return result;
+}
+
 bool FontList::AppendShmBlock(uint32_t aSizeNeeded) {
   MOZ_ASSERT(XRE_IsParentProcess());
   uint32_t size = std::max(aSizeNeeded, SHM_BLOCK_SIZE);
@@ -938,6 +956,14 @@ void FontList::SetFamilyNames(nsTArray<Family::InitData>& aFamilies) {
 
   size_t count = aFamilies.Length();
 
+  // Any font resources with an empty family-name will have been collected in
+  // a family with empty name, and sorted to the start of the list. Such fonts
+  // are not generally usable, or recognized as "installed", so we drop them.
+  if (count > 1 && aFamilies[0].mKey.IsEmpty()) {
+    aFamilies.RemoveElementAt(0);
+    --count;
+  }
+
   // Check for duplicate family entries (can occur if there is a bundled font
   // that has the same name as a system-installed one); in this case we keep
   // the bundled one as it will always be exposed.
@@ -990,6 +1016,13 @@ void FontList::SetAliases(
   aliasArray.Sort();
 
   size_t count = aliasArray.Length();
+
+  // Drop any entry with empty family-name as being unusable.
+  if (count && aliasArray[0].mKey.IsEmpty()) {
+    aliasArray.RemoveElementAt(0);
+    --count;
+  }
+
   if (count < header.mAliasCount) {
     // This shouldn't happen, but handle it safely by just bailing out.
     NS_WARNING("cannot reduce number of aliases");

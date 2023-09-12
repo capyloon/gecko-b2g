@@ -3320,7 +3320,7 @@ bool ContentParent::InitInternal(ProcessPriority aInitialPriority) {
   if (!(StaticPrefs::media_utility_process_enabled() &&
         StaticPrefs::media_utility_android_media_codec_enabled())) {
     Unused << SendDecoderSupportedMimeTypes(
-        AndroidDecoderModule::GetSupportedMimeTypes());
+        AndroidDecoderModule::GetSupportedMimeTypesPrefixed());
   }
 #endif
 

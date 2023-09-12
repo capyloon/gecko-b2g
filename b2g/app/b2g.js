@@ -1315,3 +1315,5 @@ pref("browser.download.start_downloads_in_tmp_dir", true);
 
 pref("extensions.webapi.enabled", true);
 
+// Enable by default since it's used by the web-embedder api.
+pref("apz.overscroll.enabled", true);

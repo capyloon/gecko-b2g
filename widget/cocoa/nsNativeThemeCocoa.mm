@@ -39,7 +39,6 @@
 #include "mozilla/StaticPrefs_widget.h"
 #include "nsLookAndFeel.h"
 #include "MacThemeGeometryType.h"
-#include "SDKDeclarations.h"
 #include "VibrancyManager.h"
 
 #include "gfxContext.h"
@@ -3406,7 +3405,6 @@ bool nsNativeThemeCocoa::ThemeSupportsWidget(nsPresContext* aPresContext,
 
     case StyleAppearance::Listbox:
     case StyleAppearance::Dialog:
-    case StyleAppearance::Window:
     case StyleAppearance::MozWindowButtonBox:
     case StyleAppearance::MozWindowTitlebar:
     case StyleAppearance::Checkmenuitem:

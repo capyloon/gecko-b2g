@@ -47,6 +47,7 @@ user_pref("browser.safebrowsing.downloads.enabled", false);
 user_pref("browser.safebrowsing.passwords.enabled", false);
 user_pref("browser.safebrowsing.malware.enabled", false);
 user_pref("browser.safebrowsing.phishing.enabled", false);
+user_pref("browser.safebrowsing.update.enabled", false);
 // Automatically unload beforeunload alerts
 user_pref("dom.disable_beforeunload", true);
 // Enable implicit keyframes since the common animation interpolation test
@@ -89,3 +90,10 @@ user_pref("security.remote_settings.intermediates.enabled", false);
 user_pref("general.smoothScroll", true);
 // Prevent default handlers being added, since these can cause network fetches
 user_pref("gecko.handlerService.defaultHandlersVersion", 100);
+// Enable virtual WebAuthn authenticators.
+user_pref("security.webauth.webauthn_enable_softtoken", true);
+// Disable hardware WebAuthn authenticators.
+user_pref("security.webauth.webauthn_enable_usbtoken", false);
+user_pref("security.webauth.webauthn_enable_android_fido2", false);
+// Disable the WebAuthn direct attestation consent prompt.
+user_pref("security.webauth.webauthn_testing_allow_direct_attestation", true);

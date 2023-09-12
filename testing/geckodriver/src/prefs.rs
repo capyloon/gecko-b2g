@@ -32,10 +32,6 @@ lazy_static! {
         ("browser.dom.window.dump.enabled", Pref::new(true)),
         ("devtools.console.stdout.chrome", Pref::new(true)),
 
-        // Disable safebrowsing updates
-        // TODO: Can be removed when Firefox 117 is no longer supported.
-        ("browser.safebrowsing.update.enabled", Pref::new(false)),
-
         // Do not restore the last open set of tabs if the browser crashed
         ("browser.sessionstore.resume_from_crash", Pref::new(false)),
 

@@ -2052,9 +2052,7 @@ var gBrowserInit = {
 
     CaptivePortalWatcher.delayedStartup();
 
-    if (AppConstants.NIGHTLY_BUILD) {
-      ShoppingSidebarManager.init();
-    }
+    ShoppingSidebarManager.init();
 
     SessionStore.promiseAllWindowsRestored.then(() => {
       this._schedulePerWindowIdleTasks();
@@ -2475,9 +2473,7 @@ var gBrowserInit = {
 
     FirefoxViewHandler.uninit();
 
-    if (AppConstants.NIGHTLY_BUILD) {
-      ShoppingSidebarManager.uninit();
-    }
+    ShoppingSidebarManager.uninit();
 
     // Now either cancel delayedStartup, or clean up the services initialized from
     // it.
@@ -4985,6 +4981,10 @@ var XULBrowserWindow = {
       return;
     }
 
+    if (!document.hasFocus()) {
+      return;
+    }
+
     let elt = document.getElementById("remoteBrowserTooltip");
     elt.label = tooltip;
     elt.style.direction = direction;
@@ -5885,9 +5885,7 @@ var TabsProgressListener = {
 
     // Some shops use pushState to move between individual products, so
     // the shopping code needs to be told about all of these.
-    if (AppConstants.NIGHTLY_BUILD) {
-      ShoppingSidebarManager.onLocationChange(aBrowser, aLocationURI);
-    }
+    ShoppingSidebarManager.onLocationChange(aBrowser, aLocationURI, aFlags);
 
     // Filter out location changes caused by anchor navigation
     // or history.push/pop/replaceState.
@@ -9874,6 +9872,10 @@ var FirefoxViewHandler = {
       !this._enabled
     );
     document.getElementById("menu_openFirefoxView").hidden = !this._enabled;
+    document.getElementById("firefox-view-button").style.listStyleImage =
+      NimbusFeatures.firefoxViewNext.getVariable("newIcon")
+        ? ""
+        : 'url("chrome://branding/content/about-logo.png")';
   },
   onWidgetRemoved(aWidgetId) {
     if (aWidgetId == this.BUTTON_ID && this.tab) {
@@ -10027,11 +10029,11 @@ var ShoppingSidebarManager = {
     this._updateVisibility();
 
     gBrowser.tabContainer.addEventListener("TabSelect", this);
+    window.addEventListener("visibilitychange", this);
   },
 
   uninit() {
     NimbusFeatures.shopping2023.offUpdate(this._updateVisibility);
-    gBrowser.tabContainer.removeEventListener("TabSelect", this);
   },
 
   _updateVisibility() {
@@ -10048,11 +10050,16 @@ var ShoppingSidebarManager = {
       document.querySelectorAll("shopping-sidebar").forEach(sidebar => {
         sidebar.remove();
       });
+
+      if (optedOut) {
+        let button = document.getElementById("shopping-sidebar-button");
+        button.hidden = true;
+      }
       return;
     }
 
     let { selectedBrowser, currentURI } = gBrowser;
-    this.onLocationChange(selectedBrowser, currentURI);
+    this.onLocationChange(selectedBrowser, currentURI, 0);
   },
 
   /**
@@ -10061,7 +10068,7 @@ var ShoppingSidebarManager = {
    * Note that this includes hash changes / pushState navigations, because
    * those can be significant for us.
    */
-  onLocationChange(aBrowser, aLocationURI) {
+  onLocationChange(aBrowser, aLocationURI, aFlags) {
     if (!this._enabled) {
       return;
     }
@@ -10070,11 +10077,10 @@ var ShoppingSidebarManager = {
     let sidebar = browserPanel.querySelector("shopping-sidebar");
     let actor;
     if (sidebar) {
-      let global =
-        sidebar.querySelector("browser").browsingContext.currentWindowGlobal;
+      let { browsingContext } = sidebar.querySelector("browser");
+      let global = browsingContext.currentWindowGlobal;
       actor = global.getExistingActor("ShoppingSidebar");
     }
-    let button = document.getElementById("shopping-sidebar-button");
     let isProduct = isProductURL(aLocationURI);
     if (isProduct && this.isActive) {
       if (!sidebar) {
@@ -10083,7 +10089,7 @@ var ShoppingSidebarManager = {
         sidebar.hidden = false;
         browserPanel.appendChild(sidebar);
       } else {
-        actor?.updateProductURL(aLocationURI);
+        actor?.updateProductURL(aLocationURI, aFlags);
         sidebar.hidden = false;
       }
     } else if (sidebar && !sidebar.hidden) {
@@ -10091,17 +10097,60 @@ var ShoppingSidebarManager = {
       sidebar.hidden = true;
     }
 
-    button.hidden = !isProduct;
-    button.setAttribute("shoppingsidebaropen", !!this.isActive);
-    document.l10n.setAttributes(
-      button,
-      `shopping-sidebar-${this.isActive ? "close" : "open"}-button`
-    );
+    this._updateBCActiveness(aBrowser);
+    this._setShoppingButtonState(aBrowser);
+
     if (isProduct) {
       // This is the auto-enable behavior that toggles the `active` pref. It
       // must be at the end of this function, or 2 sidebars could be created.
       ShoppingUtils.handleAutoActivateOnProduct();
     }
+  },
+
+  _updateBCActiveness(aBrowser) {
+    let browserPanel = gBrowser.getPanel(aBrowser);
+    let sidebar = browserPanel.querySelector("shopping-sidebar");
+    if (!sidebar) {
+      return;
+    }
+    let { browsingContext } = sidebar.querySelector("browser");
+    try {
+      // Tell Gecko when the sidebar visibility changes to avoid background
+      // sidebars taking more CPU / energy than needed.
+      browsingContext.isActive =
+        !document.hidden &&
+        aBrowser == gBrowser.selectedBrowser &&
+        !sidebar.hidden;
+    } catch (ex) {
+      // The setter can throw and we do need to run the rest of this
+      // code in that case.
+      console.error(ex);
+    }
+  },
+
+  _setShoppingButtonState(aBrowser) {
+    if (aBrowser !== gBrowser.selectedBrowser) {
+      return;
+    }
+
+    let button = document.getElementById("shopping-sidebar-button");
+
+    let isCurrentBrowserProduct = isProductURL(
+      gBrowser.selectedBrowser.currentURI
+    );
+
+    // Only record if the state of the icon will change from hidden to visible.
+    if (button.hidden && isCurrentBrowserProduct) {
+      console.log("visibility of shopping address bar icon changed");
+      Glean.shopping.addressBarIconDisplayed.record();
+    }
+
+    button.hidden = !isCurrentBrowserProduct;
+    button.setAttribute("shoppingsidebaropen", !!this.isActive);
+    let l10nId = this.isActive
+      ? "shopping-sidebar-close-button"
+      : "shopping-sidebar-open-button";
+    document.l10n.setAttributes(button, l10nId);
   },
 
   handleEvent(event) {
@@ -10111,7 +10160,16 @@ var ShoppingSidebarManager = {
           return;
         }
         this._updateVisibility();
+        if (event.detail?.previousTab.linkedBrowser) {
+          this._updateBCActiveness(event.detail.previousTab.linkedBrowser);
+        }
         break;
+      }
+      case "visibilitychange": {
+        if (!this._enabled) {
+          return;
+        }
+        this._updateBCActiveness(gBrowser.selectedBrowser);
       }
     }
   },

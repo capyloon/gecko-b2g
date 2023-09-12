@@ -188,6 +188,14 @@
 #define IS_NOT_XP_WIN true
 #endif
 
+#ifdef XP_MACOSX
+#define IS_XP_MACOSX true
+#define IS_NOT_XP_MACOSX false
+#else
+#define IS_XP_MACOSX false
+#define IS_NOT_XP_MACOSX true
+#endif
+
 #---------------------------------------------------------------------------
 # Prefs starting with "accessibility."
 #---------------------------------------------------------------------------
@@ -214,7 +222,7 @@
 
 - name: accessibility.ARIAReflection.enabled
   type: bool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
 
 # Whether form controls and images should be focusable with mouse, in content
@@ -1367,6 +1375,12 @@
   value: false
   mirror: always
 
+# See bug 1811830
+- name: browser.download.force_save_internally_handled_attachments
+  type: bool
+  value: false
+  mirror: always
+
 - name: browser.download.sanitize_non_media_extensions
   type: bool
   value: true
@@ -1673,7 +1687,11 @@
 # Cross-Origin-Embedder-Policy header
 - name: browser.tabs.remote.coep.credentialless
   type: RelaxedAtomicBool
+#if defined(ANDROID)
   value: @IS_NIGHTLY_BUILD@
+#else
+  value: true
+#endif
   mirror: always
   do_not_use_directly: true
 
@@ -5555,6 +5573,21 @@
     value: false
     mirror: always
     rust: true
+
+# This configures a virtual authenticator for WebAuthn. The value encodes the
+# arguments to the WebDriver "Add Virtual Authenticator" extension command.
+# Bits 0, 1, 2, and 3 encode "is_user_verified", "is_user_consenting",
+# "has_user_verification", and "has_resident_key" in that order. Bit 5 encodes
+# the transport, either "usb" (0) or "internal" (1). Bits 6 and 7 encode the
+# protocol, either "ctap1/u2f" (1), "ctap2" (2), or "ctap2_1" (3). Note that
+# the valid protocol values are non-zero---an authenticator will not be
+# configured if this pref is set to zero. Changing this pref requires
+# a restart.
+- name: fuzzing.webauthn.authenticator_config
+  type: RelaxedAtomicUint32
+  value: 0
+  mirror: always
+  rust: true
 #endif
 
 #---------------------------------------------------------------------------
@@ -6990,12 +7023,6 @@
 # Prefs starting with "html5."
 #---------------------------------------------------------------------------
 
-# Turn HTML:inert on or off.
-- name: html5.inert.enabled
-  type: bool
-  value: true
-  mirror: always
-
 # Time in milliseconds between the time a network buffer is seen and the timer
 # firing when the timer hasn't fired previously in this parse in the
 # off-the-main-thread HTML5 parser.
@@ -7682,6 +7709,12 @@
   value: false
   mirror: always
 
+# Support for String.prototype.{is,to}WellFormed in JavaScript.
+- name: javascript.options.well_formed_unicode_strings
+  type: bool
+  value: true
+  mirror: always
+
 #ifdef NIGHTLY_BUILD
   # Experimental support for Iterator Helpers in JavaScript.
 -   name: javascript.options.experimental.iterator_helpers
@@ -7691,12 +7724,6 @@
 
   # Experimental support for Array Grouping in JavaScript.
 -   name: javascript.options.experimental.array_grouping
-    type: bool
-    value: false
-    mirror: always
-
-  # Experimental support for String.prototype.{is,to}WellFormed in JavaScript.
--   name: javascript.options.experimental.well_formed_unicode_strings
     type: bool
     value: false
     mirror: always
@@ -9341,12 +9368,6 @@
   value: true
   mirror: always
 
-# Activity granted to out-of-process iframes in the foreground tab, in milliseconds.
-- name: layout.oopif_activity_grace_period_ms
-  type: uint32_t
-  value: 1000
-  mirror: always
-
 - name: layout.lower_priority_refresh_driver_during_load
   type: bool
   value: true
@@ -9916,13 +9937,13 @@
 # Does the GMPlugin process initialize minimal XPCOM
 - name: media.gmp.use-minimal-xpcom
   type: RelaxedAtomicBool
-  value: false
+  value: true
   mirror: always
 
-# Does the GMPlugin process initialize minimal XPCOM
+# Does the GMPlugin process use native event processing
 - name: media.gmp.use-native-event-processing
   type: RelaxedAtomicBool
-  value: true
+  value: @IS_NOT_XP_MACOSX@
   mirror: always
 
 #if defined(XP_LINUX) && defined(MOZ_SANDBOX)
@@ -12136,14 +12157,6 @@
   value: false
   mirror: always
 
-# When this pref is true we enforce a 253 character limit on domains we try to
-# resolve. See bug 1264117. If it doesn't cause any web-compat issues we can
-# remove it in a few releases
-- name: network.dns.limit_253_chars
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
 # When this pref is true, we copy the host name to a fresh string before
 # calling into getaddrinfo.
 - name: network.dns.copy_string_before_call
@@ -12790,6 +12803,15 @@
   type: RelaxedAtomicBool
   value: false
   mirror: always
+
+# The congestion control algorithm with which to configure neqo.
+# 0 => NewReno
+# 1 => Cubic
+- name: network.http.http3.cc_algorithm
+  type: RelaxedAtomicUint32
+  value: 1
+  mirror: always
+  rust: true
 
 # When true, a http request will be upgraded to https when HTTPS RR is
 # available.
@@ -14125,9 +14147,8 @@
   mirror: always
   rust: true
 
-# Dispatch WebAuthn requests to the software CTAP1 token.
-# (mutually exclusive with webauthn_enable_android_fido2,
-# and webauthn_enable_usbtoken)
+# Dispatch WebAuthn requests to virtual authenticators. (mutually exclusive
+# with webauthn_enable_android_fido2, and webauthn_enable_usbtoken)
 - name: security.webauth.webauthn_enable_softtoken
   type: RelaxedAtomicBool
   value: false
@@ -15729,6 +15750,12 @@
   value: true
   mirror: always
 
+# Whether we hide the pointer while typing on Linux
+- name: widget.gtk.hide-pointer-while-typing.enabled
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
+
 # Whether we honor the scrollbar colors from the gtk theme.
 - name: widget.gtk.theme-scrollbar-colors.enabled
   type: bool
@@ -15741,7 +15768,7 @@
 # pref for emergency purposes.
 - name: widget.gtk.rounded-bottom-corners.enabled
   type: bool
-  value: true
+  value: false
   mirror: always
   rust: true
 

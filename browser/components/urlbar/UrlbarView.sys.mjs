@@ -448,7 +448,7 @@ export class UrlbarView {
    * @param {object} titleL10n
    *   The localization object shown as dismissed feedback.
    */
-  acknowledgeDismissal(result, titleL10n) {
+  #acknowledgeDismissal(result, titleL10n) {
     let row = this.#rows.children[result.rowIndex];
     if (!row || row.result != result) {
       return;
@@ -852,8 +852,15 @@ export class UrlbarView {
    */
   onQueryResultRemoved(index) {
     let rowToRemove = this.#rows.children[index];
-    rowToRemove.remove();
 
+    let { result } = rowToRemove;
+    if (result.acknowledgeDismissalL10n) {
+      // Replace the result's row with a dismissal acknowledgment tip.
+      this.#acknowledgeDismissal(result, result.acknowledgeDismissalL10n);
+      return;
+    }
+
+    rowToRemove.remove();
     this.#updateIndices();
 
     if (rowToRemove != this.#getSelectedRow()) {
@@ -2549,11 +2556,10 @@ export class UrlbarView {
   }
 
   #enableOrDisableRowWrap() {
-    if (getBoundsWithoutFlushing(this.input.textbox).width < 650) {
-      this.#rows.setAttribute("wrap", "true");
-    } else {
-      this.#rows.removeAttribute("wrap");
-    }
+    this.#rows.toggleAttribute(
+      "wrap",
+      getBoundsWithoutFlushing(this.input.textbox).width < 650
+    );
   }
 
   /**
@@ -2669,6 +2675,12 @@ export class UrlbarView {
           lazy.UrlbarPrefs.get("suggest.weather"))
       ) {
         idArgs.push({ id: "urlbar-group-best-match" });
+      }
+      if (
+        lazy.UrlbarPrefs.get("quickSuggestEnabled") &&
+        lazy.UrlbarPrefs.get("addonsFeatureGate")
+      ) {
+        idArgs.push({ id: "urlbar-group-addon" });
       }
     }
 
