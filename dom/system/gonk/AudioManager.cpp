@@ -189,7 +189,7 @@ class VolumeCurves {
   VolumeCurves() = delete;
   ~VolumeCurves() = default;
 
-  void Build(uint32_t aDevice) {
+  void Build(audio_devices_t aDevice) {
     nsTArray<float> curve;
     for (uint32_t i = 0; i <= MaxIndex(); i++) {
       curve.AppendElement(ComputeVolume(i, aDevice));
@@ -197,7 +197,7 @@ class VolumeCurves {
     mCurves.InsertOrUpdate(aDevice, std::move(curve));
   }
 
-  float GetVolume(uint32_t aIndex, uint32_t aDevice) {
+  float GetVolume(uint32_t aIndex, audio_devices_t aDevice) {
     if (aIndex > MaxIndex()) {
       aIndex = MaxIndex();
     }
@@ -212,7 +212,7 @@ class VolumeCurves {
  private:
   inline uint32_t MaxIndex() { return sMaxStreamVolumeTbl[mStreamType]; }
 
-  float ComputeVolume(uint32_t aIndex, uint32_t aDevice) {
+  float ComputeVolume(uint32_t aIndex, audio_devices_t aDevice) {
     float decibel = AudioSystem::getStreamVolumeDB(
         static_cast<audio_stream_type_t>(mStreamType), aIndex, aDevice);
     // decibel to amplitude
