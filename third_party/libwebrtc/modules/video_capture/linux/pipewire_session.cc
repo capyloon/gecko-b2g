@@ -361,11 +361,8 @@ void PipeWireSession::OnRegistryGlobal(void* data,
   if (!spa_dict_lookup(props, PW_KEY_NODE_DESCRIPTION))
     return;
 
-  // Filter to only keep video sources, needed when connecting
-  // directly to the pipewire fd without using a portal.
-  // TODO: should we also limit to media.role == Camera ??
-  auto node_class = spa_dict_lookup(props, "media.class");
-  if (!node_class || strcmp(node_class, "Video/Source"))
+  auto node_role = spa_dict_lookup(props, PW_KEY_MEDIA_ROLE);
+  if (!node_role || strcmp(node_role, "Camera"))
     return;
 
   that->nodes_.emplace_back(that, id, props);

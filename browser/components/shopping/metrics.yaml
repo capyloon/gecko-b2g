@@ -316,3 +316,92 @@ shopping:
       - fx-desktop-shopping-eng@mozilla.com
     send_in_pings:
       - events
+
+  surface_analyze_reviews_none_available_clicked:
+    type: event
+    description: |
+      The user clicked to analyze reviews in the case the reliability rating
+      was not available for display in the shopping side bar. This metric 
+      does not contain any information about the product the user is viewing.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1849244
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1841892
+    data_sensitivity:
+      - interaction
+    expires: 122
+    notification_emails:
+      - betling@mozilla.com
+      - fx-desktop-shopping-eng@mozilla.com
+    send_in_pings:
+      - events
+
+  surface_learn_more_clicked:
+    type: event
+    description: |
+      The user clicked the 'Learn More' link in the Shopping onboarding
+      experience.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1851820 
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1851820#c2
+    data_sensitivity:
+      - interaction
+    expires: 122
+    notification_emails:
+      - betling@mozilla.com
+      - fx-desktop-shopping-eng@mozilla.com
+    send_in_pings:
+      - events
+
+  surface_show_quality_explainer_url_clicked:
+    type: event
+    description: |
+      The user clicked to see the explanation of Review Quality in the
+      shopping component.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1849382
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1848870
+    data_sensitivity:
+      - interaction
+    expires: 122
+    notification_emails:
+      - betling@mozilla.com
+      - fx-desktop-shopping-eng@mozilla.com
+    send_in_pings:
+      - events
+
+  address_bar_icon_displayed:
+    type: event
+    description: |
+      The Shopping product Address Bar Icon was displayed to the user.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1851036
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1841892
+    data_sensitivity:
+      - interaction
+    expires: 122
+    notification_emails:
+      - betling@mozilla.com
+      - fx-desktop-shopping-eng@mozilla.com
+    send_in_pings:
+      - events
+
+  surface_reactivated_button_clicked:
+    type: event
+    description: |
+      The user clicked the reactivated product button.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1851675
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1851675#c4
+    data_sensitivity:
+      - interaction
+    expires: 122
+    notification_emails:
+      - betling@mozilla.com
+      - fx-desktop-shopping-eng@mozilla.com
+    send_in_pings:
+      - events

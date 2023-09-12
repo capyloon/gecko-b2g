@@ -1675,9 +1675,7 @@ nsWindow* nsWindow::GetTopmostWindow() {
   if (nsView* view = nsView::GetViewFor(this)) {
     if (nsView* parentView = view->GetParent()) {
       if (nsIWidget* parentWidget = parentView->GetNearestWidget(nullptr)) {
-        nsWindow* parentnsWindow = static_cast<nsWindow*>(parentWidget);
-        LOG("  Topmost window: %p [nsWindow]\n", parentnsWindow);
-        return parentnsWindow;
+        return static_cast<nsWindow*>(parentWidget);
       }
     }
   }
@@ -2562,14 +2560,14 @@ bool nsWindow::WaylandPopupCheckAndGetAnchor(GdkRectangle* aPopupAnchor,
                                              GdkPoint* aOffset) {
   LOG("nsWindow::WaylandPopupCheckAndGetAnchor");
 
-  GdkWindow* gdkWindow = gtk_widget_get_window(GTK_WIDGET(mShell));
+  GdkWindow* gdkWindow = GetToplevelGdkWindow();
   nsMenuPopupFrame* popupFrame = GetMenuPopupFrame(GetFrame());
   if (!gdkWindow || !popupFrame) {
     LOG("  can't use move-to-rect due missing gdkWindow or popupFrame");
     return false;
   }
 
-  if (popupFrame->IsFlippedByLayout()) {
+  if (popupFrame->IsConstrainedByLayout()) {
     LOG("  can't use move-to-rect, flipped / constrained by layout");
     return false;
   }
@@ -2668,8 +2666,7 @@ void nsWindow::WaylandPopupMovePlain(int aX, int aY) {
   // gdk_window_move() sets position_method to POSITION_METHOD_MOVE_RESIZE
   // so we'll use plain move when popup is shown.
   if (!gtk_widget_get_mapped(mShell)) {
-    GdkWindow* window = GetToplevelGdkWindow();
-    if (window) {
+    if (GdkWindow* window = GetToplevelGdkWindow()) {
       gdk_window_move(window, aX, aY);
     }
   }
@@ -2713,7 +2710,7 @@ void nsWindow::WaylandPopupMoveImpl() {
   // anyway but we need to set it now to avoid a race condition here.
   WaylandPopupRemoveNegativePosition();
 
-  GdkWindow* gdkWindow = gtk_widget_get_window(GTK_WIDGET(mShell));
+  GdkWindow* gdkWindow = GetToplevelGdkWindow();
   if (!g_signal_handler_find(gdkWindow, G_SIGNAL_MATCH_FUNC, 0, 0, nullptr,
                              FuncToGpointer(NativeMoveResizeCallback), this)) {
     g_signal_connect(gdkWindow, "moved-to-rect",
@@ -5291,7 +5288,6 @@ void nsWindow::OnDPIChanged() {
     }
     mWidgetListener->UIResolutionChanged();
   }
-  NotifyThemeChanged(ThemeChangeKind::StyleAndLayout);
 }
 
 void nsWindow::OnCheckResize() { mPendingConfigures++; }
@@ -5319,13 +5315,14 @@ void nsWindow::OnScaleChanged(bool aNotify) {
 #endif
     return 0.0;
   }();
-  LOG("OnScaleChanged %d, %f -> %d, %f\n", int(mCeiledScaleFactor),
-      FractionalScaleFactor(), newCeiled, newFractional);
 
   if (mCeiledScaleFactor == newCeiled &&
       mFractionalScaleFactor == newFractional) {
     return;
   }
+
+  LOG("OnScaleChanged %d, %f -> %d, %f\n", int(mCeiledScaleFactor),
+      mFractionalScaleFactor, newCeiled, newFractional);
 
   mCeiledScaleFactor = newCeiled;
   mFractionalScaleFactor = newFractional;
@@ -5355,9 +5352,6 @@ void nsWindow::OnScaleChanged(bool aNotify) {
       presShell->BackingScaleFactorChanged();
     }
   }
-  // This affects style / layout because it affects system font sizes.
-  // Update menu's font size etc.
-  NotifyThemeChanged(ThemeChangeKind::StyleAndLayout);
 
   DispatchResized();
 
@@ -5876,7 +5870,6 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
 
   // and do our common creation
   mParent = aParent;
-  mCreated = true;
   // save our bounds
   mBounds = aRect;
   LOG("  mBounds: x:%d y:%d w:%d h:%d\n", mBounds.x, mBounds.y, mBounds.width,
@@ -6147,6 +6140,8 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
     LOG("    Is undecorated Window\n");
     gtk_window_set_titlebar(GTK_WINDOW(mShell), gtk_fixed_new());
     gtk_window_set_decorated(GTK_WINDOW(mShell), false);
+  } else if (mWindowType == WindowType::TopLevel) {
+    SetDrawsInTitlebar(LookAndFeel::DrawInTitlebar());
   }
 
   // Create a container to hold child windows and child GtkWidgets.
@@ -6390,6 +6385,7 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
     mGtkWindowAppName = gAppData->name;
   }
 
+  mCreated = true;
   return NS_OK;
 }
 
@@ -8894,6 +8890,23 @@ void nsWindow::SetDrawsInTitlebar(bool aState) {
     return;
   }
 
+  mDrawInTitlebar = aState;
+
+  // For unrealized (not-created yet) mShell and CSD decorations
+  // we can use a shortcut. Just set titlebar and let nsWindow::Create() do
+  // the rest.
+  if (mGtkWindowDecoration == GTK_DECORATION_CLIENT &&
+      !gtk_widget_get_realized(mShell)) {
+    LOG("    Using CSD shortcut\n");
+    MOZ_ASSERT(!mCreated);
+    if (aState) {
+      gtk_window_set_titlebar(GTK_WINDOW(mShell), gtk_fixed_new());
+    } else {
+      gtk_window_set_titlebar(GTK_WINDOW(mShell), nullptr);
+    }
+    return;
+  }
+
   if (mGtkWindowDecoration == GTK_DECORATION_SYSTEM) {
     SetWindowDecoration(aState ? BorderStyle::Border : mBorderStyle);
   } else if (mGtkWindowDecoration == GTK_DECORATION_CLIENT) {
@@ -8965,8 +8978,6 @@ void nsWindow::SetDrawsInTitlebar(bool aState) {
 
     gtk_widget_destroy(tmpWindow);
   }
-
-  mDrawInTitlebar = aState;
 
   if (mTransparencyBitmapForTitlebar) {
     if (mDrawInTitlebar && mSizeMode == nsSizeMode_Normal && !mIsTiled) {

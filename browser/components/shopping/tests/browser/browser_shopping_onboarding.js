@@ -123,6 +123,11 @@ add_task(async function test_showOnboarding_notOptedIn() {
           "multi-stage-message-slot",
           "multi-stage-message-slot showing opt-in message rendered"
         );
+
+        ok(
+          !content.document.getElementById("multi-stage-message-root").hidden,
+          "message is shown"
+        );
       });
     }
   );
@@ -148,16 +153,15 @@ add_task(async function test_hideOnboarding_optedIn() {
       actor.updateProductURL("https://example.com/product/B09TJGHL5F");
 
       await SpecialPowers.spawn(browser, [], async () => {
-        let shoppingContainer = await ContentTaskUtils.waitForCondition(
+        await ContentTaskUtils.waitForCondition(
           () => content.document.querySelector("shopping-container"),
           "shopping-container"
         );
 
-        let containerElem =
-          shoppingContainer.shadowRoot.getElementById("shopping-container");
-        let messageSlot = containerElem.getElementsByTagName("slot");
-
-        ok(!messageSlot.length, `message slot element doesn't exist`);
+        ok(
+          content.document.getElementById("multi-stage-message-root").hidden,
+          "message is hidden"
+        );
       });
     }
   );
@@ -192,11 +196,11 @@ add_task(async function test_hideOnboarding_onClose() {
           "shopping-container"
         );
         // "Not now" button
-        let secondaryButton = await ContentTaskUtils.waitForCondition(() =>
-          shoppingContainer.querySelector(".secondary")
+        let notNowButton = await ContentTaskUtils.waitForCondition(() =>
+          shoppingContainer.querySelector(".additional-cta")
         );
 
-        secondaryButton.click();
+        notNowButton.click();
 
         // Does not render shopping container onboarding message
         ok(
@@ -337,6 +341,35 @@ async function legalParagraphClickLinks() {
     }
   );
   await handleActionStubCalled;
+
+  handleActionStub.resetHistory();
+
+  handleActionStubCalled = new Promise(resolve =>
+    handleActionStub.callsFake(resolve)
+  );
+
+  await BrowserTestUtils.withNewTab(
+    {
+      url: "about:shoppingsidebar",
+      gBrowser,
+    },
+    async browser => {
+      await SpecialPowers.spawn(browser, [], async () => {
+        await ContentTaskUtils.waitForMutationCondition(
+          content.document,
+          { childList: true, subtree: true },
+          () => content.document.querySelector(".cta-paragraph a")
+        );
+        let cta = content.document.querySelector(
+          "shopping-container .cta-paragraph a"
+        );
+        // Learn More link button.
+        cta.click();
+      });
+    }
+  );
+  await handleActionStubCalled;
+
   sandbox.restore();
 }
 
@@ -367,6 +400,12 @@ add_task(async function test_linkParagraph() {
   Assert.greater(tosEvents.length, 0);
   Assert.equal(tosEvents[0].category, "shopping");
   Assert.equal(tosEvents[0].name, "surface_show_terms_clicked");
+
+  let learnMoreEvents = Glean.shopping.surfaceLearnMoreClicked.testGetValue();
+
+  Assert.greater(learnMoreEvents.length, 0);
+  Assert.equal(learnMoreEvents[0].category, "shopping");
+  Assert.equal(learnMoreEvents[0].name, "surface_learn_more_clicked");
 });
 
 add_task(async function test_onboarding_auto_activate_opt_in() {

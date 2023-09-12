@@ -339,9 +339,9 @@ void VideoCaptureModulePipeWire::ProcessBuffers() {
         spa_buffer_find_meta_data(buffer->buffer, SPA_META_Header, sizeof(*h)));
 
     struct spa_meta_videotransform* videotransform;
-    videotransform = static_cast<struct spa_meta_videotransform*>(
-        spa_buffer_find_meta_data(buffer->buffer, SPA_META_VideoTransform,
-        sizeof(*videotransform)));
+    videotransform =
+        static_cast<struct spa_meta_videotransform*>(spa_buffer_find_meta_data(
+            buffer->buffer, SPA_META_VideoTransform, sizeof(*videotransform)));
     if (videotransform) {
       VideoRotation rotation =
           VideorotationFromPipeWireTransform(videotransform->transform);

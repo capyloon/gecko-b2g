@@ -63,6 +63,8 @@ export const MultiStageProtonScreen = props => {
       negotiatedLanguage={props.negotiatedLanguage}
       langPackInstallPhase={props.langPackInstallPhase}
       forceHideStepsIndicator={props.forceHideStepsIndicator}
+      ariaRole={props.ariaRole}
+      aboveButtonStepsIndicator={props.aboveButtonStepsIndicator}
     />
   );
 };
@@ -72,6 +74,15 @@ export const ProtonScreenActionButtons = props => {
   const defaultValue = content.checkbox?.defaultValue;
 
   const [isChecked, setIsChecked] = useState(defaultValue || false);
+  const buttonRef = React.useRef(null);
+
+  const shouldFocusButton = content?.primary_button?.should_focus_button;
+
+  useEffect(() => {
+    if (shouldFocusButton) {
+      buttonRef.current?.focus();
+    }
+  }, [shouldFocusButton]);
 
   if (
     !content.primary_button &&
@@ -97,6 +108,7 @@ export const ProtonScreenActionButtons = props => {
     >
       <Localized text={content.primary_button?.label}>
         <button
+          ref={buttonRef}
           className={`${content.primary_button?.style ?? "primary"}${
             content.primary_button?.has_arrow_icon ? " arrow-icon" : ""
           }`}
@@ -403,6 +415,33 @@ export class ProtonScreen extends React.PureComponent {
     );
   }
 
+  renderOrderedContent(content) {
+    const elements = [];
+    for (const item of content) {
+      switch (item.type) {
+        case "text":
+          elements.push(
+            <LegalParagraph
+              text_content={item}
+              handleAction={this.props.handleAction}
+            />
+          );
+          break;
+        case "image":
+          elements.push(
+            this.renderPicture({
+              imageURL: item.url,
+              darkModeImageURL: item.darkModeImageURL,
+              height: item.height,
+              alt: item.alt_text,
+              className: "inline-image",
+            })
+          );
+      }
+    }
+    return <>{elements}</>;
+  }
+
   render() {
     const {
       autoAdvance,
@@ -413,6 +452,8 @@ export class ProtonScreen extends React.PureComponent {
       isLastScreen,
       isSingleScreen,
       forceHideStepsIndicator,
+      ariaRole,
+      aboveButtonStepsIndicator,
     } = this.props;
     const includeNoodles = content.has_noodles;
     // The default screen position is "center"
@@ -442,7 +483,7 @@ export class ProtonScreen extends React.PureComponent {
       <main
         className={`screen ${this.props.id || ""}
           ${screenClassName} ${textColorClass}`}
-        role="alertdialog"
+        role={ariaRole ?? "alertdialog"}
         layout={content.layout}
         pos={content.position || "center"}
         tabIndex="-1"
@@ -527,23 +568,14 @@ export class ProtonScreen extends React.PureComponent {
                   handleAction={this.props.handleAction}
                 />
               ) : null}
-              {content.inline_image
-                ? this.renderPicture({
-                    imageURL: content.inline_image.url,
-                    darkModeImageURL: content.inline_image.darkModeImageURL,
-                    height: content.inline_image.height,
-                    alt: content.inline_image.alt_text,
-                    className: "inline-image",
-                  })
+              {content.above_button_content
+                ? this.renderOrderedContent(content.above_button_content)
                 : null}
-              {content.legal_paragraph ? (
-                <LegalParagraph
-                  content={content}
-                  handleAction={this.props.handleAction}
-                />
-              ) : null}
               {this.renderContentTiles()}
               {this.renderLanguageSwitcher()}
+              {!hideStepsIndicator && aboveButtonStepsIndicator
+                ? this.renderStepsIndicator()
+                : null}
               <ProtonScreenActionButtons
                 content={content}
                 addonName={this.props.addonName}
@@ -551,7 +583,9 @@ export class ProtonScreen extends React.PureComponent {
                 activeMultiSelect={this.props.activeMultiSelect}
               />
             </div>
-            {!hideStepsIndicator ? this.renderStepsIndicator() : null}
+            {!hideStepsIndicator && !aboveButtonStepsIndicator
+              ? this.renderStepsIndicator()
+              : null}
           </div>
           {content.dismiss_button ? this.renderDismissButton() : null}
         </div>
