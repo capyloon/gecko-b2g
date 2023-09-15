@@ -67,6 +67,7 @@ add_task(async function selected_result_autofill_adaptive() {
 add_task(async function selected_result_autofill_origin() {
   await doTest(async browser => {
     await PlacesTestUtils.addVisits("https://example.com/test");
+    await PlacesFrecencyRecalculator.recalculateAnyOutdatedFrecencies();
     await openPopup("exa");
     await doEnter();
 
@@ -85,6 +86,7 @@ add_task(async function selected_result_autofill_origin() {
 add_task(async function selected_result_autofill_url() {
   await doTest(async browser => {
     await PlacesTestUtils.addVisits("https://example.com/test");
+    await PlacesFrecencyRecalculator.recalculateAnyOutdatedFrecencies();
     await openPopup("https://example.com/test");
     await doEnter();
 
@@ -269,7 +271,7 @@ add_task(async function selected_result_action() {
     await showResultByArrowDown();
     await selectRowByProvider("quickactions");
     const onLoad = BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
-    doClickSubButton(".urlbarView-quickaction-row[data-key=addons]");
+    doClickSubButton(".urlbarView-quickaction-button[data-key=addons]");
     await onLoad;
 
     assertEngagementTelemetry([

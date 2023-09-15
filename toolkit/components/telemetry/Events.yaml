@@ -1431,6 +1431,7 @@ relay_integration:
       is_relay_user: >
         Whether the user is a relay user or not.
         Only present if the object is "offer_relay"
+    release_channel_collection: opt-out
   mask_panel:
     description: >
       Panels to show the state of the email alias generation
@@ -1445,6 +1446,7 @@ relay_integration:
       error_code: >
         The error code after users click the email alias generation panel.
         When the event is successful, the error_code  is 0.
+    release_channel_collection: opt-out
   opt_in_panel:
     description: >
       Panel to opt-in Firefox Relay Integration
@@ -1455,6 +1457,7 @@ relay_integration:
     products: ["firefox"]
     record_in_processes: [main]
     notification_emails: ["passwords-dev@mozilla.org"]
+    release_channel_collection: opt-out
   pref_change:
     description: >
       Checkbox in the settings page to enable/disable relay
@@ -1465,6 +1468,7 @@ relay_integration:
     products: ["firefox"]
     record_in_processes: [main]
     notification_emails: ["passwords-dev@mozilla.org"]
+    release_channel_collection: opt-out
 
 jsonfile:
   load:
@@ -3869,7 +3873,8 @@ firefoxview:
       - main
     bug_numbers:
       - 1809661
-    expiry_version: "120"
+      - 1850885
+    expiry_version: "132"
     release_channel_collection: opt-out
   closed_tabs_open:
     objects: ["tabs"]
@@ -3989,9 +3994,25 @@ firefoxview_next:
   card_collapsed:
     objects: ["card_container"]
     description: >
-      Recorded when a card-container is collapsed
+      Recorded when a card-container is collapsed on the 'Recent browsing' page
     extra_keys:
       data_type: The type of data being collapsed in a card on the 'Recent browsing' page
+    notification_emails:
+      - firefoxview@mozilla.com
+    products:
+      - "firefox"
+    record_in_processes:
+      - main
+    bug_numbers:
+      - 1842616
+    expiry_version: "never"
+    release_channel_collection: opt-out
+  card_expanded:
+    objects: ["card_container"]
+    description: >
+      Recorded when a card-container is expanded on the 'Recent browsing' page
+    extra_keys:
+      data_type: The type of data being expanded in a card on the 'Recent browsing' page
     notification_emails:
       - firefoxview@mozilla.com
     products:
@@ -4008,6 +4029,24 @@ firefoxview_next:
       Recorded when the page/view is changed in Firefox View
     extra_keys:
       page: The short page name that the user is navigating to
+      source: Whether the page was changed via the side navigation vs the 'View all' link on cards on the Recent browsing page
+    notification_emails:
+      - firefoxview@mozilla.com
+    products:
+      - "firefox"
+    record_in_processes:
+      - main
+    bug_numbers:
+      - 1842616
+    expiry_version: "never"
+    release_channel_collection: opt-out
+  context_menu:
+    objects: ["tabs"]
+    description: >
+      Recorded when a context menu selection is made in Firefox View
+    extra_keys:
+      menu_action: The menu action the user has selected for a given tab
+      data_type: The type of data the user has used the context menu for
     notification_emails:
       - firefoxview@mozilla.com
     products:

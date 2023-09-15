@@ -5884,15 +5884,12 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
                                                  TransparencyMode::Transparent);
 
   // Figure out our parent window - only used for WindowType::Child
-  GdkWindow* parentGdkWindow = nullptr;
   nsWindow* parentnsWindow = nullptr;
 
   if (aParent) {
     parentnsWindow = static_cast<nsWindow*>(aParent);
-    parentGdkWindow = parentnsWindow->mGdkWindow;
   } else if (aNativeParent && GDK_IS_WINDOW(aNativeParent)) {
-    parentGdkWindow = GDK_WINDOW(aNativeParent);
-    parentnsWindow = get_window_for_gdk_window(parentGdkWindow);
+    parentnsWindow = get_window_for_gdk_window(GDK_WINDOW(aNativeParent));
     if (!parentnsWindow) {
       return NS_ERROR_FAILURE;
     }
@@ -6140,8 +6137,6 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
     LOG("    Is undecorated Window\n");
     gtk_window_set_titlebar(GTK_WINDOW(mShell), gtk_fixed_new());
     gtk_window_set_decorated(GTK_WINDOW(mShell), false);
-  } else if (mWindowType == WindowType::TopLevel) {
-    SetDrawsInTitlebar(LookAndFeel::DrawInTitlebar());
   }
 
   // Create a container to hold child windows and child GtkWidgets.
@@ -8892,21 +8887,6 @@ void nsWindow::SetDrawsInTitlebar(bool aState) {
 
   mDrawInTitlebar = aState;
 
-  // For unrealized (not-created yet) mShell and CSD decorations
-  // we can use a shortcut. Just set titlebar and let nsWindow::Create() do
-  // the rest.
-  if (mGtkWindowDecoration == GTK_DECORATION_CLIENT &&
-      !gtk_widget_get_realized(mShell)) {
-    LOG("    Using CSD shortcut\n");
-    MOZ_ASSERT(!mCreated);
-    if (aState) {
-      gtk_window_set_titlebar(GTK_WINDOW(mShell), gtk_fixed_new());
-    } else {
-      gtk_window_set_titlebar(GTK_WINDOW(mShell), nullptr);
-    }
-    return;
-  }
-
   if (mGtkWindowDecoration == GTK_DECORATION_SYSTEM) {
     SetWindowDecoration(aState ? BorderStyle::Border : mBorderStyle);
   } else if (mGtkWindowDecoration == GTK_DECORATION_CLIENT) {
@@ -8936,15 +8916,12 @@ void nsWindow::SetDrawsInTitlebar(bool aState) {
     gtk_widget_reparent(GTK_WIDGET(mContainer), tmpWindow);
     gtk_widget_unrealize(GTK_WIDGET(mShell));
 
-    if (aState) {
-      // Add a hidden titlebar widget to trigger CSD, but disable the default
-      // titlebar.  GtkFixed is a somewhat random choice for a simple unused
-      // widget. gtk_window_set_titlebar() takes ownership of the titlebar
-      // widget.
-      gtk_window_set_titlebar(GTK_WINDOW(mShell), gtk_fixed_new());
-    } else {
-      gtk_window_set_titlebar(GTK_WINDOW(mShell), nullptr);
-    }
+    // Add a hidden titlebar widget to trigger CSD, but disable the default
+    // titlebar.  GtkFixed is a somewhat random choice for a simple unused
+    // widget. gtk_window_set_titlebar() takes ownership of the titlebar
+    // widget.
+    gtk_window_set_titlebar(GTK_WINDOW(mShell),
+                            aState ? gtk_fixed_new() : nullptr);
 
     /* A workaround for https://bugzilla.gnome.org/show_bug.cgi?id=791081
      * gtk_widget_realize() throws:
@@ -9784,14 +9761,16 @@ void nsWindow::LockAspectRatio(bool aShouldLock) {
 nsWindow* nsWindow::GetFocusedWindow() { return gFocusWindow; }
 
 #ifdef MOZ_WAYLAND
-void nsWindow::SetEGLNativeWindowSize(
+bool nsWindow::SetEGLNativeWindowSize(
     const LayoutDeviceIntSize& aEGLWindowSize) {
   if (!GdkIsWaylandDisplay()) {
-    return;
+    return true;
   }
 
   // SetEGLNativeWindowSize() is called from renderer/compositor thread,
   // make sure nsWindow is not destroyed.
+  bool paint = false;
+
   // See NS_NATIVE_EGL_WINDOW why we can't block here.
   if (mDestroyMutex.TryLock()) {
     if (!mIsDestroyed && mContainer) {
@@ -9800,11 +9779,12 @@ void nsWindow::SetEGLNativeWindowSize(
           "%d)",
           aEGLWindowSize.width, aEGLWindowSize.height, scale,
           aEGLWindowSize.width / scale, aEGLWindowSize.height / scale);
-      moz_container_wayland_egl_window_set_size(
+      paint = moz_container_wayland_egl_window_set_size(
           mContainer, aEGLWindowSize.ToUnknownSize(), scale);
     }
     mDestroyMutex.Unlock();
   }
+  return paint;
 }
 #endif
 

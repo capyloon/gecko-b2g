@@ -109,7 +109,7 @@ mpc-1.0.3:
     description: mpc 1.0.3 source code
     fetch:
         type: static-url
-        url: http://www.multiprecision.org/downloads/mpc-1.0.3.tar.gz
+        url: https://ftp.gnu.org/gnu/mpc/mpc-1.0.3.tar.gz
         sha256: 617decc6ea09889fb08ede330917a00b16809b8db88c29c31bfbb49cbf88ecc3
         size: 669925
         gpg-signature:
@@ -216,12 +216,12 @@ wine:
         strip-components: 1
         add-prefix: wine-source/
 
-cbindgen-0.24.3:
+cbindgen-0.26.0:
     description: cbindgen source code
     fetch:
         type: git
-        repo: https://github.com/eqrion/cbindgen
-        revision: f43ccfc047a1a160267f32355c5e5e7154a2665a
+        repo: https://github.com/mozilla/cbindgen
+        revision: 703b53c06f9fe2dbc0193d67626558cfa84a0f62
 
 cctools-port:
     description: cctools-port source code
