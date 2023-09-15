@@ -263,19 +263,21 @@ class QuotaManager final : public BackgroundThreadObject {
   // centralized quota and storage handling should call this method to get
   // a directory lock which will protect client's files from being deleted
   // while they are still in use.
-  // After a lock is acquired, client is notified via the open listener's
-  // method DirectoryLockAcquired. If the lock couldn't be acquired, client
-  // gets DirectoryLockFailed notification.
-  // A lock is a reference counted object and at the time DirectoryLockAcquired
-  // is called, quota manager holds just one strong reference to it which is
-  // then immediatelly cleared by quota manager. So it's up to client to add
-  // a new reference in order to keep the lock alive.
+  // After a lock is acquired, client is notified by resolving the returned
+  // promise. If the lock couldn't be acquired, client is notified by rejecting
+  // the returned promise.
+  // A lock is a reference counted object and at the time the returned promise
+  // is resolved, there are no longer other strong references except the one
+  // held by the resolve value itself. So it's up to client to add a new
+  // reference in order to keep the lock alive.
   // Unlocking is simply done by dropping all references to the lock object.
   // In other words, protection which the lock represents dies with the lock
   // object itself.
+  RefPtr<ClientDirectoryLockPromise> OpenClientDirectory(
+      const ClientMetadata& aClientMetadata);
+
   RefPtr<ClientDirectoryLock> CreateDirectoryLock(
-      PersistenceType aPersistenceType, const OriginMetadata& aOriginMetadata,
-      Client::Type aClientType, bool aExclusive);
+      const ClientMetadata& aClientMetadata, bool aExclusive);
 
   // XXX RemoveMe once bug 1170279 gets fixed.
   RefPtr<UniversalDirectoryLock> CreateDirectoryLockInternal(
@@ -301,12 +303,23 @@ class QuotaManager final : public BackgroundThreadObject {
   template <typename P>
   void CollectPendingOriginsForListing(P aPredicate);
 
+  RefPtr<BoolPromise> InitializeStorage();
+
+  RefPtr<BoolPromise> InitializeStorage(
+      RefPtr<UniversalDirectoryLock> aDirectoryLock);
+
   bool IsStorageInitialized() const {
+    AssertIsOnOwningThread();
+
+    return mStorageInitialized;
+  }
+
+  bool IsStorageInitializedInternal() const {
     AssertIsOnIOThread();
     return static_cast<bool>(mStorageConnection);
   }
 
-  void AssertStorageIsInitialized() const
+  void AssertStorageIsInitializedInternal() const
 #ifdef DEBUG
       ;
 #else
@@ -314,7 +327,7 @@ class QuotaManager final : public BackgroundThreadObject {
   }
 #endif
 
-  nsresult EnsureStorageIsInitialized();
+  nsresult EnsureStorageIsInitializedInternal();
 
   // Returns a pair of an nsIFile object referring to the directory, and a bool
   // indicating whether the directory was newly created.
@@ -330,6 +343,8 @@ class QuotaManager final : public BackgroundThreadObject {
   nsresult EnsureTemporaryStorageIsInitialized();
 
   RefPtr<BoolPromise> ClearPrivateRepository();
+
+  RefPtr<BoolPromise> ClearStorage();
 
   RefPtr<BoolPromise> ShutdownStorage();
 
@@ -705,14 +720,13 @@ class QuotaManager final : public BackgroundThreadObject {
   LazyInitializedOnce<const nsString> mDefaultStoragePath;
   LazyInitializedOnce<const nsString> mPrivateStoragePath;
 
-  MozPromiseHolder<BoolPromise> mShutdownStoragePromiseHolder;
-
   uint64_t mTemporaryStorageLimit;
   uint64_t mTemporaryStorageUsage;
   int64_t mNextDirectoryLockId;
+  uint64_t mShutdownStorageOpCount;
+  bool mStorageInitialized;
   bool mTemporaryStorageInitialized;
   bool mCacheUsable;
-  bool mShuttingDownStorage;
 };
 
 }  // namespace mozilla::dom::quota

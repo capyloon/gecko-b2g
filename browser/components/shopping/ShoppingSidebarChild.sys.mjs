@@ -70,21 +70,43 @@ export class ShoppingSidebarChild extends RemotePageChild {
           return;
         }
 
-        let equalURIs = uri && this.#productURI?.equalsExceptRef(uri);
-        // If we have a previous product, check that the ids have changed:
-        if (!isReload && !equalURIs && this.#product && uri) {
-          let updatedProduct = ShoppingProduct.fromURL(URL.fromURI(uri));
-          if (updatedProduct?.id === this.#product.product.id) {
-            return;
-          }
-          // Otherwise, just check if we now have a new product url:
-        } else if (!isReload && equalURIs) {
+        // If we haven't reloaded, check if the URIs represent the same product
+        // as sites might change the URI after they have loaded (Bug 1852099).
+        if (!isReload && this.isSameProduct(uri, this.#productURI)) {
           return;
         }
+
         this.#productURI = uri;
         this.updateContent({ haveUpdatedURI: true, isReload });
         break;
     }
+  }
+
+  isSameProduct(newURI, currentURI) {
+    if (!newURI || !currentURI) {
+      return false;
+    }
+
+    // Check if the URIs are equal:
+    if (currentURI.equalsExceptRef(newURI)) {
+      return true;
+    }
+
+    if (!this.#product) {
+      return false;
+    }
+
+    // If the current ShoppingProduct has product info set,
+    // check if the product ids are the same:
+    let currentProduct = this.#product.product;
+    if (currentProduct) {
+      let newProduct = ShoppingProduct.fromURL(URL.fromURI(newURI));
+      if (newProduct.id === currentProduct.id) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   handleEvent(event) {
@@ -211,12 +233,31 @@ export class ShoppingSidebarChild extends RemotePageChild {
         isPolledRequestDone = true;
       }
       try {
-        if (!isPolledRequest) {
-          data = await this.#product.requestAnalysis();
+        let analysisStatus;
+        if (isPolledRequest) {
+          // Request a new analysis.
+          let { status } = await this.#product.requestCreateAnalysis();
+          analysisStatus = status;
         } else {
-          data = await this.#product.pollForAnalysisCompleted();
+          // Check if there is an analysis in progress.
+          let { status } = await this.#product.requestAnalysisCreationStatus();
+          analysisStatus = status;
+        }
+
+        if (
+          analysisStatus &&
+          (analysisStatus == "pending" || analysisStatus == "in_progress")
+        ) {
+          // TODO: Send content update to show analysis in progress message,
+          // if not already shown (Bug 1851629).
+
+          await this.#product.pollForAnalysisCompleted({
+            pollInitialWait: analysisStatus == "in_progress" ? 0 : undefined,
+          });
           isPolledRequestDone = true;
         }
+
+        data = await this.#product.requestAnalysis();
       } catch (err) {
         console.error("Failed to fetch product analysis data", err);
         data = { error: err };
@@ -225,6 +266,7 @@ export class ShoppingSidebarChild extends RemotePageChild {
       if (!canContinue(uri)) {
         return;
       }
+
       this.sendToContent("Update", {
         showOnboarding: false,
         data,
@@ -232,7 +274,7 @@ export class ShoppingSidebarChild extends RemotePageChild {
         isPolledRequestDone,
       });
 
-      if (data.error) {
+      if (!data || data.error) {
         return;
       }
 
@@ -246,9 +288,18 @@ export class ShoppingSidebarChild extends RemotePageChild {
         );
       }
 
+      if (!this.canFetchAndShowAd || !this.userHasAdsEnabled) {
+        return;
+      }
+
       this.#product.requestRecommendations().then(recommendationData => {
         // Check if the product URI or opt in changed while we waited.
-        if (uri != this.#productURI || !this.canFetchAndShowData) {
+        if (
+          uri != this.#productURI ||
+          !this.canFetchAndShowData ||
+          !this.canFetchAndShowAd ||
+          !this.userHasAdsEnabled
+        ) {
           return;
         }
 
@@ -342,6 +393,12 @@ export class ShoppingSidebarChild extends RemotePageChild {
         break;
       case "surfaceReactivatedButtonClicked":
         Glean.shopping.surfaceReactivatedButtonClicked.record();
+        break;
+      case "surfaceReviewQualityExplainerURLClicked":
+        Glean.shopping.surfaceShowQualityExplainerUrlClicked.record();
+        break;
+      case "noReviewReliabilityAvailable":
+        Glean.shopping.surfaceNoReviewReliabilityAvailable.record();
         break;
     }
   }

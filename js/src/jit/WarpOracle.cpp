@@ -586,6 +586,7 @@ AbortReasonOr<WarpScriptSnapshot*> WarpScriptOracle::createScriptSnapshot() {
 
       case JSOp::Nop:
       case JSOp::NopDestructuring:
+      case JSOp::NopIsAssignOp:
       case JSOp::TryDestructuring:
       case JSOp::Lineno:
       case JSOp::DebugLeaveLexicalEnv:
@@ -1003,7 +1004,7 @@ AbortReasonOr<bool> WarpScriptOracle::maybeInlineCall(
   // Add the inlined script to the inline script tree.
   LifoAlloc* lifoAlloc = alloc_.lifoAlloc();
   InlineScriptTree* inlineScriptTree = info_->inlineScriptTree()->addCallee(
-      &alloc_, loc.toRawBytecode(), targetScript);
+      &alloc_, loc.toRawBytecode(), targetScript, !isTrialInlined);
   if (!inlineScriptTree) {
     return abort(AbortReason::Alloc);
   }
@@ -1070,10 +1071,6 @@ AbortReasonOr<bool> WarpScriptOracle::maybeInlineCall(
   }
 
   WarpScriptSnapshot* scriptSnapshot = maybeScriptSnapshot.unwrap();
-  if (!isTrialInlined) {
-    scriptSnapshot->markIsMonomorphicInlined();
-  }
-
   oracle_->addScriptSnapshot(scriptSnapshot, icScript, targetScript->length());
 
   if (!AddOpSnapshot<WarpInlinedCall>(alloc_, snapshots, offset,

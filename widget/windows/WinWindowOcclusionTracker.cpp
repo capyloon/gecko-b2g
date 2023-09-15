@@ -27,12 +27,6 @@
 #include "transport/runnable_utils.h"
 #include "WinUtils.h"
 
-// Win 8+ (_WIN32_WINNT_WIN8)
-#ifndef EVENT_OBJECT_CLOAKED
-#  define EVENT_OBJECT_CLOAKED 0x8017
-#  define EVENT_OBJECT_UNCLOAKED 0x8018
-#endif
-
 namespace mozilla::widget {
 
 // Can be called on Main thread
@@ -347,6 +341,12 @@ void WinWindowOcclusionTracker::Ensure() {
     if (sTracker->mThread->StartWithOptions(options)) {
       // Success!
       sTracker->mHasAttemptedShutdown = false;
+
+      // Take this opportunity to ensure that mDisplayStatusObserver and
+      // mSessionChangeObserver exist. They might have failed to be
+      // created when sTracker was created.
+      sTracker->EnsureDisplayStatusObserver();
+      sTracker->EnsureSessionChangeObserver();
       return;
     }
     // Restart failed, so null out our sTracker and try again with a new
@@ -456,14 +456,20 @@ void WinWindowOcclusionTracker::EnsureDisplayStatusObserver() {
   if (mDisplayStatusObserver) {
     return;
   }
-  mDisplayStatusObserver = DisplayStatusObserver::Create(this);
+  if (StaticPrefs::
+          widget_windows_window_occlusion_tracking_display_state_enabled()) {
+    mDisplayStatusObserver = DisplayStatusObserver::Create(this);
+  }
 }
 
 void WinWindowOcclusionTracker::EnsureSessionChangeObserver() {
   if (mSessionChangeObserver) {
     return;
   }
-  mSessionChangeObserver = SessionChangeObserver::Create(this);
+  if (StaticPrefs::
+          widget_windows_window_occlusion_tracking_session_lock_enabled()) {
+    mSessionChangeObserver = SessionChangeObserver::Create(this);
+  }
 }
 
 void WinWindowOcclusionTracker::Enable(nsBaseWidget* aWindow, HWND aHwnd) {
@@ -527,14 +533,9 @@ WinWindowOcclusionTracker::WinWindowOcclusionTracker(
   MOZ_ASSERT(NS_IsMainThread());
   LOG(LogLevel::Info, "WinWindowOcclusionTracker::WinWindowOcclusionTracker()");
 
-  if (StaticPrefs::
-          widget_windows_window_occlusion_tracking_display_state_enabled()) {
-    mDisplayStatusObserver = DisplayStatusObserver::Create(this);
-  }
-  if (StaticPrefs::
-          widget_windows_window_occlusion_tracking_session_lock_enabled()) {
-    mSessionChangeObserver = SessionChangeObserver::Create(this);
-  }
+  EnsureDisplayStatusObserver();
+  EnsureSessionChangeObserver();
+
   mSerializedTaskDispatcher = new SerializedTaskDispatcher();
 }
 
