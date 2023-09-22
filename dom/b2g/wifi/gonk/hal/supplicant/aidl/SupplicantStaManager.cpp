@@ -302,6 +302,10 @@ Result_t SupplicantStaManager::SetPowerSave(bool aEnable) {
 }
 
 Result_t SupplicantStaManager::SetSuspendMode(bool aEnable) {
+  if (!mSupplicantStaIface) {
+    return CHECK_SUCCESS(false);
+  }
+
   MutexAutoLock lock(sLock);
   Status status;
   status = mSupplicantStaIface->setSuspendModeEnabled(aEnable);
