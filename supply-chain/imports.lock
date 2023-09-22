@@ -50,6 +50,13 @@ user-id = 175410
 user-login = "jschanck"
 user-name = "John Schanck"
 
+[[publisher.authenticator]]
+version = "0.4.0-alpha.22"
+when = "2023-09-19"
+user-id = 175410
+user-login = "jschanck"
+user-name = "John Schanck"
+
 [[publisher.bhttp]]
 version = "0.3.1"
 when = "2023-02-23"
@@ -472,6 +479,13 @@ user-name = "David Tolnay"
 [[publisher.smallvec]]
 version = "1.10.0"
 when = "2022-10-02"
+user-id = 2017
+user-login = "mbrubeck"
+user-name = "Matt Brubeck"
+
+[[publisher.smallvec]]
+version = "1.11.1"
+when = "2023-09-20"
 user-id = 2017
 user-login = "mbrubeck"
 user-name = "Matt Brubeck"

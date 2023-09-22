@@ -340,12 +340,12 @@ android-ndk-rs:
         repo: https://github.com/jamienicol/android-ndk-rs
         revision: 595f4e14a78371e3ab59b12f7bd8131f2ec5b4a1
 
-clang-7.0:
-    description: clang 7.0.0 source code
+clang-8.0:
+    description: clang 8.0.0 source code
     fetch:
         type: git
         repo: https://github.com/llvm/llvm-project
-        revision: 00b161b8971bc6d3cb55f13502288b8fe0dbaa42
+        revision: d2298e74235598f15594fe2c99bbac870a507c59
 
 clang-14:
     description: clang 14.0.5 source code
@@ -362,11 +362,11 @@ clang-16:
         revision: 7cbf1a2591520c2491aa35339f227775f4d3adf6
 
 clang-17:
-    description: clang 17.0.0-rc3 source code
+    description: clang 17.0.1 source code
     fetch:
         type: git
         repo: https://github.com/llvm/llvm-project
-        revision: 5bd2c0c745d4cec0efa15827d80cfb33e453d325
+        revision: e19b7dc36bc047b9eb72078d034596be766da350
 
 clang-trunk:
     description: clang main branch source code
@@ -380,13 +380,20 @@ clang-trunk:
 # We build stable rust from source so the resulting compiler acts as a nightly
 # rust compiler, allowing to use unstable features like -Zbuild-std and
 # sanitizers.
-rust-1.72.0:
-    description: Rust 1.72.0 source code
+rust-1.72.1:
+    description: Rust 1.72.1 source code
     fetch:
         type: git
         include-dot-git: true
         repo: https://github.com/rust-lang/rust/
-        revision: 5680fa18feaa87f3ff04063800aec256c3d4b4be
+        revision: d5c2e9c342b358556da91d61ed4133f6f50fc0c3
+
+wasi-sdk-11:
+    description: wasi-sdk-11 source code
+    fetch:
+        type: git
+        repo: https://github.com/WebAssembly/wasi-sdk
+        revision: ceabbfe181599bca83d81e087a229797e472c09c
 
 wasi-sdk:
     description: wasi-sdk-20 source code

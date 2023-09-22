@@ -446,6 +446,7 @@ const SHOPPING_MICROSURVEY = {
   template: "multistage",
   backdrop: "transparent",
   transitions: true,
+  UTMTerm: "survey",
   screens: [
     {
       id: "SHOPPING_MICROSURVEY_SCREEN_1",
@@ -453,6 +454,9 @@ const SHOPPING_MICROSURVEY = {
       content: {
         position: "split",
         layout: "survey",
+        steps_indicator: {
+          string_id: "shopping-onboarding-welcome-steps-indicator-label",
+        },
         title: {
           string_id: "shopping-survey-headline",
         },
@@ -474,6 +478,20 @@ const SHOPPING_MICROSURVEY = {
             navigate: true,
           },
           disabled: "hasActiveMultiSelect",
+        },
+        additional_button: {
+          label: {
+            string_id: "shopping-survey-terms-link",
+          },
+          style: "link",
+          flow: "column",
+          action: {
+            type: "OPEN_URL",
+            data: {
+              args: "https://www.mozilla.org/about/legal/terms/mozilla/?utm_source=review-checker&utm_campaign=terms-of-use-screen-1&utm_medium=in-product",
+              where: "tab",
+            },
+          },
         },
         dismiss_button: {
           action: {
@@ -535,6 +553,9 @@ const SHOPPING_MICROSURVEY = {
       content: {
         position: "split",
         layout: "survey",
+        steps_indicator: {
+          string_id: "shopping-onboarding-welcome-steps-indicator-label",
+        },
         title: {
           string_id: "shopping-survey-headline",
         },
@@ -556,6 +577,20 @@ const SHOPPING_MICROSURVEY = {
             navigate: true,
           },
           disabled: "hasActiveMultiSelect",
+        },
+        additional_button: {
+          label: {
+            string_id: "shopping-survey-terms-link",
+          },
+          style: "link",
+          flow: "column",
+          action: {
+            type: "OPEN_URL",
+            data: {
+              args: "https://www.mozilla.org/about/legal/terms/mozilla/?utm_source=review-checker&utm_campaign=terms-of-use-screen-2&utm_medium=in-product",
+              where: "tab",
+            },
+          },
         },
         dismiss_button: {
           action: {
@@ -600,6 +635,8 @@ const SHOPPING_MICROSURVEY = {
   ],
 };
 
+const OPTED_IN_TIME_PREF = "browser.shopping.experience2023.survey.optedInTime";
+
 XPCOMUtils.defineLazyPreferenceGetter(
   lazy,
   "isSurveySeen",
@@ -614,9 +651,18 @@ XPCOMUtils.defineLazyPreferenceGetter(
   0
 );
 
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "optedInTime",
+  OPTED_IN_TIME_PREF,
+  0
+);
+
 let optInDynamicContent;
 // Limit pref increase to 5 as we don't need to count any higher than that
 const MIN_VISITS_TO_SHOW_SURVEY = 5;
+// Wait 24 hours after opt in to show survey
+const MIN_TIME_AFTER_OPT_IN = 24 * 60 * 60;
 
 class AboutWelcomeShoppingChild extends AboutWelcomeChild {
   // Static state used to track session in which user opted-in
@@ -659,15 +705,33 @@ class AboutWelcomeShoppingChild extends AboutWelcomeChild {
   evaluateAndShowSurvey() {
     // Re-evaluate if we should show the survey
     // Render survey if user is opted-in and has met survey seen conditions
+    const now = Date.now() / 1000;
+    const hasBeen24HrsSinceOptin =
+      lazy.optedInTime && now - lazy.optedInTime >= MIN_TIME_AFTER_OPT_IN;
+
     this.showMicroSurvey =
       this.surveyEnabled &&
       !lazy.isSurveySeen &&
       !AboutWelcomeShoppingChild.optedInSession &&
-      lazy.pdpVisits >= MIN_VISITS_TO_SHOW_SURVEY;
+      lazy.pdpVisits >= MIN_VISITS_TO_SHOW_SURVEY &&
+      hasBeen24HrsSinceOptin;
 
     if (this.showMicroSurvey) {
       this.renderMessage();
     }
+  }
+
+  setOptInTime() {
+    const now = Date.now() / 1000;
+    this.AWSendToParent("SPECIAL_ACTION", {
+      type: "SET_PREF",
+      data: {
+        pref: {
+          name: OPTED_IN_TIME_PREF,
+          value: now,
+        },
+      },
+    });
   }
 
   handleEvent(event) {
@@ -684,8 +748,17 @@ class AboutWelcomeShoppingChild extends AboutWelcomeChild {
       return;
     }
 
+    //Store timestamp if user opts in
+    if (
+      Object.hasOwn(event.detail, "showOnboarding") &&
+      !event.detail.showOnboarding &&
+      !lazy.optedInTime
+    ) {
+      this.setOptInTime();
+    }
     // Hide the container until the user is eligible to see the survey
-    if (!lazy.isSurveySeen) {
+    // or user has just completed opt-in
+    if (!lazy.isSurveySeen || AboutWelcomeShoppingChild.optedInSession) {
       this.document.getElementById("multi-stage-message-root").hidden = true;
     }
 

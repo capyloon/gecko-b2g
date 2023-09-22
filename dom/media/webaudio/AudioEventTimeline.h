@@ -39,6 +39,66 @@ struct AudioTimelineEvent final {
     Cancel
   };
 
+  class TimeUnion {
+   public:
+    // double 0.0 is bit-identical to int64_t 0.
+    TimeUnion()
+        : mSeconds()
+#if DEBUG
+          ,
+          mIsInSeconds(true),
+          mIsInTicks(true)
+#endif
+    {
+    }
+    explicit TimeUnion(double aTime)
+        : mSeconds(aTime)
+#if DEBUG
+          ,
+          mIsInSeconds(true),
+          mIsInTicks(false)
+#endif
+    {
+    }
+    explicit TimeUnion(int64_t aTime)
+        : mTicks(aTime)
+#if DEBUG
+          ,
+          mIsInSeconds(false),
+          mIsInTicks(true)
+#endif
+    {
+    }
+
+    double operator=(double aTime) {
+#if DEBUG
+      mIsInSeconds = true;
+      mIsInTicks = true;
+#endif
+      return mSeconds = aTime;
+    }
+    int64_t operator=(int64_t aTime) {
+#if DEBUG
+      mIsInSeconds = true;
+      mIsInTicks = true;
+#endif
+      return mTicks = aTime;
+    }
+
+    template <class TimeType>
+    TimeType Get() const;
+
+   private:
+    union {
+      double mSeconds;
+      int64_t mTicks;
+    };
+#ifdef DEBUG
+    bool mIsInSeconds;
+    bool mIsInTicks;
+#endif
+  };
+
   AudioTimelineEvent(Type aType, double aTime, float aValue,
                      double aTimeConstant = 0.0, double aDuration = 0.0,
                      const float* aCurve = nullptr, uint32_t aCurveLength = 0);
@@ -47,14 +107,11 @@ struct AudioTimelineEvent final {
   ~AudioTimelineEvent();
 
   template <class TimeType>
-  TimeType Time() const;
-
-  void SetTimeInTicks(int64_t aTimeInTicks) {
-    mTimeInTicks = aTimeInTicks;
-#ifdef DEBUG
-    mTimeIsInTicks = true;
-#endif
+  TimeType Time() const {
+    return mTime.Get<TimeType>();
   }
+
+  void SetTimeInTicks(int64_t aTimeInTicks) { mTime = aTimeInTicks; }
 
   void SetCurveParams(const float* aCurve, uint32_t aCurveLength) {
     mCurveLength = aCurveLength;
@@ -80,35 +137,27 @@ struct AudioTimelineEvent final {
   RefPtr<AudioNodeTrack> mTrack;
   double mTimeConstant;
   double mDuration;
-#ifdef DEBUG
-  bool mTimeIsInTicks;
-#endif
 
  private:
-  // This member is accessed using the `Time` method, for safety.
+  // This member is accessed using the `Time` method.
   //
-  // The time for an event can either be in absolute value or in ticks.
-  // Initially the time of the event is always in absolute value.
+  // The time for an event can either be in seconds or in ticks.
+  // Initially the time of the event is always in seconds.
   // In order to convert it to ticks, call SetTimeInTicks.  Once this
   // method has been called for an event, the time cannot be converted
-  // back to absolute value.
-  union {
-    double mTime;
-    int64_t mTimeInTicks;
-  };
+  // back to seconds.
+  TimeUnion mTime;
 };
 
 template <>
-inline double AudioTimelineEvent::Time<double>() const {
-  MOZ_ASSERT(!mTimeIsInTicks);
-  return mTime;
+inline double AudioTimelineEvent::TimeUnion::Get<double>() const {
+  MOZ_ASSERT(mIsInSeconds);
+  return mSeconds;
 }
-
 template <>
-inline int64_t AudioTimelineEvent::Time<int64_t>() const {
-  MOZ_ASSERT(!NS_IsMainThread());
-  MOZ_ASSERT(mTimeIsInTicks);
-  return mTimeInTicks;
+inline int64_t AudioTimelineEvent::TimeUnion::Get<int64_t>() const {
+  MOZ_ASSERT(mIsInTicks);
+  return mTicks;
 }
 
 class AudioEventTimeline {
@@ -334,20 +383,7 @@ class AudioEventTimeline {
   uint32_t GetEventCount() const { return mEvents.Length(); }
 
   template <class TimeType>
-  void CleanupEventsOlderThan(TimeType aTime) {
-    while (mEvents.Length() > 1 && aTime > mEvents[1].Time<TimeType>()) {
-      if (mEvents[1].mType == AudioTimelineEvent::SetTarget) {
-        mSetTargetStartValue = GetValuesAtTimeHelperInternal(
-            mEvents[1].Time<TimeType>(), &mEvents[0], nullptr);
-      }
-
-      MOZ_ASSERT(!mEvents[0].mTrack,
-                 "AudioParam tracks should never be destroyed on the real-time "
-                 "thread.");
-      JS::AutoSuppressGCAnalysis suppress;
-      mEvents.RemoveElementAt(0);
-    }
-  }
+  void CleanupEventsOlderThan(TimeType aTime);
 
  private:
   template <class TimeType>
@@ -367,6 +403,10 @@ class AudioEventTimeline {
 
   static bool IsValid(double value) { return std::isfinite(value); }
 
+  template <class TimeType>
+  float ComputeSetTargetStartValue(const AudioTimelineEvent* aPreviousEvent,
+                                   TimeType aTime);
+
   // This is a sorted array of the events in the timeline.  Queries of this
   // data structure should probably be more frequent than modifications to it,
   // and that is the reason why we're using a simple array as the data
@@ -377,6 +417,7 @@ class AudioEventTimeline {
   // This is the value of this AudioParam at the end of the previous
   // event for SetTarget curves.
   float mSetTargetStartValue;
+  AudioTimelineEvent::TimeUnion mSetTargetStartTime;
 };
 
 }  // namespace dom

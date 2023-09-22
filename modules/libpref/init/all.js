@@ -157,12 +157,6 @@ pref("dom.keyboardevent.keypress.hack.use_legacy_keycode_and_charcode", "*.colla
 // Pref for end-users and policy to add additional values.
 pref("dom.keyboardevent.keypress.hack.use_legacy_keycode_and_charcode.addl", "");
 
-// Blacklist of domains of web apps which listen for non-primary click events
-// on window global or document. The format is exactly same as
-// "dom.keyboardevent.keypress.hack.dispatch_non_printable_keys". So, check its
-// explanation for the detail.
-pref("dom.mouseevent.click.hack.use_legacy_non-primary_dispatch", "");
-
 // Text recognition is a platform dependent feature, so even if this preference is
 // enabled here, the feature may not be visible in all browsers.
 pref("dom.text-recognition.enabled", true);
@@ -950,16 +944,16 @@ pref("javascript.options.mem.gc_compacting", true);
 // This only applies to the main runtime and does not affect workers.
 pref("javascript.options.mem.gc_parallel_marking", false);
 
-// JSGC_PARALLEL_MARKING_THRESHOLD_KB
+// JSGC_PARALLEL_MARKING_THRESHOLD_MB
 // Minimum heap size at which to use parallel marking, if enabled.
 #if defined(XP_WIN)
-pref("javascript.options.mem.gc_parallel_marking_threshold_kb", 20000);
+pref("javascript.options.mem.gc_parallel_marking_threshold_mb", 20);
 #elif defined(XP_MACOSX)
-pref("javascript.options.mem.gc_parallel_marking_threshold_kb", 4000);
+pref("javascript.options.mem.gc_parallel_marking_threshold_mb", 4);
 #elif defined(ANDROID)
-pref("javascript.options.mem.gc_parallel_marking_threshold_kb", 200000);
+pref("javascript.options.mem.gc_parallel_marking_threshold_mb", 200);
 #elif defined(XP_UNIX)
-pref("javascript.options.mem.gc_parallel_marking_threshold_kb", 200000);
+pref("javascript.options.mem.gc_parallel_marking_threshold_mb", 200);
 #endif
 
 // JSGC_HIGH_FREQUENCY_TIME_LIMIT
