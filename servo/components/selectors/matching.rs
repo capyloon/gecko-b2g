@@ -28,6 +28,7 @@ pub static RECOMMENDED_SELECTOR_BLOOM_FILTER_SIZE: usize = 4096;
 bitflags! {
     /// Set of flags that are set on either the element or its parent (depending
     /// on the flag) if the element could potentially match a selector.
+    #[derive(Clone, Copy)]
     pub struct ElementSelectorFlags: usize {
         /// When a child is added or removed from the parent, all the children
         /// must be restyled, because they may match :nth-last-child,
@@ -73,8 +74,8 @@ bitflags! {
 
         // The element is reached by a relative selector search in both sibling and ancestor directions.
         const RELATIVE_SELECTOR_SEARCH_DIRECTION_ANCESTOR_SIBLING =
-            Self::RELATIVE_SELECTOR_SEARCH_DIRECTION_SIBLING.bits |
-            Self::RELATIVE_SELECTOR_SEARCH_DIRECTION_ANCESTOR.bits;
+            Self::RELATIVE_SELECTOR_SEARCH_DIRECTION_SIBLING.bits() |
+            Self::RELATIVE_SELECTOR_SEARCH_DIRECTION_ANCESTOR.bits();
     }
 }
 

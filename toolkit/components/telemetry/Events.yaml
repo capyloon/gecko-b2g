@@ -3953,6 +3953,20 @@ firefoxview:
       - 1779642
     expiry_version: "never"
     release_channel_collection: opt-out
+  tab_selected:
+    objects: ["toolbarbutton"]
+    description: >
+      Recorded when the Firefox View tab is clicked
+    notification_emails:
+      - firefoxview@mozilla.com
+    products:
+      - "firefox"
+    record_in_processes:
+      - main
+    bug_numbers:
+      - 1852989
+    expiry_version: "never"
+    release_channel_collection: opt-out
 
 firefoxview_next:
   recently_closed:
@@ -4107,6 +4121,8 @@ firefoxview_next:
     objects: ["tabs"]
     description: >
       Recorded when a synced tab is clicked
+    extra_keys:
+      page: The short page name where the synced tab was clicked
     notification_emails:
       - firefoxview@mozilla.com
     products:
@@ -4115,6 +4131,80 @@ firefoxview_next:
       - main
     bug_numbers:
       - 1833671
+    expiry_version: "never"
+    release_channel_collection: opt-out
+  history:
+    objects: ["visits"]
+    description: >
+      Recorded when a history tab is clicked
+    notification_emails:
+      - firefoxview@mozilla.com
+    products:
+      - "firefox"
+    record_in_processes:
+      - main
+    bug_numbers:
+      - 1842616
+    expiry_version: "never"
+    release_channel_collection: opt-out
+  sort_history:
+    objects: ["tabs"]
+    description: >
+      Recorded when the sort option is changed for History in Firefox View
+    extra_keys:
+      sort_type: The type of sort the user has switched to
+    notification_emails:
+      - firefoxview@mozilla.com
+    products:
+      - "firefox"
+    record_in_processes:
+      - main
+    bug_numbers:
+      - 1833674
+    expiry_version: "never"
+    release_channel_collection: opt-out
+  show_all_history:
+    objects: ["tabs"]
+    description: >
+      Recorded when the 'Show all history' button is clicked on the History page in Firefox View
+    notification_emails:
+      - firefoxview@mozilla.com
+    products:
+      - "firefox"
+    record_in_processes:
+      - main
+    bug_numbers:
+      - 1833674
+    expiry_version: "never"
+    release_channel_collection: opt-out
+  open_tab:
+    objects: ["tabs"]
+    description: Recorded when an open tab is clicked
+    extra_keys:
+      page: The short page name where the open tab was clicked
+      window: The window the open tab belongs to
+    notification_emails:
+      - firefoxview@mozilla.com
+    products:
+      - "firefox"
+    record_in_processes:
+      - main
+    bug_numbers:
+      - 1833669
+    expiry_version: "never"
+    release_channel_collection: opt-out
+  tab_selected:
+    objects: ["toolbarbutton"]
+    description: >
+      Recorded when the Firefox View tab is clicked
+    notification_emails:
+      - firefoxview@mozilla.com
+    products:
+      - "firefox"
+    record_in_processes:
+      - main
+    bug_numbers:
+      - 1852989
     expiry_version: "never"
     release_channel_collection: opt-out
 

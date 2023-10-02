@@ -482,9 +482,9 @@ static void ReleaseValue(T* aPropertyValue) {
     return nsQueryFrame::class##_id;                                           \
   }
 
-#define NS_IMPL_FRAMEARENA_HELPERS(class)                             \
-  void* class ::operator new(size_t sz, mozilla::PresShell* aShell) { \
-    return aShell->AllocateFrame(nsQueryFrame::class##_id, sz);       \
+#define NS_IMPL_FRAMEARENA_HELPERS(class)                              \
+  void* class ::operator new(size_t sz, mozilla::PresShell * aShell) { \
+    return aShell->AllocateFrame(nsQueryFrame::class##_id, sz);        \
   }
 
 #define NS_DECL_ABSTRACT_FRAME(class)                                         \
@@ -1322,6 +1322,17 @@ class nsIFrame : public nsQueryFrame {
     return nullptr;
   }
 
+  // Returns the page name based on style information for this frame, or null
+  // if the value is auto.
+  const nsAtom* GetStylePageName() const {
+    const mozilla::StylePageName& pageName = StylePage()->mPage;
+    if (pageName.IsPageName()) {
+      return pageName.AsPageName().AsAtom();
+    }
+    MOZ_ASSERT(pageName.IsAuto(), "Impossible page name");
+    return nullptr;
+  }
+
  private:
   // The value that the CSS page-name "auto" keyword resolves to for children
   // of this frame.
@@ -1576,6 +1587,15 @@ class nsIFrame : public nsQueryFrame {
                                                  const nsFontMetrics&) const;
   // Gets the page-name value to be used for the page that contains this frame
   // during paginated reflow.
+  // This only inspects the first in-flow child of this frame, and if that
+  // is a container frame then its first in-flow child, until it reaches the
+  // deepest child of the tree.
+  // This will resolve auto values, including the case where no frame has a
+  // page-name set in which case it will return the empty atom. It will never
+  // return null.
+  // This is intended to be used either on the root frame to find the first
+  // page's page-name, or on a newly created continuation to find what the new
+  // page's page-name will be.
   const nsAtom* ComputePageValue() const MOZ_NONNULL_RETURN;
 
   ///////////////////////////////////////////////////////////////////////////////

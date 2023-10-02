@@ -24,6 +24,10 @@ import "chrome://browser/content/shopping/unanalyzed.mjs";
 // eslint-disable-next-line import/no-unassigned-import
 import "chrome://browser/content/shopping/recommended-ad.mjs";
 
+// The number of pixels that must be scrolled from the
+// top of the sidebar to show the header box shadow.
+const HEADER_SCROLL_PIXEL_OFFSET = 8;
+
 export class ShoppingContainer extends MozLitElement {
   static properties = {
     data: { type: Object },
@@ -36,6 +40,7 @@ export class ShoppingContainer extends MozLitElement {
     adsEnabled: { type: Boolean },
     adsEnabledByUser: { type: Boolean },
     isAnalysisInProgress: { type: Boolean },
+    isOverflow: { type: Boolean },
   };
 
   static get queries() {
@@ -64,6 +69,7 @@ export class ShoppingContainer extends MozLitElement {
     window.document.addEventListener("ReanalysisRequested", this);
     window.document.addEventListener("ReportedProductAvailable", this);
     window.document.addEventListener("adsEnabledByUserChanged", this);
+    window.document.addEventListener("scroll", this);
 
     window.dispatchEvent(
       new CustomEvent("ContentReady", {
@@ -85,6 +91,9 @@ export class ShoppingContainer extends MozLitElement {
     // If we're not opted in or there's no shopping URL in the main browser,
     // the actor will pass `null`, which means this will clear out any existing
     // content in the sidebar.
+    if (!this.productUrl && productUrl && data) {
+      this.firstAnalysis = true;
+    }
     this.data = data;
     this.showOnboarding = showOnboarding;
     this.productUrl = productUrl;
@@ -103,6 +112,7 @@ export class ShoppingContainer extends MozLitElement {
       case "NewAnalysisRequested":
       case "ReanalysisRequested":
         this.isAnalysisInProgress = true;
+        this.firstAnalysis = false;
         this.analysisEvent = {
           type: event.type,
           productUrl: this.productUrl,
@@ -132,6 +142,10 @@ export class ShoppingContainer extends MozLitElement {
         break;
       case "adsEnabledByUserChanged":
         this.adsEnabledByUser = event.detail?.adsEnabledByUser;
+        break;
+      case "scroll":
+        let scrollYPosition = window.scrollY;
+        this.isOverflow = scrollYPosition > HEADER_SCROLL_PIXEL_OFFSET;
         break;
     }
   }
@@ -190,14 +204,16 @@ export class ShoppingContainer extends MozLitElement {
     }
 
     if (this.data.needs_analysis) {
-      if (!this.data.product_id) {
-        // Product is not yet registered to our db and thus we cannot show any data.
+      let notEnoughReviews = !this.data.grade || !this.data.adjusted_rating;
+      if (!this.data.product_id || (this.firstAnalysis && notEnoughReviews)) {
+        // Product is either new to us or (bug 1848695) it's the initial page load of a product
+        // with not enough reviews.
         return html`<unanalyzed-product-card
           productUrl=${ifDefined(this.productUrl)}
         ></unanalyzed-product-card>`;
       }
 
-      if (!this.data.grade || !this.data.adjusted_rating) {
+      if (notEnoughReviews) {
         // We already saw and tried to analyze this product before, but there are not enough reviews
         // to make a detailed analysis.
         return html`<shopping-message-bar
@@ -244,7 +260,7 @@ export class ShoppingContainer extends MozLitElement {
         id="loading-wrapper"
         data-l10n-id="shopping-a11y-loading"
         role="img"
-        ${animate ? "class='animate'" : ""}
+        class=${animate ? "animate" : ""}
       >
         <div class="loading-box medium"></div>
         <div class="loading-box medium"></div>
@@ -265,8 +281,15 @@ export class ShoppingContainer extends MozLitElement {
         rel="stylesheet"
         href="chrome://global/skin/in-content/common.css"
       />
+      <link
+        rel="stylesheet"
+        href="chrome://browser/content/shopping/shopping-page.css"
+      />
       <div id="shopping-container">
-        <div id="header-wrapper">
+        <div
+          id="header-wrapper"
+          class=${this.isOverflow ? "shopping-header-overflow" : ""}
+        >
           <header id="shopping-header" data-l10n-id="shopping-a11y-header">
             <h1
               id="shopping-header-title"

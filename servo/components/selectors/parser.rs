@@ -77,6 +77,7 @@ fn to_ascii_lowercase(s: &str) -> Cow<str> {
 
 bitflags! {
     /// Flags that indicate at which point of parsing a selector are we.
+    #[derive(Copy, Clone)]
     struct SelectorParsingState: u8 {
         /// Whether we should avoid adding default namespaces to selectors that
         /// aren't type or universal selectors.
@@ -1667,6 +1668,7 @@ pub struct RelativeSelector<Impl: SelectorImpl> {
 
 bitflags! {
     /// Composition of combinators in a given selector, not traversing selectors of pseudoclasses.
+    #[derive(Clone, Debug, Eq, PartialEq)]
     struct CombinatorComposition: u8 {
         const DESCENDANTS = 1 << 0;
         const SIBLINGS = 1 << 1;
@@ -2291,9 +2293,7 @@ impl<Impl: SelectorImpl> ToCss for Component<Impl> {
                 dest.write_char('[')?;
                 local_name.to_css(dest)?;
                 operator.to_css(dest)?;
-                dest.write_char('"')?;
                 value.to_css(dest)?;
-                dest.write_char('"')?;
                 match case_sensitivity {
                     ParsedCaseSensitivity::CaseSensitive |
                     ParsedCaseSensitivity::AsciiCaseInsensitiveIfInHtmlElementInHtmlDocument => {},
@@ -2397,9 +2397,7 @@ impl<Impl: SelectorImpl> ToCss for AttrSelectorWithOptionalNamespace<Impl> {
                 ref value,
             } => {
                 operator.to_css(dest)?;
-                dest.write_char('"')?;
                 value.to_css(dest)?;
-                dest.write_char('"')?;
                 match case_sensitivity {
                     ParsedCaseSensitivity::CaseSensitive |
                     ParsedCaseSensitivity::AsciiCaseInsensitiveIfInHtmlElementInHtmlDocument => {},
@@ -3490,7 +3488,9 @@ pub mod tests {
         {
             use std::fmt::Write;
 
-            write!(cssparser::CssStringWriter::new(dest), "{}", &self.0)
+            dest.write_char('"')?;
+            write!(cssparser::CssStringWriter::new(dest), "{}", &self.0)?;
+            dest.write_char('"')
         }
     }
 

@@ -9,82 +9,108 @@
 
 #include "mozilla/ErrorResult.h"
 
-static float LinearInterpolate(double t0, float v0, double t1, float v1,
-                               double t) {
-  return v0 + (v1 - v0) * ((t - t0) / (t1 - t0));
-}
+using mozilla::Span;
 
-static float ExponentialInterpolate(double t0, float v0, double t1, float v1,
-                                    double t) {
-  return v0 * fdlibm_powf(v1 / v0, (t - t0) / (t1 - t0));
-}
-
-static float ExponentialApproach(double t0, double v0, float v1,
-                                 double timeConstant, double t) {
-  if (!mozilla::dom::WebAudioUtils::FuzzyEqual(timeConstant, 0.0)) {
-    return v1 + (v0 - v1) * fdlibm_expf(-(t - t0) / timeConstant);
-  } else {
-    return v1;
+// v1 and v0 are passed from float variables but converted to double for
+// double precision interpolation.
+static void FillLinearRamp(double aBufferStartTime, Span<float> aBuffer,
+                           double t0, double v0, double t1, double v1) {
+  double bufferStartDelta = aBufferStartTime - t0;
+  double gradient = (v1 - v0) / (t1 - t0);
+  for (size_t i = 0; i < aBuffer.Length(); ++i) {
+    double v = v0 + (bufferStartDelta + static_cast<double>(i)) * gradient;
+    aBuffer[i] = static_cast<float>(v);
   }
 }
 
-static float ExtractValueFromCurve(double startTime, float* aCurve,
-                                   uint32_t aCurveLength, double duration,
-                                   double t) {
-  if (t >= startTime + duration) {
-    // After the duration, return the last curve value
-    return aCurve[aCurveLength - 1];
+static void FillExponentialRamp(double aBufferStartTime, Span<float> aBuffer,
+                                double t0, float v0, double t1, float v1) {
+  float ratio = v1 / v0;
+  if (v0 == 0.f || ratio < 0.f) {
+    std::fill_n(aBuffer.Elements(), aBuffer.Length(), v0);
+    return;
   }
-  double ratio = std::max((t - startTime) / duration, 0.0);
-  if (ratio >= 1.0) {
-    return aCurve[aCurveLength - 1];
+  for (size_t i = 0; i < aBuffer.Length(); ++i) {
+    double exponent =
+        (aBufferStartTime - t0 + static_cast<double>(i)) / (t1 - t0);
+    aBuffer[i] = v0 * fdlibm_powf(v1 / v0, static_cast<float>(exponent));
   }
-  uint32_t current = uint32_t(floor((aCurveLength - 1) * ratio));
-  uint32_t next = current + 1;
-  double step = duration / double(aCurveLength - 1);
-  if (next < aCurveLength) {
-    double t0 = current * step;
-    double t1 = next * step;
-    return LinearInterpolate(t0, aCurve[current], t1, aCurve[next],
-                             t - startTime);
-  } else {
-    return aCurve[current];
+}
+
+template <typename TimeType, typename DurationType>
+static size_t LimitedCountForDuration(size_t aMax, DurationType aDuration);
+
+template <>
+size_t LimitedCountForDuration<double>(size_t aMax, double aDuration) {
+  // aDuration is in seconds, so tick arithmetic is inappropriate,
+  // and unnecessary.
+  // GetValuesAtTime() is not available, so at most one value is fetched.
+  MOZ_ASSERT(aMax <= 1);
+  return aMax;
+}
+template <>
+size_t LimitedCountForDuration<int64_t>(size_t aMax, int64_t aDuration) {
+  MOZ_ASSERT(aDuration >= 0);
+  // int64_t aDuration is in ticks.
+  // On 32-bit systems, aDuration may be larger than SIZE_MAX.
+  // Determine the larger with int64_t to avoid truncating before the
+  // comparison.
+  return static_cast<int64_t>(aMax) <= aDuration
+             ? aMax
+             : static_cast<size_t>(aDuration);
+}
+template <>
+size_t LimitedCountForDuration<int64_t>(size_t aMax, double aDuration) {
+  MOZ_ASSERT(aDuration >= 0);
+  // double aDuration is in ticks.
+  // AudioTimelineEvent::mDuration may be larger than INT64_MAX.
+  // On 32-bit systems, mDuration may be larger than SIZE_MAX.
+  // Determine the larger with double to avoid truncating before the
+  // comparison.
+  return static_cast<double>(aMax) <= aDuration
+             ? aMax
+             : static_cast<size_t>(aDuration);
+}
+
+static float* NewCurveCopy(Span<const float> aCurve) {
+  if (aCurve.Length() == 0) {
+    return nullptr;
   }
+
+  float* curve = new float[aCurve.Length()];
+  mozilla::PodCopy(curve, aCurve.Elements(), aCurve.Length());
+  return curve;
 }
 
 namespace mozilla::dom {
 
 AudioTimelineEvent::AudioTimelineEvent(Type aType, double aTime, float aValue,
-                                       double aTimeConstant, double aDuration,
-                                       const float* aCurve,
-                                       uint32_t aCurveLength)
+                                       double aTimeConstant)
     : mType(aType),
-      mCurve(nullptr),
+      mValue(aValue),
       mTimeConstant(aTimeConstant),
+      mPerTickRatio(std::numeric_limits<double>::quiet_NaN()),
+      mTime(aTime) {}
+
+AudioTimelineEvent::AudioTimelineEvent(Type aType,
+                                       const nsTArray<float>& aValues,
+                                       double aStartTime, double aDuration)
+    : mType(aType),
+      mCurveLength(aValues.Length()),
+      mCurve(NewCurveCopy(aValues)),
       mDuration(aDuration),
-      mTime(aTime) {
-  if (aType == AudioTimelineEvent::SetValueCurve) {
-    SetCurveParams(aCurve, aCurveLength);
-  } else {
-    mValue = aValue;
-  }
+      mTime(aStartTime) {
+  MOZ_ASSERT(aType == AudioTimelineEvent::SetValueCurve);
 }
 
-AudioTimelineEvent::AudioTimelineEvent(AudioNodeTrack* aTrack)
-    : mType(Track),
-      mCurve(nullptr),
-      mTrack(aTrack),
-      mTimeConstant(0.0),
-      mDuration(0.0),
-      mTime(0.0) {}
-
-AudioTimelineEvent::AudioTimelineEvent(const AudioTimelineEvent& rhs) {
+// cppcoreguidelines-pro-type-member-init does not know PodCopy().
+// NOLINTNEXTLINE(cppcoreguidelines-pro-type-member-init)
+AudioTimelineEvent::AudioTimelineEvent(const AudioTimelineEvent& rhs)
+    : mType(rhs.mType) {
   PodCopy(this, &rhs, 1);
 
   if (rhs.mType == AudioTimelineEvent::SetValueCurve) {
-    SetCurveParams(rhs.mCurve, rhs.mCurveLength);
-  } else if (rhs.mType == AudioTimelineEvent::Track) {
-    new (&mTrack) decltype(mTrack)(rhs.mTrack);
+    mCurve = NewCurveCopy(Span(rhs.mCurve, rhs.mCurveLength));
   }
 }
 
@@ -95,11 +121,132 @@ AudioTimelineEvent::~AudioTimelineEvent() {
 }
 
 template <class TimeType>
+double AudioTimelineEvent::EndTime() const {
+  MOZ_ASSERT(mType != AudioTimelineEvent::SetTarget);
+  if (mType == AudioTimelineEvent::SetValueCurve) {
+    return Time<TimeType>() + mDuration;
+  }
+  return Time<TimeType>();
+};
+
+float AudioTimelineEvent::EndValue() const {
+  if (mType == AudioTimelineEvent::SetValueCurve) {
+    return mCurve[mCurveLength - 1];
+  }
+  return mValue;
+};
+
+void AudioTimelineEvent::ConvertToTicks(AudioNodeTrack* aDestination) {
+  mTime = aDestination->SecondsToNearestTrackTime(mTime.Get<double>());
+  switch (mType) {
+    case SetTarget:
+      mTimeConstant *= aDestination->mSampleRate;
+      // exp(-1/timeConstant) is usually very close to 1, but its effect
+      // depends on the difference from 1 and rounding errors would
+      // accumulate, so use double precision to retain precision in the
+      // difference.  Single precision expm1f() would be sufficient, but the
+      // arithmetic in AudioTimelineEvent::FillTargetApproach() is simpler
+      // with exp().
+      mPerTickRatio =
+          mTimeConstant == 0.0 ? 0.0 : fdlibm_exp(-1.0 / mTimeConstant);
+
+      break;
+    case SetValueCurve:
+      mDuration *= aDestination->mSampleRate;
+      break;
+    default:
+      break;
+  }
+}
+
+template <class TimeType>
+void AudioTimelineEvent::FillTargetApproach(TimeType aBufferStartTime,
+                                            Span<float> aBuffer,
+                                            double v0) const {
+  MOZ_ASSERT(mType == SetTarget);
+  MOZ_ASSERT(aBuffer.Length() >= 1);
+  double v1 = mValue;
+  double vDelta = v0 - v1;
+  if (vDelta == 0.0 || mTimeConstant == 0.0) {
+    std::fill_n(aBuffer.Elements(), aBuffer.Length(), mValue);
+    return;
+  }
+
+  // v(t) = v1 + vDelta(t) where vDelta(t) = (v0-v1) * e^(-(t-t0)/timeConstant).
+  // Calculate the value for the first element in the buffer using this
+  // formulation.
+  vDelta *= fdlibm_expf(-(aBufferStartTime - Time<TimeType>()) / mTimeConstant);
+  for (size_t i = 0; true;) {
+    aBuffer[i] = static_cast<float>(v1 + vDelta);
+    ++i;
+    if (i == aBuffer.Length()) {
+      return;
+    }
+    // For other buffer elements, use the pre-computed exp(-1/timeConstant)
+    // for the inter-tick ratio of the difference from the target.
+    // vDelta(t+1) = vDelta(t) * e^(-1/timeConstant)
+    vDelta *= mPerTickRatio;
+  }
+}
+
+static_assert(TRACK_TIME_MAX >> FloatingPoint<double>::kSignificandWidth == 0,
+              "double precision must be exact for integer tick counts");
+template <class TimeType>
+void AudioTimelineEvent::FillFromValueCurve(TimeType aBufferStartTime,
+                                            Span<float> aBuffer) const {
+  MOZ_ASSERT(mType == SetValueCurve);
+  double curveStartTime = Time<TimeType>();
+  MOZ_ASSERT(aBufferStartTime >= curveStartTime);
+  MOZ_ASSERT(aBufferStartTime - curveStartTime <= mDuration);
+  MOZ_ASSERT((std::is_same<TimeType, int64_t>::value) || aBuffer.Length() == 1);
+  MOZ_ASSERT((!std::is_same<TimeType, int64_t>::value) ||
+             aBufferStartTime - curveStartTime + aBuffer.Length() - 1 <=
+                 mDuration);
+  uint32_t stepCount = mCurveLength - 1;
+  double timeStep = mDuration / stepCount;
+
+  for (size_t fillStart = 0; fillStart < aBuffer.Length();) {
+    // Find the curve sample index, spec'd as `k`, corresponding to a time less
+    // than or equal to the first buffer element to be filled.
+    double stepPos =
+        (aBufferStartTime + fillStart - curveStartTime) / mDuration * stepCount;
+    // GetValuesAtTimeHelperInternal() calls this only when
+    // aBufferStartTime + fillStart - curveStartTime <= mDuration.
+    MOZ_ASSERT(stepPos >= 0 && stepPos <= UINT32_MAX - 1);
+    uint32_t currentNode = floor(stepPos);
+    if (currentNode >= stepCount) {
+      auto remaining = aBuffer.From(fillStart);
+      std::fill_n(remaining.Elements(), remaining.Length(), mCurve[stepCount]);
+      return;
+    }
+
+    // Linearly interpolate to fill the buffer elements for any ticks between
+    // curve samples k and k + 1 inclusive.
+    double tCurrent = curveStartTime + currentNode * timeStep;
+    uint32_t nextNode = currentNode + 1;
+    double tNext = curveStartTime + nextNode * timeStep;
+    // The first buffer index that cannot be filled with these curve samples
+    size_t fillEnd = LimitedCountForDuration<TimeType>(
+        aBuffer.Length(),
+        // This parameter is used only when time is in ticks:
+        // If tNext aligns exactly with a tick then fill to tNext, thus
+        // ensuring that fillStart is advanced even when timeStep is so small
+        // that tNext == tCurrent.
+        floor(tNext - aBufferStartTime) + 1.0);
+    TimeType fillStartTime =
+        aBufferStartTime + static_cast<TimeType>(fillStart);
+    FillLinearRamp(fillStartTime, aBuffer.FromTo(fillStart, fillEnd), tCurrent,
+                   mCurve[currentNode], tNext, mCurve[nextNode]);
+    fillStart = fillEnd;
+  }
+}
+
+template <class TimeType>
 float AudioEventTimeline::ComputeSetTargetStartValue(
     const AudioTimelineEvent* aPreviousEvent, TimeType aTime) {
   mSetTargetStartTime = aTime;
-  mSetTargetStartValue =
-      GetValuesAtTimeHelperInternal(aTime, aPreviousEvent, nullptr);
+  GetValuesAtTimeHelperInternal(aTime, Span(&mSetTargetStartValue, 1),
+                                aPreviousEvent, nullptr);
   return mSetTargetStartValue;
 }
 
@@ -112,38 +259,46 @@ void AudioEventTimeline::CleanupEventsOlderThan(TimeType aTime) {
     return aEvent->Time<TimeType>();
   };
 
+  if (mSimpleValue.isSome()) {
+    return;  // already only a single event
+  }
+
   // Find first event to keep.  Keep one event prior to aTime.
   auto begin = mEvents.cbegin();
   auto end = mEvents.cend();
   auto event = begin + 1;
   for (; event < end && aTime > TimeOf(event); ++event) {
-    MOZ_ASSERT(!(event - 1)->mTrack,
-               "AudioParam tracks should never be destroyed on the real-time "
-               "thread.");
   }
   auto firstToKeep = event - 1;
+
+  if (firstToKeep->mType != AudioTimelineEvent::SetTarget) {
+    // The value is constant if there is a single remaining non-SetTarget event
+    // that has already passed.
+    if (end - firstToKeep == 1 && aTime >= firstToKeep->EndTime<TimeType>()) {
+      mSimpleValue.emplace(firstToKeep->EndValue());
+    }
+  } else {
+    // The firstToKeep event is a SetTarget.  Set its initial value if
+    // not already set.  First find the most recent event where the value at
+    // the end time of the event is known, either from the event or for
+    // SetTarget events because it has already been calculated.  This may not
+    // have been calculated if GetValuesAtTime() was not called for the start
+    // time of the SetTarget event.
+    for (event = firstToKeep;
+         event > begin && event->mType == AudioTimelineEvent::SetTarget &&
+         TimeOf(event) > mSetTargetStartTime.Get<TimeType>();
+         --event) {
+    }
+    // Compute SetTarget start times.
+    for (; event < firstToKeep; ++event) {
+      MOZ_ASSERT((event + 1)->mType == AudioTimelineEvent::SetTarget);
+      ComputeSetTargetStartValue(&*event, TimeOf(event + 1));
+    }
+  }
   if (firstToKeep == begin) {
     return;
   }
 
-  // If the firstToKeep event is a SetTarget, then set its initial value if
-  // not already set.  First find the most recent event where the value at the
-  // end time of the event is known, either from the event or for SetTarget
-  // events because it has already been calculated.  This may not have been
-  // calculated if GetValuesAtTime() was not called for the start time of the
-  // SetTarget event.
-  for (event = firstToKeep;
-       event > begin && event->mType == AudioTimelineEvent::SetTarget &&
-       TimeOf(event) > mSetTargetStartTime.Get<TimeType>();
-       --event) {
-  }
-  // Compute SetTarget start times.
-  for (; event < firstToKeep; ++event) {
-    MOZ_ASSERT((event + 1)->mType == AudioTimelineEvent::SetTarget);
-    ComputeSetTargetStartValue(&*event, TimeOf(event + 1));
-  }
-
-  JS::AutoSuppressGCAnalysis suppress;  // for null mTrack
   mEvents.RemoveElementsRange(begin, firstToKeep);
 }
 
@@ -166,7 +321,7 @@ void AudioEventTimeline::GetValuesAtTimeHelper(TimeType aTime, float* aBuffer,
   // curves.
   CleanupEventsOlderThan(aTime);
 
-  for (size_t bufferIndex = 0; bufferIndex < aSize; ++bufferIndex, ++aTime) {
+  for (size_t bufferIndex = 0; bufferIndex < aSize;) {
     bool timeMatchesEventIndex = false;
     const AudioTimelineEvent* next;
     for (;; ++eventIndex) {
@@ -199,9 +354,17 @@ void AudioEventTimeline::GetValuesAtTimeHelper(TimeType aTime, float* aBuffer,
     if (timeMatchesEventIndex) {
       // The time matches one of the events exactly.
       MOZ_ASSERT(TimesEqual(aTime, TimeOf(mEvents[eventIndex - 1])));
+      ++bufferIndex;
+      ++aTime;
     } else {
-      aBuffer[bufferIndex] =
-          GetValuesAtTimeHelperInternal(aTime, previous, next);
+      size_t count = aSize - bufferIndex;
+      if (next) {
+        count = LimitedCountForDuration<TimeType>(count, TimeOf(*next) - aTime);
+      }
+      GetValuesAtTimeHelperInternal(aTime, Span(aBuffer + bufferIndex, count),
+                                    previous, next);
+      bufferIndex += count;
+      aTime += static_cast<TimeType>(count);
     }
   }
 }
@@ -221,103 +384,88 @@ float AudioEventTimeline::GetValueAtTimeOfEvent(
       // Start the curve, from the last value of the previous event.
       return ComputeSetTargetStartValue(aPrevious, time);
     case AudioTimelineEvent::SetValueCurve:
-      // SetValueCurve events can be handled no matter what their event
-      // node is (if they have one)
-      return ExtractValueFromCurve(time, aEvent->mCurve, aEvent->mCurveLength,
-                                   aEvent->mDuration, time);
-      break;
+      return aEvent->StartValue();
     default:
       // For other event types
-      return aEvent->mValue;
+      return aEvent->NominalValue();
   }
 }
 
 template <class TimeType>
-float AudioEventTimeline::GetValuesAtTimeHelperInternal(
-    TimeType aTime, const AudioTimelineEvent* aPrevious,
-    const AudioTimelineEvent* aNext) {
+void AudioEventTimeline::GetValuesAtTimeHelperInternal(
+    TimeType aStartTime, Span<float> aBuffer,
+    const AudioTimelineEvent* aPrevious, const AudioTimelineEvent* aNext) {
+  MOZ_ASSERT(aBuffer.Length() >= 1);
+  MOZ_ASSERT((std::is_same<TimeType, int64_t>::value) || aBuffer.Length() == 1);
+
   // If the requested time is before all of the existing events
   if (!aPrevious) {
-    return mValue;
+    std::fill_n(aBuffer.Elements(), aBuffer.Length(), mDefaultValue);
+    return;
   }
 
-  // If this event is a curve event, this returns the end time of the curve.
-  // Otherwise, this returns the time of the event.
   auto TimeOf = [](const AudioTimelineEvent* aEvent) -> TimeType {
-    if (aEvent->mType == AudioTimelineEvent::SetValueCurve) {
-      return aEvent->Time<TimeType>() + aEvent->mDuration;
-    }
     return aEvent->Time<TimeType>();
   };
-
-  // Value for an event. For a ValueCurve event, this is the value of the last
-  // element of the curve.
-  auto ValueOf = [](const AudioTimelineEvent* aEvent) -> float {
-    if (aEvent->mType == AudioTimelineEvent::SetValueCurve) {
-      return aEvent->mCurve[aEvent->mCurveLength - 1];
-    }
-    return aEvent->mValue;
+  auto EndTimeOf = [](const AudioTimelineEvent* aEvent) -> double {
+    return aEvent->EndTime<TimeType>();
   };
 
   // SetTarget nodes can be handled no matter what their next node is (if
   // they have one)
   if (aPrevious->mType == AudioTimelineEvent::SetTarget) {
-    return ExponentialApproach(TimeOf(aPrevious), mSetTargetStartValue,
-                               ValueOf(aPrevious), aPrevious->mTimeConstant,
-                               aTime);
+    aPrevious->FillTargetApproach(aStartTime, aBuffer, mSetTargetStartValue);
+    return;
   }
 
   // SetValueCurve events can be handled no matter what their next node is
-  // (if they have one), when aTime is in the curve region.
-  if (aPrevious->mType == AudioTimelineEvent::SetValueCurve &&
-      aTime <= aPrevious->Time<TimeType>() + aPrevious->mDuration) {
-    return ExtractValueFromCurve(aPrevious->Time<TimeType>(), aPrevious->mCurve,
-                                 aPrevious->mCurveLength, aPrevious->mDuration,
-                                 aTime);
+  // (if they have one), when aStartTime is in the curve region.
+  if (aPrevious->mType == AudioTimelineEvent::SetValueCurve) {
+    double remainingDuration =
+        TimeOf(aPrevious) - aStartTime + aPrevious->Duration();
+    if (remainingDuration >= 0.0) {
+      // aBuffer.Length() is 1 if remainingDuration is not in ticks.
+      size_t count = LimitedCountForDuration<TimeType>(
+          aBuffer.Length(),
+          // This parameter is used only when time is in ticks:
+          // Fill the last tick in the curve before possible ramps below.
+          floor(remainingDuration) + 1.0);
+      // GetValueAtTimeOfEvent() will set the value at the end of the curve if
+      // another event immediately follows.
+      MOZ_ASSERT(!aNext ||
+                 aStartTime + static_cast<TimeType>(count) <= TimeOf(aNext));
+      aPrevious->FillFromValueCurve(aStartTime,
+                                    Span(aBuffer.Elements(), count));
+      aBuffer = aBuffer.From(count);
+      if (aBuffer.Length() == 0) {
+        return;
+      }
+      aStartTime += static_cast<TimeType>(count);
+    }
   }
 
-  // If the requested time is after all of the existing events
-  if (!aNext) {
-    switch (aPrevious->mType) {
-      case AudioTimelineEvent::SetValueAtTime:
+  // Handle the cases where our range ends up in a ramp event
+  if (aNext) {
+    switch (aNext->mType) {
       case AudioTimelineEvent::LinearRamp:
+        FillLinearRamp(aStartTime, aBuffer, EndTimeOf(aPrevious),
+                       aPrevious->EndValue(), TimeOf(aNext),
+                       aNext->NominalValue());
+        return;
       case AudioTimelineEvent::ExponentialRamp:
-        // The value will be constant after the last event
-        return aPrevious->mValue;
-      case AudioTimelineEvent::SetValueCurve:
-        return ExtractValueFromCurve(aPrevious->Time<TimeType>(),
-                                     aPrevious->mCurve, aPrevious->mCurveLength,
-                                     aPrevious->mDuration, aTime);
+        FillExponentialRamp(aStartTime, aBuffer, EndTimeOf(aPrevious),
+                            aPrevious->EndValue(), TimeOf(aNext),
+                            aNext->NominalValue());
+        return;
+      case AudioTimelineEvent::SetValueAtTime:
       case AudioTimelineEvent::SetTarget:
-        MOZ_FALLTHROUGH_ASSERT("AudioTimelineEvent::SetTarget");
+      case AudioTimelineEvent::SetValueCurve:
+        break;
       case AudioTimelineEvent::SetValue:
       case AudioTimelineEvent::Cancel:
       case AudioTimelineEvent::Track:
         MOZ_ASSERT(false, "Should have been handled earlier.");
     }
-    MOZ_ASSERT(false, "unreached");
-  }
-
-  // Finally, handle the case where we have both a previous and a next event
-
-  // First, handle the case where our range ends up in a ramp event
-  switch (aNext->mType) {
-    case AudioTimelineEvent::LinearRamp:
-      return LinearInterpolate(TimeOf(aPrevious), ValueOf(aPrevious),
-                               TimeOf(aNext), ValueOf(aNext), aTime);
-
-    case AudioTimelineEvent::ExponentialRamp:
-      return ExponentialInterpolate(TimeOf(aPrevious), ValueOf(aPrevious),
-                                    TimeOf(aNext), ValueOf(aNext), aTime);
-
-    case AudioTimelineEvent::SetValueAtTime:
-    case AudioTimelineEvent::SetTarget:
-    case AudioTimelineEvent::SetValueCurve:
-      break;
-    case AudioTimelineEvent::SetValue:
-    case AudioTimelineEvent::Cancel:
-    case AudioTimelineEvent::Track:
-      MOZ_ASSERT(false, "Should have been handled earlier.");
   }
 
   // Now handle all other cases
@@ -325,13 +473,10 @@ float AudioEventTimeline::GetValuesAtTimeHelperInternal(
     case AudioTimelineEvent::SetValueAtTime:
     case AudioTimelineEvent::LinearRamp:
     case AudioTimelineEvent::ExponentialRamp:
-      // If the next event type is neither linear or exponential ramp, the
-      // value is constant.
-      return aPrevious->mValue;
+      break;
     case AudioTimelineEvent::SetValueCurve:
-      return ExtractValueFromCurve(aPrevious->Time<TimeType>(),
-                                   aPrevious->mCurve, aPrevious->mCurveLength,
-                                   aPrevious->mDuration, aTime);
+      MOZ_ASSERT(aStartTime - TimeOf(aPrevious) >= aPrevious->Duration());
+      break;
     case AudioTimelineEvent::SetTarget:
       MOZ_FALLTHROUGH_ASSERT("AudioTimelineEvent::SetTarget");
     case AudioTimelineEvent::SetValue:
@@ -339,57 +484,9 @@ float AudioEventTimeline::GetValuesAtTimeHelperInternal(
     case AudioTimelineEvent::Track:
       MOZ_ASSERT(false, "Should have been handled earlier.");
   }
-
-  MOZ_ASSERT(false, "unreached");
-  return 0.0f;
-}
-template float AudioEventTimeline::GetValuesAtTimeHelperInternal(
-    double aTime, const AudioTimelineEvent* aPrevious,
-    const AudioTimelineEvent* aNext);
-template float AudioEventTimeline::GetValuesAtTimeHelperInternal(
-    int64_t aTime, const AudioTimelineEvent* aPrevious,
-    const AudioTimelineEvent* aNext);
-
-const AudioTimelineEvent* AudioEventTimeline::GetPreviousEvent(
-    double aTime) const {
-  const AudioTimelineEvent* previous = nullptr;
-  const AudioTimelineEvent* next = nullptr;
-
-  auto TimeOf = [](const AudioTimelineEvent& aEvent) -> double {
-    return aEvent.Time<double>();
-  };
-
-  bool bailOut = false;
-  for (unsigned i = 0; !bailOut && i < mEvents.Length(); ++i) {
-    switch (mEvents[i].mType) {
-      case AudioTimelineEvent::SetValueAtTime:
-      case AudioTimelineEvent::SetTarget:
-      case AudioTimelineEvent::LinearRamp:
-      case AudioTimelineEvent::ExponentialRamp:
-      case AudioTimelineEvent::SetValueCurve:
-        if (aTime == TimeOf(mEvents[i])) {
-          // Find the last event with the same time
-          do {
-            ++i;
-          } while (i < mEvents.Length() && aTime == TimeOf(mEvents[i]));
-          return &mEvents[i - 1];
-        }
-        previous = next;
-        next = &mEvents[i];
-        if (aTime < TimeOf(mEvents[i])) {
-          bailOut = true;
-        }
-        break;
-      default:
-        MOZ_ASSERT(false, "unreached");
-    }
-  }
-  // Handle the case where the time is past all of the events
-  if (!bailOut) {
-    previous = next;
-  }
-
-  return previous;
+  // If the next event type is neither linear or exponential ramp, the
+  // value is constant.
+  std::fill_n(aBuffer.Elements(), aBuffer.Length(), aPrevious->EndValue());
 }
 
 }  // namespace mozilla::dom

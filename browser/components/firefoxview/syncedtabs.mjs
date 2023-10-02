@@ -255,7 +255,15 @@ class SyncedTabsInView extends ViewPage {
         where = "tab";
       }
       currentWindow.openTrustedLinkIn(event.originalTarget.url, where);
-      Services.telemetry.recordEvent("firefoxview_next", "synced_tabs", "tabs");
+      Services.telemetry.recordEvent(
+        "firefoxview_next",
+        "synced_tabs",
+        "tabs",
+        null,
+        {
+          page: this.recentBrowsing ? "recentbrowsing" : "syncedtabs",
+        }
+      );
     }
   }
 
@@ -456,7 +464,7 @@ class SyncedTabsInView extends ViewPage {
     if (!this.recentBrowsing) {
       renderArray.push(html`<div class="sticky-container bottom-fade">
         <h2
-          class="page-header"
+          class="page-header heading-large"
           data-l10n-id="firefoxview-synced-tabs-header"
         ></h2>
       </div>`);

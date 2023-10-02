@@ -39,6 +39,12 @@ impl ScriptRegistry {
         self.properties.get(name)
     }
 
+    /// Gets already-registered custom properties via script.
+    #[inline]
+    pub fn properties(&self) -> &PrecomputedHashMap<Atom, PropertyRegistration> {
+        &self.properties
+    }
+
     /// Register a given property. As per
     /// <https://drafts.css-houdini.org/css-properties-values-api-1/#the-registerproperty-function>
     /// we don't allow overriding the registration.
@@ -46,5 +52,11 @@ impl ScriptRegistry {
     pub fn register(&mut self, name: Atom, registration: PropertyRegistration) {
         let old = self.properties.insert(name, registration);
         debug_assert!(old.is_none(), "Already registered? Should be an error");
+    }
+
+    /// Returns the properties hashmap.
+    #[inline]
+    pub fn get_all(&self) -> &PrecomputedHashMap<Atom, PropertyRegistration> {
+        &self.properties
     }
 }

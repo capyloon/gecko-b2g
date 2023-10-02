@@ -29,6 +29,7 @@
 #include "mozilla/TouchEvents.h"
 #include "mozilla/URLExtraData.h"
 #include "mozilla/dom/Attr.h"
+#include "mozilla/dom/RadioGroupContainer.h"
 #include "nsDOMAttributeMap.h"
 #include "nsAtom.h"
 #include "mozilla/dom/NodeInfo.h"
@@ -147,12 +148,13 @@ NS_INTERFACE_MAP_BEGIN(nsIContent)
   NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
 
-NS_IMPL_MAIN_THREAD_ONLY_CYCLE_COLLECTING_ADDREF(nsIContent)
+NS_IMPL_CYCLE_COLLECTING_ADDREF(nsIContent)
 
 NS_IMPL_DOMARENA_DESTROY(nsIContent)
 
-NS_IMPL_MAIN_THREAD_ONLY_CYCLE_COLLECTING_RELEASE_WITH_LAST_RELEASE_AND_DESTROY(
-    nsIContent, LastRelease(), Destroy())
+NS_IMPL_CYCLE_COLLECTING_RELEASE_WITH_LAST_RELEASE_AND_DESTROY(nsIContent,
+                                                               LastRelease(),
+                                                               Destroy())
 
 nsIContent* nsIContent::FindFirstNonChromeOnlyAccessContent() const {
   // This handles also nested native anonymous content.
@@ -658,6 +660,7 @@ void FragmentOrElement::nsExtendedDOMSlots::UnlinkExtendedSlots(
     aContent.ClearMayHaveAnimations();
   }
   mExplicitlySetAttrElements.Clear();
+  mRadioGroupContainer = nullptr;
 }
 
 void FragmentOrElement::nsExtendedDOMSlots::TraverseExtendedSlots(
@@ -681,6 +684,9 @@ void FragmentOrElement::nsExtendedDOMSlots::TraverseExtendedSlots(
   }
   if (mAnimations) {
     mAnimations->Traverse(aCb);
+  }
+  if (mRadioGroupContainer) {
+    RadioGroupContainer::Traverse(mRadioGroupContainer.get(), aCb);
   }
 }
 
@@ -714,6 +720,10 @@ size_t FragmentOrElement::nsExtendedDOMSlots::SizeOfExcludingThis(
 
   if (mCustomElementData) {
     n += mCustomElementData->SizeOfIncludingThis(aMallocSizeOf);
+  }
+
+  if (mRadioGroupContainer) {
+    n += mRadioGroupContainer->SizeOfIncludingThis(aMallocSizeOf);
   }
 
   return n;

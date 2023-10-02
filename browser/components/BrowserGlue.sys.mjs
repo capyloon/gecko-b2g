@@ -69,6 +69,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   RemoteSecuritySettings:
     "resource://gre/modules/psm/RemoteSecuritySettings.sys.mjs",
   RemoteSettings: "resource://services-settings/remote-settings.sys.mjs",
+  ResetPBMPanel: "resource:///modules/ResetPBMPanel.sys.mjs",
   SafeBrowsing: "resource://gre/modules/SafeBrowsing.sys.mjs",
   Sanitizer: "resource:///modules/Sanitizer.sys.mjs",
   SaveToPocket: "chrome://pocket/content/SaveToPocket.sys.mjs",
@@ -1393,6 +1394,8 @@ BrowserGlue.prototype = {
     }
 
     lazy.SaveToPocket.init();
+
+    lazy.ResetPBMPanel.init();
 
     AboutHomeStartupCache.init();
 
@@ -4196,15 +4199,11 @@ BrowserGlue.prototype = {
       // originInfo in the format [origin, type]
       [
         ["https://www.mozilla.org", "uitour"],
-        ["https://monitor.firefox.com", "uitour"],
-        ["https://screenshots.firefox.com", "uitour"],
         ["https://support.mozilla.org", "uitour"],
-        ["https://truecolors.firefox.com", "uitour"],
         ["about:home", "uitour"],
         ["about:newtab", "uitour"],
         ["https://addons.mozilla.org", "install"],
         ["https://support.mozilla.org", "remote-troubleshooting"],
-        ["https://fpn.firefox.com", "install"],
         ["about:welcome", "autoplay-media"],
       ].forEach(originInfo => {
         // Reset permission on the condition that it is set to

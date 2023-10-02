@@ -122,7 +122,6 @@ serde_with = { path = "build/rust/serde_with" }
 redox_users = { path = "build/rust/redox_users" }
 
 # Patch redox_syscall to an empty crate
-redox_syscall_0_2 = { package = "redox_syscall", path = "build/rust/redox_syscall_0_2" }
 redox_syscall = { path = "build/rust/redox_syscall" }
 
 # Override tinyvec with smallvec
@@ -134,8 +133,9 @@ base64 = { path = "build/rust/base64" }
 # Patch wasi 0.10 to 0.11
 wasi = { path = "build/rust/wasi" }
 
-# Patch bindgen 0.63 and 0.64 to 0.66
+# Patch bindgen 0.63, 0.64 and 0.66 to 0.68
 bindgen_0_63 = { package = "bindgen", path = "build/rust/bindgen-0.63" }
+bindgen_0_64 = { package = "bindgen", path = "build/rust/bindgen-0.64" }
 bindgen = { path = "build/rust/bindgen" }
 
 # Patch nix 0.24 to 0.26
@@ -166,9 +166,6 @@ web-sys = { path = "build/rust/dummy-web/web-sys" }
 # Overrides to allow easier use of common internal crates.
 moz_asserts = { path = "mozglue/static/rust/moz_asserts" }
 
-# Patch rayon core to import https://github.com/rayon-rs/rayon/pull/1063
-rayon-core = { path = "third_party/rust/rayon-core" }
-
 # Patch `rure` to disable building the cdylib and staticlib targets
 # Cargo has no way to disable building targets your dependencies provide which
 # you don't depend on, and linking the cdylib breaks during instrumentation
@@ -188,8 +185,8 @@ firefox-on-glean = { path = "toolkit/components/glean/api" }
 icu_testdata = { path = "intl/icu_testdata" }
 libudev-sys = { path = "dom/webauthn/libudev-sys" }
 midir = { git = "https://github.com/mozilla/midir.git", rev = "519e651241e867af3391db08f9ae6400bc023e18" }
-# Avoid the dependency on chrono
-minidump-writer = { git = "https://github.com/rust-minidump/minidump-writer.git", rev = "a15bd5cab6a3de251c0c23264be14b977c0af09c" }
+# Avoid the dependency on chrono and include Android support
+minidump-writer = { git = "https://github.com/rust-minidump/minidump-writer.git", rev = "491eb330e78e310c32927e5cc3bd2350af1e93f8" }
 # Bump some dependencies
 minidump-common = { git = "https://github.com/rust-minidump/rust-minidump", rev = "6ae42a7f992e8a88ebee661bc77bcedb95cd671f" }
 # warp 0.3.3 + https://github.com/seanmonstar/warp/pull/1007

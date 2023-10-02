@@ -328,11 +328,12 @@ void ServoStyleSet::PreTraverseSync() {
   // is necessary to avoid a data race when updating the cache.
   Unused << mDocument->GetRootElement();
 
-  // FIXME(emilio): This shouldn't be needed in theory, the call to the same
-  // function in PresShell should do the work, but as it turns out we
+  // FIXME(emilio): These two shouldn't be needed in theory, the call to the
+  // same function in PresShell should do the work, but as it turns out we
   // ProcessPendingRestyles() twice, and runnables from frames just constructed
   // can end up doing editing stuff, which adds stylesheets etc...
   mDocument->FlushUserFontSet();
+  UpdateStylistIfNeeded();
 
   mDocument->ResolveScheduledPresAttrs();
 
@@ -1385,27 +1386,30 @@ bool ServoStyleSet::MightHaveNthOfClassDependency(const Element& aElement) {
 }
 
 void ServoStyleSet::MaybeInvalidateRelativeSelectorIDDependency(
-    const Element& aElement, nsAtom* aOldID, nsAtom* aNewID) {
+    const Element& aElement, nsAtom* aOldID, nsAtom* aNewID,
+    const ServoElementSnapshotTable& aSnapshots) {
   Servo_StyleSet_MaybeInvalidateRelativeSelectorIDDependency(
-      mRawData.get(), &aElement, aOldID, aNewID);
+      mRawData.get(), &aElement, aOldID, aNewID, &aSnapshots);
 }
 
 void ServoStyleSet::MaybeInvalidateRelativeSelectorClassDependency(
-    const Element& aElement) {
+    const Element& aElement, const ServoElementSnapshotTable& aSnapshots) {
   Servo_StyleSet_MaybeInvalidateRelativeSelectorClassDependency(
-      mRawData.get(), &aElement, &Snapshots());
+      mRawData.get(), &aElement, &aSnapshots);
 }
 
 void ServoStyleSet::MaybeInvalidateRelativeSelectorAttributeDependency(
-    const Element& aElement, nsAtom* aAttribute) {
+    const Element& aElement, nsAtom* aAttribute,
+    const ServoElementSnapshotTable& aSnapshots) {
   Servo_StyleSet_MaybeInvalidateRelativeSelectorAttributeDependency(
-      mRawData.get(), &aElement, aAttribute);
+      mRawData.get(), &aElement, aAttribute, &aSnapshots);
 }
 
 void ServoStyleSet::MaybeInvalidateRelativeSelectorStateDependency(
-    const Element& aElement, ElementState aState) {
+    const Element& aElement, ElementState aState,
+    const ServoElementSnapshotTable& aSnapshots) {
   Servo_StyleSet_MaybeInvalidateRelativeSelectorStateDependency(
-      mRawData.get(), &aElement, aState.GetInternalValue());
+      mRawData.get(), &aElement, aState.GetInternalValue(), &aSnapshots);
 }
 
 void ServoStyleSet::MaybeInvalidateRelativeSelectorForEmptyDependency(

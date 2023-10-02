@@ -37,6 +37,7 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "android":
         "/widget/android",
     ]
     UNIFIED_SOURCES += [
+        "android/AndroidHeterogeneousCpuInfo.cpp",
         "android/AndroidPerformanceHintManager.cpp",
         "android/AndroidProcessPriority.cpp",
         "android/AndroidSensor.cpp",
@@ -55,7 +56,6 @@ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "gonk":
         "fallback/FallbackProcessPriority.cpp",
         "gonk/GonkDiskSpaceWatcher.cpp",
         "gonk/GonkSensor.cpp",
-        "gonk/GonkSensorManager.cpp",
         "gonk/GonkSensorsHal.cpp",
         "gonk/GonkSwitch.cpp",
         "gonk/SystemService.cpp",
@@ -69,13 +69,18 @@ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "gonk":
     ]
     EXPORTS.gonk += [
         "gonk/android_sensors/ISensorsWrapper.h",
-        "gonk/GonkSensorManager.h",
         "gonk/GonkSensorsHal.h",
     ]
-    XPCOM_MANIFESTS += [
-        "gonk/components.conf",
-    ]
-
+    if CONFIG["ANDROID_VERSION"] >= "33":
+        EXPORTS.gonk += [
+            "gonk/GonkSensorManager.h",
+        ]
+        UNIFIED_SOURCES += [
+            "gonk/GonkSensorManager.cpp",
+        ]
+        XPCOM_MANIFESTS += [
+            "gonk/components.conf",
+        ]
     if CONFIG["PRODUCT_MANUFACTURER_MTK"]:
         UNIFIED_SOURCES += [
             "gonk/mtk_fm/GonkFMRadio.cpp",
@@ -197,6 +202,7 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] != "android" and CONFIG["MOZ_WIDGET_TOOLKIT"] !=
 # Fallbacks for backends implemented on Android only.
 if CONFIG["MOZ_WIDGET_TOOLKIT"] != "android":
     UNIFIED_SOURCES += [
+        "fallback/FallbackHeterogeneousCpuInfo.cpp",
         "fallback/FallbackPerformanceHintManager.cpp",
     ]
 

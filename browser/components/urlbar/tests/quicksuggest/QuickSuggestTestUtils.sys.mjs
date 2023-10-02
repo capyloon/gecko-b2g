@@ -15,10 +15,10 @@ ChromeUtils.defineESModuleGetters(lazy, {
   ExperimentFakes: "resource://testing-common/NimbusTestUtils.sys.mjs",
   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
   QuickSuggest: "resource:///modules/QuickSuggest.sys.mjs",
-  QuickSuggestRemoteSettings:
-    "resource:///modules/urlbar/private/QuickSuggestRemoteSettings.sys.mjs",
   RemoteSettings: "resource://services-settings/remote-settings.sys.mjs",
   SearchUtils: "resource://gre/modules/SearchUtils.sys.mjs",
+  Suggestion: "resource://gre/modules/RustSuggest.sys.mjs",
+  SuggestStore: "resource://gre/modules/RustSuggest.sys.mjs",
   TelemetryTestUtils: "resource://testing-common/TelemetryTestUtils.sys.mjs",
   TestUtils: "resource://testing-common/TestUtils.sys.mjs",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
@@ -167,18 +167,18 @@ class MockRemoteSettings {
   }
 
   async sync() {
-    if (!lazy.QuickSuggestRemoteSettings.rs) {
+    if (!lazy.QuickSuggest.jsBackend.rs) {
       // There are no registered features that use remote settings.
       return;
     }
 
     // Observe config-set event to recognize that the config is synced.
     const onConfigSync = new Promise(resolve => {
-      lazy.QuickSuggestRemoteSettings.emitter.once("config-set", resolve);
+      lazy.QuickSuggest.jsBackend.emitter.once("config-set", resolve);
     });
 
     // Make a stub for each feature to recognize that the features are synced.
-    const features = lazy.QuickSuggestRemoteSettings.features;
+    const features = lazy.QuickSuggest.jsBackend.features;
     const onFeatureSyncs = features.map(feature => {
       return new Promise(resolve => {
         const stub = this.#sandbox
@@ -223,6 +223,93 @@ class MockRemoteSettings {
   }
 
   #config = null;
+  #data = null;
+  #sandbox = null;
+}
+
+/**
+ * Mock `RustSuggest` implementation.
+ *
+ * @param {object} options
+ *   Options object
+ * @param {Array} options.data
+ *   Mock remote settings records.
+ */
+class MockRustSuggest {
+  constructor({ data = [] }) {
+    this.#data = data;
+
+    this.#sandbox = lazy.sinon.createSandbox();
+    this.#sandbox.stub(lazy.SuggestStore, "init").returns(this);
+  }
+
+  /**
+   * Updates the mock data.
+   *
+   * @param {object} options
+   *   Options object
+   * @param {Array} options.data
+   *   Mock remote settings records.
+   */
+  async update({ data }) {
+    this.#data = data;
+  }
+
+  cleanup() {
+    this.#sandbox.restore();
+  }
+
+  // `RustSuggest` methods below.
+
+  ingest() {
+    return Promise.resolve();
+  }
+
+  interrupt() {}
+
+  clear() {}
+
+  async query(query) {
+    let records = this.#data.filter(record => record.type == "data");
+    let suggestions = records
+      .map(record => record.attachment)
+      .flat()
+      .filter(suggestion => suggestion.keywords.includes(query.keyword));
+
+    let matchedSuggestions = [];
+    for (let suggestion of suggestions) {
+      let isSponsored = suggestion.hasOwnProperty("is_sponsored")
+        ? suggestion.is_sponsored
+        : suggestion.iab_category == "22 - Shopping";
+      if (
+        (isSponsored && query.includeSponsored) ||
+        (!isSponsored && query.includeNonSponsored)
+      ) {
+        matchedSuggestions.push(
+          isSponsored
+            ? new lazy.Suggestion.Amp(
+                suggestion.title,
+                suggestion.url,
+                null, // icon
+                query.keyword, // fullKeyword
+                suggestion.id, // blockId
+                suggestion.advertiser,
+                suggestion.iab_category,
+                suggestion.impression_url,
+                suggestion.click_url
+              )
+            : new lazy.Suggestion.Wikipedia(
+                suggestion.title,
+                suggestion.url,
+                null, // icon
+                query.keyword // fullKeyword
+              )
+        );
+      }
+    }
+    return matchedSuggestions;
+  }
+
   #data = null;
   #sandbox = null;
 }
@@ -295,26 +382,52 @@ class _QuickSuggestTestUtils {
    *   Merino without using this function by using `MerinoTestUtils` directly.
    * @param {object} options.config
    *   The quick suggest configuration object.
+   * @param {object} options.rustEnabled
+   *   Whether the Rust backend should be enabled. If false, the JS backend will
+   *   be used. (There's no way to tell this function not to change the backend.
+   *   If you need that, please modify this function to support it!)
    * @returns {Function}
-   *   A cleanup function. You only need to call this function if you're in a
-   *   browser chrome test and you did not also call `init`. You can ignore it
-   *   otherwise.
+   *   An async cleanup function. This function is automatically registered as
+   *   a cleanup function, so you only need to call it if your test needs to
+   *   clean up quick suggest before it ends, for example if you have a small
+   *   number of tasks that need quick suggest and it's not enabled throughout
+   *   your test. The cleanup function is idempotent so there's no harm in
+   *   calling it more than once. Be sure to `await` it.
    */
   async ensureQuickSuggestInit({
     remoteSettingsResults,
     merinoSuggestions = null,
     config = DEFAULT_CONFIG,
+    rustEnabled = false,
   } = {}) {
     this.#mockRemoteSettings = new MockRemoteSettings({
       config,
+      data: remoteSettingsResults,
+    });
+    this.#mockRustSuggest = new MockRustSuggest({
       data: remoteSettingsResults,
     });
 
     this.info?.("ensureQuickSuggestInit calling QuickSuggest.init()");
     lazy.QuickSuggest.init();
 
-    // Sync with current data.
-    await this.#mockRemoteSettings.sync();
+    // Set the Rust pref and wait for the backend to become enabled/disabled.
+    // This must happen after setting up `MockRustSuggest`. Otherwise the real
+    // Rust component will be used and the Rust remote settings client will try
+    // to access the real remote settings server on ingestion.
+    this.info?.(
+      "ensureQuickSuggestInit setting rustEnabled and awaiting enablePromise"
+    );
+    lazy.UrlbarPrefs.set("quicksuggest.rustEnabled", rustEnabled);
+    await lazy.QuickSuggest.rustBackend.enablePromise;
+    this.info?.("ensureQuickSuggestInit done awaiting enablePromise");
+
+    if (!rustEnabled) {
+      // Sync with current data.
+      this.info?.("ensureQuickSuggestInit syncing MockRemoteSettings");
+      await this.#mockRemoteSettings.sync();
+      this.info?.("ensureQuickSuggestInit done syncing MockRemoteSettings");
+    }
 
     // Set up Merino.
     if (merinoSuggestions) {
@@ -325,17 +438,49 @@ class _QuickSuggestTestUtils {
       this.info?.("ensureQuickSuggestInit done setting up Merino server");
     }
 
+    let cleanupCalled = false;
     let cleanup = async () => {
-      this.info?.("ensureQuickSuggestInit starting cleanup");
-      this.#mockRemoteSettings.cleanup();
-      if (merinoSuggestions) {
-        lazy.UrlbarPrefs.clear("quicksuggest.dataCollection.enabled");
+      if (!cleanupCalled) {
+        cleanupCalled = true;
+        await this.#uninitQuickSuggest(!!merinoSuggestions);
       }
-      this.info?.("ensureQuickSuggestInit finished cleanup");
     };
     this.registerCleanupFunction?.(cleanup);
 
     return cleanup;
+  }
+
+  async #uninitQuickSuggest(clearDataCollectionEnabled) {
+    this.info?.("uninitQuickSuggest started");
+
+    // We need to reset the Rust enabled status. If the status changes, it will
+    // either trigger the Rust backend to enable itself and ingest from remote
+    // settings (if Rust was disabled) or trigger the JS backend to enable
+    // itself and re-sync all features (if Rust was enabled). Wait for each to
+    // finish *before* cleaning up MockRustSuggest and MockRemoteSettings. This
+    // will ensure that all activity has stopped before this function returns.
+    let rustEnabled = lazy.UrlbarPrefs.get("quicksuggest.rustEnabled");
+    lazy.UrlbarPrefs.clear("quicksuggest.rustEnabled");
+    this.info?.(
+      "uninitQuickSuggest setting rustEnabled and awaiting enablePromise"
+    );
+    await lazy.QuickSuggest.rustBackend.enablePromise;
+    this.info?.("uninitQuickSuggest done awaiting enablePromise");
+
+    if (rustEnabled && !lazy.UrlbarPrefs.get("quicksuggest.rustEnabled")) {
+      this.info?.("uninitQuickSuggest syncing MockRemoteSettings");
+      await this.#mockRemoteSettings.sync();
+      this.info?.("uninitQuickSuggest done syncing MockRemoteSettings");
+    }
+
+    this.#mockRemoteSettings.cleanup();
+    this.#mockRustSuggest.cleanup();
+
+    if (clearDataCollectionEnabled) {
+      lazy.UrlbarPrefs.clear("quicksuggest.dataCollection.enabled");
+    }
+
+    this.info?.("uninitQuickSuggest done");
   }
 
   /**
@@ -348,6 +493,7 @@ class _QuickSuggestTestUtils {
    */
   async setRemoteSettingsResults(data) {
     await this.#mockRemoteSettings.update({ data });
+    this.#mockRustSuggest.update({ data });
   }
 
   /**
@@ -375,7 +521,7 @@ class _QuickSuggestTestUtils {
    * @see {@link setConfig}
    */
   async withConfig({ config, callback }) {
-    let original = lazy.QuickSuggestRemoteSettings.config;
+    let original = lazy.QuickSuggest.jsBackend.config;
     await this.setConfig(config);
     await callback();
     await this.setConfig(original);
@@ -1020,6 +1166,7 @@ class _QuickSuggestTestUtils {
   }
 
   #mockRemoteSettings = null;
+  #mockRustSuggest = null;
 }
 
 export var QuickSuggestTestUtils = new _QuickSuggestTestUtils();
