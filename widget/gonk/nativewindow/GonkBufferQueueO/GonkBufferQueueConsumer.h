@@ -134,7 +134,7 @@ class GonkBufferQueueConsumer : public BnGonkGraphicBufferConsumer {
 
 #if ANDROID_VERSION < 33
   // Retrieve the sideband buffer stream, if any.
-  virtual status_t getSidebandStream(sp<NativeHandle>* outStream) const;
+  virtual sp<NativeHandle> getSidebandStream() const;
 
 #else
   virtual status_t getSidebandStream(sp<NativeHandle>* outStream) const;
@@ -155,7 +155,6 @@ class GonkBufferQueueConsumer : public BnGonkGraphicBufferConsumer {
 
   // dump our state in a String
   virtual void dumpToString(String8& result, const char* prefix) const;
-#endif
 
   // Added by mozilla
   virtual already_AddRefed<GonkBufferSlot::TextureClient>

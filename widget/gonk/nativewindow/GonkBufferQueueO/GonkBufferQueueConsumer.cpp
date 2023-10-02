@@ -562,7 +562,6 @@ void GonkBufferQueueConsumer::dumpToString(String8& result,
                                            const char* prefix) const {
   mCore->dump(result, prefix);
 }
-#endif
 
 already_AddRefed<GonkBufferSlot::TextureClient>
 GonkBufferQueueConsumer::getTextureClientFromBuffer(

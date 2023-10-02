@@ -316,30 +316,7 @@ class IGonkGraphicBufferConsumer : public IInterface {
 
 #if ANDROID_VERSION < 33
   // Retrieve the sideband buffer stream, if any.
-  virtual status_t getSidebandStream(sp<NativeHandle>* outStream) const = 0;
-
-    // Retrieves any stored segments of the occupancy history of this BufferQueue and clears them.
-    // Optionally closes out the pending segment if forceFlush is true.
-    virtual status_t getOccupancyHistory(bool forceFlush,
-                                         std::vector<OccupancyTracker::Segment>* outHistory) = 0;
-
-    // discardFreeBuffers releases all currently-free buffers held by the BufferQueue, in order to
-    // reduce the memory consumption of the BufferQueue to the minimum possible without
-    // discarding data.
-    // The consumer invoking this method is responsible for calling getReleasedBuffers() after this
-    // call to free up any of its locally cached buffers.
-    virtual status_t discardFreeBuffers() = 0;
-
-    // dump state into a string
-    virtual status_t dumpState(const String8& prefix, String8* outResult) const = 0;
-
-    // Provide backwards source compatibility
-    void dumpState(String8& result, const char* prefix) {
-        String8 returned;
-        dumpState(String8(prefix), &returned);
-        result.append(returned);
-    }
-#endif
+  virtual sp<NativeHandle> getSidebandStream() const = 0;
 
 #else
   virtual status_t getSidebandStream(sp<NativeHandle>* outStream) const = 0;
@@ -392,9 +369,6 @@ class BnGonkGraphicBufferConsumer
     : public SafeBnInterface<IGonkGraphicBufferConsumer> {
 #endif
  public:
-    BnGonkGraphicBufferConsumer()
-          : SafeBnInterface<IGonkGraphicBufferConsumer>("BnGonkGraphicBufferConsumer") {}
-
   virtual status_t onTransact(uint32_t code, const Parcel& data, Parcel* reply,
                               uint32_t flags = 0);
 #if ANDROID_VERSION >= 33
@@ -407,3 +381,4 @@ class BnGonkGraphicBufferConsumer
 };  // namespace android
 
 #endif  // ANDROID_GUI_IGONKGRAPHICBUFFERCONSUMER_H
+

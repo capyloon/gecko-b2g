@@ -2128,12 +2128,7 @@ CommandResult NetworkUtils::startClatd(NetworkParams& aOptions) {
     return CommandResult(result);
   }
 
-<<<<<<< HEAD
-// FIXME: 'clatdStart' is deprecated:
-#if 0
-=======
 #if ANDROID_VERSION < 33 // FIXME: 'clatdStart' is deprecated:
->>>>>>> capyloon/capyloon
   std::string clatAddress;
   Status status = gNetd->clatdStart(GET_CHAR(mIfname), GET_CHAR(mNat64Prefix),
                                     &clatAddress);
