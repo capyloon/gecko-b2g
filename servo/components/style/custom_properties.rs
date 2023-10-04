@@ -19,7 +19,7 @@ use cssparser::{
 };
 use indexmap::IndexMap;
 use selectors::parser::SelectorParseErrorKind;
-use servo_arc::{Arc, UniqueArc};
+use servo_arc::Arc;
 use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::cmp;
@@ -278,16 +278,18 @@ pub type CustomPropertiesMap =
 //
 // See https://github.com/bluss/indexmap/issues/153
 fn maps_equal(l: Option<&CustomPropertiesMap>, r: Option<&CustomPropertiesMap>) -> bool {
-    match (l, r) {
-        (Some(l), Some(r)) => {
-            l.len() == r.len() &&
-                l.iter()
-                    .zip(r.iter())
-                    .all(|((k1, v1), (k2, v2))| k1 == k2 && v1 == v2)
-        },
-        (None, None) => true,
-        _ => false,
+    let (l, r) = match (l, r) {
+        (Some(l), Some(r)) => (l, r),
+        (None, None) => return true,
+        _ => return false,
+    };
+    if std::ptr::eq(l, r) {
+        return true;
     }
+    if l.len() != r.len() {
+        return false;
+    }
+    l.iter().zip(r.iter()).all(|((k1, v1), (k2, v2))| k1 == k2 && v1 == v2)
 }
 
 /// A pair of separate CustomPropertiesMaps, split between custom properties
@@ -300,6 +302,12 @@ pub struct ComputedCustomProperties {
     pub inherited: Option<Arc<CustomPropertiesMap>>,
     /// Map for custom properties with inherit flag unset.
     pub non_inherited: Option<Box<CustomPropertiesMap>>,
+}
+
+impl PartialEq for ComputedCustomProperties {
+    fn eq(&self, other: &Self) -> bool {
+        self.inherited_equal(other) && self.non_inherited_equal(other)
+    }
 }
 
 impl ComputedCustomProperties {
@@ -327,13 +335,6 @@ impl ComputedCustomProperties {
         }
     }
 
-    fn read(&self) -> ReadOnlyCustomProperties {
-        ReadOnlyCustomProperties {
-            inherited: self.inherited.as_deref(),
-            non_inherited: self.non_inherited.as_deref(),
-        }
-    }
-
     fn inherited_equal(&self, other: &Self) -> bool {
         maps_equal(self.inherited.as_deref(), other.inherited.as_deref())
     }
@@ -344,22 +345,7 @@ impl ComputedCustomProperties {
             other.non_inherited.as_deref(),
         )
     }
-}
 
-impl PartialEq for ComputedCustomProperties {
-    fn eq(&self, other: &Self) -> bool {
-        self.inherited_equal(other) && self.non_inherited_equal(other)
-    }
-}
-
-/// A mutable CustomPropertiesMapPair, using UniqueArc for inherited properties.
-#[derive(Default)]
-struct MutableCustomProperties {
-    inherited: Option<UniqueArc<CustomPropertiesMap>>,
-    non_inherited: Option<Box<CustomPropertiesMap>>,
-}
-
-impl MutableCustomProperties {
     /// Insert a custom property in the corresponding inherited/non_inherited
     /// map, depending on whether the inherit flag is set or unset.
     fn insert(
@@ -368,7 +354,7 @@ impl MutableCustomProperties {
         name: Name,
         value: Arc<VariableValue>,
     ) -> Option<Arc<VariableValue>> {
-        self.get_map(registration).insert(name, value)
+        self.map_mut(registration).insert(name, value)
     }
 
     /// Remove a custom property from the corresponding inherited/non_inherited
@@ -378,24 +364,20 @@ impl MutableCustomProperties {
         registration: Option<&PropertyRegistration>,
         name: &Name,
     ) -> Option<Arc<VariableValue>> {
-        self.get_map(registration).remove(name)
+        self.map_mut(registration).remove(name)
     }
 
-    /// Shrink the capacity of the inherited map as much as possible. An empty
-    /// map is just replaced with None.
-    fn inherited_shrink_to_fit(&mut self) {
+    /// Shrink the capacity of the inherited maps as much as possible. An empty map is just
+    /// replaced with None and dropped.
+    fn shrink_to_fit(&mut self) {
         if let Some(ref mut map) = self.inherited {
             if map.is_empty() {
                 self.inherited = None;
-            } else {
+            } else if let Some(ref mut map) = Arc::get_mut(map) {
                 map.shrink_to_fit();
             }
         }
-    }
 
-    /// Shrink the capacity of the non_inherited map as much as possible. An
-    /// empty map is just replaced with None.
-    fn non_inherited_shrink_to_fit(&mut self) {
         if let Some(ref mut map) = self.non_inherited {
             if map.is_empty() {
                 self.non_inherited = None;
@@ -405,37 +387,22 @@ impl MutableCustomProperties {
         }
     }
 
-    fn read(&self) -> ReadOnlyCustomProperties {
-        ReadOnlyCustomProperties {
-            inherited: self.inherited.as_deref(),
-            non_inherited: self.non_inherited.as_deref(),
-        }
-    }
-
-    fn get_map(&mut self, registration: Option<&PropertyRegistration>) -> &mut CustomPropertiesMap {
+    fn map_mut(&mut self, registration: Option<&PropertyRegistration>) -> &mut CustomPropertiesMap {
         if registration.map_or(true, |r| r.inherits) {
-            self.inherited
-                .get_or_insert_with(|| UniqueArc::new(Default::default()))
+            // TODO: If the atomic load in make_mut shows up in profiles, we could cache whether
+            // the current map is unique, but that seems unlikely in practice.
+            Arc::make_mut(self.inherited.get_or_insert_with(Default::default))
         } else {
-            self.non_inherited
-                .get_or_insert_with(|| Box::new(Default::default()))
+            self.non_inherited.get_or_insert_with(Default::default)
         }
     }
-}
 
-#[derive(Copy, Clone, Default)]
-struct ReadOnlyCustomProperties<'a> {
-    inherited: Option<&'a CustomPropertiesMap>,
-    non_inherited: Option<&'a CustomPropertiesMap>,
-}
-
-impl<'a> ReadOnlyCustomProperties<'a> {
     fn get(&self, stylist: &Stylist, name: &Name) -> Option<&Arc<VariableValue>> {
         let registration = stylist.get_custom_property_registration(&name);
         if registration.map_or(true, |r| r.inherits) {
-            self.inherited?.get(name)
+            self.inherited.as_ref()?.get(name)
         } else {
-            self.non_inherited?.get(name)
+            self.non_inherited.as_ref()?.get(name)
         }
     }
 }
@@ -820,7 +787,7 @@ fn parse_fallback<'i, 't>(input: &mut Parser<'i, 't>) -> Result<(), ParseError<'
 
 fn parse_and_substitute_fallback<'i>(
     input: &mut Parser<'i, '_>,
-    custom_properties: ReadOnlyCustomProperties,
+    custom_properties: &ComputedCustomProperties,
     stylist: &Stylist,
 ) -> Result<ComputedValue, ParseError<'i>> {
     input.skip_whitespace();
@@ -883,7 +850,7 @@ fn parse_env_function<'i, 't>(
 pub struct CustomPropertiesBuilder<'a> {
     seen: PrecomputedHashSet<&'a Name>,
     may_have_cycles: bool,
-    custom_properties: MutableCustomProperties,
+    custom_properties: ComputedCustomProperties,
     inherited: &'a ComputedCustomProperties,
     reverted: PrecomputedHashMap<&'a Name, (CascadePriority, bool)>,
     stylist: &'a Stylist,
@@ -900,17 +867,14 @@ impl<'a> CustomPropertiesBuilder<'a> {
             seen: PrecomputedHashSet::default(),
             reverted: Default::default(),
             may_have_cycles: false,
-            custom_properties: MutableCustomProperties {
+            custom_properties: ComputedCustomProperties {
                 inherited: if is_root_element {
                     debug_assert!(inherited.is_empty());
                     stylist
                         .get_custom_property_initial_values()
-                        .map(UniqueArc::new)
+                        .map(Arc::new)
                 } else {
-                    // This should just be a copy of inherited.inherited, but
-                    // do it lazily and postpone that to when that actually
-                    // becomes necessary in the cascade and build methods.
-                    None
+                    inherited.inherited.clone()
                 },
                 non_inherited: None,
             },
@@ -941,14 +905,6 @@ impl<'a> CustomPropertiesBuilder<'a> {
             return;
         }
 
-        // TODO(bug 1855887): Try to postpone cloning of inherited.inherited.
-        if self.custom_properties.inherited.is_none() {
-            self.custom_properties.inherited = self
-                .inherited
-                .inherited
-                .as_ref()
-                .map(|i| UniqueArc::new((**i).clone()));
-        }
         let map = &mut self.custom_properties;
         let custom_registration = self.stylist.get_custom_property_registration(&name);
         match *value {
@@ -1127,26 +1083,6 @@ impl<'a> CustomPropertiesBuilder<'a> {
         true
     }
 
-    fn inherited_properties_match(&self, custom_properties: &MutableCustomProperties) -> bool {
-        let (inherited, map) = match (&self.inherited.inherited, &custom_properties.inherited) {
-            (Some(inherited), Some(map)) => (inherited, map),
-            (_, None) => return true,
-            _ => return false,
-        };
-        if inherited.len() != map.len() {
-            return false;
-        }
-        for name in self.seen.iter() {
-            // IndexMap.get() returns None if the element is not in the map, so
-            // we don't bother checking whether name actually corresponds to an
-            // inherited custom property here.
-            if inherited.get(*name) != map.get(*name) {
-                return false;
-            }
-        }
-        true
-    }
-
     /// Returns the final map of applicable custom properties.
     ///
     /// If there was any specified property or non-inherited custom property
@@ -1155,30 +1091,7 @@ impl<'a> CustomPropertiesBuilder<'a> {
     ///
     /// Otherwise, just use the inherited custom properties map.
     pub fn build(mut self) -> ComputedCustomProperties {
-        if self.custom_properties.inherited.is_none() {
-            // Return early when self.custom_properties is empty, covering the
-            // common case of nodes without any custom property specified. In
-            // that situation, inherited properties will just use the value from
-            // self.inherited while non-inherited properties will use their
-            // initial values. These initial values are required to be
-            // 'computationally independent' but may still differ from the ones
-            // in self.inherited, so ensure they are used in the parent too.
-            if self.custom_properties.non_inherited.is_none() &&
-                self.inherited.non_inherited.is_none()
-            {
-                return self.inherited.clone();
-            }
-        }
-
         if self.may_have_cycles {
-            // TODO(bug 1855887): Try to postpone cloning of inherited.inherited.
-            if self.custom_properties.inherited.is_none() {
-                self.custom_properties.inherited = self
-                    .inherited
-                    .inherited
-                    .as_ref()
-                    .map(|i| UniqueArc::new((**i).clone()));
-            }
             substitute_all(
                 &mut self.custom_properties,
                 self.inherited,
@@ -1187,26 +1100,21 @@ impl<'a> CustomPropertiesBuilder<'a> {
             );
         }
 
+        self.custom_properties.shrink_to_fit();
+
         // Some pages apply a lot of redundant custom properties, see e.g.
         // bug 1758974 comment 5. Try to detect the case where the values
         // haven't really changed, and save some memory by reusing the inherited
         // map in that case.
-        if self.inherited_properties_match(&self.custom_properties) {
-            self.custom_properties.non_inherited_shrink_to_fit();
+        if self.inherited.inherited_equal(&self.custom_properties) {
             return ComputedCustomProperties {
                 inherited: self.inherited.inherited.clone(),
                 non_inherited: self.custom_properties.non_inherited.take(),
             };
         }
 
-        self.custom_properties.inherited_shrink_to_fit();
-        self.custom_properties.non_inherited_shrink_to_fit();
         ComputedCustomProperties {
-            inherited: self
-                .custom_properties
-                .inherited
-                .take()
-                .map(|m| m.shareable()),
+            inherited: self.custom_properties.inherited.take(),
             non_inherited: self.custom_properties.non_inherited.take(),
         }
     }
@@ -1217,7 +1125,7 @@ impl<'a> CustomPropertiesBuilder<'a> {
 ///
 /// It does cycle dependencies removal at the same time as substitution.
 fn substitute_all(
-    custom_properties_map: &mut MutableCustomProperties,
+    custom_properties_map: &mut ComputedCustomProperties,
     inherited: &ComputedCustomProperties,
     seen: &PrecomputedHashSet<&Name>,
     stylist: &Stylist,
@@ -1255,7 +1163,7 @@ fn substitute_all(
         /// The stack of order index of visited variables. It contains
         /// all unfinished strong connected components.
         stack: SmallVec<[usize; 5]>,
-        map: &'a mut MutableCustomProperties,
+        map: &'a mut ComputedCustomProperties,
         /// The inherited custom properties to handle wide keywords.
         inherited: &'a ComputedCustomProperties,
         /// The stylist is used to get registered properties, and to resolve the environment to
@@ -1284,8 +1192,7 @@ fn substitute_all(
     fn traverse<'a>(name: &Name, context: &mut Context<'a>) -> Option<usize> {
         // Some shortcut checks.
         let (name, value) = {
-            let props = context.map.read();
-            let value = props.get(context.stylist, name)?;
+            let value = context.map.get(context.stylist, name)?;
 
             // Nothing to resolve.
             if value.references.custom_properties.is_empty() {
@@ -1434,7 +1341,7 @@ fn substitute_all(
 fn substitute_references_in_value_and_apply(
     name: &Name,
     value: &VariableValue,
-    custom_properties: &mut MutableCustomProperties,
+    custom_properties: &mut ComputedCustomProperties,
     inherited: &ComputedCustomProperties,
     stylist: &Stylist,
 ) {
@@ -1452,7 +1359,7 @@ fn substitute_references_in_value_and_apply(
             &mut input,
             &mut position,
             &mut computed_value,
-            custom_properties.read(),
+            custom_properties,
             stylist,
         );
 
@@ -1483,11 +1390,13 @@ fn substitute_references_in_value_and_apply(
 
         if let Ok(kw) = input.try_parse(CSSWideKeyword::parse) {
             match (kw, inherits) {
-                (CSSWideKeyword::Initial, _) |
+                (CSSWideKeyword::Initial, false) |
                 (CSSWideKeyword::Revert, false) |
                 (CSSWideKeyword::RevertLayer, false) |
                 (CSSWideKeyword::Unset, false) => {
-                    // TODO(bug 1273706): Do we really need to insert the initial value if inherits==false?
+                    custom_properties.remove(custom_registration, name);
+                },
+                (CSSWideKeyword::Initial, true) => {
                     custom_properties.remove(custom_registration, name);
                     if let Some(registration) = custom_registration {
                         if let Some(ref initial_value) = registration.initial_value {
@@ -1503,11 +1412,11 @@ fn substitute_references_in_value_and_apply(
                 (CSSWideKeyword::RevertLayer, true) |
                 (CSSWideKeyword::Inherit, _) |
                 (CSSWideKeyword::Unset, true) => {
-                    // TODO(bug 1273706): Do we really need to insert the inherited value if inherits==true?
+                    // TODO(bug 1855887): When inherits==false, we may postpone inserting inherited value at the end of build().
                     // TODO: It's unclear what this should do for revert / revert-layer, see
                     // https://github.com/w3c/csswg-drafts/issues/9131. For now treating as unset
                     // seems fine?
-                    match inherited.read().get(stylist, name) {
+                    match inherited.get(stylist, name) {
                         Some(value) => {
                             custom_properties.insert(
                                 custom_registration,
@@ -1552,7 +1461,7 @@ fn substitute_block<'i>(
     input: &mut Parser<'i, '_>,
     position: &mut (SourcePosition, TokenSerializationType),
     partial_computed_value: &mut ComputedValue,
-    custom_properties: ReadOnlyCustomProperties,
+    custom_properties: &ComputedCustomProperties,
     stylist: &Stylist,
 ) -> Result<TokenSerializationType, ParseError<'i>> {
     let mut last_token_type = TokenSerializationType::nothing();
@@ -1718,7 +1627,7 @@ pub fn substitute<'i>(
         &mut input,
         &mut position,
         &mut substituted,
-        custom_properties.read(),
+        custom_properties,
         stylist,
     )?;
     substituted.push_from(&input, position, last_token_type)?;
