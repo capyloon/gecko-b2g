@@ -17,10 +17,7 @@
 #ifndef GonkGPSGeolocationProvider_h
 #define GonkGPSGeolocationProvider_h
 
-#if ANDROID_VERSION >= 33
-#define AIDL_GNSS
-#define GNSS android::hardware::gnss
-#endif
+#include "GonkEvents.h"
 
 #include "android/hardware/gnss/1.1/IGnss.h"
 #include "android/hardware/gnss/2.0/IGnss.h"
@@ -244,7 +241,8 @@ class GonkGPSGeolocationProvider : public nsIGeolocationProvider,
   android::sp<android::hardware::gnss::V2_0::IGnss> mGnssHal_V2_0;
 #if defined(AIDL_GNSS)
   android::sp<GNSS::IGnss> mAidlGnss;
-  android::sp<GNSS::visibility_control::IGnssVisibilityControl> mAidlVisibilityControl;
+  android::sp<GNSS::visibility_control::IGnssVisibilityControl>
+      mAidlVisibilityControl;
   android::sp<GNSS::IAGnss> mAidlAgnss;
   android::sp<GNSS::IAGnssRil> mAidlAgnssRil;
 #endif

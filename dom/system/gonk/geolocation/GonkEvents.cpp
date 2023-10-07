@@ -26,6 +26,7 @@ NS_IMETHODIMP HidlUpdateCapabilitiesEvent::Run() {
   return NS_OK;
 }
 
+#ifdef AIDL_GNSS
 // AIDL
 NS_IMETHODIMP AidlUpdateCapabilitiesEvent::Run() {
   using android::hardware::gnss::IGnssCallback;
@@ -44,6 +45,7 @@ NS_IMETHODIMP AidlUpdateCapabilitiesEvent::Run() {
 
   return NS_OK;
 }
+#endif  // AIDL_GNSS
 
 // Common to HIDL and AIDL
 NS_IMETHODIMP UpdateLocationEvent::Run() {

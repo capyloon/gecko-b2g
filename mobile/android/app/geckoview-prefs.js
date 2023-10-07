@@ -62,10 +62,6 @@ pref("media.geckoview.autoplay.request", true);
 // Enable EME permission prompts
 pref("media.eme.require-app-approval", true);
 
-// Enable the Process Priority Manager
-pref("dom.ipc.processPriorityManager.enabled", true);
-
-pref("signon.debug", false);
 pref("signon.showAutoCompleteFooter", true);
 pref("toolkit.autocomplete.delegate", true);
 
@@ -81,13 +77,14 @@ pref("dom.ipc.processCount.webCOOP+COEP", 38);
 // Form autofill prefs.
 pref("extensions.formautofill.addresses.capture.enabled", true);
 
-// Debug prefs.
-pref("browser.formfill.debug", false);
-pref("extensions.formautofill.loglevel", "Warn");
-
 // PDF.js (enabled in StaticPrefList.yaml)
 // Try to convert PDFs sent as octet-stream
 pref("pdfjs.handleOctetStream", true);
 pref("browser.download.open_pdf_attachments_inline", true);
 pref("pdfjs.annotationEditorMode", -1);
 pref("pdfjs.enableFloatingToolbar", true);
+
+// Bug 1809922 to enable translations
+#ifdef NIGHTLY_BUILD
+  pref("browser.translations.enable", true);
+#endif

@@ -231,6 +231,8 @@ void GonkGPSGeolocationProvider::InitGnssHal() {
   }
 #endif
 
+  LOG("AIDL Gnss is null, trying HIDL");
+
   mGnssHal_V2_0 = IGnss_V2_0::getService();
   if (mGnssHal_V2_0 != nullptr) {
     mGnssHal = mGnssHal_V2_0;
@@ -379,6 +381,17 @@ static IAGnss_V2_0::ApnIpType sIpTypeSuplRoaming =
     IAGnss_V2_0::ApnIpType::IPV4V6;
 static IAGnss_V2_0::ApnIpType sIpTypeSuplEsRoaming =
     IAGnss_V2_0::ApnIpType::IPV4V6;
+
+#  ifdef AIDL_GNSS
+
+#    define AIDL_ApnIpType android::hardware::gnss::IAGnss::ApnIpType
+static AIDL_ApnIpType sAIpTypeSupl = AIDL_ApnIpType::IPV4V6;
+static AIDL_ApnIpType sAIpTypeSuplEs = AIDL_ApnIpType::IPV4V6;
+static AIDL_ApnIpType sAIpTypeSuplRoaming = AIDL_ApnIpType::IPV4V6;
+static AIDL_ApnIpType sAIpTypeSuplEsRoaming = AIDL_ApnIpType::IPV4V6;
+
+#  endif  // AIDL_GNSS
+
 #endif
 
 GonkGPSGeolocationProvider::GonkGPSGeolocationProvider()
@@ -619,7 +632,11 @@ void GonkGPSGeolocationProvider::Init() {
   MOZ_ASSERT(!NS_IsMainThread());
 
   InitGnssHal();
-  if (mGnssHal == nullptr && mAidlGnss == nullptr) {
+  if (mGnssHal == nullptr
+#ifdef AIDL_GNSS
+      && mAidlGnss == nullptr
+#endif
+  ) {
     ERR("Failed to get Gnss HAL.");
     return;
   }
@@ -650,6 +667,7 @@ void GonkGPSGeolocationProvider::Init() {
     }
   }
 
+#  ifdef AIDL_GNSS
   if (mAidlAgnss) {
     if (!aidlAgnssCbIface) {
       aidlAgnssCbIface = new AidlAGnssCallback();
@@ -659,6 +677,7 @@ void GonkGPSGeolocationProvider::Init() {
       ERR("Failed to set AIDL AGnss callback");
     }
   }
+#  endif  // AIDL_GNSS
 
   // report network state to IAGnssRil during the initialization since the
   // information may be needed by HAL for network positioning integration
@@ -667,7 +686,7 @@ void GonkGPSGeolocationProvider::Init() {
       "GonkGPSGeolocationProvider::UpdateNetworkState",
       [self]() { self->UpdateNetworkState(nullptr, false); });
   NS_DispatchToMainThread(r);
-#endif
+#endif  // MOZ_B2G_RIL
 
   if (mGnssVisibilityControlHal != nullptr) {
     if (!gnssVcCbIface) {
@@ -680,6 +699,7 @@ void GonkGPSGeolocationProvider::Init() {
     }
   }
 
+#ifdef AIDL_GNSS
   if (mAidlVisibilityControl) {
     if (!aidlVcCbIface) {
       aidlVcCbIface = new AidlVisibilityControlCallback();
@@ -689,6 +709,7 @@ void GonkGPSGeolocationProvider::Init() {
       ERR("SetCallback for AIDL Gnss VC Interface failed");
     }
   }
+#endif  // AIDL_GNSS
 
 #ifdef MOZ_B2G_RIL
   r = NS_NewRunnableFunction("GonkGPSGeolocationProvider::Init",
@@ -777,6 +798,7 @@ void GonkGPSGeolocationProvider::CleanupGnssHal() {
     mGnssHal->cleanup();
   }
 
+#ifdef AIDL_GNSS
   if (mAidlGnss != nullptr) {
     auto result = mAidlGnss->stop();
     if (!result.isOk()) {
@@ -793,6 +815,8 @@ void GonkGPSGeolocationProvider::CleanupGnssHal() {
 
     mAidlGnss->close();
   }
+#endif  // AIDL_GNSS
+
   mGnssHalReady = false;
 }
 
@@ -820,11 +844,8 @@ void GonkGPSGeolocationProvider::StartGPS() {
     }
   }
 
+#ifdef AIDL_GNSS
   if (mAidlGnss) {
-    // TODO(fabrice): do we need that?
-    android::sp<android::ProcessState> self = android::ProcessState::self();
-    self->startThreadPool();
-
     DBG("mAidlGnss->start");
     auto result = mAidlGnss->start();
     if (!result.isOk()) {
@@ -839,6 +860,7 @@ void GonkGPSGeolocationProvider::StartGPS() {
       ERR("failed to startNmea AIDL Gnss HAL");
     }
   }
+#endif  // AIDL_GNSS
 }
 
 void GonkGPSGeolocationProvider::ShutdownGPS() {
@@ -854,6 +876,7 @@ void GonkGPSGeolocationProvider::ShutdownGPS() {
     }
   }
 
+#ifdef AIDL_GNSS
   if (mAidlGnss != nullptr) {
     DBG("mAidlGnss->stop");
     auto result = mAidlGnss->stop();
@@ -869,6 +892,7 @@ void GonkGPSGeolocationProvider::ShutdownGPS() {
       ERR("failed to stopNmea AIDL Gnss HAL");
     }
   }
+#endif  // AIDL_GNSS
 }
 
 void GonkGPSGeolocationProvider::InjectLocation(double latitude,
@@ -889,7 +913,11 @@ void GonkGPSGeolocationProvider::InjectLocation(double latitude,
 }
 
 bool GonkGPSGeolocationProvider::SetPositionMode(bool enableHighAccuracy) {
-  if (mGnssHal == nullptr && mAidlGnss == nullptr) {
+  if (mGnssHal == nullptr
+#ifdef AIDL_GNSS
+      && mAidlGnss == nullptr
+#endif
+  ) {
     return false;
   }
 
@@ -1197,6 +1225,7 @@ NS_IMETHODIMP GonkGPSGeolocationProvider::HandleSettings(
       }
     }
 
+#ifdef AIDL_GNSS
     if (mAidlVisibilityControl) {
       std::vector<std::string> hidlProxyApps;
       if (gGeolocationEnabled) {
@@ -1209,6 +1238,7 @@ NS_IMETHODIMP GonkGPSGeolocationProvider::HandleSettings(
         ERR("Failed to enableNfwLocationAccess");
       }
     }
+#endif  // AIDL_GNSS
   }
 #ifdef MOZ_B2G_RIL
   else if (name.Equals(sSettingRilDataApn)) {
@@ -1376,7 +1406,11 @@ static inline uint64_t GetNetHandle(int32_t aNetId) {
 void GonkGPSGeolocationProvider::UpdateNetworkState(nsISupports* aNetworkInfo,
                                                     bool aObserved) {
   MOZ_ASSERT(NS_IsMainThread());
-  if (!mAGnssRilHal_V2_0 && !mAidlAgnssRil) {
+  if (!mAGnssRilHal_V2_0
+#  ifdef AIDL_GNSS
+      && !mAidlAgnssRil
+#  endif
+  ) {
     ERR("GnssRil isn't available for updating network state.");
     return;
   }
@@ -1450,12 +1484,11 @@ void GonkGPSGeolocationProvider::UpdateNetworkState(nsISupports* aNetworkInfo,
   if (mAGnssRilHal_V2_0) {
     IAGnssRil_V2_0::NetworkAttributes networkAttributes = {
         .networkHandle = netHandle,
-        .isConnected = connected,
+        .isConnected = static_cast<bool>(connected),
         .capabilities = capabilities,
         .apn = apn,
-
     };
-    DBG("updateNetworkState_2_0, netId: %d, netHandle: %llu, connected: %d, "
+    DBG("updateNetworkState_2_0, netId: %d, netHandle: %lu, connected: %d, "
         "capabilities: %u, apn: %s)",
         netId, netHandle, connected, capabilities, apn);
     auto result = mAGnssRilHal_V2_0->updateNetworkState_2_0(networkAttributes);
@@ -1464,6 +1497,7 @@ void GonkGPSGeolocationProvider::UpdateNetworkState(nsISupports* aNetworkInfo,
     }
   }
 
+#  ifdef AIDL_GNSS
   if (mAidlAgnssRil) {
     GNSS::IAGnssRil::NetworkAttributes networkAttributes;
     networkAttributes.networkHandle = netHandle;
@@ -1471,7 +1505,7 @@ void GonkGPSGeolocationProvider::UpdateNetworkState(nsISupports* aNetworkInfo,
     networkAttributes.capabilities = capabilities;
     networkAttributes.apn = apn;
 
-    DBG("updateNetworkState, netId: %d, netHandle: %lu, connected: %d, "
+    DBG("updateNetworkState, netId: %d, netHandle: %llu, connected: %d, "
         "capabilities: %u, apn: %s)",
         netId, netHandle, connected, capabilities, apn);
     auto result = mAidlAgnssRil->updateNetworkState(networkAttributes);
@@ -1479,6 +1513,7 @@ void GonkGPSGeolocationProvider::UpdateNetworkState(nsISupports* aNetworkInfo,
       ERR("failed to update network state to IAGnssRil");
     }
   }
+#  endif  // AIDL_GNSS
 }
 
 NS_IMETHODIMP
@@ -1555,7 +1590,11 @@ void GonkGPSGeolocationProvider::SetupAGPS() {
     return;
   }
 
-  if (!mAGnssHal_V2_0 && !mAidlAgnss) {
+  if (!mAGnssHal_V2_0
+#  ifdef AIDL_GNSS
+      && !mAidlAgnss
+#  endif
+  ) {
     LOG("No AGnss HAL available");
     return;
   }
@@ -1585,6 +1624,7 @@ void GonkGPSGeolocationProvider::SetupAGPS() {
       }
     }
 
+#  ifdef AIDL_GNSS
     if (mAidlAgnss) {
       DBG("mAidlAgnss->set_server(%s, %d)", suplServer.get(), suplPort);
       auto result = mAidlAgnss->setServer(
@@ -1594,6 +1634,7 @@ void GonkGPSGeolocationProvider::SetupAGPS() {
         ERR("failed to set server for IAGnssHal");
       }
     }
+#  endif  // AIDL_GNSS
   } else {
     DBG("Preference of SUPL server is not found");
     return;
@@ -1624,24 +1665,44 @@ void GonkGPSGeolocationProvider::AGpsDataConnectionOpen(bool isEmergencySupl) {
 
   nsCString& apn = isEmergencySupl ? sRilSuplEsApn : sRilSuplApn;
 
-  // TODO(fabrice): AIDL
-  IAGnss_V2_0::ApnIpType ipType;
-  if (IsRoaming()) {
-    ipType = isEmergencySupl ? sIpTypeSuplEsRoaming : sIpTypeSuplRoaming;
-  } else {
-    ipType = isEmergencySupl ? sIpTypeSuplEs : sIpTypeSupl;
+  if (mAGnssHal_V2_0) {
+    IAGnss_V2_0::ApnIpType ipType;
+    if (IsRoaming()) {
+      ipType = isEmergencySupl ? sIpTypeSuplEsRoaming : sIpTypeSuplRoaming;
+    } else {
+      ipType = isEmergencySupl ? sIpTypeSuplEs : sIpTypeSupl;
+    }
+    LOG("mAGnssHal_V2_0->data_conn_open_with_apn_ip_type(%lu, %s, %hhu)"
+        ", netId: %d",
+        netHandle, apn.get(), ipType, mSuplNetId);
+
+    auto result = mAGnssHal_V2_0->dataConnOpen(
+        netHandle, std::string(apn.get(), apn.Length()), ipType);
+
+    if (!result.isOk() || !result) {
+      ERR("Failed to set APN and its IP type to IAGnss");
+    }
   }
 
-  LOG("mAGnssHal_V2_0->data_conn_open_with_apn_ip_type(%lu, %s, %hhu)"
-      ", netId: %d",
-      netHandle, apn.get(), ipType, mSuplNetId);
+#  ifdef AIDL_GNSS
+  if (mAidlAgnss) {
+    AIDL_ApnIpType ipType;
+    if (IsRoaming()) {
+      ipType = isEmergencySupl ? sAIpTypeSuplEsRoaming : sAIpTypeSuplRoaming;
+    } else {
+      ipType = isEmergencySupl ? sAIpTypeSuplEs : sAIpTypeSupl;
+    }
+    LOG("mAGnssHal_V2_0->data_conn_open_with_apn_ip_type(%lu, %s, %hhu)"
+        ", netId: %d",
+        netHandle, apn.get(), ipType, mSuplNetId);
 
-  auto result = mAGnssHal_V2_0->dataConnOpen(
-      netHandle, std::string(apn.get(), apn.Length()), ipType);
-
-  if (!result.isOk() || !result) {
-    ERR("failed to set APN and its IP type to IAGnss");
+    auto result = mAidlAgnss->dataConnOpen(
+        netHandle, std::string(apn.get(), apn.Length()), ipType);
+    if (!result.isOk()) {
+      ERR("Failed to set APN and its IP type to IAGnss");
+    }
   }
+#  endif
 }
 
 void GonkGPSGeolocationProvider::HandleAGpsDataConnection(
@@ -1682,6 +1743,7 @@ void GonkGPSGeolocationProvider::HandleAGpsDataConnection(
       }
     }
 
+#  ifdef AIDL_GNSS
     if (mAidlAgnss) {
       LOG("mAidlAgnss->data_conn_closed()");
       auto result = mAidlAgnss->dataConnClosed();
@@ -1689,6 +1751,8 @@ void GonkGPSGeolocationProvider::HandleAGpsDataConnection(
         ERR("Failed to close IAGnss data connection");
       }
     }
+#  endif  // AIDL_GNSS
+
     if (type == nsINetworkInfo::NETWORK_TYPE_MOBILE_SUPL) {
       mSuplNetId = 0;
     } else {

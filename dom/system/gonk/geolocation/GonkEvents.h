@@ -6,6 +6,11 @@
 
 #pragma once
 
+#if ANDROID_VERSION >= 33
+#  define AIDL_GNSS
+#  define GNSS android::hardware::gnss
+#endif
+
 #include "mozilla/dom/GeolocationPosition.h"
 #include "nsThreadUtils.h"
 
@@ -20,6 +25,7 @@ class HidlUpdateCapabilitiesEvent final : public mozilla::Runnable {
   uint32_t mCapabilities;
 };
 
+#ifdef AIDL_GNSS
 class AidlUpdateCapabilitiesEvent final : public mozilla::Runnable {
  public:
   explicit AidlUpdateCapabilitiesEvent(uint32_t aCapabilities)
@@ -30,6 +36,7 @@ class AidlUpdateCapabilitiesEvent final : public mozilla::Runnable {
  private:
   uint32_t mCapabilities;
 };
+#endif  // AIDL_GNSS
 
 class UpdateLocationEvent final : public mozilla::Runnable {
  public:
