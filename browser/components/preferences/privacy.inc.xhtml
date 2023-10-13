@@ -356,40 +356,43 @@
         </vbox>
       </radiogroup>
     </vbox>
-    <vbox id="nonTechnicalPrivacyBox">
-      <hbox id="globalPrivacyControlBox" flex="1" align="center" hidden="true">
-        <checkbox id="globalPrivacyControlCheckbox"
-                class="tail-with-learn-more"
-                preference="privacy.globalprivacycontrol.enabled"
-                data-l10n-id="global-privacy-control-description"
-                search-l10n-id="global-privacy-control-search" />
-        <html:a is="moz-support-link"
-            id="globalPrivacyControlLearnMoreLink"
-            support-page="global-privacy-control" />
-      </hbox>
-      <vbox id="legacyDoNotTrackBox">
-        <label>
-          <label class="tail-with-learn-more" data-l10n-id="do-not-track-description" id="doNotTrackDesc"></label>
-        <html:a is="moz-support-link"
-                class="learnMore"
-                support-page="how-do-i-turn-do-not-track-feature"
-        />
-        </label>
-        <radiogroup id="doNotTrackRadioGroup" aria-labelledby="doNotTrackDesc" preference="privacy.donottrackheader.enabled">
-          <radio value="true" data-l10n-id="do-not-track-option-always"/>
-          <radio value="false" data-l10n-id="do-not-track-option-default-content-blocking-known"/>
-        </radiogroup>
-      </vbox>
-      <hbox id="doNotTrackBox" flex="1" align="center">
-        <checkbox id="doNotTrackCheckbox"
-                class="tail-with-learn-more"
-                preference="privacy.donottrackheader.enabled"
-                data-l10n-id="do-not-track-description2" />
-        <html:a is="moz-support-link"
-            id="doNotTrackLearnMoreLink"
-            support-page="how-do-i-turn-do-not-track-feature" />
-      </hbox>
+  </vbox>
+</groupbox>
+<groupbox id="nonTechnicalPrivacyGroup" data-category="panePrivacy" data-subcategory="nontechnicalprivacy" hidden="true">
+  <label id="nonTechnicalPrivacyHeader"><html:h2 data-l10n-id="non-technical-privacy-header"/></label>
+  <vbox id="nonTechnicalPrivacyBox">
+    <hbox id="globalPrivacyControlBox" flex="1" align="center" hidden="true">
+      <checkbox id="globalPrivacyControlCheckbox"
+              class="tail-with-learn-more"
+              preference="privacy.globalprivacycontrol.enabled"
+              data-l10n-id="global-privacy-control-description"
+              search-l10n-ids="global-privacy-control-search" />
+      <html:a is="moz-support-link"
+          id="globalPrivacyControlLearnMoreLink"
+          support-page="global-privacy-control" />
+    </hbox>
+    <vbox id="legacyDoNotTrackBox">
+      <label>
+        <label class="tail-with-learn-more" data-l10n-id="do-not-track-description" id="doNotTrackDesc"></label>
+      <html:a is="moz-support-link"
+              class="learnMore"
+              support-page="how-do-i-turn-do-not-track-feature"
+      />
+      </label>
+      <radiogroup id="doNotTrackRadioGroup" aria-labelledby="doNotTrackDesc" preference="privacy.donottrackheader.enabled">
+        <radio value="true" data-l10n-id="do-not-track-option-always"/>
+        <radio value="false" data-l10n-id="do-not-track-option-default-content-blocking-known"/>
+      </radiogroup>
     </vbox>
+    <hbox id="doNotTrackBox" flex="1" align="center">
+      <checkbox id="doNotTrackCheckbox"
+              class="tail-with-learn-more"
+              preference="privacy.donottrackheader.enabled"
+              data-l10n-id="do-not-track-description2" />
+      <html:a is="moz-support-link"
+          id="doNotTrackLearnMoreLink"
+          support-page="how-do-i-turn-do-not-track-feature" />
+    </hbox>
   </vbox>
 </groupbox>
 
@@ -714,18 +717,6 @@
             preference="browser.urlbar.suggest.topsites"/>
   <checkbox id="enginesSuggestion" data-l10n-id="addressbar-locbar-engines-option"
             preference="browser.urlbar.suggest.engines"/>
-  <hbox id="firefoxSuggestBestMatchContainer" align="center" hidden="true">
-    <checkbox id="firefoxSuggestBestMatch"
-              class="tail-with-learn-more"
-              data-l10n-id="addressbar-firefox-suggest-best-match-option"
-              preference="browser.urlbar.suggest.bestmatch"/>
-    <html:a is="moz-support-link"
-            id="firefoxSuggestBestMatchLearnMore"
-            class="learnMore"
-            data-l10n-id="addressbar-best-match-learn-more"
-            support-page="firefox-suggest"
-    />
-  </hbox>
   <hbox id="quickActionsBox" align="center" hidden="true">
     <checkbox id="enableQuickActions"
               class="tail-with-learn-more"

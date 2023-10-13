@@ -1934,8 +1934,8 @@ UniquePtr<uint8_t[]> CanvasRenderingContext2D::GetImageBuffer(
 
   if (ret && ShouldResistFingerprinting(RFPTarget::CanvasRandomization)) {
     nsRFPService::RandomizePixels(
-        GetCookieJarSettings(), ret.get(),
-        out_imageSize->width * out_imageSize->height * 4,
+        GetCookieJarSettings(), ret.get(), out_imageSize->width,
+        out_imageSize->height, out_imageSize->width * out_imageSize->height * 4,
         SurfaceFormat::A8R8G8B8_UINT32);
   }
 
@@ -2848,7 +2848,7 @@ class CanvasUserSpaceMetrics : public UserSpaceMetricsWithSize {
   WritingMode GetWritingModeForType(Type aType) const override {
     switch (aType) {
       case Type::This:
-        return WritingMode(mCanvasStyle);
+        return mCanvasStyle ? WritingMode(mCanvasStyle) : WritingMode();
       case Type::Root:
         return GetWritingMode(mPresContext->Document()->GetRootElement());
       default:
@@ -5996,9 +5996,9 @@ nsresult CanvasRenderingContext2D::GetImageDataArray(
       // holder.
 
       const IntSize size = readback->GetSize();
-      nsRFPService::RandomizePixels(GetCookieJarSettings(), rawData.mData,
-                                    size.height * size.width * 4,
-                                    SurfaceFormat::A8R8G8B8_UINT32);
+      nsRFPService::RandomizePixels(
+          GetCookieJarSettings(), rawData.mData, size.width, size.height,
+          size.height * size.width * 4, SurfaceFormat::A8R8G8B8_UINT32);
     }
 
     JS::AutoCheckCannotGC nogc;

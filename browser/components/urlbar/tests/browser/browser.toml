@@ -363,6 +363,9 @@ fail-if = ["a11y_checks"] # Bug 1854660 clicked element may not be focusable and
 
 ["browser_raceWithTabs.js"]
 
+["browser_recentsearches.js"]
+support-files = ["search-engines"]
+
 ["browser_redirect_error.js"]
 support-files = ["redirect_error.sjs"]
 
@@ -609,26 +612,6 @@ https_first_disabled = true
 ["browser_urlbar_annotation.js"]
 support-files = ["redirect_to.sjs"]
 
-["browser_urlbar_event_telemetry_abandonment.js"]
-support-files = [
-  "searchSuggestionEngine.xml",
-  "searchSuggestionEngine.sjs",
-]
-
-["browser_urlbar_event_telemetry_engagement.js"]
-https_first_disabled = true
-skip-if = [
-  "apple_catalina", # Bug 1625690
-  "apple_silicon", # Disabled due to bleedover with other tests when run in regular suites; passes in "failures" jobs
-  "os == 'linux'", # Bug 1748986, bug 1775824
-]
-support-files = [
-  "searchSuggestionEngine.xml",
-  "searchSuggestionEngine.sjs",
-]
-
-["browser_urlbar_event_telemetry_noEvent.js"]
-
 ["browser_urlbar_selection.js"]
 skip-if = ["(os == 'mac')"] # bug 1570474
 
@@ -706,11 +689,7 @@ support-files = [
 fail-if = ["a11y_checks"] # Bug 1854660 clicked element may not be focusable and/or labeled
 skip-if = ["os == 'linux' && asan"] # Bug 1789051
 
-["browser_waitForLoadOrTimeout.js"]
+["browser_waitForLoadStartOrTimeout.js"]
 https_first_disabled = true
-skip-if = [
-  "tsan", # Bug 1683730
-  "os == 'linux' && bits == 64 && !debug", # Bug 1666092
-]
 
 ["browser_whereToOpen.js"]

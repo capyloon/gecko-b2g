@@ -1225,33 +1225,6 @@
   value: true
   mirror: always
 
-- name: browser.display.focus_ring_on_anything
-  type: bool
-  value: false
-  mirror: always
-
-- name: browser.display.focus_ring_width
-  type: uint32_t
-  value: 1
-  mirror: always
-
-- name: browser.display.focus_background_color
-  type: String
-  value: "#117722"
-  mirror: never
-
-# Focus ring border style.
-# 0 = solid border, 1 = dotted border
-- name: browser.display.focus_ring_style
-  type: uint32_t
-  value: 1
-  mirror: always
-
-- name: browser.display.focus_text_color
-  type: String
-  value: "#ffffff"
-  mirror: never
-
 - name: browser.display.foreground_color
   type: String
   value: "#000000"
@@ -1331,11 +1304,6 @@
     Material Symbols Rounded,
     Material Symbols Sharp
   mirror: never
-
-- name: browser.display.use_focus_colors
-  type: bool
-  value: false
-  mirror: always
 
 - name: browser.display.use_system_colors
   type: RelaxedAtomicBool
@@ -2286,6 +2254,11 @@
 # (bug 1570566).
 - name: dom.block_reload_from_resize_event_handler
   type: bool
+  value: false
+  mirror: always
+
+- name: dom.cache.privateBrowsing.enabled
+  type: RelaxedAtomicBool
   value: false
   mirror: always
 
@@ -3874,6 +3847,14 @@
   value: true
   mirror: always
 
+# If true, top-level requests that are initiated from the address
+# bar and with an empty scheme get upgraded to HTTPS
+# with a fallback
+- name: dom.security.https_first_schemeless
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
 - name: dom.security.unexpected_system_load_telemetry_enabled
   type: bool
   value: true
@@ -4652,6 +4633,11 @@
 - name: dom.w3c_pointer_events.implicit_capture
   type: bool
   value: true
+  mirror: always
+
+- name: dom.w3c_pointer_events.getcoalescedevents_only_in_securecontext
+  type: bool
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
 
 # In case Touch API is enabled, this pref controls whether to support
@@ -8354,6 +8340,13 @@
   value: -1
   mirror: always
 
+# Whether to always underline links.
+- name: layout.css.always_underline_links
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+  rust: true
+
 # Whether Container Queries are enabled
 - name: layout.css.container-queries.enabled
   type: RelaxedAtomicBool
@@ -11819,15 +11812,6 @@
   value: true
   mirror: always
 
-# Set this pref to an integer like 99 to override the User-Agent string's
-# 'rv' bit. The value 0 means use the default Firefox version. We introduced
-# this for Firefox 110 because it turned out websites used user agent parsing
-# for "rv:11" to detect IE11.
-- name: network.http.useragent.forceRVOnly
-  type: uint32_t
-  value: 109
-  mirror: always
-
 # Whether or not we use Windows for SSO to Microsoft sites.
 - name: network.http.windows-sso.enabled
   type: RelaxedAtomicBool
@@ -12561,6 +12545,11 @@
 
   # If true, will be more strict with status code parsing
 - name: network.url.strict_data_url_base64_placement
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
+
+- name: network.url.strict_protocol_setter
   type: RelaxedAtomicBool
   value: true
   mirror: always
@@ -14143,7 +14132,7 @@
 # (OS) mapping when loaded via the file:// protocol.
 - name: security.block_fileuri_script_with_wrong_mime
   type: bool
-  value: @IS_EARLY_BETA_OR_EARLIER@
+  value: false
   mirror: always
 
 # Cancel outgoing requests from SystemPrincipal:
@@ -14696,26 +14685,6 @@
 - name: test.events.async.enabled
   type: RelaxedAtomicBool
   value: false
-  mirror: always
-
-- name: test.events.async.key.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
-- name: test.events.async.mouse.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
-- name: test.events.async.touch.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
-- name: test.events.async.wheel.enabled
-  type: RelaxedAtomicBool
-  value: true
   mirror: always
 
 - name: test.mousescroll

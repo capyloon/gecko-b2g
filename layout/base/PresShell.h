@@ -1551,12 +1551,6 @@ class PresShell final : public nsStubDocumentObserver,
   void SetAuthorStyleDisabled(bool aDisabled);
   bool GetAuthorStyleDisabled() const;
 
-  /**
-   * Update the style set somehow to take into account changed prefs which
-   * affect document styling.
-   */
-  void UpdatePreferenceStyles();
-
   // aSheetType is one of the nsIStyleSheetService *_SHEET constants.
   void NotifyStyleSheetServiceSheetAdded(StyleSheet* aSheet,
                                          uint32_t aSheetType);
@@ -1880,7 +1874,6 @@ class PresShell final : public nsStubDocumentObserver,
   void AddUserSheet(StyleSheet*);
   void AddAgentSheet(StyleSheet*);
   void AddAuthorSheet(StyleSheet*);
-  void RemovePreferenceStyles();
 
   /**
    * Initialize cached font inflation preference values and do an initial
@@ -2884,8 +2877,6 @@ class PresShell final : public nsStubDocumentObserver,
   // call their can-run- script methods without local RefPtr variables.
   MOZ_KNOWN_LIVE RefPtr<Document> const mDocument;
   MOZ_KNOWN_LIVE RefPtr<nsPresContext> const mPresContext;
-  // The document's style set owns it but we maintain a ref, may be null.
-  RefPtr<StyleSheet> mPrefStyleSheet;
   UniquePtr<nsCSSFrameConstructor> mFrameConstructor;
   nsViewManager* mViewManager;  // [WEAK] docViewer owns it so I don't have to
   RefPtr<nsFrameSelection> mSelection;
@@ -3002,6 +2993,9 @@ class PresShell final : public nsStubDocumentObserver,
   // NS_UNCONSTRAINEDSIZE) if the mouse isn't over our window or there is no
   // last observed mouse location for some reason.
   nsPoint mMouseLocation;
+  // This is used for the synthetic mouse events too.  This is set when a mouse
+  // event is dispatched into the DOM.
+  static int16_t sMouseButtons;
   // The last observed pointer location relative to that root document in visual
   // coordinates.
   nsPoint mLastOverWindowPointerLocation;

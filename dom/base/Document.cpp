@@ -100,6 +100,7 @@
 #include "mozilla/RelativeTo.h"
 #include "mozilla/RestyleManager.h"
 #include "mozilla/ReverseIterator.h"
+#include "mozilla/SchedulerGroup.h"
 #include "mozilla/ScrollTimelineAnimationTracker.h"
 #include "mozilla/SMILAnimationController.h"
 #include "mozilla/SMILTimeContainer.h"
@@ -4303,29 +4304,8 @@ void Document::AssertDocGroupMatchesKey() const {
 }
 #endif
 
-nsresult Document::Dispatch(TaskCategory aCategory,
-                            already_AddRefed<nsIRunnable>&& aRunnable) {
-  // Note that this method may be called off the main thread.
-  if (mDocGroup) {
-    return mDocGroup->Dispatch(aCategory, std::move(aRunnable));
-  }
-  return DispatcherTrait::Dispatch(aCategory, std::move(aRunnable));
-}
-
-nsISerialEventTarget* Document::EventTargetFor(TaskCategory aCategory) const {
-  if (mDocGroup) {
-    return mDocGroup->EventTargetFor(aCategory);
-  }
-  return DispatcherTrait::EventTargetFor(aCategory);
-}
-
-AbstractThread* Document::AbstractMainThreadFor(
-    mozilla::TaskCategory aCategory) {
-  MOZ_ASSERT(NS_IsMainThread());
-  if (mDocGroup) {
-    return mDocGroup->AbstractMainThreadFor(aCategory);
-  }
-  return DispatcherTrait::AbstractMainThreadFor(aCategory);
+nsresult Document::Dispatch(already_AddRefed<nsIRunnable>&& aRunnable) const {
+  return SchedulerGroup::Dispatch(std::move(aRunnable));
 }
 
 void Document::NoteScriptTrackingStatus(const nsACString& aURL,
@@ -7690,14 +7670,6 @@ void Document::NotifyActivityChanged() {
   EnumerateActivityObservers(NotifyActivityChangedCallback);
 }
 
-bool Document::IsTopLevelWindowInactive() const {
-  if (BrowsingContext* bc = GetBrowsingContext()) {
-    return !bc->GetIsActiveBrowserWindow();
-  }
-
-  return false;
-}
-
 void Document::SetContainer(nsDocShell* aContainer) {
   if (aContainer) {
     mDocumentContainer = aContainer;
@@ -8254,7 +8226,7 @@ void Document::UnblockDOMContentLoaded() {
     nsCOMPtr<nsIRunnable> ev =
         NewRunnableMethod("Document::DispatchContentLoadedEvents", this,
                           &Document::DispatchContentLoadedEvents);
-    Dispatch(TaskCategory::Other, ev.forget());
+    Dispatch(ev.forget());
   } else {
     DispatchContentLoadedEvents();
   }
@@ -9282,7 +9254,7 @@ void Document::NotifyPossibleTitleChange(bool aBoundTitleElement) {
   RefPtr<nsRunnableMethod<Document, void, false>> event =
       NewNonOwningRunnableMethod("Document::DoNotifyPossibleTitleChange", this,
                                  &Document::DoNotifyPossibleTitleChange);
-  if (NS_WARN_IF(NS_FAILED(Dispatch(TaskCategory::Other, do_AddRef(event))))) {
+  if (NS_WARN_IF(NS_FAILED(Dispatch(do_AddRef(event))))) {
     return;
   }
   mPendingTitleChangeEvent = std::move(event);
@@ -11683,7 +11655,7 @@ class nsUnblockOnloadEvent : public Runnable {
 void Document::PostUnblockOnloadEvent() {
   MOZ_RELEASE_ASSERT(NS_IsMainThread());
   nsCOMPtr<nsIRunnable> evt = new nsUnblockOnloadEvent(this);
-  nsresult rv = Dispatch(TaskCategory::Other, evt.forget());
+  nsresult rv = Dispatch(evt.forget());
   if (NS_SUCCEEDED(rv)) {
     // Stabilize block count so we don't post more events while this one is up
     ++mOnloadBlockCount;
@@ -12538,34 +12510,35 @@ void Document::ForgetImagePreload(nsIURI* aURI) {
 
 void Document::UpdateDocumentStates(DocumentState aMaybeChangedStates,
                                     bool aNotify) {
-  const DocumentState oldStates = mDocumentState;
+  const DocumentState oldStates = mState;
   if (aMaybeChangedStates.HasAtLeastOneOfStates(
           DocumentState::ALL_LOCALEDIR_BITS)) {
-    mDocumentState &= ~DocumentState::ALL_LOCALEDIR_BITS;
+    mState &= ~DocumentState::ALL_LOCALEDIR_BITS;
     if (IsDocumentRightToLeft()) {
-      mDocumentState |= DocumentState::RTL_LOCALE;
+      mState |= DocumentState::RTL_LOCALE;
     } else {
-      mDocumentState |= DocumentState::LTR_LOCALE;
+      mState |= DocumentState::LTR_LOCALE;
     }
   }
 
   if (aMaybeChangedStates.HasAtLeastOneOfStates(DocumentState::LWTHEME)) {
     if (ComputeDocumentLWTheme()) {
-      mDocumentState |= DocumentState::LWTHEME;
+      mState |= DocumentState::LWTHEME;
     } else {
-      mDocumentState &= ~DocumentState::LWTHEME;
+      mState &= ~DocumentState::LWTHEME;
     }
   }
 
   if (aMaybeChangedStates.HasState(DocumentState::WINDOW_INACTIVE)) {
-    if (IsTopLevelWindowInactive()) {
-      mDocumentState |= DocumentState::WINDOW_INACTIVE;
+    BrowsingContext* bc = GetBrowsingContext();
+    if (!bc || !bc->GetIsActiveBrowserWindow()) {
+      mState |= DocumentState::WINDOW_INACTIVE;
     } else {
-      mDocumentState &= ~DocumentState::WINDOW_INACTIVE;
+      mState &= ~DocumentState::WINDOW_INACTIVE;
     }
   }
 
-  const DocumentState changedStates = oldStates ^ mDocumentState;
+  const DocumentState changedStates = oldStates ^ mState;
   if (aNotify && !changedStates.IsEmpty()) {
     if (PresShell* ps = GetObservingPresShell()) {
       ps->DocumentStatesChanged(changedStates);
@@ -12728,7 +12701,7 @@ void Document::UnsuppressEventHandlingAndFireEvents(bool aFireEvents) {
     MOZ_RELEASE_ASSERT(NS_IsMainThread());
     nsCOMPtr<nsIRunnable> ded =
         new nsDelayedEventDispatcher(std::move(documents));
-    Dispatch(TaskCategory::Other, ded.forget());
+    Dispatch(ded.forget());
   } else {
     FireOrClearDelayedEvents(std::move(documents), false);
   }
@@ -14484,11 +14457,7 @@ class nsCallExitFullscreen : public Runnable {
 void Document::AsyncExitFullscreen(Document* aDoc) {
   MOZ_RELEASE_ASSERT(NS_IsMainThread());
   nsCOMPtr<nsIRunnable> exit = new nsCallExitFullscreen(aDoc);
-  if (aDoc) {
-    aDoc->Dispatch(TaskCategory::Other, exit.forget());
-  } else {
-    NS_DispatchToCurrentThread(exit.forget());
-  }
+  NS_DispatchToCurrentThread(exit.forget());
 }
 
 static uint32_t CountFullscreenSubDocuments(Document& aDoc) {
@@ -15488,17 +15457,15 @@ void Document::RequestFullscreenInContentProcess(
   PendingFullscreenChangeList::Add(std::move(aRequest));
   // If we are not the top level process, dispatch an event to make
   // our parent process go fullscreen first.
-  Dispatch(
-      TaskCategory::Other,
-      NS_NewRunnableFunction(
-          "Document::RequestFullscreenInContentProcess", [self = RefPtr{this}] {
-            if (!self->HasPendingFullscreenRequests()) {
-              return;
-            }
-            nsContentUtils::DispatchEventOnlyToChrome(
-                self, self, u"MozDOMFullscreen:Request"_ns, CanBubble::eYes,
-                Cancelable::eNo, /* DefaultAction */ nullptr);
-          }));
+  Dispatch(NS_NewRunnableFunction(
+      "Document::RequestFullscreenInContentProcess", [self = RefPtr{this}] {
+        if (!self->HasPendingFullscreenRequests()) {
+          return;
+        }
+        nsContentUtils::DispatchEventOnlyToChrome(
+            self, self, u"MozDOMFullscreen:Request"_ns, CanBubble::eYes,
+            Cancelable::eNo, /* DefaultAction */ nullptr);
+      }));
 }
 
 void Document::RequestFullscreenInParentProcess(
@@ -15754,7 +15721,7 @@ void Document::PostVisibilityUpdateEvent() {
   nsCOMPtr<nsIRunnable> event = NewRunnableMethod<DispatchVisibilityChange>(
       "Document::UpdateVisibilityState", this, &Document::UpdateVisibilityState,
       DispatchVisibilityChange::Yes);
-  Dispatch(TaskCategory::Other, event.forget());
+  Dispatch(event.forget());
 }
 
 void Document::MaybeActiveMediaComponents() {
@@ -16384,7 +16351,7 @@ void Document::ScheduleIntersectionObserverNotification() {
   nsCOMPtr<nsIRunnable> notification =
       NewRunnableMethod("Document::NotifyIntersectionObservers", this,
                         &Document::NotifyIntersectionObservers);
-  Dispatch(TaskCategory::Other, notification.forget());
+  Dispatch(notification.forget());
 }
 
 void Document::NotifyIntersectionObservers() {
@@ -16741,8 +16708,8 @@ void Document::SetUserHasInteracted() {
 }
 
 BrowsingContext* Document::GetBrowsingContext() const {
-  nsCOMPtr<nsIDocShell> docshell(mDocumentContainer);
-  return docshell ? docshell->GetBrowsingContext() : nullptr;
+  return mDocumentContainer ? mDocumentContainer->GetBrowsingContext()
+                            : nullptr;
 }
 
 void Document::NotifyUserGestureActivation() {
@@ -17417,22 +17384,26 @@ Document::CreatePermissionGrantPromise(
         p = new StorageAccessAPIHelper::StorageAccessPermissionGrantPromise::
             Private(__func__);
 
-    RefPtr<PWindowGlobalChild::HasStorageAccessPermissionPromise> promise;
+    RefPtr<PWindowGlobalChild::GetStorageAccessPermissionPromise> promise;
     // Test the permission
     MOZ_ASSERT(XRE_IsContentProcess());
 
     WindowGlobalChild* wgc = inner->GetWindowGlobalChild();
     MOZ_ASSERT(wgc);
 
-    promise = wgc->SendHasStorageAccessPermission();
+    promise = wgc->SendGetStorageAccessPermission();
     MOZ_ASSERT(promise);
     promise->Then(
         GetCurrentSerialEventTarget(), __func__,
         [self, p, inner, principal, aHasUserInteraction,
          aRequireUserInteraction, aTopLevelBaseDomain,
-         aFrameOnly](bool aGranted) {
-          if (aGranted) {
-            p->Resolve(true, __func__);
+         aFrameOnly](uint32_t aAction) {
+          if (aAction == nsIPermissionManager::ALLOW_ACTION) {
+            p->Resolve(StorageAccessAPIHelper::eAllow, __func__);
+            return;
+          }
+          if (aAction == nsIPermissionManager::DENY_ACTION) {
+            p->Reject(false, __func__);
             return;
           }
 
@@ -17540,7 +17511,7 @@ Document::CreatePermissionGrantPromise(
                     // If we get here, the auto-decision failed and we need to
                     // wait for the user prompt to complete.
                     sapr->RequestDelayedTask(
-                        inner->EventTargetFor(TaskCategory::Other),
+                        GetMainThreadSerialEventTarget(),
                         ContentPermissionRequestBase::DelayedTaskType::Request);
                   });
         },

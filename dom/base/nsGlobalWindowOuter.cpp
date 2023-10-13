@@ -15,7 +15,6 @@
 
 // Local Includes
 #include "Navigator.h"
-#include "mozilla/Encoding.h"
 #include "nsContentSecurityManager.h"
 #include "nsGlobalWindowOuter.h"
 #include "nsScreen.h"
@@ -90,6 +89,7 @@
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/Likely.h"
+#include "mozilla/SchedulerGroup.h"
 #include "mozilla/SpinEventLoopUntil.h"
 #include "mozilla/Sprintf.h"
 #include "mozilla/Unused.h"
@@ -2029,8 +2029,6 @@ static nsresult CreateNativeGlobalForInner(
 
   SelectZone(aCx, principal, aNewInner, creationOptions);
 
-  creationOptions.setSecureContext(aIsSecureContext);
-
   // Define the SharedArrayBuffer global constructor property only if shared
   // memory may be used and structured-cloned (e.g. through postMessage).
   //
@@ -2041,7 +2039,7 @@ static nsresult CreateNativeGlobalForInner(
       aDefineSharedArrayBufferConstructor);
 
   xpc::InitGlobalObjectOptions(
-      options, principal->IsSystemPrincipal(),
+      options, principal->IsSystemPrincipal(), aIsSecureContext,
       aDocument->ShouldResistFingerprinting(RFPTarget::JSDateTimeUTC),
       aDocument->ShouldResistFingerprinting(RFPTarget::JSMathFdlibm),
       aDocument->ShouldResistFingerprinting(RFPTarget::JSLocale));
@@ -5876,8 +5874,7 @@ class nsCloseEvent : public Runnable {
  public:
   static nsresult PostCloseEvent(nsGlobalWindowOuter* aWindow, bool aIndirect) {
     nsCOMPtr<nsIRunnable> ev = new nsCloseEvent(aWindow, aIndirect);
-    nsresult rv = aWindow->Dispatch(TaskCategory::Other, ev.forget());
-    return rv;
+    return aWindow->Dispatch(ev.forget());
   }
 
   NS_IMETHOD Run() override {
@@ -6241,7 +6238,7 @@ bool nsGlobalWindowOuter::IsInModalState() {
 void nsGlobalWindowOuter::NotifyWindowIDDestroyed(const char* aTopic) {
   nsCOMPtr<nsIRunnable> runnable =
       new WindowDestroyedEvent(this, mWindowID, aTopic);
-  Dispatch(TaskCategory::Other, runnable.forget());
+  Dispatch(runnable.forget());
 }
 
 Element* nsGlobalWindowOuter::GetFrameElement(nsIPrincipal& aSubjectPrincipal) {
@@ -6681,7 +6678,7 @@ class AutoUnblockScriptClosing {
         &nsGlobalWindowOuter::UnblockScriptedClosing;
     nsCOMPtr<nsIRunnable> caller = NewRunnableMethod(
         "AutoUnblockScriptClosing::~AutoUnblockScriptClosing", mWin, run);
-    mWin->Dispatch(TaskCategory::Other, caller.forget());
+    mWin->Dispatch(caller.forget());
   }
 };
 
@@ -7255,30 +7252,14 @@ void nsGlobalWindowOuter::CheckForDPIChange() {
 }
 
 nsresult nsGlobalWindowOuter::Dispatch(
-    TaskCategory aCategory, already_AddRefed<nsIRunnable>&& aRunnable) {
+    already_AddRefed<nsIRunnable>&& aRunnable) const {
   MOZ_RELEASE_ASSERT(NS_IsMainThread());
-  if (GetDocGroup()) {
-    return GetDocGroup()->Dispatch(aCategory, std::move(aRunnable));
-  }
-  return DispatcherTrait::Dispatch(aCategory, std::move(aRunnable));
+  return NS_DispatchToCurrentThread(std::move(aRunnable));
 }
 
-nsISerialEventTarget* nsGlobalWindowOuter::EventTargetFor(
-    TaskCategory aCategory) const {
+nsISerialEventTarget* nsGlobalWindowOuter::SerialEventTarget() const {
   MOZ_RELEASE_ASSERT(NS_IsMainThread());
-  if (GetDocGroup()) {
-    return GetDocGroup()->EventTargetFor(aCategory);
-  }
-  return DispatcherTrait::EventTargetFor(aCategory);
-}
-
-AbstractThread* nsGlobalWindowOuter::AbstractMainThreadFor(
-    TaskCategory aCategory) {
-  MOZ_RELEASE_ASSERT(NS_IsMainThread());
-  if (GetDocGroup()) {
-    return GetDocGroup()->AbstractMainThreadFor(aCategory);
-  }
-  return DispatcherTrait::AbstractMainThreadFor(aCategory);
+  return GetMainThreadSerialEventTarget();
 }
 
 void nsGlobalWindowOuter::MaybeResetWindowName(Document* aNewDocument) {

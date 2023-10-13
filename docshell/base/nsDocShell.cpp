@@ -1374,29 +1374,21 @@ void nsDocShell::FirePageHideShowNonRecursive(bool aShow) {
   }
 }
 
-nsresult nsDocShell::Dispatch(TaskCategory aCategory,
-                              already_AddRefed<nsIRunnable>&& aRunnable) {
+nsresult nsDocShell::Dispatch(already_AddRefed<nsIRunnable>&& aRunnable) {
   nsCOMPtr<nsIRunnable> runnable(aRunnable);
-  nsCOMPtr<nsPIDOMWindowOuter> win = GetWindow();
-  if (NS_WARN_IF(!win)) {
+  if (NS_WARN_IF(!GetWindow())) {
     // Window should only be unavailable after destroyed.
     MOZ_ASSERT(mIsBeingDestroyed);
     return NS_ERROR_FAILURE;
   }
-
-  if (win->GetDocGroup()) {
-    return win->GetDocGroup()->Dispatch(aCategory, runnable.forget());
-  }
-
-  return SchedulerGroup::Dispatch(aCategory, runnable.forget());
+  return SchedulerGroup::Dispatch(runnable.forget());
 }
 
 NS_IMETHODIMP
 nsDocShell::DispatchLocationChangeEvent() {
-  return Dispatch(
-      TaskCategory::Other,
-      NewRunnableMethod("nsDocShell::FireDummyOnLocationChange", this,
-                        &nsDocShell::FireDummyOnLocationChange));
+  return Dispatch(NewRunnableMethod("nsDocShell::FireDummyOnLocationChange",
+                                    this,
+                                    &nsDocShell::FireDummyOnLocationChange));
 }
 
 NS_IMETHODIMP
@@ -2581,7 +2573,7 @@ void nsDocShell::MaybeCreateInitialClientSource(nsIPrincipal* aPrincipal) {
   }
 
   mInitialClientSource = ClientManager::CreateSource(
-      ClientType::Window, win->EventTargetFor(TaskCategory::Other), principal);
+      ClientType::Window, GetMainThreadSerialEventTarget(), principal);
   MOZ_DIAGNOSTIC_ASSERT(mInitialClientSource);
 
   // Mark the initial client as execution ready, but owned by the docshell.
@@ -6081,7 +6073,8 @@ already_AddRefed<nsIURI> nsDocShell::AttemptURIFixup(
     nsIChannel* aChannel, nsresult aStatus,
     const mozilla::Maybe<nsCString>& aOriginalURIString, uint32_t aLoadType,
     bool aIsTopFrame, bool aAllowKeywordFixup, bool aUsePrivateBrowsing,
-    bool aNotifyKeywordSearchLoading, nsIInputStream** aNewPostData) {
+    bool aNotifyKeywordSearchLoading, nsIInputStream** aNewPostData,
+    bool* outWasSchemelessInput) {
   if (aStatus != NS_ERROR_UNKNOWN_HOST && aStatus != NS_ERROR_NET_RESET &&
       aStatus != NS_ERROR_CONNECTION_REFUSED &&
       aStatus !=
@@ -6175,6 +6168,7 @@ already_AddRefed<nsIURI> nsDocShell::AttemptURIFixup(
         }
         if (info) {
           info->GetPreferredURI(getter_AddRefs(newURI));
+          info->GetWasSchemelessInput(outWasSchemelessInput);
           if (newURI) {
             info->GetKeywordAsSent(keywordAsSent);
             info->GetKeywordProviderName(keywordProviderName);
@@ -7286,7 +7280,7 @@ nsresult nsDocShell::RestorePresentation(nsISHEntry* aSHEntry,
   mRestorePresentationEvent.Revoke();
 
   RefPtr<RestorePresentationEvent> evt = new RestorePresentationEvent(this);
-  nsresult rv = Dispatch(TaskCategory::Other, do_AddRef(evt));
+  nsresult rv = Dispatch(do_AddRef(evt));
   if (NS_SUCCEEDED(rv)) {
     mRestorePresentationEvent = evt.get();
     // The rest of the restore processing will happen on our event
@@ -7921,7 +7915,7 @@ nsresult nsDocShell::CreateContentViewer(const nsACString& aContentType,
     if (failedURI) {
       errorOnLocationChangeNeeded =
           OnNewURI(failedURI, failedChannel, triggeringPrincipal, nullptr,
-                   nullptr, nullptr, false, false, false);
+                   nullptr, nullptr, false, false);
     }
 
     // Be sure to have a correct mLSHE, it may have been cleared by
@@ -7948,9 +7942,8 @@ nsresult nsDocShell::CreateContentViewer(const nsACString& aContentType,
   bool onLocationChangeNeeded = false;
   if (finalURI) {
     // Pass false for aCloneSHChildren, since we're loading a new page here.
-    onLocationChangeNeeded =
-        OnNewURI(finalURI, aOpenedChannel, nullptr, nullptr, nullptr, nullptr,
-                 false, true, false);
+    onLocationChangeNeeded = OnNewURI(finalURI, aOpenedChannel, nullptr,
+                                      nullptr, nullptr, nullptr, true, false);
   }
 
   // let's try resetting the load group if we need to...
@@ -8943,7 +8936,7 @@ nsresult nsDocShell::HandleSameDocumentNavigation(
   // 1668126)
   bool locationChangeNeeded = OnNewURI(
       newURI, nullptr, newURITriggeringPrincipal, newURIPrincipalToInherit,
-      newURIPartitionedPrincipalToInherit, newCsp, false, true, true);
+      newURIPartitionedPrincipalToInherit, newCsp, true, true);
 
   nsCOMPtr<nsIInputStream> postData;
   uint32_t cacheKey = 0;
@@ -9374,7 +9367,7 @@ nsresult nsDocShell::InternalLoad(nsDocShellLoadState* aLoadState,
 
       // Do this asynchronously
       nsCOMPtr<nsIRunnable> ev = new InternalLoadEvent(this, aLoadState);
-      return Dispatch(TaskCategory::Other, ev.forget());
+      return Dispatch(ev.forget());
     }
 
     // Just ignore this load attempt
@@ -10791,13 +10784,13 @@ nsresult nsDocShell::OpenInitializedChannel(nsIChannel* aChannel,
     // When using DocumentChannel, all redirect handling is done in the parent,
     // so we just need the child variant to watch for the internal redirect
     // to the final channel.
-    rv = AddClientChannelHelperInChild(
-        aChannel, win->EventTargetFor(TaskCategory::Other));
+    rv = AddClientChannelHelperInChild(aChannel,
+                                       GetMainThreadSerialEventTarget());
     docChannel->SetInitialClientInfo(GetInitialClientInfo());
   } else {
     rv = AddClientChannelHelper(aChannel, std::move(noReservedClient),
                                 GetInitialClientInfo(),
-                                win->EventTargetFor(TaskCategory::Other));
+                                GetMainThreadSerialEventTarget());
   }
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -10842,8 +10835,7 @@ nsresult nsDocShell::OpenRedirectedChannel(nsDocShellLoadState* aLoadState) {
 
   // If we did a process switch, then we should have an existing allocated
   // ClientInfo, so we just need to allocate a corresponding ClientSource.
-  CreateReservedSourceIfNeeded(channel,
-                               win->EventTargetFor(TaskCategory::Other));
+  CreateReservedSourceIfNeeded(channel, GetMainThreadSerialEventTarget());
 
   RefPtr<nsDocumentOpenInfo> loader =
       new nsDocumentOpenInfo(this, nsIURILoader::DONT_RETARGET, nullptr);
@@ -10990,8 +10982,7 @@ bool nsDocShell::OnNewURI(nsIURI* aURI, nsIChannel* aChannel,
                           nsIPrincipal* aPrincipalToInherit,
                           nsIPrincipal* aPartitionedPrincipalToInherit,
                           nsIContentSecurityPolicy* aCsp,
-                          bool aFireOnLocationChange, bool aAddToGlobalHistory,
-                          bool aCloneSHChildren) {
+                          bool aAddToGlobalHistory, bool aCloneSHChildren) {
   MOZ_ASSERT(aURI, "uri is null");
   MOZ_ASSERT(!aChannel || !aTriggeringPrincipal, "Shouldn't have both set");
 
@@ -11206,7 +11197,7 @@ bool nsDocShell::OnNewURI(nsIURI* aURI, nsIChannel* aChannel,
       aCloneSHChildren ? uint32_t(LOCATION_CHANGE_SAME_DOCUMENT) : 0;
 
   bool onLocationChangeNeeded =
-      SetCurrentURI(aURI, aChannel, aFireOnLocationChange,
+      SetCurrentURI(aURI, aChannel, false,
                     /* aIsInitialAboutBlank */ false, locationFlags);
   // Make sure to store the referrer from the channel, if any
   nsCOMPtr<nsIHttpChannel> httpChannel(do_QueryInterface(aChannel));
@@ -12955,7 +12946,7 @@ nsresult nsDocShell::OnLinkClick(
   nsCOMPtr<nsIRunnable> ev =
       new OnLinkClickEvent(this, aContent, loadState, noOpenerImplied,
                            aIsTrusted, aTriggeringPrincipal);
-  return Dispatch(TaskCategory::UI, ev.forget());
+  return Dispatch(ev.forget());
 }
 
 bool nsDocShell::ShouldOpenInBlankTarget(const nsAString& aOriginalTarget,

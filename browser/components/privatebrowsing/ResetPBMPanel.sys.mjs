@@ -178,10 +178,17 @@ export const ResetPBMPanel = {
     }
 
     // 3. Close all other tabs.
-    triggeringWindow.gBrowser.removeAllTabsBut(newTab, {
-      skipPermitUnload: true,
-      animate: false,
-    });
+    triggeringWindow.gBrowser.removeAllTabsBut(
+      newTab,
+      {
+        skipPermitUnload: true,
+        animate: false,
+      },
+      true
+    );
+
+    // In the remaining PBM window: If the sidebar is open close it.
+    triggeringWindow.SidebarUI?.hide();
 
     // 4. Clear private browsing data.
     //    TODO: this doesn't wait for data to be cleared. This is probably

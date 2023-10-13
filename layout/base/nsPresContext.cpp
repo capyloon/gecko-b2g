@@ -615,18 +615,6 @@ void nsPresContext::PreferenceChanged(const char* aPrefName) {
     changeHint |= NS_STYLE_HINT_REFLOW;
   }
 
-  // We will end up calling InvalidatePreferenceSheets one from each pres
-  // context, but all it's doing is clearing its cached sheet pointers, so it
-  // won't be wastefully recreating the sheet multiple times.
-  //
-  // The first pres context that flushes will be the one to cause the
-  // reconstruction of the pref style sheet via the UpdatePreferenceStyles call
-  // in FlushPendingNotifications.
-  if (GlobalStyleSheetCache::AffectedByPref(prefName)) {
-    restyleHint |= RestyleHint::RestyleSubtree();
-    GlobalStyleSheetCache::InvalidatePreferenceSheets();
-  }
-
   if (PreferenceSheet::AffectedByPref(prefName)) {
     restyleHint |= RestyleHint::RestyleSubtree();
     PreferenceSheet::Refresh();
@@ -1248,6 +1236,13 @@ bool nsPresContext::UserInputEventsAllowed() {
     return true;
   }
 
+  if (mRefreshDriver->IsThrottled()) {
+    MOZ_ASSERT(!mPresShell->IsVisible());
+    // This implies that the BC is not visibile and users can't
+    // interact with it, so we are okay with handling user inputs here.
+    return true;
+  }
+
   if (mMeasuredTicksSinceLoading <
       StaticPrefs::dom_input_events_security_minNumTicks()) {
     return false;
@@ -1300,6 +1295,13 @@ void nsPresContext::MaybeIncreaseMeasuredTicksSinceLoading() {
     }
   }
 }
+
+bool nsPresContext::NeedsMoreTicksForUserInput() const {
+  MOZ_ASSERT(IsRoot());
+  return mMeasuredTicksSinceLoading <
+         StaticPrefs::dom_input_events_security_minNumTicks();
+}
+
 // Helper function for setting Anim Mode on image
 static void SetImgAnimModeOnImgReq(imgIRequest* aImgReq, uint16_t aMode) {
   if (aImgReq) {
@@ -1851,7 +1853,7 @@ void nsPresContext::UIResolutionChanged() {
     nsCOMPtr<nsIRunnable> ev =
         NewRunnableMethod("nsPresContext::UIResolutionChangedInternal", this,
                           &nsPresContext::UIResolutionChangedInternal);
-    nsresult rv = Document()->Dispatch(TaskCategory::Other, ev.forget());
+    nsresult rv = Document()->Dispatch(ev.forget());
     if (NS_SUCCEEDED(rv)) {
       mPendingUIResolutionChanged = true;
     }
@@ -2547,7 +2549,7 @@ already_AddRefed<nsITimer> nsPresContext::CreateTimer(
   nsCOMPtr<nsITimer> timer;
   NS_NewTimerWithFuncCallback(getter_AddRefs(timer), aCallback, this, aDelay,
                               nsITimer::TYPE_ONE_SHOT, aName,
-                              Document()->EventTargetFor(TaskCategory::Other));
+                              GetMainThreadSerialEventTarget());
   return timer.forget();
 }
 
@@ -3070,8 +3072,7 @@ nsRootPresContext::nsRootPresContext(dom::Document* aDocument,
 void nsRootPresContext::AddWillPaintObserver(nsIRunnable* aRunnable) {
   if (!mWillPaintFallbackEvent.IsPending()) {
     mWillPaintFallbackEvent = new RunWillPaintObservers(this);
-    Document()->Dispatch(TaskCategory::Other,
-                         do_AddRef(mWillPaintFallbackEvent));
+    Document()->Dispatch(do_AddRef(mWillPaintFallbackEvent));
   }
   mWillPaintObservers.AppendElement(aRunnable);
 }

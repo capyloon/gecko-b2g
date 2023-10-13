@@ -47,8 +47,14 @@ const DYNAMIC_TYPE_VIEW_TEMPLATE = {
   ],
 };
 
+const IS_UPGRADING_SCHEMELESS = SpecialPowers.getBoolPref(
+  "dom.security.https_first_schemeless"
+);
+// eslint-disable-next-line @microsoft/sdl/no-insecure-url
+const DEFAULT_URL_SCHEME = IS_UPGRADING_SCHEMELESS ? "https://" : "http://";
 const DUMMY_PAGE =
-  "http://example.com/browser/browser/base/content/test/general/dummy_page.html";
+  DEFAULT_URL_SCHEME +
+  "example.com/browser/browser/base/content/test/general/dummy_page.html";
 
 // Tests the dynamic type registration functions and stylesheet loading.
 add_task(async function registration() {
@@ -653,45 +659,163 @@ add_task(async function highlighting() {
 // View templates that contain a top-level `.urlbarView-url` element should
 // cause `has-url` to be set on `.urlbarView-row`.
 add_task(async function hasUrlTopLevel() {
-  await doHasUrlTest({
-    name: "url",
-    tag: "span",
-    classList: ["urlbarView-url"],
+  await doAttributesTest({
+    viewTemplate: {
+      name: "url",
+      tag: "span",
+      classList: ["urlbarView-url"],
+    },
+    viewUpdate: {
+      url: {
+        textContent: "https://example.com/",
+      },
+    },
+    expectedAttributes: {
+      "has-url": true,
+    },
   });
 });
 
 // View templates that contain a descendant `.urlbarView-url` element should
 // cause `has-url` to be set on `.urlbarView-row`.
 add_task(async function hasUrlDescendant() {
-  await doHasUrlTest({
-    children: [
-      {
-        children: [
-          {
-            children: [
-              {
-                name: "url",
-                tag: "span",
-                classList: ["urlbarView-url"],
-              },
-            ],
-          },
-        ],
-      },
-    ],
-  });
-});
-
-async function doHasUrlTest(viewTemplate) {
-  let provider = new TestProvider();
-  provider.getViewTemplate = () => viewTemplate;
-  provider.getViewUpdate = (result, idsByName) => {
-    return {
+  await doAttributesTest({
+    viewTemplate: {
+      children: [
+        {
+          children: [
+            {
+              children: [
+                {
+                  name: "url",
+                  tag: "span",
+                  classList: ["urlbarView-url"],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    viewUpdate: {
       url: {
         textContent: "https://example.com/",
       },
-    };
+    },
+    expectedAttributes: {
+      "has-url": true,
+    },
+  });
+});
+
+// View templates that contain a top-level `.urlbarView-action` element should
+// cause `has-action` to be set on `.urlbarView-row`.
+add_task(async function hasActionTopLevel() {
+  await doAttributesTest({
+    viewTemplate: {
+      name: "action",
+      tag: "span",
+      classList: ["urlbarView-action"],
+    },
+    viewUpdate: {
+      action: {
+        textContent: "Some action text",
+      },
+    },
+    expectedAttributes: {
+      "has-action": true,
+    },
+  });
+});
+
+// View templates that contain a descendant `.urlbarView-action` element should
+// cause `has-action` to be set on `.urlbarView-row`.
+add_task(async function hasActionDescendant() {
+  await doAttributesTest({
+    viewTemplate: {
+      children: [
+        {
+          children: [
+            {
+              children: [
+                {
+                  name: "action",
+                  tag: "span",
+                  classList: ["urlbarView-action"],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    viewUpdate: {
+      action: {
+        textContent: "Some action text",
+      },
+    },
+    expectedAttributes: {
+      "has-action": true,
+    },
+  });
+});
+
+// View templates that contain descendant `.urlbarView-url` and
+// `.urlbarView-action` elements should cause `has-url` and `has-action` to be
+// set on `.urlbarView-row`.
+add_task(async function hasUrlAndActionDescendant() {
+  await doAttributesTest({
+    viewTemplate: {
+      children: [
+        {
+          children: [
+            {
+              children: [
+                {
+                  name: "url",
+                  tag: "span",
+                  classList: ["urlbarView-url"],
+                },
+              ],
+            },
+            {
+              name: "action",
+              tag: "span",
+              classList: ["urlbarView-action"],
+            },
+          ],
+        },
+      ],
+    },
+    viewUpdate: {
+      url: {
+        textContent: "https://example.com/",
+      },
+      action: {
+        textContent: "Some action text",
+      },
+    },
+    expectedAttributes: {
+      "has-url": true,
+      "has-action": true,
+    },
+  });
+});
+
+async function doAttributesTest({
+  viewTemplate,
+  viewUpdate,
+  expectedAttributes,
+}) {
+  expectedAttributes = {
+    "has-url": false,
+    "has-action": false,
+    ...expectedAttributes,
   };
+
+  let provider = new TestProvider();
+  provider.getViewTemplate = () => viewTemplate;
+  provider.getViewUpdate = () => viewUpdate;
 
   await withDynamicTypeProvider(async () => {
     await UrlbarTestUtils.promiseAutocompleteResultPopup({
@@ -706,7 +830,13 @@ async function doHasUrlTest(viewTemplate) {
       UrlbarUtils.RESULT_TYPE.DYNAMIC,
       "Sanity check: The expected row is present"
     );
-    Assert.ok(row.hasAttribute("has-url"), "Row should have has-url");
+    for (let [name, expected] of Object.entries(expectedAttributes)) {
+      Assert.equal(
+        row.hasAttribute(name),
+        expected,
+        "Row should have attribute as expected: " + name
+      );
+    }
 
     await UrlbarTestUtils.promisePopupClose(window);
   }, provider);

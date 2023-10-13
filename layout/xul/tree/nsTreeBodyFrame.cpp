@@ -1600,9 +1600,8 @@ nsresult nsTreeBodyFrame::CreateTimer(const LookAndFeel::IntID aID,
   // Zero value means that this feature is completely disabled.
   if (delay > 0) {
     MOZ_TRY_VAR(timer,
-                NS_NewTimerWithFuncCallback(
-                    aFunc, this, delay, aType, aName,
-                    mContent->OwnerDoc()->EventTargetFor(TaskCategory::Other)));
+                NS_NewTimerWithFuncCallback(aFunc, this, delay, aType, aName,
+                                            GetMainThreadSerialEventTarget()));
   }
 
   timer.forget(aTimer);
@@ -2486,9 +2485,7 @@ class nsDisplayTreeBody final : public nsPaintedDisplayItem {
   }
 
   bool IsWindowActive() const {
-    DocumentState docState =
-        mFrame->PresContext()->Document()->GetDocumentState();
-    return !docState.HasState(DocumentState::WINDOW_INACTIVE);
+    return !mFrame->PresContext()->Document()->IsTopLevelWindowInactive();
   }
 
   void ComputeInvalidationRegion(nsDisplayListBuilder* aBuilder,
@@ -4181,8 +4178,7 @@ void nsTreeBodyFrame::PostScrollEvent() {
   if (mScrollEvent.IsPending()) return;
 
   RefPtr<ScrollEvent> event = new ScrollEvent(this);
-  nsresult rv =
-      mContent->OwnerDoc()->Dispatch(TaskCategory::Other, do_AddRef(event));
+  nsresult rv = mContent->OwnerDoc()->Dispatch(do_AddRef(event));
   if (NS_FAILED(rv)) {
     NS_WARNING("failed to dispatch ScrollEvent");
   } else {
@@ -4354,7 +4350,7 @@ bool nsTreeBodyFrame::FullScrollbarsUpdate(bool aNeedsFullInvalidation) {
   if (!mCheckingOverflow) {
     nsContentUtils::AddScriptRunner(checker);
   } else {
-    mContent->OwnerDoc()->Dispatch(TaskCategory::Other, checker.forget());
+    mContent->OwnerDoc()->Dispatch(checker.forget());
   }
   return weakFrame.IsAlive();
 }

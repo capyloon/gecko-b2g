@@ -2203,6 +2203,7 @@ var gBrowserInit = {
         let globalHistoryOptions = undefined;
         let triggeringRemoteType = undefined;
         let forceAllowDataURI = false;
+        let wasSchemelessInput = false;
         if (window.arguments[1]) {
           if (!(window.arguments[1] instanceof Ci.nsIPropertyBag2)) {
             throw new Error(
@@ -2241,6 +2242,10 @@ var gBrowserInit = {
             forceAllowDataURI =
               extraOptions.getPropertyAsBool("forceAllowDataURI");
           }
+          if (extraOptions.hasKey("wasSchemelessInput")) {
+            wasSchemelessInput =
+              extraOptions.getPropertyAsBool("wasSchemelessInput");
+          }
         }
 
         try {
@@ -2264,6 +2269,7 @@ var gBrowserInit = {
             fromExternal,
             globalHistoryOptions,
             triggeringRemoteType,
+            wasSchemelessInput,
           });
         } catch (e) {
           console.error(e);
@@ -8456,9 +8462,17 @@ var gPrivateBrowsingUI = {
  *        the one from the new URI.
  *        - 'adoptIntoActiveWindow' boolean property to be set to true to adopt the tab
  *        into the current window.
+ * @param aUserContextId
+ *        If not null, will switch to the first found tab having the provided
+ *        userContextId.
  * @return True if an existing tab was found, false otherwise
  */
-function switchToTabHavingURI(aURI, aOpenNew, aOpenParams = {}) {
+function switchToTabHavingURI(
+  aURI,
+  aOpenNew,
+  aOpenParams = {},
+  aUserContextId = null
+) {
   // Certain URLs can be switched to irrespective of the source or destination
   // window being in private browsing mode:
   const kPrivateBrowsingWhitelist = new Set(["about:addons"]);
@@ -8526,6 +8540,10 @@ function switchToTabHavingURI(aURI, aOpenNew, aOpenParams = {}) {
         ignoreQueryString || replaceQueryString,
         ignoreFragmentWhenComparing
       );
+      let browserUserContextId = browser.getAttribute("usercontextid");
+      if (aUserContextId != null && aUserContextId != browserUserContextId) {
+        continue;
+      }
       if (requestedCompare == browserCompare) {
         // If adoptIntoActiveWindow is set, and this is a cross-window switch,
         // adopt the tab into the current window, after the active tab.
@@ -8587,6 +8605,12 @@ function switchToTabHavingURI(aURI, aOpenNew, aOpenParams = {}) {
 
   // No opened tab has that url.
   if (aOpenNew) {
+    if (
+      UrlbarPrefs.get("switchTabs.searchAllContainers") &&
+      aUserContextId != null
+    ) {
+      aOpenParams.userContextId = aUserContextId;
+    }
     if (isBrowserWindow && gBrowser.selectedTab.isEmpty) {
       openTrustedLinkIn(aURI.spec, "current", aOpenParams);
     } else {

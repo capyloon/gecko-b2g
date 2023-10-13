@@ -9,11 +9,15 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
+  ContextualIdentityService:
+    "resource://gre/modules/ContextualIdentityService.sys.mjs",
   L10nCache: "resource:///modules/UrlbarUtils.sys.mjs",
   ObjectUtils: "resource://gre/modules/ObjectUtils.sys.mjs",
   UrlbarPrefs: "resource:///modules/UrlbarPrefs.sys.mjs",
   UrlbarProviderQuickSuggest:
     "resource:///modules/UrlbarProviderQuickSuggest.sys.mjs",
+  UrlbarProviderRecentSearches:
+    "resource:///modules/UrlbarProviderRecentSearches.sys.mjs",
   UrlbarProviderTopSites: "resource:///modules/UrlbarProviderTopSites.sys.mjs",
   UrlbarProviderWeather: "resource:///modules/UrlbarProviderWeather.sys.mjs",
   UrlbarProvidersManager: "resource:///modules/UrlbarProvidersManager.sys.mjs",
@@ -1363,6 +1367,10 @@ export class UrlbarView {
     noWrap.appendChild(action);
     item._elements.set("action", action);
 
+    let userContextBox = this.#createElement("span");
+    noWrap.appendChild(userContextBox);
+    item._elements.set("user-context", userContextBox);
+
     let url = this.#createElement("span");
     url.className = "urlbarView-url";
     item._content.appendChild(url);
@@ -1414,13 +1422,14 @@ export class UrlbarView {
       console.error(`No viewTemplate found for ${result.providerName}`);
       return;
     }
-    let hasUrl = this.#buildViewForDynamicType(
+    let classes = this.#buildViewForDynamicType(
       dynamicType,
       item._content,
       item._elements,
       viewTemplate
     );
-    item.toggleAttribute("has-url", hasUrl);
+    item.toggleAttribute("has-url", classes.has("urlbarView-url"));
+    item.toggleAttribute("has-action", classes.has("urlbarView-action"));
     this.#setRowSelectable(item, item._content.hasAttribute("selectable"));
   }
 
@@ -1437,20 +1446,30 @@ export class UrlbarView {
    * @param {object} template
    *   The template object being recursed into. Pass the top-level template
    *   object to start with.
-   * @returns {boolean}
-   *   Whether the given template or any of its descendants contains a
-   *   `.urlbarView-url` element.
+   * @param {Set} classes
+   *   The CSS class names of all elements in the row's subtree are recursively
+   *   collected in this set. Don't pass anything to start with so that the
+   *   default argument, a new Set, is used.
+   * @returns {Set}
+   *   The `classes` set, which on return will contain the CSS class names of
+   *   all elements in the row's subtree.
    */
-  #buildViewForDynamicType(type, parentNode, elementsByName, template) {
-    let hasUrl = false;
-
+  #buildViewForDynamicType(
+    type,
+    parentNode,
+    elementsByName,
+    template,
+    classes = new Set()
+  ) {
     // Set attributes on parentNode.
     this.#setDynamicAttributes(parentNode, template.attributes);
 
     // Add classes to parentNode's classList.
     if (template.classList) {
       parentNode.classList.add(...template.classList);
-      hasUrl ||= template.classList.includes("urlbarView-url");
+      for (let c of template.classList) {
+        classes.add(c);
+      }
     }
     if (template.overflowable) {
       parentNode.classList.add("urlbarView-overflowable");
@@ -1465,16 +1484,16 @@ export class UrlbarView {
       let child = this.#createElement(childTemplate.tag);
       child.classList.add(`urlbarView-dynamic-${type}-${childTemplate.name}`);
       parentNode.appendChild(child);
-      let descendantHasUrl = this.#buildViewForDynamicType(
+      this.#buildViewForDynamicType(
         type,
         child,
         elementsByName,
-        childTemplate
+        childTemplate,
+        classes
       );
-      hasUrl ||= descendantHasUrl;
     }
 
-    return hasUrl;
+    return classes;
   }
 
   #createRowContentForRichSuggestion(item, result) {
@@ -1704,6 +1723,11 @@ export class UrlbarView {
 
     let favicon = item._elements.get("favicon");
     favicon.src = this.#iconForResult(result);
+
+    if (result.type == lazy.UrlbarUtils.RESULT_TYPE.TAB_SWITCH) {
+      let userContextBox = item._elements.get("user-context");
+      this.#setResultUserContextBox(result, userContextBox);
+    }
 
     let title = item._elements.get("title");
     this.#setResultTitle(result, title);
@@ -2191,6 +2215,10 @@ export class UrlbarView {
       };
     }
 
+    if (row.result.providerName == lazy.UrlbarProviderRecentSearches.name) {
+      return { id: "urlbar-group-recent-searches" };
+    }
+
     if (
       row.result.isBestMatch &&
       row.result.providerName == lazy.UrlbarProviderQuickSuggest.name
@@ -2586,6 +2614,62 @@ export class UrlbarView {
   }
 
   /**
+   * Sets `result`'s userContext in `userContextNode`'s DOM.
+   *
+   * @param {UrlbarResult} result
+   *   The result for which the userContext is being set.
+   * @param {Element} userContextNode
+   *   The DOM node for the result's userContext.
+   */
+  #setResultUserContextBox(result, userContextNode) {
+    // clear the element
+    while (userContextNode.firstChild) {
+      userContextNode.firstChild.remove();
+    }
+    if (
+      lazy.UrlbarPrefs.get("switchTabs.searchAllContainers") &&
+      result.type == lazy.UrlbarUtils.RESULT_TYPE.TAB_SWITCH &&
+      result.payload.userContextId
+    ) {
+      let userContextBox = this.#createElement("span");
+      userContextBox.classList.add("urlbarView-userContext-indicator");
+      let identity = lazy.ContextualIdentityService.getPublicIdentityFromId(
+        result.payload.userContextId
+      );
+      let label = lazy.ContextualIdentityService.getUserContextLabel(
+        result.payload.userContextId
+      );
+      if (identity) {
+        userContextNode.classList.add("urlbarView-action");
+        let userContextLabel = this.#createElement("label");
+        userContextLabel.classList.add("urlbarView-userContext-label");
+        userContextBox.appendChild(userContextLabel);
+
+        let userContextIcon = this.#createElement("img");
+        userContextIcon.classList.add("urlbarView-userContext-icons");
+        userContextBox.appendChild(userContextIcon);
+
+        if (identity.icon) {
+          userContextIcon.classList.add("identity-icon-" + identity.icon);
+          userContextIcon.src =
+            "resource://usercontext-content/" + identity.icon + ".svg";
+        }
+        if (identity.color) {
+          userContextBox.classList.add("identity-color-" + identity.color);
+        }
+        if (label) {
+          userContextLabel.setAttribute("value", label);
+          userContextLabel.innerText = label;
+        }
+        userContextBox.setAttribute("tooltiptext", label);
+        userContextNode.appendChild(userContextBox);
+      }
+    } else {
+      userContextNode.classList.remove("urlbarView-action");
+    }
+  }
+
+  /**
    * Adds text content to a node, placing substrings that should be highlighted
    * inside <em> nodes.
    *
@@ -2756,14 +2840,7 @@ export class UrlbarView {
 
     if (lazy.UrlbarPrefs.get("groupLabels.enabled")) {
       idArgs.push({ id: "urlbar-group-firefox-suggest" });
-      if (
-        (lazy.UrlbarPrefs.get("bestMatchEnabled") &&
-          lazy.UrlbarPrefs.get("suggest.bestmatch")) ||
-        (lazy.UrlbarPrefs.get("weatherFeatureGate") &&
-          lazy.UrlbarPrefs.get("suggest.weather"))
-      ) {
-        idArgs.push({ id: "urlbar-group-best-match" });
-      }
+      idArgs.push({ id: "urlbar-group-best-match" });
       if (
         lazy.UrlbarPrefs.get("quickSuggestEnabled") &&
         lazy.UrlbarPrefs.get("addonsFeatureGate")
