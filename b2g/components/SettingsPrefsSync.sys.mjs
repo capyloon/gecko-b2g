@@ -367,6 +367,7 @@ const kSettingsToObserve = {
   "network.debugging.enabled": false,
   "privacy.donottrackheader.enabled": false,
   "privacy.trackingprotection.enabled": false,
+  "privacy.globalprivacycontrol.enabled": false,
   "ril.debugging.enabled": false,
   "ril.mms.requestReadReport.enabled": {
     prefName: "dom.mms.requestReadReport",
