@@ -1317,3 +1317,5 @@ pref("extensions.webapi.enabled", true);
 
 // Enable by default since it's used by the web-embedder api.
 pref("apz.overscroll.enabled", true);
+
+pref("privacy.globalprivacycontrol.functionality.enabled",  true);
