@@ -246,7 +246,6 @@ nsHTMLScrollFrame::nsHTMLScrollFrame(ComputedStyle* aStyle,
       mLastPos(-1, -1),
       mApzScrollPos(0, 0),
       mLastUpdateFramesPos(-1, -1),
-      mDisplayPortAtLastFrameUpdate(),
       mScrollParentID(mozilla::layers::ScrollableLayerGuid::NULL_SCROLL_ID),
       mAnchor(this),
       mCurrentAPZScrollAnimationType(APZScrollAnimationType::No),
@@ -4500,11 +4499,11 @@ bool nsHTMLScrollFrame::DecideScrollableLayer(
       nsRect displayportBase = *aVisibleRect;
       nsPresContext* pc = PresContext();
 
-      bool isContentRootDoc = pc->IsRootContentDocumentCrossProcess();
       bool isChromeRootDoc =
           !pc->Document()->IsContentDocument() && !pc->GetParentPresContext();
 
-      if (mIsRoot && (isContentRootDoc || isChromeRootDoc)) {
+      if (mIsRoot &&
+          (pc->IsRootContentDocumentCrossProcess() || isChromeRootDoc)) {
         displayportBase =
             nsRect(nsPoint(0, 0),
                    nsLayoutUtils::CalculateCompositionSizeForFrame(this));

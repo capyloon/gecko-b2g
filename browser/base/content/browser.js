@@ -5081,7 +5081,10 @@ var XULBrowserWindow = {
 
       this.isBusy = true;
 
-      if (!(aStateFlags & nsIWebProgressListener.STATE_RESTORING)) {
+      if (
+        !(aStateFlags & nsIWebProgressListener.STATE_RESTORING) &&
+        aWebProgress.isTopLevel
+      ) {
         this.busyUI = true;
 
         // XXX: This needs to be based on window activity...
@@ -5148,7 +5151,7 @@ var XULBrowserWindow = {
 
       this.isBusy = false;
 
-      if (this.busyUI) {
+      if (this.busyUI && aWebProgress.isTopLevel) {
         this.busyUI = false;
 
         this.stopCommand.setAttribute("disabled", "true");
@@ -8873,12 +8876,6 @@ var ToolbarIconColor = {
     if (!this._initialized) {
       return;
     }
-    function parseRGB(aColorString) {
-      let rgb = aColorString.match(/^rgba?\((\d+), (\d+), (\d+)/);
-      rgb.shift();
-      return rgb.map(x => parseInt(x));
-    }
-
     switch (reason) {
       case "activate": // falls through
       case "deactivate":
@@ -8916,7 +8913,9 @@ var ToolbarIconColor = {
       // lookup cached luminance value for this toolbar in this window state
       let luminance = cacheKey && cachedLuminances.get(cacheKey);
       if (isNaN(luminance)) {
-        let [r, g, b] = parseRGB(getComputedStyle(toolbar).color);
+        let { r, g, b } = InspectorUtils.colorToRGBA(
+          getComputedStyle(toolbar).color
+        );
         luminance = 0.2125 * r + 0.7154 * g + 0.0721 * b;
         if (cacheKey) {
           cachedLuminances.set(cacheKey, luminance);

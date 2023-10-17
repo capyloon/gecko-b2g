@@ -767,7 +767,6 @@ AsyncPanZoomController::AsyncPanZoomController(
                            ViewportMaxScale() / ParentLayerToScreenScale(1)),
       mLastSampleTime(GetFrameTime()),
       mLastCheckerboardReport(GetFrameTime()),
-      mLastNotifiedZoom(),
       mOverscrollEffect(MakeUnique<OverscrollEffect>(*this)),
       mState(NOTHING),
       mX(this),

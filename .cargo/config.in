@@ -34,19 +34,14 @@ git = "https://github.com/gfx-rs/metal-rs/"
 rev = "d24f1a4"
 replace-with = "vendored-sources"
 
-[source."git+https://github.com/gfx-rs/naga?rev=6668d0694cc51ee66c71c2ca3a1ab1081956299b"]
+[source."git+https://github.com/gfx-rs/naga?rev=33b75a27d93c6574b11b4dd4492b85b5783d6c52"]
 git = "https://github.com/gfx-rs/naga"
-rev = "6668d0694cc51ee66c71c2ca3a1ab1081956299b"
+rev = "33b75a27d93c6574b11b4dd4492b85b5783d6c52"
 replace-with = "vendored-sources"
 
-[source."git+https://github.com/gfx-rs/wgpu?rev=1495e159faf721cbf87a0634157682f454a963fb"]
+[source."git+https://github.com/gfx-rs/wgpu?rev=858d7d590ef9ebfe1b91f6f0925aacde15cce714"]
 git = "https://github.com/gfx-rs/wgpu"
-rev = "1495e159faf721cbf87a0634157682f454a963fb"
-replace-with = "vendored-sources"
-
-[source."git+https://github.com/glandium/prost?rev=95964e9d33df3c2a9c3f14285e262867cab6f96b"]
-git = "https://github.com/glandium/prost"
-rev = "95964e9d33df3c2a9c3f14285e262867cab6f96b"
+rev = "858d7d590ef9ebfe1b91f6f0925aacde15cce714"
 replace-with = "vendored-sources"
 
 [source."git+https://github.com/glandium/warp?rev=4af45fae95bc98b0eba1ef0db17e1dac471bb23d"]
@@ -74,9 +69,9 @@ git = "https://github.com/mozilla-spidermonkey/jsparagus"
 rev = "64ba08e24749616de2344112f226d1ef4ba893ae"
 replace-with = "vendored-sources"
 
-[source."git+https://github.com/mozilla/application-services?rev=1a59041d0c7d36ef1abc713a48304c5333e45a1a"]
+[source."git+https://github.com/mozilla/application-services?rev=04f012eab55b080a17c92cf54ad83668276ac365"]
 git = "https://github.com/mozilla/application-services"
-rev = "1a59041d0c7d36ef1abc713a48304c5333e45a1a"
+rev = "04f012eab55b080a17c92cf54ad83668276ac365"
 replace-with = "vendored-sources"
 
 [source."git+https://github.com/mozilla/audioipc?rev=0b51291d2483a17dce3e300c7784b369e02bee73"]

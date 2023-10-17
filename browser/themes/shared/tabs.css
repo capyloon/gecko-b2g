@@ -445,8 +445,9 @@
   background-repeat: repeat-x;
 }
 
-.tabbrowser-tab:is([selected], [multiselected]):-moz-lwtheme {
-  color: var(--lwt-tab-text, var(--toolbar-color));
+#TabsToolbar #firefox-view-button[open] > .toolbarbutton-icon,
+.tabbrowser-tab:is([selected], [multiselected]) {
+  color: var(--tab-selected-textcolor, var(--toolbar-color));
 }
 
 @media (prefers-contrast) {
@@ -770,7 +771,8 @@ toolbar:not(#TabsToolbar) #firefox-view-button {
         url("chrome://browser/skin/tabbrowser/tab-loading@2x.png") 2x
       );
 
-      :root[lwt-popup-brighttext] &[progress]:not([selected]) {
+      /* FIXME: This should probably also apply in regular dark mode? */
+      :root[lwt-popup="dark"] &[progress]:not([selected]) {
         list-style-image: image-set(
           url("chrome://browser/skin/tabbrowser/tab-loading-inverted.png"),
           url("chrome://browser/skin/tabbrowser/tab-loading-inverted@2x.png") 2x
