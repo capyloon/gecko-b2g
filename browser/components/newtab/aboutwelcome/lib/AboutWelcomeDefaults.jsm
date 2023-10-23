@@ -97,6 +97,7 @@ const MR_ABOUT_WELCOME_DEFAULT = {
         background:
           "url('chrome://activity-stream/content/data/content/assets/mr-settodefault.svg') var(--mr-secondary-position) no-repeat var(--mr-screen-background-color)",
         progress_bar: true,
+        hide_secondary_section: "responsive",
         logo: {},
         title: { string_id: "mr2022-onboarding-set-default-title" },
         subtitle: {
@@ -641,6 +642,40 @@ const MR_ABOUT_WELCOME_DEFAULT = {
             navigate: true,
           },
           has_arrow_icon: true,
+        },
+      },
+    },
+    {
+      id: "AW_AMO_INTRODUCE",
+      // Show to en-* locales only
+      targeting: "localeLanguageCode == 'en'",
+      content: {
+        position: "split",
+        split_narrow_bkg_position: "-58px",
+        background:
+          "url('chrome://activity-stream/content/data/content/assets/mr-amo-collection.svg') var(--mr-secondary-position) no-repeat var(--mr-screen-background-color)",
+        progress_bar: true,
+        logo: {},
+        title: { string_id: "amo-screen-title" },
+        subtitle: { string_id: "amo-screen-subtitle" },
+        primary_button: {
+          label: { string_id: "amo-screen-primary-cta" },
+          action: {
+            type: "OPEN_URL",
+            data: {
+              args: "https://addons.mozilla.org/en-US/firefox/collections/4757633/25c2b44583534b3fa8fea977c419cd/?page=1&collection_sort=-added",
+              where: "tabshifted",
+            },
+            navigate: true,
+          },
+        },
+        secondary_button: {
+          label: {
+            string_id: "mr2022-onboarding-secondary-skip-button-label",
+          },
+          action: {
+            navigate: true,
+          },
         },
       },
     },

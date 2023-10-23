@@ -282,14 +282,9 @@ toolbarseparator + .panel-subview-body {
     margin-inline-end: 8px !important;
   }
 
-  :is(.menu-accel, .menu-iconic-accel) {
+  .menu-accel,
+  .menu-iconic-accel {
     margin-inline-start: 16px !important;
-
-    @media not (prefers-contrast) {
-      menuitem:not([disabled]) > .menu-accel-container > & {
-        color: var(--panel-disabled-color);
-      }
-    }
   }
 
   menu > .menu-right {
@@ -706,7 +701,8 @@ toolbarbutton[constrain-size="true"][cui-areatype="panel"] > .toolbarbutton-badg
   display: none;
 }
 
-@supports not -moz-bool-pref("identity.fxaccounts.toolbar.defaultVisible") {
+/* stylelint-disable-next-line media-query-no-invalid */
+@media not (-moz-bool-pref: "identity.fxaccounts.toolbar.defaultVisible") {
   /* Hide the FxA toolbar button when its in the nav-bar, until in use */
   :root[fxastatus="not_configured"] #widget-overflow-list > #fxa-toolbar-menu-button,
   :root[fxastatus="not_configured"] #nav-bar-customization-target > #fxa-toolbar-menu-button {
@@ -1987,6 +1983,9 @@ panelview:not([mainview]) #PanelUI-whatsNew-title {
 
 #reset-pbm-panel {
   max-width: var(--menu-panel-width-wide);
+}
+
+#reset-pbm-panel-container {
   padding: 16px 16px 0;
   gap: 8px;
 }

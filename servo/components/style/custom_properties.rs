@@ -390,7 +390,7 @@ impl ComputedCustomProperties {
     fn map_mut(&mut self, registration: Option<&PropertyRegistration>) -> &mut CustomPropertiesMap {
         // TODO: If the atomic load in make_mut shows up in profiles, we could cache whether
         // the current map is unique, but that seems unlikely in practice.
-        let map = if registration.map_or(true, |r| r.inherits) {
+        let map = if registration.map_or(true, |r| r.inherits()) {
             &mut self.inherited
         } else {
             &mut self.non_inherited
@@ -400,7 +400,7 @@ impl ComputedCustomProperties {
 
     fn get(&self, stylist: &Stylist, name: &Name) -> Option<&Arc<VariableValue>> {
         let registration = stylist.get_custom_property_registration(&name);
-        if registration.map_or(true, |r| r.inherits) {
+        if registration.map_or(true, |r| r.inherits()) {
             self.inherited.as_ref()?.get(name)
         } else {
             self.non_inherited.as_ref()?.get(name)
@@ -960,7 +960,7 @@ impl<'a> CustomPropertiesBuilder<'a> {
                 CSSWideKeyword::Initial => {
                     // For non-inherited custom properties, 'initial' was handled in value_may_affect_style.
                     debug_assert!(
-                        custom_registration.map_or(true, |r| r.inherits),
+                        custom_registration.map_or(true, |r| r.inherits()),
                         "Should've been handled earlier"
                     );
                     map.remove(custom_registration, name);
@@ -973,7 +973,7 @@ impl<'a> CustomPropertiesBuilder<'a> {
                 CSSWideKeyword::Inherit => {
                     // For inherited custom properties, 'inherit' was handled in value_may_affect_style.
                     debug_assert!(
-                        !custom_registration.map_or(true, |r| r.inherits),
+                        !custom_registration.map_or(true, |r| r.inherits()),
                         "Should've been handled earlier"
                     );
                     if let Some(inherited_value) = self
@@ -998,14 +998,14 @@ impl<'a> CustomPropertiesBuilder<'a> {
                 // For inherited custom properties, explicit 'inherit' means we
                 // can just use any existing value in the inherited
                 // CustomPropertiesMap.
-                if custom_registration.map_or(true, |r| r.inherits) {
+                if custom_registration.map_or(true, |r| r.inherits()) {
                     return false;
                 }
             },
             CustomDeclarationValue::CSSWideKeyword(CSSWideKeyword::Initial) => {
                 // For non-inherited custom properties, explicit 'initial' means
                 // we can just use any initial value in the registration.
-                if !custom_registration.map_or(true, |r| r.inherits) {
+                if !custom_registration.map_or(true, |r| r.inherits()) {
                     return false;
                 }
             },
@@ -1022,7 +1022,7 @@ impl<'a> CustomPropertiesBuilder<'a> {
         match (existing_value, value) {
             (None, &CustomDeclarationValue::CSSWideKeyword(CSSWideKeyword::Initial)) => {
                 debug_assert!(
-                    custom_registration.map_or(true, |r| r.inherits),
+                    custom_registration.map_or(true, |r| r.inherits()),
                     "Should've been handled earlier"
                 );
                 // The initial value of a custom property without a
@@ -1037,7 +1037,7 @@ impl<'a> CustomPropertiesBuilder<'a> {
                 &CustomDeclarationValue::CSSWideKeyword(CSSWideKeyword::Initial),
             ) => {
                 debug_assert!(
-                    custom_registration.map_or(true, |r| r.inherits),
+                    custom_registration.map_or(true, |r| r.inherits()),
                     "Should've been handled earlier"
                 );
                 // Don't bother overwriting an existing value with the initial
@@ -1050,7 +1050,7 @@ impl<'a> CustomPropertiesBuilder<'a> {
             },
             (Some(_), &CustomDeclarationValue::CSSWideKeyword(CSSWideKeyword::Inherit)) => {
                 debug_assert!(
-                    !custom_registration.map_or(true, |r| r.inherits),
+                    !custom_registration.map_or(true, |r| r.inherits()),
                     "Should've been handled earlier"
                 );
                 // existing_value is the registered initial value.
@@ -1353,7 +1353,7 @@ fn handle_invalid_at_computed_value_time(
         if !registration.syntax.is_universal() {
             // For the root element, inherited maps are empty. We should just
             // use the initial value if any, rather than removing the name.
-            if registration.inherits && !is_root_element {
+            if registration.inherits() && !is_root_element {
                 if let Some(value) = inherited.get(stylist, name) {
                     custom_properties.insert(custom_registration, name.clone(), Arc::clone(value));
                     return;
@@ -1434,7 +1434,7 @@ fn substitute_references_in_value_and_apply(
         let mut input = Parser::new(&mut input);
 
         // If variable fallback results in a wide keyword, deal with it now.
-        let inherits = custom_registration.map_or(true, |r| r.inherits);
+        let inherits = custom_registration.map_or(true, |r| r.inherits());
 
         if let Ok(kw) = input.try_parse(CSSWideKeyword::parse) {
             // TODO: It's unclear what this should do for revert / revert-layer, see

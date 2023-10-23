@@ -708,7 +708,7 @@ export var UrlbarTestUtils = {
     if (win.gURLBar.view.isOpen) {
       return;
     }
-    this.info("Awaiting for the urlbar panel to open");
+    this.info("Waiting for the urlbar view to open");
     await new Promise(resolve => {
       win.gURLBar.controller.addQueryListener({
         onViewOpen() {
@@ -717,7 +717,7 @@ export var UrlbarTestUtils = {
         },
       });
     });
-    this.info("Urlbar panel opened");
+    this.info("Urlbar view opened");
   },
 
   /**
@@ -729,16 +729,11 @@ export var UrlbarTestUtils = {
    * @returns {Promise} resolved once the popup is closed
    */
   async promisePopupClose(win, closeFn = null) {
-    if (closeFn) {
-      await closeFn();
-    } else {
-      win.gURLBar.view.close();
-    }
-    if (!win.gURLBar.view.isOpen) {
-      return;
-    }
-    this.info("Awaiting for the urlbar panel to close");
-    await new Promise(resolve => {
+    let closePromise = new Promise(resolve => {
+      if (!win.gURLBar.view.isOpen) {
+        resolve();
+        return;
+      }
       win.gURLBar.controller.addQueryListener({
         onViewClose() {
           win.gURLBar.controller.removeQueryListener(this);
@@ -746,7 +741,17 @@ export var UrlbarTestUtils = {
         },
       });
     });
-    this.info("Urlbar panel closed");
+    if (closeFn) {
+      this.info("Awaiting custom close function");
+      await closeFn();
+      this.info("Done awaiting custom close function");
+    } else {
+      this.info("Closing the view directly");
+      win.gURLBar.view.close();
+    }
+    this.info("Waiting for the view to close");
+    await closePromise;
+    this.info("Urlbar view closed");
   },
 
   /**
@@ -1024,6 +1029,48 @@ export var UrlbarTestUtils = {
     await this.promiseSearchComplete(window);
     this.Assert.ok(this.isPopupOpen(window), "Urlbar view is still open.");
     await this.assertSearchMode(window, searchMode);
+  },
+
+  /**
+   * Removes the scheme from an url according to user prefs.
+   *
+   * @param {string} url
+   *  The url that is supposed to be sanitizied.
+   * @returns {string}
+   *  The sanitized URL.
+   */
+  trimURL(url) {
+    if (!lazy.UrlbarPrefs.get("trimURLs")) {
+      return url;
+    }
+
+    let sanitizedURL = url;
+
+    if (lazy.UrlbarPrefs.get("trimHttps")) {
+      sanitizedURL = url.replace("https://", "");
+    } else {
+      sanitizedURL = url.replace("http://", "");
+    }
+
+    // Remove empty emphasis markers in case the protocol was trimmed.
+    sanitizedURL = sanitizedURL.replace("<>", "");
+
+    return sanitizedURL;
+  },
+
+  /**
+   * Returns the trimmed protocol with slashes.
+   *
+   * @returns {string} The trimmed protocol including slashes. Returns an empty
+   *                   string, when the protocol trimming is disabled.
+   */
+  getTrimmedProtocolWithSlashes() {
+    if (Services.prefs.getBoolPref("browser.urlbar.trimURLs")) {
+      return Services.prefs.getBoolPref("browser.urlbar.trimHttps")
+        ? "https://"
+        : "http://"; // eslint-disable-this-line @microsoft/sdl/no-insecure-url
+    }
+    return "";
   },
 
   /**

@@ -22,6 +22,7 @@
 @import url("chrome://browser/skin/ctrlTab.css");
 @import url("chrome://browser/skin/customizableui/customizeMode.css");
 @import url("chrome://browser/skin/UITour.css");
+@import url("chrome://browser/skin/formautofill-notification.css");
 
 @namespace html url("http://www.w3.org/1999/xhtml");
 
@@ -31,10 +32,6 @@
   --toolbox-non-lwt-bgcolor-inactive: -moz-headerbarinactive;
   --toolbox-non-lwt-textcolor-inactive: -moz-headerbarinactivetext;
 
-  --toolbar-non-lwt-bgcolor: color-mix(in srgb, -moz-dialog 85%, white);
-  --toolbar-non-lwt-textcolor: -moz-dialogtext;
-  --toolbar-bgcolor: var(--toolbar-non-lwt-bgcolor);
-  --toolbar-color: var(--toolbar-non-lwt-textcolor);
   --toolbarbutton-border-radius: 4px;
 
   --chrome-content-separator-color: ThreeDShadow;
@@ -108,6 +105,8 @@
   --checkbox-border-color: color-mix(in srgb, currentColor 41%, transparent);
   --link-color: light-dark(rgb(0, 97, 224), rgb(0, 221, 255));
   --chrome-content-separator-color: rgba(0,0,0,.3);
+
+  color: var(--lwt-text-color);
 }
 
 @media (prefers-contrast) {
@@ -124,13 +123,6 @@
 
 :root[uidensity=touch] {
   --urlbar-min-height: max(34px, 1.4em);
-}
-
-:root:-moz-lwtheme {
-  --toolbar-bgcolor: rgba(255,255,255,.4);
-  --toolbar-color: var(--lwt-text-color, inherit);
-
-  color: var(--lwt-text-color);
 }
 
 @media not (prefers-contrast) {
@@ -833,7 +825,7 @@ popupnotificationcontent {
   margin-inline: 0;
 }
 
-.popup-notification-body input {
+.popup-notification-body :is(input, textarea) {
   padding: 8px;
   border-radius: 4px;
   border: 0;
