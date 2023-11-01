@@ -606,7 +606,7 @@ afl-plus-plus-4.0:
     fetch:
         type: git
         repo: https://github.com/AFLplusplus/AFLplusplus
-        revision: 497ff5ff7962ee492fef315227366d658c637ab2
+        revision: d09950f4bb98431576b872436f0fbf773ab895db
 
 cargo-vet:
     description: cargo-vet source
@@ -620,7 +620,7 @@ symbol-scrapers:
     fetch:
         type: git
         repo: http://github.com/mozilla/symbol-scrapers
-        revision: 2b0923643e9c859e00d388b363d2e4be1036dfab
+        revision: 6142272b22aea3496fab8ff7a33d92d7c20caa5d
 
 xz-5.4.4:
     description: xz 5.4.4 source code

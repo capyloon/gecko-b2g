@@ -100,7 +100,7 @@ use style::global_style_data::{
 use style::invalidation::element::invalidation_map::{RelativeSelectorInvalidationMap, TSStateForInvalidation};
 use style::invalidation::element::invalidator::{InvalidationResult, SiblingTraversalMap};
 use style::invalidation::element::relative_selector::{
-    RelativeSelectorDependencyCollector, RelativeSelectorInvalidator,
+    DomMutationOperation, RelativeSelectorDependencyCollector, RelativeSelectorInvalidator,
 };
 use style::invalidation::element::restyle_hints::RestyleHint;
 use style::invalidation::stylesheets::RuleChangeKind;
@@ -4142,7 +4142,6 @@ fn get_pseudo_style(
                             inputs,
                             pseudo,
                             &guards,
-                            Some(styles.primary()),
                             Some(inherited_styles),
                             Some(element),
                         )
@@ -5982,13 +5981,6 @@ pub extern "C" fn Servo_ReparentStyle(
     let pseudo = style_to_reparent.pseudo();
     let element = element.map(GeckoElement);
 
-    let is_pseudo_element = element.is_some() && pseudo.is_some();
-    let originating_element_style = if is_pseudo_element {
-        Some(parent_style)
-    } else {
-        None
-    };
-
     doc_data
         .stylist
         .cascade_style_and_visited(
@@ -5996,7 +5988,6 @@ pub extern "C" fn Servo_ReparentStyle(
             pseudo.as_ref(),
             inputs,
             &StylesheetGuards::same(&guard),
-            originating_element_style,
             Some(parent_style),
             Some(layout_parent_style),
             FirstLineReparenting::Yes { style_to_reparent },
@@ -6109,7 +6100,7 @@ pub extern "C" fn Servo_GetComputedKeyframeValues(
         .map(|x| &**x);
 
     let container_size_query =
-        ContainerSizeQuery::for_element(element, pseudo.as_ref().and(parent_style));
+        ContainerSizeQuery::for_element(element, parent_style, pseudo.is_some());
     let mut conditions = Default::default();
     let mut context = create_context_for_animation(
         &data,
@@ -6134,7 +6125,7 @@ pub extern "C" fn Servo_GetComputedKeyframeValues(
             if property.mProperty == nsCSSPropertyID::eCSSPropertyExtra_variable {
                 raw_custom_properties_block = unsafe { &*property.mServoDeclarationBlock.mRawPtr };
                 let guard = raw_custom_properties_block.read_with(&guard);
-                custom_properties = guard.cascade_custom_properties_with_context(&context);
+                custom_properties = guard.cascade_custom_properties(&data.stylist, &context);
                 // There should be one PropertyDeclarationBlock for custom properties.
                 break;
             }
@@ -6233,7 +6224,7 @@ pub extern "C" fn Servo_GetAnimationValues(
         .map(|d| d.styles.primary())
         .map(|x| &**x);
 
-    let container_size_query = ContainerSizeQuery::for_element(element, None);
+    let container_size_query = ContainerSizeQuery::for_element(element, None, /* is_pseudo = */ false);
     let mut conditions = Default::default();
     let mut context = create_context_for_animation(
         &data,
@@ -6279,7 +6270,7 @@ pub extern "C" fn Servo_AnimationValue_Compute(
         .map(|d| d.styles.primary())
         .map(|x| &**x);
 
-    let container_size_query = ContainerSizeQuery::for_element(element, None);
+    let container_size_query = ContainerSizeQuery::for_element(element, None, /* is_pseudo = */ false);
     let mut conditions = Default::default();
     let mut context = create_context_for_animation(
         &data,
@@ -7093,7 +7084,7 @@ fn invalidate_relative_selector_prev_sibling_side_effect(
         false,
         &stylist,
         ElementSelectorFlags::empty(),
-        |d| d.right_combinator_is_next_sibling(),
+        DomMutationOperation::SideEffectPrevSibling,
     );
 }
 
@@ -7115,7 +7106,7 @@ fn invalidate_relative_selector_next_sibling_side_effect(
         false,
         &stylist,
         ElementSelectorFlags::empty(),
-        |d| d.dependency_is_relative_with_single_next_sibling(),
+        DomMutationOperation::SideEffectNextSibling,
     );
 }
 
@@ -7214,6 +7205,9 @@ pub extern "C" fn Servo_StyleSet_MaybeInvalidateRelativeSelectorForInsertion(
 
     let inherited =
         inherit_relative_selector_search_direction(&element, element.prev_sibling_element());
+    // Technically, we're not handling breakouts, where the anchor is a (later-sibling) descendant.
+    // For descendant case, we're ok since it's a descendant of an element yet to be styled.
+    // For later-sibling descendant, `HAS_SLOW_SELECTOR_LATER_SIBLINGS` is set anyway.
     if inherited.is_empty() {
         return;
     }
@@ -7277,7 +7271,7 @@ pub extern "C" fn Servo_StyleSet_MaybeInvalidateRelativeSelectorForInsertion(
         true,
         &data.stylist,
         inherited,
-        |_| true,
+        DomMutationOperation::Insert,
     );
 }
 
@@ -7312,7 +7306,7 @@ pub extern "C" fn Servo_StyleSet_MaybeInvalidateRelativeSelectorForAppend(
             true,
             &data.stylist,
             inherited,
-            |_| true,
+            DomMutationOperation::Append,
         );
         element = e.next_sibling_element();
     }
@@ -7367,7 +7361,7 @@ pub extern "C" fn Servo_StyleSet_MaybeInvalidateRelativeSelectorForRemoval(
         true,
         &data.stylist,
         inherited,
-        |_| true,
+        DomMutationOperation::Remove,
     );
 }
 

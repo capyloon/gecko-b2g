@@ -40,7 +40,6 @@
 #include "mozAutoDocUpdate.h"
 #include "mozIDOMWindow.h"
 #include "mozIThirdPartyUtil.h"
-#include "mozilla/AbstractTimelineMarker.h"
 #include "mozilla/AntiTrackingUtils.h"
 #include "mozilla/ArrayIterator.h"
 #include "mozilla/ArrayUtils.h"
@@ -54,7 +53,7 @@
 #include "mozilla/ContentPrincipal.h"
 #include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/DebugOnly.h"
-#include "mozilla/DocLoadingTimelineMarker.h"
+#include "mozilla/ProfilerMarkers.h"
 #include "mozilla/AttributeStyles.h"
 #include "mozilla/DocumentStyleRootIterator.h"
 #include "mozilla/EditorBase.h"
@@ -107,7 +106,6 @@
 #include "mozilla/ScopeExit.h"
 #include "mozilla/Components.h"
 #include "mozilla/ServoStyleConsts.h"
-#include "mozilla/ServoStyleSet.h"
 #include "mozilla/ServoTypes.h"
 #include "mozilla/SizeOfState.h"
 #include "mozilla/Span.h"
@@ -117,7 +115,6 @@
 #include "mozilla/StaticPrefs_browser.h"
 #include "mozilla/StaticPrefs_docshell.h"
 #include "mozilla/StaticPrefs_dom.h"
-#include "mozilla/StaticPrefs_editor.h"
 #include "mozilla/StaticPrefs_fission.h"
 #include "mozilla/StaticPrefs_full_screen_api.h"
 #include "mozilla/StaticPrefs_layout.h"
@@ -135,7 +132,6 @@
 #include "mozilla/TelemetryScalarEnums.h"
 #include "mozilla/TextControlElement.h"
 #include "mozilla/TextEditor.h"
-#include "mozilla/TimelineConsumers.h"
 #include "mozilla/TypedEnumBits.h"
 #include "mozilla/URLDecorationStripper.h"
 #include "mozilla/URLExtraData.h"
@@ -2787,8 +2783,6 @@ nsresult Document::Init(nsIPrincipal* aPrincipal,
   mFeaturePolicy = new dom::FeaturePolicy(this);
   mFeaturePolicy->SetDefaultOrigin(NodePrincipal());
 
-  mStyleSet = MakeUnique<ServoStyleSet>(*this);
-
   if (aPrincipal) {
     SetPrincipals(aPrincipal, aPartitionedPrincipal);
   } else {
@@ -3053,14 +3047,15 @@ already_AddRefed<nsIPrincipal> Document::MaybeDowngradePrincipal(
 
 size_t Document::FindDocStyleSheetInsertionPoint(const StyleSheet& aSheet) {
   nsStyleSheetService* sheetService = nsStyleSheetService::GetInstance();
+  ServoStyleSet& styleSet = EnsureStyleSet();
 
   // lowest index first
   int32_t newDocIndex = StyleOrderIndexOfSheet(aSheet);
 
-  size_t count = mStyleSet->SheetCount(StyleOrigin::Author);
+  size_t count = styleSet.SheetCount(StyleOrigin::Author);
   size_t index = 0;
   for (; index < count; index++) {
-    auto* sheet = mStyleSet->SheetAt(StyleOrigin::Author, index);
+    auto* sheet = styleSet.SheetAt(StyleOrigin::Author, index);
     MOZ_ASSERT(sheet);
     int32_t sheetDocIndex = StyleOrderIndexOfSheet(*sheet);
     if (sheetDocIndex > newDocIndex) {
@@ -3091,12 +3086,13 @@ void Document::ResetStylesheetsToURI(nsIURI* aURI) {
   MOZ_ASSERT(aURI);
 
   ClearAdoptedStyleSheets();
+  ServoStyleSet& styleSet = EnsureStyleSet();
 
   auto ClearSheetList = [&](nsTArray<RefPtr<StyleSheet>>& aSheetList) {
     for (auto& sheet : Reversed(aSheetList)) {
       sheet->ClearAssociatedDocumentOrShadowRoot();
       if (mStyleSetFilled) {
-        mStyleSet->RemoveStyleSheet(*sheet);
+        styleSet.RemoveStyleSheet(*sheet);
       }
     }
     aSheetList.Clear();
@@ -3110,7 +3106,7 @@ void Document::ResetStylesheetsToURI(nsIURI* aURI) {
       for (auto& sheet : Reversed(*ss->AuthorStyleSheets())) {
         MOZ_ASSERT(!sheet->GetAssociatedDocumentOrShadowRoot());
         if (sheet->IsApplicable()) {
-          mStyleSet->RemoveStyleSheet(*sheet);
+          styleSet.RemoveStyleSheet(*sheet);
         }
       }
     }
@@ -3127,7 +3123,7 @@ void Document::ResetStylesheetsToURI(nsIURI* aURI) {
   if (mStyleSetFilled) {
     FillStyleSetDocumentSheets();
 
-    if (mStyleSet->StyleSheetsHaveChanged()) {
+    if (styleSet.StyleSheetsHaveChanged()) {
       ApplicableStylesChanged();
     }
   }
@@ -3152,49 +3148,50 @@ void Document::FillStyleSetUserAndUASheets() {
              "should never be creating a StyleSet after the style sheet "
              "service has gone");
 
+  ServoStyleSet& styleSet = EnsureStyleSet();
   for (StyleSheet* sheet : *sheetService->UserStyleSheets()) {
-    mStyleSet->AppendStyleSheet(*sheet);
+    styleSet.AppendStyleSheet(*sheet);
   }
 
   StyleSheet* sheet = IsInChromeDocShell() ? cache->GetUserChromeSheet()
                                            : cache->GetUserContentSheet();
   if (sheet) {
-    mStyleSet->AppendStyleSheet(*sheet);
+    styleSet.AppendStyleSheet(*sheet);
   }
 
-  mStyleSet->AppendStyleSheet(*cache->UASheet());
+  styleSet.AppendStyleSheet(*cache->UASheet());
 
   if (MOZ_LIKELY(NodeInfoManager()->MathMLEnabled())) {
-    mStyleSet->AppendStyleSheet(*cache->MathMLSheet());
+    styleSet.AppendStyleSheet(*cache->MathMLSheet());
   }
 
   if (MOZ_LIKELY(NodeInfoManager()->SVGEnabled())) {
-    mStyleSet->AppendStyleSheet(*cache->SVGSheet());
+    styleSet.AppendStyleSheet(*cache->SVGSheet());
   }
 
-  mStyleSet->AppendStyleSheet(*cache->HTMLSheet());
+  styleSet.AppendStyleSheet(*cache->HTMLSheet());
 
   if (nsLayoutUtils::ShouldUseNoFramesSheet(this)) {
-    mStyleSet->AppendStyleSheet(*cache->NoFramesSheet());
+    styleSet.AppendStyleSheet(*cache->NoFramesSheet());
   }
 
-  mStyleSet->AppendStyleSheet(*cache->CounterStylesSheet());
+  styleSet.AppendStyleSheet(*cache->CounterStylesSheet());
 
   // Only load the full XUL sheet if we'll need it.
   if (LoadsFullXULStyleSheetUpFront()) {
-    mStyleSet->AppendStyleSheet(*cache->XULSheet());
+    styleSet.AppendStyleSheet(*cache->XULSheet());
   }
 
-  mStyleSet->AppendStyleSheet(*cache->FormsSheet());
-  mStyleSet->AppendStyleSheet(*cache->ScrollbarsSheet());
+  styleSet.AppendStyleSheet(*cache->FormsSheet());
+  styleSet.AppendStyleSheet(*cache->ScrollbarsSheet());
 
   for (StyleSheet* sheet : *sheetService->AgentStyleSheets()) {
-    mStyleSet->AppendStyleSheet(*sheet);
+    styleSet.AppendStyleSheet(*sheet);
   }
 
   MOZ_ASSERT(!mQuirkSheetAdded);
   if (NeedsQuirksSheet()) {
-    mStyleSet->AppendStyleSheet(*cache->QuirkSheet());
+    styleSet.AppendStyleSheet(*cache->QuirkSheet());
     mQuirkSheetAdded = true;
   }
 }
@@ -3209,15 +3206,16 @@ void Document::FillStyleSet() {
 void Document::RemoveContentEditableStyleSheets() {
   MOZ_ASSERT(IsHTMLOrXHTML());
 
+  ServoStyleSet& styleSet = EnsureStyleSet();
   auto* cache = GlobalStyleSheetCache::Singleton();
   bool changed = false;
   if (mDesignModeSheetAdded) {
-    mStyleSet->RemoveStyleSheet(*cache->DesignModeSheet());
+    styleSet.RemoveStyleSheet(*cache->DesignModeSheet());
     mDesignModeSheetAdded = false;
     changed = true;
   }
   if (mContentEditableSheetAdded) {
-    mStyleSet->RemoveStyleSheet(*cache->ContentEditableSheet());
+    styleSet.RemoveStyleSheet(*cache->ContentEditableSheet());
     mContentEditableSheetAdded = false;
     changed = true;
   }
@@ -3232,18 +3230,19 @@ void Document::AddContentEditableStyleSheetsToStyleSet(bool aDesignMode) {
   MOZ_DIAGNOSTIC_ASSERT(mStyleSetFilled,
                         "Caller should ensure we're being rendered");
 
+  ServoStyleSet& styleSet = EnsureStyleSet();
   auto* cache = GlobalStyleSheetCache::Singleton();
   bool changed = false;
   if (!mContentEditableSheetAdded) {
-    mStyleSet->AppendStyleSheet(*cache->ContentEditableSheet());
+    styleSet.AppendStyleSheet(*cache->ContentEditableSheet());
     mContentEditableSheetAdded = true;
     changed = true;
   }
   if (mDesignModeSheetAdded != aDesignMode) {
     if (mDesignModeSheetAdded) {
-      mStyleSet->RemoveStyleSheet(*cache->DesignModeSheet());
+      styleSet.RemoveStyleSheet(*cache->DesignModeSheet());
     } else {
-      mStyleSet->AppendStyleSheet(*cache->DesignModeSheet());
+      styleSet.AppendStyleSheet(*cache->DesignModeSheet());
     }
     mDesignModeSheetAdded = !mDesignModeSheetAdded;
     changed = true;
@@ -3254,7 +3253,8 @@ void Document::AddContentEditableStyleSheetsToStyleSet(bool aDesignMode) {
 }
 
 void Document::FillStyleSetDocumentSheets() {
-  MOZ_ASSERT(mStyleSet->SheetCount(StyleOrigin::Author) == 0,
+  ServoStyleSet& styleSet = EnsureStyleSet();
+  MOZ_ASSERT(styleSet.SheetCount(StyleOrigin::Author) == 0,
              "Style set already has document sheets?");
 
   // Sheets are added in reverse order to avoid worst-case time complexity when
@@ -3265,38 +3265,43 @@ void Document::FillStyleSetDocumentSheets() {
   // styleset from scratch anyway.
   for (StyleSheet* sheet : Reversed(mStyleSheets)) {
     if (sheet->IsApplicable()) {
-      mStyleSet->AddDocStyleSheet(*sheet);
+      styleSet.AddDocStyleSheet(*sheet);
     }
   }
 
   EnumerateUniqueAdoptedStyleSheetsBackToFront([&](StyleSheet& aSheet) {
     if (aSheet.IsApplicable()) {
-      mStyleSet->AddDocStyleSheet(aSheet);
+      styleSet.AddDocStyleSheet(aSheet);
     }
   });
 
   nsStyleSheetService* sheetService = nsStyleSheetService::GetInstance();
   for (StyleSheet* sheet : *sheetService->AuthorStyleSheets()) {
-    mStyleSet->AppendStyleSheet(*sheet);
+    styleSet.AppendStyleSheet(*sheet);
   }
 
-  AppendSheetsToStyleSet(mStyleSet.get(), mAdditionalSheets[eAgentSheet]);
-  AppendSheetsToStyleSet(mStyleSet.get(), mAdditionalSheets[eUserSheet]);
-  AppendSheetsToStyleSet(mStyleSet.get(), mAdditionalSheets[eAuthorSheet]);
+  AppendSheetsToStyleSet(&styleSet, mAdditionalSheets[eAgentSheet]);
+  AppendSheetsToStyleSet(&styleSet, mAdditionalSheets[eUserSheet]);
+  AppendSheetsToStyleSet(&styleSet, mAdditionalSheets[eAuthorSheet]);
 }
 
 void Document::CompatibilityModeChanged() {
   MOZ_ASSERT(IsHTMLOrXHTML());
   CSSLoader()->SetCompatibilityMode(mCompatMode);
-  mStyleSet->CompatibilityModeChanged();
-  if (PresShell* presShell = GetPresShell()) {
-    // Selectors may have become case-sensitive / case-insensitive, the stylist
-    // has already performed the relevant invalidation.
-    presShell->EnsureStyleFlush();
+
+  if (mStyleSet) {
+    mStyleSet->CompatibilityModeChanged();
   }
   if (!mStyleSetFilled) {
     MOZ_ASSERT(!mQuirkSheetAdded);
     return;
+  }
+
+  MOZ_ASSERT(mStyleSet);
+  if (PresShell* presShell = GetPresShell()) {
+    // Selectors may have become case-sensitive / case-insensitive, the stylist
+    // has already performed the relevant invalidation.
+    presShell->EnsureStyleFlush();
   }
   if (mQuirkSheetAdded == NeedsQuirksSheet()) {
     return;
@@ -4917,10 +4922,10 @@ void Document::EnsureInitializeInternalCommandDataHashtable() {
   sInternalCommandDataHashtable->InsertOrUpdate(
       u"formatblock"_ns,
       InternalCommandData(
-          "cmd_paragraphState",
+          "cmd_formatBlock",
           Command::FormatBlock,
           ExecCommandParam::String,
-          ParagraphStateCommand::GetInstance,
+          FormatBlockStateCommand::GetInstance,
           CommandOnTextEditor::Disabled));
   sInternalCommandDataHashtable->InsertOrUpdate(
       u"styleWithCSS"_ns,
@@ -5119,19 +5124,27 @@ Document::InternalCommandData Document::ConvertToInternalCommand(
           static const nsStaticAtom* kFormattableBlockTags[] = {
               // clang-format off
             nsGkAtoms::address,
+            nsGkAtoms::article,
+            nsGkAtoms::aside,
             nsGkAtoms::blockquote,
             nsGkAtoms::dd,
             nsGkAtoms::div,
             nsGkAtoms::dl,
             nsGkAtoms::dt,
+            nsGkAtoms::footer,
             nsGkAtoms::h1,
             nsGkAtoms::h2,
             nsGkAtoms::h3,
             nsGkAtoms::h4,
             nsGkAtoms::h5,
             nsGkAtoms::h6,
+            nsGkAtoms::header,
+            nsGkAtoms::hgroup,
+            nsGkAtoms::main,
+            nsGkAtoms::nav,
             nsGkAtoms::p,
             nsGkAtoms::pre,
+            nsGkAtoms::section,
               // clang-format on
           };
           nsAutoString value(nsDependentSubstring(start, end));
@@ -5383,12 +5396,13 @@ bool Document::ExecCommand(const nsAString& aHTMLCommandName, bool aShowUI,
       SetUseCounter(eUseCounter_custom_DocumentExecCommandContentReadOnly);
       break;
     case Command::EnableCompatibleJoinSplitNodeDirection:
-      // We don't allow to take the legacy behavior back if the new one is
-      // enabled by default.
-      if (StaticPrefs::
-              editor_join_split_direction_compatible_with_the_other_browsers() &&
-          !adjustedValue.EqualsLiteral("true") &&
-          !aSubjectPrincipal.IsSystemPrincipal()) {
+      // We didn't allow to enable the legacy behavior once we've enabled the
+      // new behavior by default.  For keeping the behavior at supporting both
+      // mode, we should keep returning `false` if the web app to enable the
+      // legacy mode.  Additionally, we don't support the legacy direction
+      // anymore.  Therefore, we can return `false` here even if the caller is
+      // an addon or chrome script.
+      if (!adjustedValue.EqualsLiteral("true")) {
         return false;
       }
       break;
@@ -7331,13 +7345,13 @@ void Document::RemoveChildNode(nsIContent* aKid, bool aNotify) {
 
 void Document::AddStyleSheetToStyleSets(StyleSheet& aSheet) {
   if (mStyleSetFilled) {
-    mStyleSet->AddDocStyleSheet(aSheet);
+    EnsureStyleSet().AddDocStyleSheet(aSheet);
     ApplicableStylesChanged();
   }
 }
 
 void Document::RecordShadowStyleChange(ShadowRoot& aShadowRoot) {
-  mStyleSet->RecordShadowStyleChange(aShadowRoot);
+  EnsureStyleSet().RecordShadowStyleChange(aShadowRoot);
   ApplicableStylesChanged(/* aKnownInShadowTree= */ true);
 }
 
@@ -7505,7 +7519,7 @@ nsresult Document::AddAdditionalStyleSheet(additionalSheetType aType,
   mAdditionalSheets[aType].AppendElement(aSheet);
 
   if (mStyleSetFilled) {
-    mStyleSet->AppendStyleSheet(*aSheet);
+    EnsureStyleSet().AppendStyleSheet(*aSheet);
     ApplicableStylesChanged();
   }
   return NS_OK;
@@ -7525,7 +7539,7 @@ void Document::RemoveAdditionalStyleSheet(additionalSheetType aType,
     if (!mIsGoingAway) {
       MOZ_ASSERT(sheetRef->IsApplicable());
       if (mStyleSetFilled) {
-        mStyleSet->RemoveStyleSheet(*sheetRef);
+        EnsureStyleSet().RemoveStyleSheet(*sheetRef);
         ApplicableStylesChanged();
       }
     }
@@ -8051,14 +8065,6 @@ void Document::DispatchContentLoadedEvents() {
 
   if (MayStartLayout()) {
     MaybeResolveReadyForIdle();
-  }
-
-  nsIDocShell* docShell = GetDocShell();
-
-  if (TimelineConsumers::HasConsumer(docShell)) {
-    TimelineConsumers::AddMarkerForDocShell(
-        docShell,
-        MakeUnique<DocLoadingTimelineMarker>("document::DOMContentLoaded"));
   }
 
   if (mTiming) {
@@ -8824,7 +8830,7 @@ void Document::EnableStyleSheetsForSetInternal(const nsAString& aSheetSet,
   if (aUpdateCSSLoader) {
     CSSLoader()->DocumentStyleSheetSetChanged();
   }
-  if (mStyleSet->StyleSheetsHaveChanged()) {
+  if (EnsureStyleSet().StyleSheetsHaveChanged()) {
     ApplicableStylesChanged();
   }
 }
@@ -11832,19 +11838,6 @@ void Document::OnPageHide(bool aPersisted, EventTarget* aDispatchStartTarget,
   MOZ_DIAGNOSTIC_ASSERT(
       inFrameLoaderSwap ==
       (mDocumentContainer && mDocumentContainer->InFrameSwap()));
-
-  // Send out notifications that our <link> elements are detached,
-  // but only if this is not a full unload.
-  Element* root = GetRootElement();
-  if (aPersisted && root) {
-    RefPtr<nsContentList> links =
-        NS_GetContentList(root, kNameSpaceID_XHTML, u"link"_ns);
-
-    uint32_t linkCount = links->Length(true);
-    for (uint32_t i = 0; i < linkCount; ++i) {
-      static_cast<HTMLLinkElement*>(links->Item(i, false))->LinkRemoved();
-    }
-  }
 
   if (mAnimationController) {
     mAnimationController->OnPageHide();
@@ -15753,7 +15746,9 @@ void Document::DocAddSizeOfExcludingThis(nsWindowSizes& aWindowSizes) const {
     mPresShell->AddSizeOfIncludingThis(aWindowSizes);
   }
 
-  mStyleSet->AddSizeOfIncludingThis(aWindowSizes);
+  if (mStyleSet) {
+    mStyleSet->AddSizeOfIncludingThis(aWindowSizes);
+  }
 
   aWindowSizes.mPropertyTablesSize +=
       mPropertyTable.SizeOfExcludingThis(aWindowSizes.mState.mMallocSizeOf);
@@ -16317,7 +16312,13 @@ bool Document::RecomputeResistFingerprinting() {
           ("Finished RecomputeResistFingerprinting with result %x",
            mShouldResistFingerprinting));
 
-  return previous != mShouldResistFingerprinting;
+  bool changed = previous != mShouldResistFingerprinting;
+  if (changed) {
+    if (auto win = nsGlobalWindowInner::Cast(GetInnerWindow())) {
+      win->RefreshReduceTimerPrecisionCallerType();
+    }
+  }
+  return changed;
 }
 
 bool Document::ShouldResistFingerprinting(RFPTarget aTarget) const {
@@ -16601,7 +16602,7 @@ void Document::FlushUserFontSet() {
     RefPtr<PresShell> presShell = GetPresShell();
     if (presShell) {
       MOZ_ASSERT(mStyleSetFilled);
-      mStyleSet->AppendFontFaceRules(rules);
+      EnsureStyleSet().AppendFontFaceRules(rules);
     }
 
     if (!mFontFaceSet && !rules.IsEmpty()) {

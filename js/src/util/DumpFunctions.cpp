@@ -15,9 +15,9 @@
 #include "jsfriendapi.h"  // js::WeakMapTracer
 #include "jstypes.h"      // JS_PUBLIC_API
 
-#include "gc/Allocator.h"         // js::CanGC
 #include "gc/Cell.h"              // js::gc::Cell, js::gc::TenuredCell
 #include "gc/GC.h"                // js::TraceRuntimeWithoutEviction
+#include "gc/GCEnum.h"            // js::CanGC
 #include "gc/Heap.h"              // js::gc::Arena
 #include "gc/Tracer.h"            // js::TraceChildren
 #include "gc/WeakMap.h"           // js::IterateHeapUnbarriered, js::WeakMapBase
@@ -268,7 +268,7 @@ static bool FormatFrame(JSContext* cx, const FrameIter& iter, Sprinter& sp,
   Rooted<JSFunction*> fun(cx, iter.maybeCallee(cx));
   Rooted<JSString*> funname(cx);
   if (fun) {
-    funname = fun->displayAtom();
+    funname = fun->fullDisplayAtom();
   }
 
   Rooted<Value> thisVal(cx);

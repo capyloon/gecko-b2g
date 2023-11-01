@@ -2657,9 +2657,10 @@ media:
   audio_process_per_codec_name:
     bug_numbers:
       - 1804249
+      - 1861305
     description: >
       Process where audio decoding happens and codec name
-    expires: "122"
+    expires: "132"
     kind: uint
     keyed: true
     notification_emails:
@@ -8378,21 +8379,6 @@ migration:
     expires: never
     kind: uint
     keyed: true
-    notification_emails:
-      - mconley@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  time_to_produce_legacy_migrator_list:
-    bug_numbers:
-      - 1840917
-    description: >
-      The amount of time it took in milliseconds to produce the list of migrators in the
-      legacy migration wizard.
-    expires: never
-    kind: uint
     notification_emails:
       - mconley@mozilla.com
     release_channel_collection: opt-out

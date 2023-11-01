@@ -327,6 +327,8 @@ bool gIsGtest = false;
 bool gKioskMode = false;
 int gKioskMonitor = -1;
 
+bool gAllowContentAnalysis = false;
+
 nsString gAbsoluteArgv0Path;
 
 #if defined(XP_WIN)
@@ -4006,6 +4008,9 @@ int XREMain::XRE_mainInit(bool* aExitFlag) {
     gKioskMonitor = atoi(kioskMonitorNumber);
   }
 
+  gAllowContentAnalysis = CheckArg("allow-content-analysis", nullptr,
+                                   CheckArgFlag::RemoveArg) == ARG_FOUND;
+
   nsresult rv;
   ArgResult ar;
 
@@ -6051,9 +6056,12 @@ bool XRE_UseNativeEventProcessing() {
 #  if defined(XP_WIN)
       auto upc = mozilla::ipc::UtilityProcessChild::Get();
       MOZ_ASSERT(upc);
-      // WindowsUtils is for Windows APIs, which typically require a Windows
-      // native event loop.
-      return upc->mSandbox == mozilla::ipc::SandboxingKind::WINDOWS_UTILS;
+
+      using SboxKind = mozilla::ipc::SandboxingKind;
+      // These processes are used as external hosts for accessing Windows
+      // APIs which (may) require a Windows native event loop.
+      return upc->mSandbox == SboxKind::WINDOWS_UTILS ||
+             upc->mSandbox == SboxKind::WINDOWS_FILE_DIALOG;
 #  else
       return false;
 #  endif  // defined(XP_WIN)

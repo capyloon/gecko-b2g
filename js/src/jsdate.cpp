@@ -498,6 +498,11 @@ JS_PUBLIC_API void JS::SetReduceMicrosecondTimePrecisionCallback(
   sReduceMicrosecondTimePrecisionCallback = callback;
 }
 
+JS_PUBLIC_API JS::ReduceMicrosecondTimePrecisionCallback
+JS::GetReduceMicrosecondTimePrecisionCallback() {
+  return sReduceMicrosecondTimePrecisionCallback;
+}
+
 JS_PUBLIC_API void JS::SetTimeResolutionUsec(uint32_t resolution, bool jitter) {
   sResolutionUsec = resolution;
   sJitter = jitter;
@@ -1152,7 +1157,7 @@ static bool TryParseDashedDatePrefix(const CharT* s, size_t length,
   size_t i = 0;
 
   size_t mday;
-  if (!ParseDigitsNOrLess(4, &mday, s, &i, length)) {
+  if (!ParseDigitsNOrLess(6, &mday, s, &i, length)) {
     return false;
   }
   size_t mdayDigits = i;
@@ -1196,7 +1201,7 @@ static bool TryParseDashedDatePrefix(const CharT* s, size_t length,
 
   size_t pre = i;
   size_t year;
-  if (!ParseDigitsNOrLess(4, &year, s, &i, length)) {
+  if (!ParseDigitsNOrLess(6, &year, s, &i, length)) {
     return false;
   }
   size_t yearDigits = i - pre;
@@ -1205,7 +1210,7 @@ static bool TryParseDashedDatePrefix(const CharT* s, size_t length,
     return false;
   }
 
-  // Swap the mday and year iff the year wasn't specified in full.
+  // Swap the mday and year if the year wasn't specified in full.
   if (mday > 31 && year <= 31 && yearDigits < 4) {
     std::swap(mday, year);
     std::swap(mdayDigits, yearDigits);
@@ -1398,6 +1403,8 @@ static bool ParseDate(DateTimeInfo::ForceUTC forceUTC, const CharT* s,
   bool seenMonthName = false;
   bool seenFullYear = false;
   bool negativeYear = false;
+  // Includes "GMT", "UTC", "UT", and "Z" timezone keywords
+  bool seenGmtAbbr = false;
 
   size_t index = 0;
 
@@ -1412,10 +1419,7 @@ static bool ParseDate(DateTimeInfo::ForceUTC forceUTC, const CharT* s,
       TryParseDashedDatePrefix(s, length, &index, &year, &mon, &mday) ||
       TryParseDashedNumericDatePrefix(s, length, &index, &year, &mon, &mday);
 
-  // If we don't check this here, the keywords check later will think that the
-  // 'T' in e.g. "1-20-2012T10:00:00" is an abbreviation for "Thursday" and
-  // allow it when it should be rejected.
-  if (isDashedDate && s[index] == 'T') {
+  if (isDashedDate && index < length && strchr("T:+", s[index])) {
     return false;
   }
 
@@ -1428,6 +1432,17 @@ static bool ParseDate(DateTimeInfo::ForceUTC forceUTC, const CharT* s,
     // it for backward compatibility reasons.
     if (c == 0x202F) {
       c = ' ';
+    }
+
+    if ((c == '+' || c == '-') &&
+        // Reject + or - after timezone (still allowing for negative year)
+        ((seenPlusMinus && year != -1) ||
+         // Reject timezones like "1995-09-26 -04:30" (if the - is right up
+         // against the previous number, it will get parsed as a time,
+         // see the other comment below)
+         (year != -1 && hour == -1 && !seenGmtAbbr &&
+          !IsAsciiDigit(s[index - 2])))) {
+      return false;
     }
 
     // Spaces, ASCII control characters, periods, and commas are simply ignored.
@@ -1510,7 +1525,10 @@ static bool ParseDate(DateTimeInfo::ForceUTC forceUTC, const CharT* s,
         year = n;
         seenFullYear = true;
         negativeYear = true;
-      } else if ((prevc == '+' || prevc == '-') /*  && year>=0 */) {
+      } else if ((prevc == '+' || prevc == '-') &&
+                 // "1995-09-26-04:30" needs to be parsed as a time,
+                 // not a time zone
+                 (seenGmtAbbr || hour != -1)) {
         /* Make ':' case below change tzOffset. */
         seenPlusMinus = true;
 
@@ -1559,8 +1577,9 @@ static bool ParseDate(DateTimeInfo::ForceUTC forceUTC, const CharT* s,
         }
       } else if (index < length && c != ',' && c > ' ' && c != '-' &&
                  c != '(' &&
-                 // Allow zulu time e.g. "09/26/1995 16:00Z"
-                 !(hour != -1 && strchr("Zz", c)) &&
+                 // Allow zulu time e.g. "09/26/1995 16:00Z", or
+                 // '+' directly after time e.g. 00:00+0500
+                 !(hour != -1 && strchr("Zz+", c)) &&
                  // Allow '.' after day of month i.e. DD.Mon.YYYY/Mon.DD.YYYY,
                  // or after year/month in YYYY/MM/DD
                  (c != '.' || mday != -1) &&
@@ -1629,6 +1648,10 @@ static bool ParseDate(DateTimeInfo::ForceUTC forceUTC, const CharT* s,
         // from them.
         if (action == 0) {
           break;
+        }
+
+        if (action == 10000) {
+          seenGmtAbbr = true;
         }
 
         // Perform action tests from smallest action values to largest.
@@ -1838,7 +1861,9 @@ static ClippedTime NowAsMillis(JSContext* cx) {
   double now = PRMJ_Now();
   bool clampAndJitter = cx->realm()->behaviors().clampAndJitterTime();
   if (clampAndJitter && sReduceMicrosecondTimePrecisionCallback) {
-    now = sReduceMicrosecondTimePrecisionCallback(now, cx);
+    now = sReduceMicrosecondTimePrecisionCallback(
+        now, cx->realm()->behaviors().reduceTimerPrecisionCallerType().value(),
+        cx);
   } else if (clampAndJitter && sResolutionUsec) {
     double clamped = floor(now / sResolutionUsec) * sResolutionUsec;
 

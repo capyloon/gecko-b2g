@@ -443,8 +443,10 @@ function assertPausedAtSourceAndLine(
   );
   const pauseColumn = getVisibleSelectedFrameColumn(dbg);
   if (expectedColumn) {
+    // `pauseColumn` is 0-based, coming from internal state,
+    // while `expectedColumn` is manually passed from test scripts and so is 1-based.
     is(
-      pauseColumn,
+      pauseColumn + 1,
       expectedColumn,
       "Redux state for currently selected frame's column is correct"
     );
@@ -475,10 +477,14 @@ function assertPausedAtSourceAndLine(
   );
 
   if (expectedColumn) {
+    // `column` is 0-based, coming from internal state,
+    // while `expectedColumn` is manually passed from test scripts and so is 1-based.
     is(
-      column,
+      column + 1,
       expectedColumn,
-      `Frame paused at column ${column}, but expected column ${expectedColumn}`
+      `Frame paused at column ${
+        column + 1
+      }, but expected column ${expectedColumn}`
     );
   }
 }
@@ -1041,7 +1047,8 @@ async function addBreakpoint(dbg, source, line, column, options) {
   const bpCount = dbg.selectors.getBreakpointCount();
   const onBreakpoint = waitForDispatch(dbg.store, "SET_BREAKPOINT");
   await dbg.actions.addBreakpoint(
-    createLocation({ source, line, column }),
+    // column is 0-based internally, but tests are using 1-based.
+    createLocation({ source, line, column: column - 1 }),
     options
   );
   await onBreakpoint;
@@ -1064,11 +1071,17 @@ async function addBreakpointViaGutter(dbg, line) {
 }
 
 function disableBreakpoint(dbg, source, line, column) {
-  column = column || getFirstBreakpointColumn(dbg, source, line);
+  if (column === 0) {
+    throw new Error("disableBreakpoint expect a 1-based column argument");
+  }
+  // `internalColumn` is 0-based internally, while `column` manually defined in test scripts is 1-based.
+  const internalColumn = column
+    ? column - 1
+    : getFirstBreakpointColumn(dbg, source, line);
   const location = createLocation({
     source,
     line,
-    column,
+    column: internalColumn,
   });
   const bp = getBreakpointForLocation(dbg, location);
   return dbg.actions.disableBreakpoint(bp);
@@ -1107,13 +1120,16 @@ async function loadAndAddBreakpoint(dbg, filename, line, column) {
   await addBreakpoint(dbg, source, line, column);
 
   is(getBreakpointCount(), 1, "One breakpoint exists");
-  if (!getBreakpoint(createLocation({ source, line, column }))) {
+  // column is 0-based internally, but tests are using 1-based.
+  if (!getBreakpoint(createLocation({ source, line, column: column - 1 }))) {
     const breakpoints = getBreakpointsMap();
     const id = Object.keys(breakpoints).pop();
     const loc = breakpoints[id].location;
     ok(
       false,
-      `Breakpoint has correct line ${line}, column ${column}, but was line ${loc.line} column ${loc.column}`
+      `Breakpoint has correct line ${line}, column ${column}, but was line ${
+        loc.line
+      } column ${loc.column + 1}`
     );
   }
 
@@ -1257,7 +1273,8 @@ async function expandAllSourceNodes(dbg, treeNode) {
  */
 function removeBreakpoint(dbg, sourceId, line, column) {
   const source = dbg.selectors.getSource(sourceId);
-  column = column || getFirstBreakpointColumn(dbg, source, line);
+  // column is 0-based internally, but tests are using 1-based.
+  column = column ? column - 1 : getFirstBreakpointColumn(dbg, source, line);
   const location = createLocation({
     source,
     line,
@@ -1672,7 +1689,7 @@ function assertBreakpointSnippet(dbg, index, expectedSnippet) {
 }
 
 const selectors = {
-  callStackHeader: ".call-stack-pane ._header",
+  callStackHeader: ".call-stack-pane ._header .header-label",
   callStackBody: ".call-stack-pane .pane",
   domMutationItem: ".dom-mutation-list li",
   expressionNode: i =>
@@ -1686,7 +1703,7 @@ const selectors = {
   expressionNodes: ".expressions-list .tree-node",
   expressionPlus: ".watch-expressions-pane button.plus",
   expressionRefresh: ".watch-expressions-pane button.refresh",
-  scopesHeader: ".scopes-pane ._header",
+  scopesHeader: ".scopes-pane ._header .header-label",
   breakpointItem: i => `.breakpoints-list div:nth-of-type(${i})`,
   breakpointLabel: i => `${selectors.breakpointItem(i)} .breakpoint-label`,
   breakpointHeadings: ".breakpoints-list .breakpoint-heading",
@@ -1800,6 +1817,8 @@ const selectors = {
   sourceTreeFolderNode: ".sources-panel .node .folder",
   excludePatternsInput: ".project-text-search .exclude-patterns-field input",
   fileSearchInput: ".search-bar input",
+  watchExpressionsHeader: ".watch-expressions-pane ._header .header-label",
+  watchExpressionsAddButton: ".watch-expressions-pane ._header .plus",
 };
 
 function getSelector(elementName, ...args) {
@@ -2172,11 +2191,25 @@ async function hoverAtPos(dbg, pos) {
 }
 
 function hoverToken(tokenEl) {
-  info(`Hovering on token "${tokenEl.innerText}"`);
+  info(`Hovering on token <${tokenEl.innerText}>`);
+
+  // We can't use synthesizeMouse(AtCenter) as it's using the element bounding client rect.
+  // But here, we might have a token that wraps on multiple line and the center of the
+  // bounding client rect won't actually hover the token.
+  // +───────────────────────+
+  // │      myLongVariableNa│
+  // │me         +          │
+  // +───────────────────────+
+
+  // Instead, we need to get the first quad.
+  const { p1, p2, p3 } = tokenEl.getBoxQuads()[0];
+  const x = p1.x + (p2.x - p1.x) / 2;
+  const y = p1.y + (p3.y - p1.y) / 2;
 
   // This first event helps utils/editor/tokens.js to receive the right mouseover event
-  EventUtils.synthesizeMouseAtCenter(
-    tokenEl,
+  EventUtils.synthesizeMouseAtPoint(
+    x,
+    y,
     {
       type: "mouseover",
     },
@@ -2184,8 +2217,9 @@ function hoverToken(tokenEl) {
   );
 
   // This second event helps Popover to have :hover pseudoclass set on the token element
-  EventUtils.synthesizeMouseAtCenter(
-    tokenEl,
+  EventUtils.synthesizeMouseAtPoint(
+    x,
+    y,
     {
       type: "mousemove",
     },
@@ -2217,8 +2251,22 @@ async function closePreviewForToken(
   //
   // This helps utils/editor/tokens.js to receive the right mouseleave event.
   // This is super important as it will then allow re-emitting a tokenenter event if you try to re-preview the same token!
-  EventUtils.synthesizeMouseAtCenter(
+  // We can't use synthesizeMouse(AtCenter) as it's using the element bounding client rect.
+  // But here, we might have a token that wraps on multiple line and the center of the
+  // bounding client rect won't actually hover the token.
+  // +───────────────────────+
+  // │      myLongVariableNa│
+  // │me         +          │
+  // +───────────────────────+
+
+  // Instead, we need to get the first quad.
+  const { p1, p2, p3 } = tokenEl.getBoxQuads()[0];
+  const x = p1.x + (p2.x - p1.x) / 2;
+  const y = p1.y + (p3.y - p1.y) / 2;
+  EventUtils.synthesizeMouseAtPoint(
     tokenEl,
+    x,
+    y,
     {
       type: "mouseout",
     },
@@ -2246,9 +2294,20 @@ async function closePreviewForToken(
   info("Preview closed");
 }
 
-// tryHovering will hover at a position every second until we
-// see a preview element (popup, tooltip) appear. Once it appears,
-// it considers it a success.
+/**
+ * Hover at a position until we see a preview element (popup, tooltip) appear.
+ * ⚠️ Note that this is using CodeMirror method to retrieve the token element
+ * and that could be subject to CodeMirror bugs / outdated internal state
+ *
+ * @param {Debugger} dbg
+ * @param {Integer} line: The line we want to hover over
+ * @param {Integer} column: The column we want to hover over
+ * @param {String} elementName: "Selector" string that will be passed to waitForElement,
+ *                              describing the element that should be displayed on hover.
+ * @returns Promise<{element, tokenEl}>
+ *          element is the DOM element matching the passed elementName
+ *          tokenEl is the DOM element for the token we hovered
+ */
 async function tryHovering(dbg, line, column, elementName) {
   ok(
     !findElement(dbg, elementName),
@@ -2256,13 +2315,87 @@ async function tryHovering(dbg, line, column, elementName) {
   );
 
   const tokenEl = await getTokenFromPosition(dbg, { line, column });
+  return tryHoverToken(dbg, tokenEl, elementName);
+}
+
+/**
+ * Retrieve the token element matching `expression` at line `line` and hover it.
+ * This is retrieving the token from the DOM, contrary to `tryHovering`, which calls
+ * CodeMirror internal method for this (and which might suffer from bugs / outdated internal state)
+ *
+ * @param {Debugger} dbg
+ * @param {String} expression: The text of the token we want to hover
+ * @param {Integer} line: The line the token should be at
+ * @param {Integer} column: The column the token should be at
+ * @param {String} elementName: "Selector" string that will be passed to waitForElement,
+ *                              describing the element that should be displayed on hover.
+ * @returns Promise<{element, tokenEl}>
+ *          element is the DOM element matching the passed elementName
+ *          tokenEl is the DOM element for the token we hovered
+ */
+async function tryHoverTokenAtLine(dbg, expression, line, column, elementName) {
+  info("Scroll codeMirror to make the token visible");
+  const cm = getCM(dbg);
+  const onScrolled = waitForScrolling(cm);
+  cm.scrollIntoView({ line: line - 1, ch: 0 }, 0);
+  await onScrolled;
+
+  // Lookup for the token matching the passed expression
+  const tokenEl = getTokenElAtLine(dbg, expression, line, column);
+  if (!tokenEl) {
+    throw new Error(
+      `Couldn't find token <${expression}> on ${line}:${column}\n`
+    );
+  }
+
+  ok(true, `Found token <${expression}> on ${line}:${column}`);
+
+  return tryHoverToken(dbg, tokenEl, elementName);
+}
+
+async function tryHoverToken(dbg, tokenEl, elementName) {
   hoverToken(tokenEl);
 
   // Wait for the preview element to be created
   const element = await waitForElement(dbg, elementName);
-
   return { element, tokenEl };
 }
+
+/**
+ * Retrieve the token element matching `expression` at line `line`, from the DOM.
+ *
+ * @param {Debugger} dbg
+ * @param {String} expression: The text of the token we want to hover
+ * @param {Integer} line: The line the token should be at
+ * @param {Integer} column: The column the token should be at
+ * @returns {Element} the token element, or null if not found
+ */
+function getTokenElAtLine(dbg, expression, line, column = 0) {
+  info(`Search for <${expression}> token on ${line}:${column}`);
+  // Get the line gutter element matching the passed line
+  const lineGutterEl = [
+    ...dbg.win.document.querySelectorAll(".CodeMirror-linenumber"),
+  ].find(el => el.textContent === `${line}`);
+
+  // Get the related editor line
+  const editorLineEl = lineGutterEl
+    .closest(".CodeMirror-gutter-wrapper")
+    .parentElement.querySelector(".CodeMirror-line");
+
+  // Lookup for the token matching the passed expression
+  let currentColumn = 1;
+  return Array.from(editorLineEl.childNodes[0].childNodes).find(child => {
+    const childText = child.textContent;
+    currentColumn += childText.length;
+
+    // Only consider elements that are after the passed column
+    if (currentColumn < column) {
+      return false;
+    }
+    return childText === expression;
+  });
+}
+
 /**
  * Hovers and asserts tooltip previews with simple text expressions (i.e numbers and strings)
  * @param {*} dbg
@@ -2279,19 +2412,15 @@ async function assertPreviewTextValue(
   column,
   { result, expression, doNotClose = false }
 ) {
-  const { element: previewEl, tokenEl } = await tryHovering(
+  // CodeMirror refreshes after inline previews are displayed, so wait until they're rendered.
+  await waitForInlinePreviews(dbg);
+
+  const { element: previewEl, tokenEl } = await tryHoverTokenAtLine(
     dbg,
+    expression,
     line,
     column,
     "previewPopup"
-  );
-
-  ok(
-    tokenEl.innerText.includes(expression),
-    "Popup preview hovered expression is correct. Got: " +
-      tokenEl.innerText +
-      " Expected: " +
-      expression
   );
 
   ok(
@@ -2313,6 +2442,20 @@ async function assertPreviewTextValue(
  * @param {Array} previews
  */
 async function assertPreviews(dbg, previews) {
+  // Move the cursor to the top left corner to have a clean state
+  EventUtils.synthesizeMouse(
+    findElement(dbg, "codeMirror"),
+    0,
+    0,
+    {
+      type: "mousemove",
+    },
+    dbg.win
+  );
+
+  // CodeMirror refreshes after inline previews are displayed, so wait until they're rendered.
+  await waitForInlinePreviews(dbg);
+
   for (const { line, column, expression, result, header, fields } of previews) {
     info(" # Assert preview on " + line + ":" + column);
 
@@ -2324,12 +2467,9 @@ async function assertPreviews(dbg, previews) {
     }
 
     if (fields) {
-      const { element: popupEl, tokenEl } = await tryHovering(
-        dbg,
-        line,
-        column,
-        "popup"
-      );
+      const { element: popupEl, tokenEl } = expression
+        ? await tryHoverTokenAtLine(dbg, expression, line, column, "popup")
+        : await tryHovering(dbg, line, column, "popup");
 
       info("Wait for child nodes to load");
       await waitUntil(

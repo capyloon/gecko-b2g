@@ -2037,11 +2037,7 @@ public class GeckoSession {
     }
 
     private static boolean equals(final Object a, final Object b) {
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-        return Objects.equals(a, b);
-      }
-
-      return (a == b) || (a != null && a.equals(b));
+      return Objects.equals(a, b);
     }
 
     @Override
@@ -2710,18 +2706,12 @@ public class GeckoSession {
           return false;
         }
 
-        if (mIndex >= mState.getHistoryEntries().length) {
-          return false;
-        }
-        return true;
+        return mIndex < mState.getHistoryEntries().length;
       }
 
       @Override /* ListIterator */
       public boolean hasPrevious() {
-        if (mIndex <= 0) {
-          return false;
-        }
-        return true;
+        return mIndex > 0;
       }
 
       @Override /* ListIterator */
@@ -3049,6 +3039,32 @@ public class GeckoSession {
     final GeckoBundle bundle = new GeckoBundle(1);
     bundle.putString("url", url);
     return mEventDispatcher.queryString("GeckoView:PollForAnalysisCompleted", bundle);
+  }
+
+  /**
+   * Send a click event to the Ad Attribution API.
+   *
+   * @param aid Ad id of the recommended product.
+   * @return a {@link GeckoResult} result of whether or not sending the event was successful.
+   */
+  @AnyThread
+  public @NonNull GeckoResult<Boolean> sendClickAttributionEvent(@NonNull final String aid) {
+    final GeckoBundle bundle = new GeckoBundle(1);
+    bundle.putString("aid", aid);
+    return mEventDispatcher.queryBoolean("GeckoView:SendClickAttributionEvent", bundle);
+  }
+
+  /**
+   * Send an impression event to the Ad Attribution API.
+   *
+   * @param aid Ad id of the recommended product.
+   * @return a {@link GeckoResult} result of whether or not sending the event was successful.
+   */
+  @AnyThread
+  public @NonNull GeckoResult<Boolean> sendImpressionAttributionEvent(@NonNull final String aid) {
+    final GeckoBundle bundle = new GeckoBundle(1);
+    bundle.putString("aid", aid);
+    return mEventDispatcher.queryBoolean("GeckoView:SendImpressionAttributionEvent", bundle);
   }
 
   /**
@@ -6231,10 +6247,7 @@ public class GeckoSession {
        */
       @UiThread
       public @NonNull PromptResponse confirm(@NonNull final AllowOrDeny response) {
-        boolean res = false;
-        if (AllowOrDeny.ALLOW == response) {
-          res = true;
-        }
+        final boolean res = AllowOrDeny.ALLOW == response;
         ensureResult().putBoolean("response", res);
         return super.confirm();
       }
@@ -6926,8 +6939,8 @@ public class GeckoSession {
     int PERMISSION_TRACKING = 7;
 
     /**
-     * Permission for third party frames to access first party cookies and storage. May be granted
-     * heuristically in some cases.
+     * Permission for third party frames to access first party cookies. May be granted heuristically
+     * in some cases.
      */
     int PERMISSION_STORAGE_ACCESS = 8;
 
@@ -6999,6 +7012,11 @@ public class GeckoSession {
           // Storage access permissions are stored with the key "3rdPartyStorage^https://foo.com"
           // where the third party origin is "https://foo.com".
           this.thirdPartyOrigin = permission.substring(16);
+        } else if (permission.startsWith("3rdPartyFrameStorage^")) {
+          // Storage access permissions may also be stored with the key
+          // "3rdPartyFrameStorage^https://foo.com" where the third party
+          // origin is "https://foo.com".
+          this.thirdPartyOrigin = permission.substring(21);
         } else {
           this.thirdPartyOrigin = bundle.getString("thirdPartyOrigin");
         }
@@ -7056,7 +7074,9 @@ public class GeckoSession {
           return PERMISSION_MEDIA_KEY_SYSTEM_ACCESS;
         } else if ("trackingprotection".equals(type) || "trackingprotection-pb".equals(type)) {
           return PERMISSION_TRACKING;
-        } else if ("storage-access".equals(type) || type.startsWith("3rdPartyStorage^")) {
+        } else if ("storage-access".equals(type)
+            || type.startsWith("3rdPartyStorage^")
+            || type.startsWith("3rdPartyFrameStorage^")) {
           return PERMISSION_STORAGE_ACCESS;
         } else {
           return -1;

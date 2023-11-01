@@ -84,21 +84,15 @@ async function updateTopSites(condition, searchShortcuts = false) {
  *
  * @param {object} options
  *   Options
- * @param {Array} options.remoteSettingsResults
- *   Array of remote settings result objects. If not given, no suggestions
- *   will be present in remote settings.
+ * @param {Array} options.remoteSettingsRecords
+ *   See `QuickSuggestTestUtils.ensureQuickSuggestInit()`.
  * @param {Array} options.merinoSuggestions
- *   Array of Merino suggestion objects. If given, this function will start
- *   the mock Merino server and set `quicksuggest.dataCollection.enabled` to
- *   true so that `UrlbarProviderQuickSuggest` will fetch suggestions from it.
- *   Otherwise Merino will not serve suggestions, but you can still set up
- *   Merino without using this function by using `MerinoTestUtils` directly.
+ *   See `QuickSuggestTestUtils.ensureQuickSuggestInit()`.
  * @param {Array} options.config
- *   Quick suggest will be initialized with this config. Leave undefined to use
- *   the default config. See `QuickSuggestTestUtils` for details.
+ *   See `QuickSuggestTestUtils.ensureQuickSuggestInit()`.
  */
 async function setUpTelemetryTest({
-  remoteSettingsResults,
+  remoteSettingsRecords,
   merinoSuggestions = null,
   config = QuickSuggestTestUtils.DEFAULT_CONFIG,
 }) {
@@ -117,14 +111,11 @@ async function setUpTelemetryTest({
   await PlacesUtils.bookmarks.eraseEverything();
   await UrlbarTestUtils.formHistory.clear();
 
-  Services.telemetry.clearScalars();
-  Services.telemetry.clearEvents();
-
   // Add a mock engine so we don't hit the network.
   await SearchTestUtils.installSearchExtension({}, { setAsDefault: true });
 
   await QuickSuggestTestUtils.ensureQuickSuggestInit({
-    remoteSettingsResults,
+    remoteSettingsRecords,
     merinoSuggestions,
     config,
   });
@@ -200,6 +191,9 @@ async function doTelemetryTest({
       fireInputEvent: true,
     }),
 }) {
+  Services.telemetry.clearScalars();
+  Services.telemetry.clearEvents();
+
   await doImpressionOnlyTest({
     index,
     suggestion,
@@ -624,6 +618,8 @@ function watchGleanPings(pings) {
 function _assertGleanPing(ping) {
   Assert.equal(Glean.quickSuggest.pingType.testGetValue(), ping.type);
   const keymap = {
+    // present in all pings
+    source: Glean.quickSuggest.source,
     match_type: Glean.quickSuggest.matchType,
     position: Glean.quickSuggest.position,
     suggested_index: Glean.quickSuggest.suggestedIndex,
@@ -631,13 +627,79 @@ function _assertGleanPing(ping) {
       Glean.quickSuggest.suggestedIndexRelativeToGroup,
     improve_suggest_experience_checked:
       Glean.quickSuggest.improveSuggestExperience,
-    is_clicked: Glean.quickSuggest.isClicked,
     block_id: Glean.quickSuggest.blockId,
     advertiser: Glean.quickSuggest.advertiser,
+    request_id: Glean.quickSuggest.requestId,
+    context_id: Glean.quickSuggest.contextId,
+    // impression and click pings
+    reporting_url: Glean.quickSuggest.reportingUrl,
+    // impression ping
+    is_clicked: Glean.quickSuggest.isClicked,
+    // block/dismiss ping
     iab_category: Glean.quickSuggest.iabCategory,
   };
   for (const [key, value] of Object.entries(ping.payload)) {
     Assert.ok(key in keymap, `A Glean metric exists for field ${key}`);
-    Assert.equal(value ?? null, keymap[key].testGetValue());
+    Assert.equal(
+      keymap[key].testGetValue(),
+      value ?? null,
+      `Glean metric field ${key} should be the expected value`
+    );
+  }
+}
+
+/**
+ * Adds two tasks: One with the Rust backend disabled and one with it enabled.
+ * The names of the task functions will be the name of the passed-in task
+ * function appended with "_rustDisabled" and "_rustEnabled" respectively. Call
+ * with the usual `add_task()` arguments.
+ *
+ * @param {...any} args
+ *   The usual `add_task()` arguments.
+ */
+function add_tasks_with_rust(...args) {
+  let taskFnIndex = args.findIndex(a => typeof a == "function");
+  let taskFn = args[taskFnIndex];
+
+  for (let rustEnabled of [false, true]) {
+    let newTaskFn = async (...taskFnArgs) => {
+      info("add_tasks_with_rust: Setting rustEnabled: " + rustEnabled);
+      UrlbarPrefs.set("quicksuggest.rustEnabled", rustEnabled);
+      info("add_tasks_with_rust: Done setting rustEnabled: " + rustEnabled);
+
+      // The current backend may now start syncing, so wait for it to finish.
+      info("add_tasks_with_rust: Forcing sync");
+      await QuickSuggestTestUtils.forceSync();
+      info("add_tasks_with_rust: Done forcing sync");
+
+      let rv;
+      try {
+        info(
+          "add_tasks_with_rust: Calling original task function: " + taskFn.name
+        );
+        rv = await taskFn(...taskFnArgs);
+      } finally {
+        info(
+          "add_tasks_with_rust: Done calling original task function: " +
+            taskFn.name
+        );
+        info("add_tasks_with_rust: Clearing rustEnabled");
+        UrlbarPrefs.clear("quicksuggest.rustEnabled");
+        info("add_tasks_with_rust: Done clearing rustEnabled");
+
+        // The current backend may now start syncing, so wait for it to finish.
+        info("add_tasks_with_rust: Forcing sync");
+        await QuickSuggestTestUtils.forceSync();
+        info("add_tasks_with_rust: Done forcing sync");
+      }
+      return rv;
+    };
+
+    Object.defineProperty(newTaskFn, "name", {
+      value: taskFn.name + (rustEnabled ? "_rustEnabled" : "_rustDisabled"),
+    });
+    let addTaskArgs = [...args];
+    addTaskArgs[taskFnIndex] = newTaskFn;
+    add_task(...addTaskArgs);
   }
 }

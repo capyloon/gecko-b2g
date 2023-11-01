@@ -518,7 +518,11 @@ pref("browser.urlbar.maxCharsForSearchSuggestions", 100);
 
 pref("browser.urlbar.trimURLs", true);
 
+#ifdef NIGHTLY_BUILD
+pref("browser.urlbar.trimHttps", true);
+#else
 pref("browser.urlbar.trimHttps", false);
+#endif
 
 // If changed to true, copying the entire URL from the location bar will put the
 // human readable (percent-decoded) URL on the clipboard.
@@ -1576,11 +1580,7 @@ pref("browser.topsites.contile.enabled", true);
 pref("browser.topsites.contile.endpoint", "https://contile.services.mozilla.com/v1/tiles");
 
 // Whether to enable the Share-of-Voice feature for Sponsored Topsites via Contile.
-#if defined(EARLY_BETA_OR_EARLIER)
-  pref("browser.topsites.contile.sov.enabled", true);
-#else
-  pref("browser.topsites.contile.sov.enabled", false);
-#endif
+pref("browser.topsites.contile.sov.enabled", true);
 
 // The base URL for the Quick Suggest anonymizing proxy. To make a request to
 // the proxy, include a campaign ID in the path.
@@ -1772,8 +1772,13 @@ pref("security.app_menu.recordEventTelemetry", true);
 pref("security.mixed_content.block_active_content", true);
 
 // Show "Not Secure" text for http pages; disabled for now
+#ifdef NIGHTLY_BUILD
+pref("security.insecure_connection_text.enabled", true);
+pref("security.insecure_connection_text.pbmode.enabled", true);
+#else
 pref("security.insecure_connection_text.enabled", false);
 pref("security.insecure_connection_text.pbmode.enabled", false);
+#endif
 
 // If this turns true, Moz*Gesture events are not called stopPropagation()
 // before content.
@@ -1907,13 +1912,13 @@ pref("privacy.trackingprotection.cryptomining.enabled", true);
 
 pref("browser.contentblocking.database.enabled", true);
 
-pref("dom.storage_access.frame_only", true);
-
-// Enable URL query stripping and strip on share in Nightly.
+// Enable URL query stripping in Nightly.
 #ifdef NIGHTLY_BUILD
 pref("privacy.query_stripping.enabled", true);
-pref("privacy.query_stripping.strip_on_share.enabled", true);
 #endif
+
+// Enable Strip on Share by default on desktop
+pref("privacy.query_stripping.strip_on_share.enabled", true);
 
 pref("browser.contentblocking.cryptomining.preferences.ui.enabled", true);
 pref("browser.contentblocking.fingerprinting.preferences.ui.enabled", true);

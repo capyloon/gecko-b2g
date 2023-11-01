@@ -41,6 +41,7 @@ TEST_HARNESS_BINS = [
     "crashinject",
     "geckodriver",
     "http3server",
+    "content_analysis_sdk_agent",
     "minidumpwriter",
     "pk12util",
     "screenshot",
@@ -338,12 +339,17 @@ ARCHIVE_FILES = {
         },
         {
             "source": buildconfig.topsrcdir,
+            "base": "testing/mozbase/mozsystemmonitor",
+            "pattern": "mozsystemmonitor/**",
+        },
+        {
+            "source": buildconfig.topsrcdir,
             "base": "third_party/python/six",
             "pattern": "six.py",
         },
         {
             "source": buildconfig.topsrcdir,
-            "base": "third_party/python/tomlkit",
+            "base": "third_party/python/toml",
             "pattern": "**",
         },
         {
@@ -454,6 +460,7 @@ ARCHIVE_FILES = {
                 "chrome/**",
                 "chrome.manifest",
                 "components/**",
+                "content_analysis_sdk_agent",
                 "http3server",
                 "*.ini",
                 "localization/**",

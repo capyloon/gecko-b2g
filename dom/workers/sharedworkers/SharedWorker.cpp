@@ -83,14 +83,14 @@ already_AddRefed<SharedWorker> SharedWorker::Constructor(
   }
 
   if (storageAllowed == StorageAccess::eDeny) {
-    aRv.Throw(NS_ERROR_DOM_SECURITY_ERR);
+    aRv.ThrowSecurityError("StorageAccess denied.");
     return nullptr;
   }
 
   if (ShouldPartitionStorage(storageAllowed) &&
       !StoragePartitioningEnabled(
           storageAllowed, window->GetExtantDoc()->CookieJarSettings())) {
-    aRv.Throw(NS_ERROR_DOM_SECURITY_ERR);
+    aRv.ThrowSecurityError("StoragePartitioning not enabled.");
     return nullptr;
   }
 
@@ -105,6 +105,12 @@ already_AddRefed<SharedWorker> SharedWorker::Constructor(
     MOZ_DIAGNOSTIC_ASSERT(privateBrowsingId != 0);
   }
 #endif  // MOZ_DIAGNOSTIC_ASSERT_ENABLED
+
+  PBackgroundChild* actorChild = BackgroundChild::GetOrCreateForCurrentThread();
+  if (!actorChild || !actorChild->CanSend()) {
+    aRv.ThrowSecurityError("PBackground not available.");
+    return nullptr;
+  }
 
   nsAutoString name;
   WorkerType workerType = WorkerType::Classic;
@@ -155,19 +161,19 @@ already_AddRefed<SharedWorker> SharedWorker::Constructor(
       BasePrincipal::Cast(loadInfo.mPrincipal)->IsContentPrincipal()) {
     nsCOMPtr<nsIScriptObjectPrincipal> sop = do_QueryInterface(window);
     if (!sop) {
-      aRv.Throw(NS_ERROR_FAILURE);
+      aRv.ThrowSecurityError("ScriptObjectPrincipal not available.");
       return nullptr;
     }
 
     nsIPrincipal* windowPrincipal = sop->GetPrincipal();
     if (!windowPrincipal) {
-      aRv.Throw(NS_ERROR_UNEXPECTED);
+      aRv.ThrowSecurityError("WindowPrincipal not available.");
       return nullptr;
     }
 
     nsIPrincipal* windowPartitionedPrincipal = sop->PartitionedPrincipal();
     if (!windowPartitionedPrincipal) {
-      aRv.Throw(NS_ERROR_UNEXPECTED);
+      aRv.ThrowSecurityError("WindowPartitionedPrincipal not available.");
       return nullptr;
     }
 
@@ -209,8 +215,6 @@ already_AddRefed<SharedWorker> SharedWorker::Constructor(
   SerializeURI(loadInfo.mBaseURI, baseURL);
 
   // Register this component to PBackground.
-  PBackgroundChild* actorChild = BackgroundChild::GetOrCreateForCurrentThread();
-
   bool isSecureContext = JS::GetIsSecureContext(js::GetContextRealm(cx));
 
   Maybe<IPCClientInfo> ipcClientInfo;
@@ -252,9 +256,13 @@ already_AddRefed<SharedWorker> SharedWorker::Constructor(
 
   PSharedWorkerChild* pActor = actorChild->SendPSharedWorkerConstructor(
       remoteWorkerData, loadInfo.mWindowID, portIdentifier.release());
+  if (!pActor) {
+    MOZ_ASSERT_UNREACHABLE("We already checked PBackground above.");
+    aRv.ThrowSecurityError("PBackground not available.");
+    return nullptr;
+  }
 
   RefPtr<SharedWorkerChild> actor = static_cast<SharedWorkerChild*>(pActor);
-  MOZ_ASSERT(actor);
 
   RefPtr<SharedWorker> sharedWorker =
       new SharedWorker(window, actor, channel->Port2());
@@ -417,6 +425,11 @@ void SharedWorker::GetEventTargetParent(EventChainPreVisitor& aVisitor) {
   }
 
   DOMEventTargetHelper::GetEventTargetParent(aVisitor);
+}
+
+void SharedWorker::DisconnectFromOwner() {
+  Close();
+  DOMEventTargetHelper::DisconnectFromOwner();
 }
 
 void SharedWorker::ErrorPropagation(nsresult aError) {

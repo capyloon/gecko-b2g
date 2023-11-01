@@ -3968,24 +3968,6 @@ void MacroAssembler::PushEmptyRooted(VMFunctionData::RootType rootType) {
   }
 }
 
-void MacroAssembler::popRooted(VMFunctionData::RootType rootType,
-                               Register cellReg, const ValueOperand& valueReg) {
-  switch (rootType) {
-    case VMFunctionData::RootNone:
-      MOZ_CRASH("Handle must have root type");
-    case VMFunctionData::RootObject:
-    case VMFunctionData::RootString:
-    case VMFunctionData::RootCell:
-    case VMFunctionData::RootId:
-    case VMFunctionData::RootBigInt:
-      Pop(cellReg);
-      break;
-    case VMFunctionData::RootValue:
-      Pop(valueReg);
-      break;
-  }
-}
-
 void MacroAssembler::adjustStack(int amount) {
   if (amount > 0) {
     freeStack(amount);
@@ -4003,6 +3985,76 @@ void MacroAssembler::freeStack(uint32_t amount) {
 }
 
 void MacroAssembler::freeStack(Register amount) { addToStackPtr(amount); }
+
+void MacroAssembler::reserveVMFunctionOutParamSpace(const VMFunctionData& f) {
+  switch (f.outParam) {
+    case Type_Handle:
+      PushEmptyRooted(f.outParamRootType);
+      break;
+
+    case Type_Value:
+    case Type_Double:
+    case Type_Pointer:
+    case Type_Int32:
+    case Type_Bool:
+      reserveStack(f.sizeOfOutParamStackSlot());
+      break;
+
+    case Type_Void:
+      break;
+
+    case Type_Cell:
+      MOZ_CRASH("Unexpected outparam type");
+  }
+}
+
+void MacroAssembler::loadVMFunctionOutParam(const VMFunctionData& f,
+                                            const Address& addr) {
+  switch (f.outParam) {
+    case Type_Handle:
+      switch (f.outParamRootType) {
+        case VMFunctionData::RootNone:
+          MOZ_CRASH("Handle must have root type");
+        case VMFunctionData::RootObject:
+        case VMFunctionData::RootString:
+        case VMFunctionData::RootCell:
+        case VMFunctionData::RootBigInt:
+        case VMFunctionData::RootId:
+          loadPtr(addr, ReturnReg);
+          break;
+        case VMFunctionData::RootValue:
+          loadValue(addr, JSReturnOperand);
+          break;
+      }
+      break;
+
+    case Type_Value:
+      loadValue(addr, JSReturnOperand);
+      break;
+
+    case Type_Int32:
+      load32(addr, ReturnReg);
+      break;
+
+    case Type_Bool:
+      load8ZeroExtend(addr, ReturnReg);
+      break;
+
+    case Type_Double:
+      loadDouble(addr, ReturnDoubleReg);
+      break;
+
+    case Type_Pointer:
+      loadPtr(addr, ReturnReg);
+      break;
+
+    case Type_Void:
+      break;
+
+    case Type_Cell:
+      MOZ_CRASH("Unexpected outparam type");
+  }
+}
 
 // ===============================================================
 // ABI function calls.
@@ -4055,6 +4107,12 @@ void MacroAssembler::setupWasmABICall() {
   abiArgs_.setUseHardFp(true);
 #endif
   dynamicAlignment_ = false;
+}
+
+void MacroAssembler::setupUnalignedABICallDontSaveRestoreSP() {
+  andToStackPtr(Imm32(~(ABIStackAlignment - 1)));
+  setFramePushed(0);  // Required for aligned callWithABI.
+  setupAlignedABICall();
 }
 
 void MacroAssembler::setupAlignedABICall() {
@@ -4675,8 +4733,12 @@ void MacroAssembler::loadFunctionName(Register func, Register output,
   load32(Address(func, JSFunction::offsetOfFlagsAndArgCount()), output);
 
   // If the name was previously resolved, the name property may be shadowed.
-  branchTest32(Assembler::NonZero, output, Imm32(FunctionFlags::RESOLVED_NAME),
-               slowPath);
+  // If the function is an accessor with lazy name, AtomSlot contains the
+  // unprefixed name.
+  branchTest32(
+      Assembler::NonZero, output,
+      Imm32(FunctionFlags::RESOLVED_NAME | FunctionFlags::LAZY_ACCESSOR_NAME),
+      slowPath);
 
   Label noName, done;
   branchTest32(Assembler::NonZero, output,
@@ -5051,18 +5113,10 @@ static void CollapseWasmFrameFast(MacroAssembler& masm,
   uint32_t oldSlotsAndStackArgBytes =
       AlignBytes(retCallInfo.oldSlotsAndStackArgBytes, WasmStackAlignment);
 
-  static constexpr Register tempForCaller = ABINonArgReg1;
-  static constexpr Register tempForFP = ABINonArgReg3;
-
-#  ifdef JS_USE_LINK_REGISTER
-#    if defined(JS_CODEGEN_LOONG64) || defined(JS_CODEGEN_MIPS64) || \
-        defined(JS_CODEGEN_RISCV64)
-  static constexpr Register tempForRA = ra;
-#    else
-  static constexpr Register tempForRA = lr;
-#    endif
-#  else
-  static constexpr Register tempForRA = ABINonArgReg2;
+  static constexpr Register tempForCaller = WasmTailCallInstanceScratchReg;
+  static constexpr Register tempForFP = WasmTailCallFPScratchReg;
+  static constexpr Register tempForRA = WasmTailCallRAScratchReg;
+#  ifndef JS_USE_LINK_REGISTER
   masm.push(tempForRA);
 #  endif
 
@@ -5133,8 +5187,9 @@ static void CollapseWasmFrameSlow(MacroAssembler& masm,
                                   wasm::CallSiteDesc desc,
                                   ReturnCallTrampolineData data) {
   uint32_t framePushedAtStart = masm.framePushed();
-  static constexpr Register tempForCaller = ABINonArgReg1;
-  static constexpr Register tempForFP = ABINonArgReg3;
+  static constexpr Register tempForCaller = WasmTailCallInstanceScratchReg;
+  static constexpr Register tempForFP = WasmTailCallFPScratchReg;
+  static constexpr Register tempForRA = WasmTailCallRAScratchReg;
 
   static_assert(sizeof(wasm::Frame) == 2 * sizeof(void*));
 
@@ -5175,15 +5230,7 @@ static void CollapseWasmFrameSlow(MacroAssembler& masm,
                           : 0;
   masm.reserveStack(reserved);
 
-#  ifdef JS_USE_LINK_REGISTER
-#    if defined(JS_CODEGEN_LOONG64) || defined(JS_CODEGEN_MIPS64) || \
-        defined(JS_CODEGEN_RISCV64)
-  static constexpr Register tempForRA = ra;
-#    else
-  static constexpr Register tempForRA = lr;
-#    endif
-#  else
-  static constexpr Register tempForRA = ABINonArgReg2;
+#  ifndef JS_USE_LINK_REGISTER
   masm.push(tempForRA);
 #  endif
 
@@ -5642,9 +5689,6 @@ void MacroAssembler::wasmReturnCallIndirect(
     Label* boundsCheckFailedLabel, Label* nullCheckFailedLabel,
     mozilla::Maybe<uint32_t> tableSize,
     const ReturnCallAdjustmentInfo& retCallInfo) {
-  CodeOffset t;
-  CodeOffset* fastCallOffset = &t;
-  CodeOffset* slowCallOffset = &t;
   static_assert(sizeof(wasm::FunctionTableElem) == 2 * sizeof(void*),
                 "Exactly two pointers or index scaling won't work correctly");
   MOZ_ASSERT(callee.which() == wasm::CalleeDesc::WasmTable);
@@ -5741,7 +5785,6 @@ void MacroAssembler::wasmReturnCallIndirect(
                               wasm::CallSiteDesc::ReturnStub);
   wasmCollapseFrameSlow(retCallInfo, stubDesc);
   jump(calleeScratch);
-  *slowCallOffset = CodeOffset(currentOffset());
   append(wasm::CodeRangeUnwindInfo::Normal, currentOffset());
 
   // Fast path: just load the code pointer and go.
@@ -5753,7 +5796,6 @@ void MacroAssembler::wasmReturnCallIndirect(
 
   wasmCollapseFrameFast(retCallInfo);
   jump(calleeScratch);
-  *fastCallOffset = CodeOffset(currentOffset());
   append(wasm::CodeRangeUnwindInfo::Normal, currentOffset());
 }
 #endif  // ENABLE_WASM_TAIL_CALLS

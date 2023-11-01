@@ -795,6 +795,7 @@ class WinArtifactJob(ArtifactJob):
         ("bin/ssltunnel.exe", ("bin", "bin")),
         ("bin/xpcshell.exe", ("bin", "bin")),
         ("bin/http3server.exe", ("bin", "bin")),
+        ("bin/content_analysis_sdk_agent.exe", ("bin", "bin")),
         ("bin/plugins/gmp-*/*/*", ("bin/plugins", "bin")),
         ("bin/plugins/*", ("bin/plugins", "plugins")),
         ("bin/components/*", ("bin/components", "bin/components")),
@@ -832,7 +833,9 @@ class ThunderbirdMixin(object):
     trust_domain = "comm"
     product = "thunderbird"
     try_tree = "try-comm-central"
-
+    default_candidate_trees = [
+        "releases/comm-release",
+    ]
     nightly_candidate_trees = [
         "comm-central",
     ]

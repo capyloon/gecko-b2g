@@ -1140,6 +1140,25 @@
 #endif
   mirror: always
 
+# Content analysis by external applications, e.g. data-loss prevention apps
+- name: browser.contentanalysis.enabled
+  type: bool
+  value: false
+  mirror: never
+
+# Is the IPC pipe to the DLP tool specific to the user or to the system?
+- name: browser.contentanalysis.is_per_user
+  type: bool
+  value: true
+  mirror: never
+
+# Path name of pipe used to connect to a configured DLP agent.
+- name: browser.contentanalysis.pipe_path_name
+  type: String
+  value: "path_user"
+  mirror: never
+
+# Content blocking for Enhanced Tracking Protection
 - name: browser.contentblocking.database.enabled
   type: bool
   value: false
@@ -3925,6 +3944,11 @@
   value: false
   mirror: always
 
+- name: dom.select.showPicker.enabled
+  type: bool
+  value: true
+  mirror: always
+
 - name: dom.separate_event_queue_for_post_message.enabled
   type: bool
   value: true
@@ -4082,7 +4106,7 @@
 
 - name: dom.storage_access.frame_only
   type: bool
-  value: false
+  value: true
   mirror: always
 
 # Only grant storage access to secure contexts.
@@ -4956,13 +4980,6 @@
   value: 0
   mirror: always
 
-# Initialize Resize Observer's last reported size to -1x-1, and not 0x0,
-# as per CSSWG resolution: https://github.com/w3c/csswg-drafts/issues/3664
-- name: dom.resize_observer.last_reported_size_invalid
-  type: bool
-  value: true
-  mirror: always
-
 # Let Resize Observer report the size of all fragments, and not just the
 # first one, as per CSSWG resolution:
 # https://github.com/w3c/csswg-drafts/issues/3673#issuecomment-467221565
@@ -4998,14 +5015,6 @@
 # Use compatible range computation when applying inline style.  This is used
 # for making it possible to backout with Normandy Pref Rollout.
 - name: editor.inline_style.range.compatible_with_the_other_browsers
-  type: bool
-  value: true
-  mirror: always
-
-# Whether use Blink/WebKit compatbile joining nodes and split a node direction.
-# false: Left node will be created (at splitting) and deleted (at joining)
-# true:  Right node will be created (at splitting) and deleted (at joinining)
-- name: editor.join_split_direction.compatible_with_the_other_browsers
   type: bool
   value: true
   mirror: always
@@ -8507,14 +8516,6 @@
   mirror: always
   rust: true
 
-# Whether the rule hash is applied to attribute names too, not
-# only classes / id / namespaces / etc.
-- name: layout.css.bucket-attribute-names.enabled
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-  rust: true
-
 # Set the number of device pixels per CSS pixel. A value <= 0 means choose
 # automatically based on user settings for the platform (e.g., "UI scale factor"
 # on Mac). If browser.display.os-zoom-behavior == 1, then a positive value
@@ -8705,7 +8706,7 @@
 # Is support for :has() enabled?
 - name: layout.css.has-selector.enabled
   type: RelaxedAtomicBool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
   rust: true
 
@@ -9049,6 +9050,13 @@
   value: 50 # 50%
   mirror: always
 
+# Whether the `hanging` and `each-line` keywords are supported by `text-indent`
+- name: layout.css.text-indent-keywords.enabled
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
+  rust: true
+
 # Whether the "modern" uppercase mapping of ß to ẞ (rather than SS) is used.
 - name: layout.css.text-transform.uppercase-eszett.enabled
   type: bool
@@ -9057,7 +9065,7 @@
 
 - name: layout.css.text-wrap-balance.enabled
   type: bool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
 
 # Maximum number of lines to try balancing.
@@ -9389,6 +9397,12 @@
   value: true
   mirror: always
 
+# Handle scroll-anchoring adjustments as absolute scroll position updates.
+- name: layout.css.scroll-anchoring.absolute-update
+  type: bool
+  value: true
+  mirror: always
+
 # Are shared memory User Agent style sheets enabled?
 - name: layout.css.shared-memory-ua-sheets.enabled
   type: bool
@@ -9400,13 +9414,6 @@
   type: bool
   value: false
   mirror: always
-
-# Is support for -webkit-slider* pseudos enabled?
-- name: layout.css.webkit-range-pseudos.enabled
-  type: RelaxedAtomicBool
-  value: false
-  mirror: always
-  rust: true
 
 # Is 'content:none' supported on (non-pseudo) elements?
 - name: layout.css.element-content-none.enabled
@@ -9430,6 +9437,13 @@
 
 # Whether :-moz-broken is supported in content.
 - name: layout.css.moz-broken.content.enabled
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+  rust: true
+
+# Whether the modern ::slider-* pseudos are enabled.
+- name: layout.css.modern-range-pseudos.enabled
   type: RelaxedAtomicBool
   value: false
   mirror: always
@@ -9613,12 +9627,6 @@
   value: 1
   mirror: always
 
-# Wether to block autoplay for webaudio
-- name: media.autoplay.block-webaudio
-  type: bool
-  value: true
-  mirror: always
-
 # File-backed MediaCache size.
 - name: media.cache_size
   type: RelaxedAtomicUint32
@@ -9646,7 +9654,11 @@
 #if defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID) || defined(XP_WIN) || defined(XP_MACOSX)
   value: true
 #else
+#if defined(MOZ_WIDGET_ANDROID)
+  value: @IS_NIGHTLY_BUILD@
+#else
   value: false
+#endif
 #endif
 
 # Whether or not to pass AUDCLNT_STREAMOPTIONS_RAW when initializing audio
@@ -10451,6 +10463,12 @@
 #endif
     mirror: always
 
+# Enable Widevine experiment DRM for EME
+-   name: media.eme.widevine.experiment.enabled
+    type: RelaxedAtomicBool
+    value: false
+    mirror: always
+
 #endif  # MOZ_WMF
 
 - name: media.decoder-doctor.testing
@@ -11112,7 +11130,17 @@
   value: true
   mirror: always
 
-- name: media.webrtc.capture.allow-wgc
+- name: media.webrtc.capture.screen.allow-wgc
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
+- name: media.webrtc.capture.window.allow-wgc
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
+- name: media.webrtc.capture.wgc.allow-zero-hertz
   type: RelaxedAtomicBool
   value: false
   mirror: always
@@ -11547,7 +11575,7 @@
 # whether to redirect the channel for auth redirects. See Bug 1820807
 - name: network.auth.use_redirect_for_retries
   type: RelaxedAtomicBool
-  value: false
+  value: @IS_EARLY_BETA_OR_EARLIER@
   mirror: always
 
 # Whether to allow truncated brotli with empty output. This also fixes
@@ -12051,6 +12079,31 @@
 
 # Whether we can send OnDataAvailable to content process directly.
 - name: network.send_ODA_to_content_directly
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
+
+# Whether we can send OnDataFinished to html5parser in content process directly
+- name: network.send_OnDataFinished.html5parser
+  type: RelaxedAtomicBool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+
+# Whether we can send OnDataFinished in the content process
+- name: network.send_OnDataFinished
+  type: RelaxedAtomicBool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+
+# Whether we can send OnDataAvailable to content process directly.
+- name: network.send_OnDataFinished.nsInputStreamPump
+  type: RelaxedAtomicBool
+  value: @IS_NIGHTLY_BUILD@
+  mirror: always
+
+# Whether we can send send OnDataFinished only after dispatching
+# all the progress events on the main thread
+- name: network.send_OnDataFinished_after_progress_updates
   type: RelaxedAtomicBool
   value: true
   mirror: always
@@ -12717,7 +12770,7 @@
   mirror: always
 
 # Enable http3 network priority as described in
-# https://httpwg.org/http-extensions/draft-ietf-httpbis-priority.html
+# <https://www.rfc-editor.org/rfc/rfc9218.html>.
 - name: network.http.http3.priority
   type: RelaxedAtomicBool
   value: true
@@ -14817,6 +14870,19 @@
   value: 10000.0
   mirror: always
 
+#ifdef XP_WIN
+  # Controls whether or not TimerThread will automatically increase the Windows timer
+  # resolution when appropriate conditions are met.
+-   name: timer.auto_increase_timer_resolution
+    type: RelaxedAtomicBool
+#ifdef NIGHTLY_BUILD
+    value: true
+#else
+    value: false
+#endif
+    mirror: always
+#endif
+
 #---------------------------------------------------------------------------
 # Prefs starting with "toolkit."
 #---------------------------------------------------------------------------
@@ -15396,6 +15462,15 @@
   value: 0
   mirror: always
 
+- name: webgl.gl_khr_no_error
+  type: RelaxedAtomicBool
+#ifdef XP_WIN
+  value: false
+#else
+  value: true
+#endif
+  mirror: always
+
 - name: webgl.lose-context-on-memory-pressure
   type: RelaxedAtomicBool
   value: false
@@ -15668,13 +15743,7 @@
 # Whether we should try to use WebRender to render widgets.
 - name: widget.non-native-theme.webrender
   type: bool
-#if defined(XP_MACOSX)
-  # Disabled on macOS release / beta because of a suspected AMD driver bug (see
-  # bug 1715452).
-  value: @IS_NIGHTLY_BUILD@
-#else
   value: true
-#endif
   mirror: always
 
 # Whether the outline style should be one big stroke or two contrasting strokes
@@ -15990,6 +16059,19 @@
 - name: widget.windows.fullscreen_remind_taskbar
   type: RelaxedAtomicBool
   value: true
+  mirror: always
+
+# Whether to open the Windows file and folder pickers "remotely" (in a utility
+# process) or "locally" (in the main process).
+#
+# Valid values:
+#  *  0: auto (possibly release-channel-dependent)
+#  *  1: remotely, falling back to locally
+#  *  2: remotely, no fallback
+#  * -1: locally, no fallback
+- name: widget.windows.utility_process_file_picker
+  type: RelaxedAtomicInt32
+  value: -1
   mirror: always
 
 # The number of messages of each type to keep for display in

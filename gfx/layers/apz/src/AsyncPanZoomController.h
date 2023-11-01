@@ -1126,6 +1126,7 @@ class AsyncPanZoomController {
   // notification.
   CSSToParentLayerScale mLastNotifiedZoom;
 
+  // Accessing mAnimation needs to be protected by mRecursiveMutex
   RefPtr<AsyncPanZoomAnimation> mAnimation;
 
   UniquePtr<OverscrollEffectBase> mOverscrollEffect;
@@ -1480,6 +1481,13 @@ class AsyncPanZoomController {
    */
   void DispatchStateChangeNotification(PanZoomState aOldState,
                                        PanZoomState aNewState);
+
+  /**
+   * Send a TransformBegin notification followed by a TransformEnd
+   * notification.
+   */
+  void SendTransformBeginAndEnd();
+
   /**
    * Internal helpers for checking general state of this apzc.
    */
@@ -1606,6 +1614,8 @@ class AsyncPanZoomController {
   void SmoothScrollTo(CSSSnapDestination&& aDestination,
                       ScrollTriggeredByScript aTriggeredByScript,
                       const ScrollOrigin& aOrigin);
+
+  ParentLayerPoint ConvertDestinationToDelta(CSSPoint& aDestination) const;
 
   // Start a smooth-scrolling animation to the given destination, with MSD
   // physics that is suited for scroll-snapping.

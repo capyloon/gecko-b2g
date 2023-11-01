@@ -66,7 +66,6 @@ pub fn cascade<E>(
     pseudo: Option<&PseudoElement>,
     rule_node: &StrongRuleNode,
     guards: &StylesheetGuards,
-    originating_element_style: Option<&ComputedValues>,
     parent_style: Option<&ComputedValues>,
     layout_parent_style: Option<&ComputedValues>,
     first_line_reparenting: FirstLineReparenting,
@@ -84,7 +83,6 @@ where
         pseudo,
         rule_node,
         guards,
-        originating_element_style,
         parent_style,
         layout_parent_style,
         first_line_reparenting,
@@ -184,7 +182,6 @@ fn cascade_rules<E>(
     pseudo: Option<&PseudoElement>,
     rule_node: &StrongRuleNode,
     guards: &StylesheetGuards,
-    originating_element_style: Option<&ComputedValues>,
     parent_style: Option<&ComputedValues>,
     layout_parent_style: Option<&ComputedValues>,
     first_line_reparenting: FirstLineReparenting,
@@ -203,7 +200,6 @@ where
         rule_node,
         guards,
         DeclarationIterator::new(rule_node, guards, pseudo),
-        originating_element_style,
         parent_style,
         layout_parent_style,
         first_line_reparenting,
@@ -233,7 +229,7 @@ pub enum CascadeMode<'a, 'b> {
 fn iter_declarations<'builder, 'decls: 'builder>(
     iter: impl Iterator<Item = (&'decls PropertyDeclaration, CascadePriority)>,
     declarations: &mut Declarations<'decls>,
-    mut custom_builder: Option<&mut CustomPropertiesBuilder<'builder>>,
+    mut custom_builder: Option<&mut CustomPropertiesBuilder<'builder, 'decls>>,
 ) {
     for (declaration, priority) in iter {
         if let PropertyDeclaration::Custom(ref declaration) = *declaration {
@@ -250,36 +246,31 @@ fn iter_declarations<'builder, 'decls: 'builder>(
 /// NOTE: This function expects the declaration with more priority to appear
 /// first.
 pub fn apply_declarations<'a, E, I>(
-    stylist: &Stylist,
-    pseudo: Option<&PseudoElement>,
+    stylist: &'a Stylist,
+    pseudo: Option<&'a PseudoElement>,
     rules: &StrongRuleNode,
     guards: &StylesheetGuards,
     iter: I,
-    originating_element_style: Option<&ComputedValues>,
-    parent_style: Option<&ComputedValues>,
+    parent_style: Option<&'a ComputedValues>,
     layout_parent_style: Option<&ComputedValues>,
-    first_line_reparenting: FirstLineReparenting,
+    first_line_reparenting: FirstLineReparenting<'a>,
     cascade_mode: CascadeMode,
     cascade_input_flags: ComputedValueFlags,
-    rule_cache: Option<&RuleCache>,
-    rule_cache_conditions: &mut RuleCacheConditions,
+    rule_cache: Option<&'a RuleCache>,
+    rule_cache_conditions: &'a mut RuleCacheConditions,
     element: Option<E>,
 ) -> Arc<ComputedValues>
 where
-    E: TElement,
+    E: TElement + 'a,
     I: Iterator<Item = (&'a PropertyDeclaration, CascadePriority)>,
 {
-    debug_assert_eq!(
-        originating_element_style.is_some(),
-        element.is_some() && pseudo.is_some()
-    );
     debug_assert!(layout_parent_style.is_none() || parent_style.is_some());
     let device = stylist.device();
     let inherited_style = parent_style.unwrap_or(device.default_computed_values());
     let is_root_element = pseudo.is_none() && element.map_or(false, |e| e.is_root());
 
     let container_size_query =
-        ContainerSizeQuery::for_option_element(element, originating_element_style);
+        ContainerSizeQuery::for_option_element(element, Some(inherited_style), pseudo.is_some());
 
     let mut context = computed::Context::new(
         // We'd really like to own the rules here to avoid refcount traffic, but
@@ -316,12 +307,12 @@ where
             // try to avoid gathering the declarations. That'd be:
             //      unvisited_context.builder.rules.as_ref() == Some(rules)
             iter_declarations(iter, &mut declarations, None);
+
             LonghandIdSet::visited_dependent()
         },
         CascadeMode::Unvisited { visited_rules } => {
             cascade.context.builder.custom_properties = {
-                let mut builder =
-                    CustomPropertiesBuilder::new(inherited_style.custom_properties(), stylist, is_root_element);
+                let mut builder = CustomPropertiesBuilder::new(stylist, cascade.context);
                 iter_declarations(iter, &mut declarations, Some(&mut builder));
                 builder.build()
             };
@@ -331,7 +322,6 @@ where
             if let Some(visited_rules) = visited_rules {
                 cascade.compute_visited_style_if_needed(
                     element,
-                    originating_element_style,
                     parent_style,
                     layout_parent_style,
                     visited_rules,
@@ -675,10 +665,9 @@ impl<'a, 'b: 'a> Cascade<'a, 'b> {
         );
         declaration.value.substitute_variables(
             declaration.id,
-            self.context.builder.writing_mode,
             self.context.builder.custom_properties(),
-            self.context.quirks_mode,
             self.context.builder.stylist.unwrap(),
+            self.context,
             shorthand_cache,
         )
     }
@@ -920,7 +909,6 @@ impl<'a, 'b: 'a> Cascade<'a, 'b> {
     fn compute_visited_style_if_needed<E>(
         &mut self,
         element: Option<E>,
-        originating_element_style: Option<&ComputedValues>,
         parent_style: Option<&ComputedValues>,
         layout_parent_style: Option<&ComputedValues>,
         visited_rules: &StrongRuleNode,
@@ -947,7 +935,6 @@ impl<'a, 'b: 'a> Cascade<'a, 'b> {
             self.context.builder.pseudo,
             visited_rules,
             guards,
-            visited_parent!(originating_element_style),
             visited_parent!(parent_style),
             visited_parent!(layout_parent_style),
             self.first_line_reparenting,

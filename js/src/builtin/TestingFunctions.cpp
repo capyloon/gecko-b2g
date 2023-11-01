@@ -57,8 +57,8 @@
 #include "frontend/BytecodeCompiler.h"  // frontend::{CompileGlobalScriptToExtensibleStencil,ParseModuleToExtensibleStencil}
 #include "frontend/CompilationStencil.h"  // frontend::CompilationStencil
 #include "frontend/FrontendContext.h"     // AutoReportFrontendContext
-#include "gc/Allocator.h"
 #include "gc/GC.h"
+#include "gc/GCEnum.h"
 #include "gc/GCLock.h"
 #include "gc/Zone.h"
 #include "jit/BaselineJIT.h"
@@ -4620,7 +4620,10 @@ static bool DisplayName(JSContext* cx, unsigned argc, Value* vp) {
   }
 
   JSFunction* fun = &args[0].toObject().as<JSFunction>();
-  JSString* str = fun->displayAtom();
+  JS::Rooted<JSAtom*> str(cx);
+  if (!fun->getDisplayAtom(cx, &str)) {
+    return false;
+  }
   args.rval().setString(str ? str : cx->runtime()->emptyString.ref());
   return true;
 }

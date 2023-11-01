@@ -83,7 +83,6 @@
       return `
         <div xmlns="http://www.w3.org/1999/xhtml" class="autofill-item-box">
           <div class="profile-label-col profile-item-col">
-            <span class="profile-label-affix"></span>
             <span class="profile-label"></span>
           </div>
           <div class="profile-comment-col profile-item-col">
@@ -103,7 +102,6 @@
       this.appendChild(this.constructor.fragment);
 
       this._itemBox = this.querySelector(".autofill-item-box");
-      this._labelAffix = this.querySelector(".profile-label-affix");
       this._label = this.querySelector(".profile-label");
       this._comment = this.querySelector(".profile-comment");
 
@@ -139,13 +137,12 @@
         `url(${this.getAttribute("ac-image")})`
       );
 
-      let { primaryAffix, primary, secondary, ariaLabel } = JSON.parse(
+      let { primary, secondary, ariaLabel } = JSON.parse(
         this.getAttribute("ac-value")
       );
 
-      this._labelAffix.textContent = primaryAffix;
-      this._label.textContent = primary;
-      this._comment.textContent = secondary;
+      this._label.textContent = primary.toString().replaceAll("*", "•");
+      this._comment.textContent = secondary.toString().replaceAll("*", "•");
       if (ariaLabel) {
         this.setAttribute("aria-label", ariaLabel);
       }
@@ -290,7 +287,11 @@
         this._itemBox.setAttribute("no-warning", "true");
       }
 
-      const buttonTextBundleKey = value.categories
+      // After focusing a field that was previously filled with cc information,
+      // the "ac-image" is falsely set for the listitem-footer. For now it helps us
+      // to distinguish between address and cc footer. In the future this false attribute
+      // setting should be fixed and the "ac-image" check replaced by a different method.
+      const buttonTextBundleKey = !this.getAttribute("ac-image")
         ? "autocompleteManageAddresses"
         : "autocompleteManageCreditCards";
       const buttonText =

@@ -2112,6 +2112,13 @@ nsEventStatus AsyncPanZoomController::OnKeyboard(const KeyboardInput& aEvent) {
   // exists
   if (mState != KEYBOARD_SCROLL) {
     CancelAnimation();
+
+    // Keyboard input that does not change the scroll position should not
+    // cause a TransformBegin state change, in order to avoid firing a
+    // scrollend event when no scrolling occurred.
+    if (!CanScroll(ConvertDestinationToDelta(destination))) {
+      return nsEventStatus_eConsumeDoDefault;
+    }
     SetState(KEYBOARD_SCROLL);
 
     nsPoint initialPosition =
@@ -2764,9 +2771,9 @@ AsyncPanZoomController::GetDisplacementsForPanGesture(
 nsEventStatus AsyncPanZoomController::OnPan(
     const PanGestureInput& aEvent, FingersOnTouchpad aFingersOnTouchpad) {
   APZC_LOG_DETAIL("got a pan-pan in state %s\n", this,
-                  ToString(mState).c_str());
+                  ToString(GetState()).c_str());
 
-  if (mState == SMOOTHMSD_SCROLL) {
+  if (GetState() == SMOOTHMSD_SCROLL) {
     if (aFingersOnTouchpad == FingersOnTouchpad::No) {
       // When a SMOOTHMSD_SCROLL scroll is being processed on a frame, mouse
       // wheel and trackpad momentum scroll position updates will not cancel the
@@ -2780,7 +2787,7 @@ nsEventStatus AsyncPanZoomController::OnPan(
     CancelAnimation();
   }
 
-  if (mState == NOTHING) {
+  if (GetState() == NOTHING) {
     // This event block was interrupted by something else. If the user's fingers
     // are still on on the touchpad we want to resume scrolling, otherwise we
     // ignore the rest of the scroll gesture.
@@ -2795,25 +2802,31 @@ nsEventStatus AsyncPanZoomController::OnPan(
   auto [logicalPanDisplacement, physicalPanDisplacement] =
       GetDisplacementsForPanGesture(aEvent);
 
-  MOZ_ASSERT_IF(mState == OVERSCROLL_ANIMATION, mAnimation);
-  if (mState == OVERSCROLL_ANIMATION && mAnimation &&
-      aFingersOnTouchpad == FingersOnTouchpad::No) {
-    // If there is an on-going overscroll animation, we tell the animation
-    // whether the displacements should be handled by the animation or not.
-    MOZ_ASSERT(mAnimation->AsOverscrollAnimation());
-    if (RefPtr<OverscrollAnimation> overscrollAnimation =
-            mAnimation->AsOverscrollAnimation()) {
-      overscrollAnimation->HandlePanMomentum(logicalPanDisplacement);
-      // And then as a result of the above call, if the animation is currently
-      // affecting on the axis, drop the displacement value on the axis so that
-      // we stop further oversrolling on the axis.
-      if (overscrollAnimation->IsManagingXAxis()) {
-        logicalPanDisplacement.x = 0;
-        physicalPanDisplacement.x = 0;
-      }
-      if (overscrollAnimation->IsManagingYAxis()) {
-        logicalPanDisplacement.y = 0;
-        physicalPanDisplacement.y = 0;
+  {
+    // Grab the lock to protect the animation from being canceled on the updater
+    // thread.
+    RecursiveMutexAutoLock lock(mRecursiveMutex);
+    MOZ_ASSERT_IF(GetState() == OVERSCROLL_ANIMATION, mAnimation);
+
+    if (GetState() == OVERSCROLL_ANIMATION && mAnimation &&
+        aFingersOnTouchpad == FingersOnTouchpad::No) {
+      // If there is an on-going overscroll animation, we tell the animation
+      // whether the displacements should be handled by the animation or not.
+      MOZ_ASSERT(mAnimation->AsOverscrollAnimation());
+      if (RefPtr<OverscrollAnimation> overscrollAnimation =
+              mAnimation->AsOverscrollAnimation()) {
+        overscrollAnimation->HandlePanMomentum(logicalPanDisplacement);
+        // And then as a result of the above call, if the animation is currently
+        // affecting on the axis, drop the displacement value on the axis so
+        // that we stop further oversrolling on the axis.
+        if (overscrollAnimation->IsManagingXAxis()) {
+          logicalPanDisplacement.x = 0;
+          physicalPanDisplacement.x = 0;
+        }
+        if (overscrollAnimation->IsManagingYAxis()) {
+          logicalPanDisplacement.y = 0;
+          physicalPanDisplacement.y = 0;
+        }
       }
     }
   }
@@ -2875,7 +2888,7 @@ nsEventStatus AsyncPanZoomController::OnPan(
   }
 
   if (aFingersOnTouchpad == FingersOnTouchpad::No) {
-    if (IsOverscrolled() && mState != OVERSCROLL_ANIMATION) {
+    if (IsOverscrolled() && GetState() != OVERSCROLL_ANIMATION) {
       StartOverscrollAnimation(velocity, GetOverscrollSideBits());
     } else if (!consumed) {
       // If there is unconsumed scroll and we're in the momentum part of the
@@ -3965,6 +3978,20 @@ void AsyncPanZoomController::HandleSmoothScrollOverscroll(
                         BuildOverscrollHandoffChain(), nullptr);
 }
 
+ParentLayerPoint AsyncPanZoomController::ConvertDestinationToDelta(
+    CSSPoint& aDestination) const {
+  ParentLayerPoint startPoint, endPoint;
+
+  {
+    RecursiveMutexAutoLock lock(mRecursiveMutex);
+
+    startPoint = aDestination * Metrics().GetZoom();
+    endPoint = Metrics().GetVisualScrollOffset() * Metrics().GetZoom();
+  }
+
+  return startPoint - endPoint;
+}
+
 void AsyncPanZoomController::SmoothScrollTo(
     CSSSnapDestination&& aDestination,
     ScrollTriggeredByScript aTriggeredByScript, const ScrollOrigin& aOrigin) {
@@ -3991,6 +4018,13 @@ void AsyncPanZoomController::SmoothScrollTo(
   }
 
   CancelAnimation();
+
+  // If no scroll is required, we should exit early to avoid triggering
+  // a scrollend event when no scrolling occurred.
+  if (ConvertDestinationToDelta(aDestination.mPosition) == ParentLayerPoint()) {
+    return;
+  }
+
   SetState(SMOOTH_SCROLL);
   nsPoint initialPosition =
       CSSPoint::ToAppUnits(Metrics().GetVisualScrollOffset());
@@ -4012,24 +4046,30 @@ void AsyncPanZoomController::SmoothMsdScrollTo(
     animation->SetDestination(aDestination.mPosition,
                               std::move(aDestination.mTargetIds),
                               aTriggeredByScript);
-  } else {
-    CancelAnimation();
-    SetState(SMOOTHMSD_SCROLL);
-    // Convert velocity from ParentLayerPoints/ms to ParentLayerPoints/s.
-    CSSPoint initialVelocity;
-    if (Metrics().GetZoom() != CSSToParentLayerScale(0)) {
-      initialVelocity = ParentLayerPoint(mX.GetVelocity() * 1000.0f,
-                                         mY.GetVelocity() * 1000.0f) /
-                        Metrics().GetZoom();
-    }
-
-    StartAnimation(do_AddRef(new SmoothMsdScrollAnimation(
-        *this, Metrics().GetVisualScrollOffset(), initialVelocity,
-        aDestination.mPosition,
-        StaticPrefs::layout_css_scroll_behavior_spring_constant(),
-        StaticPrefs::layout_css_scroll_behavior_damping_ratio(),
-        std::move(aDestination.mTargetIds), aTriggeredByScript)));
+    return;
   }
+
+  // If no scroll is required, we should exit early to avoid triggering
+  // a scrollend event when no scrolling occurred.
+  if (ConvertDestinationToDelta(aDestination.mPosition) == ParentLayerPoint()) {
+    return;
+  }
+  CancelAnimation();
+  SetState(SMOOTHMSD_SCROLL);
+  // Convert velocity from ParentLayerPoints/ms to ParentLayerPoints/s.
+  CSSPoint initialVelocity;
+  if (Metrics().GetZoom() != CSSToParentLayerScale(0)) {
+    initialVelocity = ParentLayerPoint(mX.GetVelocity() * 1000.0f,
+                                       mY.GetVelocity() * 1000.0f) /
+                      Metrics().GetZoom();
+  }
+
+  StartAnimation(do_AddRef(new SmoothMsdScrollAnimation(
+      *this, Metrics().GetVisualScrollOffset(), initialVelocity,
+      aDestination.mPosition,
+      StaticPrefs::layout_css_scroll_behavior_spring_constant(),
+      StaticPrefs::layout_css_scroll_behavior_damping_ratio(),
+      std::move(aDestination.mTargetIds), aTriggeredByScript)));
 }
 
 void AsyncPanZoomController::StartOverscrollAnimation(
@@ -5531,6 +5571,7 @@ void AsyncPanZoomController::NotifyLayersUpdated(
     }
   }
 
+  bool instantScrollMayTriggerTransform = false;
   bool scrollOffsetUpdated = false;
   bool smoothScrollRequested = false;
   bool didCancelAnimation = false;
@@ -5608,6 +5649,11 @@ void AsyncPanZoomController::NotifyLayersUpdated(
     MOZ_ASSERT(scrollUpdate.GetMode() == ScrollMode::Instant ||
                scrollUpdate.GetMode() == ScrollMode::Normal);
 
+    instantScrollMayTriggerTransform =
+        scrollUpdate.GetMode() == ScrollMode::Instant &&
+        scrollUpdate.GetScrollTriggeredByScript() ==
+            ScrollTriggeredByScript::No;
+
     // If the layout update is of a higher priority than the visual update, then
     // we don't want to apply the visual update.
     // If the layout update is of a clobbering type (or a smooth scroll request,
@@ -5671,11 +5717,20 @@ void AsyncPanZoomController::NotifyLayersUpdated(
       relativeDelta =
           Some(Metrics().ApplyPureRelativeScrollUpdateFrom(scrollUpdate));
       Metrics().RecalculateLayoutViewportOffset();
+    } else if (scrollUpdate.GetType() == ScrollUpdateType::MergeableAbsolute) {
+      APZC_LOG("%p mergeable updating scroll offset from %s to %s\n", this,
+               ToString(Metrics().GetVisualScrollOffset()).c_str(),
+               ToString(scrollUpdate.GetDestination()).c_str());
+      relativeDelta =
+          Some(Metrics().ApplyAbsoluteScrollUpdateFrom(scrollUpdate).second);
+      Metrics().RecalculateLayoutViewportOffset();
+      scrollOffsetUpdated = true;
     } else {
       APZC_LOG("%p updating scroll offset from %s to %s\n", this,
                ToString(Metrics().GetVisualScrollOffset()).c_str(),
                ToString(scrollUpdate.GetDestination()).c_str());
-      bool offsetChanged = Metrics().ApplyScrollUpdateFrom(scrollUpdate);
+      auto [offsetChanged, _] =
+          Metrics().ApplyAbsoluteScrollUpdateFrom(scrollUpdate);
       Metrics().RecalculateLayoutViewportOffset();
 
       if (offsetChanged || scrollUpdate.GetMode() != ScrollMode::Instant ||
@@ -5740,6 +5795,15 @@ void AsyncPanZoomController::NotifyLayersUpdated(
     // Since the main-thread scroll offset changed we should trigger a
     // recomposite to make sure it becomes user-visible.
     ScheduleComposite();
+
+    // If the scroll offset was updated, we're not in a transforming state,
+    // and we are scrolling by a non-zero delta, we should ensure
+    // TransformBegin and TransformEnd notifications are sent.
+    if (!IsTransformingState(mState) && instantScrollMayTriggerTransform &&
+        cumulativeRelativeDelta && *cumulativeRelativeDelta != CSSPoint() &&
+        !didCancelAnimation) {
+      SendTransformBeginAndEnd();
+    }
   }
 
   // If our scroll range changed (for example, because the page dynamically
@@ -6195,7 +6259,8 @@ bool AsyncPanZoomController::HasReadyTouchBlock() const {
 }
 
 bool AsyncPanZoomController::CanHandleScrollOffsetUpdate(PanZoomState aState) {
-  return aState == PAN_MOMENTUM || aState == TOUCHING || IsPanningState(aState);
+  return aState == NOTHING || aState == PAN_MOMENTUM || aState == TOUCHING ||
+         IsPanningState(aState);
 }
 
 bool AsyncPanZoomController::ShouldCancelAnimationForScrollUpdate(
@@ -6261,6 +6326,14 @@ void AsyncPanZoomController::DispatchStateChangeNotification(
       controller->NotifyAPZStateChange(GetGuid(),
                                        APZStateChange::eTransformEnd);
     }
+  }
+}
+void AsyncPanZoomController::SendTransformBeginAndEnd() {
+  RefPtr<GeckoContentController> controller = GetGeckoContentController();
+  if (controller) {
+    controller->NotifyAPZStateChange(GetGuid(),
+                                     APZStateChange::eTransformBegin);
+    controller->NotifyAPZStateChange(GetGuid(), APZStateChange::eTransformEnd);
   }
 }
 

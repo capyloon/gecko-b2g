@@ -12,6 +12,10 @@
 
 namespace mozilla {
 
+namespace ipc {
+class Shmem;
+}
+
 namespace webgpu {
 
 // A texture that can be used by the WebGPU implementation but is created and
@@ -30,11 +34,21 @@ class ExternalTexture {
 
   virtual Maybe<layers::SurfaceDescriptor> ToSurfaceDescriptor() = 0;
 
+  virtual void GetSnapshot(const ipc::Shmem& aDestShmem,
+                           const gfx::IntSize& aSize) {}
+
   gfx::IntSize GetSize() { return gfx::IntSize(mWidth, mHeight); }
+
+  void SetTextureRaw(ffi::WGPUTextureRaw* aTextureRaw);
+  ffi::WGPUTextureRaw* GetTextureRaw() { return mTextureRaw; }
 
   const uint32_t mWidth;
   const uint32_t mHeight;
   const struct ffi::WGPUTextureFormat mFormat;
+
+ protected:
+  // Holds the raw object that could be used for creating wgpu Texture.
+  ffi::WGPUTextureRaw* mTextureRaw = nullptr;
 };
 
 }  // namespace webgpu

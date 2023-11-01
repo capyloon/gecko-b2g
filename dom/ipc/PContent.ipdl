@@ -27,7 +27,6 @@ include protocol PProcessHangMonitor;
 include protocol PSharedBufferManager;
 include protocol PImageBridge;
 include protocol PRemotePrintJob;
-include protocol PLoginReputation;
 include protocol PMedia;
 include protocol PNecko;
 include protocol PStreamFilter;
@@ -727,7 +726,6 @@ sync protocol PContent
     manages PURLClassifier;
     manages PURLClassifierLocal;
     manages PScriptCache;
-    manages PLoginReputation;
     manages PSessionStorageObserver;
     manages PSystemMessageService;
     manages PBenchmarkStorage;
@@ -1401,8 +1399,6 @@ parent:
 
     async PURLClassifierLocal(nullable nsIURI uri, IPCURLClassifierFeature[] features);
 
-    async PLoginReputation(nullable nsIURI formURI);
-
     async PSessionStorageObserver();
 
     async PBenchmarkStorage();
@@ -1573,18 +1569,6 @@ parent:
 
     async FindImageText(IPCImage image, nsCString[] languages)
         returns (TextRecognitionResultOrError result);
-
-    /**
-     * Notifies the parent about a recording device is starting or shutdown.
-     * @param recordingStatus starting or shutdown
-     * @param pageURL URL that request that changing the recording status
-     * @param isAudio recording start with microphone
-     * @param isVideo recording start with camera
-     */
-    async RecordingDeviceEvents(nsString recordingStatus,
-                                nsString pageURL,
-                                bool isAudio,
-                                bool isVideo);
 
     // Graphics errors
     async GraphicsError(nsCString aError);

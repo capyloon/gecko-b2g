@@ -2783,11 +2783,7 @@ static bool CheckModuleArgument(ModuleValidatorShared& m, ParseNode* arg,
     return false;
   }
 
-  if (!CheckModuleLevelName(m, arg, *name)) {
-    return false;
-  }
-
-  return true;
+  return CheckModuleLevelName(m, arg, *name);
 }
 
 static bool CheckModuleArguments(ModuleValidatorShared& m,
@@ -2821,11 +2817,7 @@ static bool CheckModuleArguments(ModuleValidatorShared& m,
   if (arg3 && !CheckModuleArgument(m, arg3, &arg3Name)) {
     return false;
   }
-  if (!m.initBufferArgumentName(arg3Name)) {
-    return false;
-  }
-
-  return true;
+  return m.initBufferArgumentName(arg3Name);
 }
 
 static bool CheckPrecedingStatements(ModuleValidatorShared& m,
@@ -3577,11 +3569,7 @@ static bool WriteArrayAccessFlags(FunctionValidatorShared& f,
   }
 
   // asm.js doesn't have constant offsets, so just encode a 0.
-  if (!f.encoder().writeVarU32(0)) {
-    return false;
-  }
-
-  return true;
+  return f.encoder().writeVarU32(0);
 }
 
 template <typename Unit>
@@ -4121,12 +4109,8 @@ static bool CheckFuncPtrTableAgainstExisting(ModuleValidator<Unit>& m,
     return false;
   }
 
-  if (!m.declareFuncPtrTable(std::move(sig), name, usepn->pn_pos.begin, mask,
-                             tableIndex)) {
-    return false;
-  }
-
-  return true;
+  return m.declareFuncPtrTable(std::move(sig), name, usepn->pn_pos.begin, mask,
+                               tableIndex);
 }
 
 template <typename Unit>
@@ -4835,11 +4819,7 @@ static bool CheckConditional(FunctionValidator<Unit>& f, ParseNode* ternary,
         thenType.toChars(), elseType.toChars());
   }
 
-  if (!f.popIf(typeAt, type->toWasmBlockSignatureType())) {
-    return false;
-  }
-
-  return true;
+  return f.popIf(typeAt, type->toWasmBlockSignatureType());
 }
 
 template <typename Unit>
@@ -5410,11 +5390,7 @@ static bool CheckLoopConditionOnEntry(FunctionValidator<Unit>& f,
   }
 
   // brIf (i32.eqz $f) $out
-  if (!f.writeBreakIf()) {
-    return false;
-  }
-
-  return true;
+  return f.writeBreakIf();
 }
 
 template <typename Unit>
@@ -5641,10 +5617,7 @@ static bool CheckLabel(FunctionValidator<Unit>& f, ParseNode* labeledStmt) {
     return false;
   }
 
-  if (!f.popUnbreakableBlock(&labels)) {
-    return false;
-  }
-  return true;
+  return f.popUnbreakableBlock(&labels);
 }
 
 template <typename Unit>
@@ -5823,10 +5796,7 @@ static bool CheckSwitch(FunctionValidator<Unit>& f, ParseNode* switchStmt) {
     if (!CheckSwitchExpr(f, switchExpr)) {
       return false;
     }
-    if (!f.encoder().writeOp(Op::Drop)) {
-      return false;
-    }
-    return true;
+    return f.encoder().writeOp(Op::Drop);
   }
 
   if (!CheckDefaultAtEnd(f, stmt)) {
@@ -6987,7 +6957,7 @@ static bool HandleInstantiationFailure(JSContext* cx, CallArgs args,
                                        const AsmJSMetadata& metadata) {
   using js::frontend::FunctionSyntaxKind;
 
-  Rooted<JSAtom*> name(cx, args.callee().as<JSFunction>().explicitName());
+  Rooted<JSAtom*> name(cx, args.callee().as<JSFunction>().fullExplicitName());
 
   if (cx->isExceptionPending()) {
     return false;
@@ -7305,7 +7275,7 @@ JSString* js::AsmJSModuleToString(JSContext* cx, HandleFunction fun,
     if (!out.append("function ")) {
       return nullptr;
     }
-    if (fun->explicitName() && !out.append(fun->explicitName())) {
+    if (fun->fullExplicitName() && !out.append(fun->fullExplicitName())) {
       return nullptr;
     }
     if (!out.append("() {\n    [native code]\n}")) {
@@ -7354,8 +7324,8 @@ JSString* js::AsmJSFunctionToString(JSContext* cx, HandleFunction fun) {
 
   if (!haveSource) {
     // asm.js functions can't be anonymous
-    MOZ_ASSERT(fun->explicitName());
-    if (!out.append(fun->explicitName())) {
+    MOZ_ASSERT(fun->fullExplicitName());
+    if (!out.append(fun->fullExplicitName())) {
       return nullptr;
     }
     if (!out.append("() {\n    [native code]\n}")) {

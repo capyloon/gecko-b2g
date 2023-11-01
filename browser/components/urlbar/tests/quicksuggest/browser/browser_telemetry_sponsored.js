@@ -22,15 +22,20 @@ const REMOTE_SETTINGS_RESULT = {
   click_url: "https://example.com/click",
   impression_url: "https://example.com/impression",
   advertiser: "testadvertiser",
+  iab_category: "22 - Shopping",
+  icon: "1234",
 };
 
 const suggestion_type = "sponsored";
 const index = 1;
 const position = index + 1;
 
+// Trying to avoid timeouts in TV mode.
+requestLongerTimeout(3);
+
 add_setup(async function () {
   await setUpTelemetryTest({
-    remoteSettingsResults: [
+    remoteSettingsRecords: [
       {
         type: "data",
         attachment: [REMOTE_SETTINGS_RESULT],
@@ -40,8 +45,11 @@ add_setup(async function () {
 });
 
 // sponsored
-add_task(async function sponsored() {
+add_tasks_with_rust(async function sponsored() {
   let match_type = "firefox-suggest";
+  let source = UrlbarPrefs.get("quicksuggest.rustEnabled")
+    ? "rust"
+    : "remote-settings";
 
   // Make sure `improve_suggest_experience_checked` is recorded correctly
   // depending on the value of the related pref.
@@ -75,6 +83,7 @@ add_task(async function sponsored() {
         ping: {
           type: CONTEXTUAL_SERVICES_PING_TYPES.QS_IMPRESSION,
           payload: {
+            source,
             match_type,
             position,
             suggested_index: -1,
@@ -106,6 +115,7 @@ add_task(async function sponsored() {
           {
             type: CONTEXTUAL_SERVICES_PING_TYPES.QS_IMPRESSION,
             payload: {
+              source,
               match_type,
               position,
               suggested_index: -1,
@@ -119,6 +129,7 @@ add_task(async function sponsored() {
           {
             type: CONTEXTUAL_SERVICES_PING_TYPES.QS_SELECTION,
             payload: {
+              source,
               match_type,
               position,
               suggested_index: -1,
@@ -152,6 +163,7 @@ add_task(async function sponsored() {
             {
               type: CONTEXTUAL_SERVICES_PING_TYPES.QS_IMPRESSION,
               payload: {
+                source,
                 match_type,
                 position,
                 suggested_index: -1,
@@ -165,6 +177,7 @@ add_task(async function sponsored() {
             {
               type: CONTEXTUAL_SERVICES_PING_TYPES.QS_BLOCK,
               payload: {
+                source,
                 match_type,
                 position,
                 suggested_index: -1,
@@ -198,6 +211,7 @@ add_task(async function sponsored() {
             {
               type: CONTEXTUAL_SERVICES_PING_TYPES.QS_IMPRESSION,
               payload: {
+                source,
                 match_type,
                 position,
                 suggested_index: -1,
@@ -217,8 +231,12 @@ add_task(async function sponsored() {
 });
 
 // higher-placement sponsored, a.k.a sponsored priority, sponsored best match
-add_task(async function sponsoredBestMatch() {
+add_tasks_with_rust(async function sponsoredBestMatch() {
   let match_type = "best-match";
+  let source = UrlbarPrefs.get("quicksuggest.rustEnabled")
+    ? "rust"
+    : "remote-settings";
+
   await SpecialPowers.pushPrefEnv({
     set: [["browser.urlbar.quicksuggest.sponsoredPriority", true]],
   });
@@ -243,6 +261,7 @@ add_task(async function sponsoredBestMatch() {
       ping: {
         type: CONTEXTUAL_SERVICES_PING_TYPES.QS_IMPRESSION,
         payload: {
+          source,
           match_type,
           position,
           suggested_index: 1,
@@ -274,6 +293,7 @@ add_task(async function sponsoredBestMatch() {
         {
           type: CONTEXTUAL_SERVICES_PING_TYPES.QS_IMPRESSION,
           payload: {
+            source,
             match_type,
             position,
             suggested_index: 1,
@@ -287,6 +307,7 @@ add_task(async function sponsoredBestMatch() {
         {
           type: CONTEXTUAL_SERVICES_PING_TYPES.QS_SELECTION,
           payload: {
+            source,
             match_type,
             position,
             suggested_index: 1,
@@ -320,6 +341,7 @@ add_task(async function sponsoredBestMatch() {
           {
             type: CONTEXTUAL_SERVICES_PING_TYPES.QS_IMPRESSION,
             payload: {
+              source,
               match_type,
               position,
               suggested_index: 1,
@@ -333,6 +355,7 @@ add_task(async function sponsoredBestMatch() {
           {
             type: CONTEXTUAL_SERVICES_PING_TYPES.QS_BLOCK,
             payload: {
+              source,
               match_type,
               position,
               suggested_index: 1,
@@ -366,6 +389,7 @@ add_task(async function sponsoredBestMatch() {
           {
             type: CONTEXTUAL_SERVICES_PING_TYPES.QS_IMPRESSION,
             payload: {
+              source,
               match_type,
               position,
               suggested_index: 1,

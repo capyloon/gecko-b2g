@@ -820,6 +820,7 @@ dialog > .sync-engines-list + hbox {
 
 .sync-engines-list checkbox .checkbox-icon,
 .sync-engine-image {
+  display: flex;
   margin-inline: 2px 8px;
   width: 16px;
   height: 16px;
@@ -1122,6 +1123,12 @@ menulist[indicator=true] > menupopup menuitem[indicator=true]:not([image]) > .me
   margin-inline-end: 4px;
 }
 
+#activeLanguages,
+#selectedLocales {
+  min-height: 15em;
+  contain: size;
+}
+
 #selectedLocales > richlistitem {
   padding-inline-start: 13px;
 }
@@ -1136,6 +1143,13 @@ menulist[indicator=true] > menupopup menuitem[indicator=true]:not([image]) > .me
 
 .action-button {
   margin-inline-end: 0;
+}
+
+.languages-grid {
+  flex: 1;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  grid-template-columns: 1fr auto;
 }
 
 /* Menulist styles */

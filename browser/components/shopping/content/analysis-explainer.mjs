@@ -27,6 +27,12 @@ class AnalysisExplainer extends MozLitElement {
     productUrl: { type: String, reflect: true },
   };
 
+  static get queries() {
+    return {
+      reviewQualityExplainerLink: "#review-quality-url",
+    };
+  }
+
   getGradesDescriptionTemplate() {
     return html`
       <section id="analysis-explainer-grades-wrapper">
@@ -130,10 +136,11 @@ class AnalysisExplainer extends MozLitElement {
               })}"
             ></p>
             <p
-              data-l10n-id="shopping-analysis-explainer-learn-more"
+              data-l10n-id="shopping-analysis-explainer-learn-more2"
               @click=${this.handleReviewQualityUrlClicked}
             >
               <a
+                id="review-quality-url"
                 data-l10n-name="review-quality-url"
                 target="_blank"
                 href="${window.RPMGetFormatURLPref(
