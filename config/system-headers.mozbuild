@@ -1139,6 +1139,7 @@ if CONFIG['OS_TARGET'] == 'Android' or CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gonk':
         'HTTPBase.h',
         'input/PropertyMap.h',
         'linux/ashmem.h',
+        'media/AidlConversion.h',
         'media/AudioEffect.h',
         'media/AudioParameter.h',
         'media/AudioSystem.h',

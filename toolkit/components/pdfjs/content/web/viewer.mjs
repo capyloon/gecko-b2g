@@ -580,12 +580,41 @@ const {
 const compatibilityParams = Object.create(null);
 ;
 const OptionKind = {
+  BROWSER: 0x01,
   VIEWER: 0x02,
   API: 0x04,
   WORKER: 0x08,
   PREFERENCE: 0x80
 };
 const defaultOptions = {
+  canvasMaxAreaInBytes: {
+    value: -1,
+    kind: OptionKind.BROWSER + OptionKind.API
+  },
+  isInAutomation: {
+    value: false,
+    kind: OptionKind.BROWSER
+  },
+  supportsDocumentFonts: {
+    value: true,
+    kind: OptionKind.BROWSER
+  },
+  supportsIntegratedFind: {
+    value: false,
+    kind: OptionKind.BROWSER
+  },
+  supportsMouseWheelZoomCtrlKey: {
+    value: true,
+    kind: OptionKind.BROWSER
+  },
+  supportsMouseWheelZoomMetaKey: {
+    value: true,
+    kind: OptionKind.BROWSER
+  },
+  supportsPinchToZoom: {
+    value: true,
+    kind: OptionKind.BROWSER
+  },
   annotationEditorMode: {
     value: 0,
     kind: OptionKind.VIEWER + OptionKind.PREFERENCE
@@ -686,10 +715,6 @@ const defaultOptions = {
     value: 1,
     kind: OptionKind.VIEWER + OptionKind.PREFERENCE
   },
-  viewerCssTheme: {
-    value: 0,
-    kind: OptionKind.VIEWER + OptionKind.PREFERENCE
-  },
   viewOnLoad: {
     value: 0,
     kind: OptionKind.VIEWER + OptionKind.PREFERENCE
@@ -785,17 +810,8 @@ class AppOptions {
     for (const name in defaultOptions) {
       const defaultOption = defaultOptions[name];
       if (kind) {
-        if ((kind & defaultOption.kind) === 0) {
+        if (!(kind & defaultOption.kind)) {
           continue;
-        }
-        if (kind === OptionKind.PREFERENCE) {
-          const value = defaultOption.value,
-            valueType = typeof value;
-          if (valueType === "boolean" || valueType === "string" || valueType === "number" && Number.isInteger(value)) {
-            options[name] = value;
-            continue;
-          }
-          throw new Error(`Invalid type for preference: ${name}`);
         }
       }
       const userOption = userOptions[name];
@@ -1897,6 +1913,7 @@ class BaseTreeViewer {
     if (!treeItem) {
       return;
     }
+    this._l10n.pause();
     let currentNode = treeItem.parentNode;
     while (currentNode && currentNode !== this.container) {
       if (currentNode.classList.contains("treeItem")) {
@@ -1905,6 +1922,7 @@ class BaseTreeViewer {
       }
       currentNode = currentNode.parentNode;
     }
+    this._l10n.resume();
     this._updateCurrentTreeItem(treeItem);
     this.container.scrollTo(treeItem.offsetLeft, treeItem.offsetTop + TREEITEM_OFFSET_TOP);
   }
@@ -7544,7 +7562,7 @@ class PDFViewer {
   #scaleTimeoutId = null;
   #textLayerMode = TextLayerMode.ENABLE;
   constructor(options) {
-    const viewerVersion = '4.0.158';
+    const viewerVersion = '4.0.189';
     if (version !== viewerVersion) {
       throw new Error(`The API version "${version}" does not match the Viewer version "${viewerVersion}".`);
     }
@@ -9552,11 +9570,6 @@ const ViewOnLoad = {
   PREVIOUS: 0,
   INITIAL: 1
 };
-const ViewerCssTheme = {
-  AUTOMATIC: 0,
-  LIGHT: 1,
-  DARK: 2
-};
 class DefaultExternalServices {
   constructor() {
     throw new Error("Cannot initialize DefaultExternalServices.");
@@ -9577,29 +9590,8 @@ class DefaultExternalServices {
   static createScripting(options) {
     throw new Error("Not implemented: createScripting");
   }
-  static get supportsPinchToZoom() {
-    return shadow(this, "supportsPinchToZoom", true);
-  }
-  static get supportsIntegratedFind() {
-    return shadow(this, "supportsIntegratedFind", false);
-  }
-  static get supportsDocumentFonts() {
-    return shadow(this, "supportsDocumentFonts", true);
-  }
-  static get supportedMouseWheelZoomModifierKeys() {
-    return shadow(this, "supportedMouseWheelZoomModifierKeys", {
-      ctrlKey: true,
-      metaKey: true
-    });
-  }
-  static get isInAutomation() {
-    return shadow(this, "isInAutomation", false);
-  }
   static updateEditorStates(data) {
     throw new Error("Not implemented: updateEditorStates");
-  }
-  static get canvasMaxAreaInBytes() {
-    return shadow(this, "canvasMaxAreaInBytes", -1);
   }
   static getNimbusExperimentData() {
     return shadow(this, "getNimbusExperimentData", Promise.resolve(null));
@@ -9670,7 +9662,6 @@ const PDFViewerApplication = {
     if (AppOptions.get("pdfBugEnabled")) {
       await this._parseHashParams();
     }
-    this._forceCssTheme();
     this.l10n = await l10nPromise;
     document.getElementsByTagName("html")[0].dir = this.l10n.getDirection();
     if (this.isViewerEmbedded && AppOptions.get("externalLinkTarget") === LinkTarget.NONE) {
@@ -9746,40 +9737,13 @@ const PDFViewerApplication = {
       }
     }
   },
-  _forceCssTheme() {
-    const cssTheme = AppOptions.get("viewerCssTheme");
-    if (cssTheme === ViewerCssTheme.AUTOMATIC || !Object.values(ViewerCssTheme).includes(cssTheme)) {
-      return;
-    }
-    try {
-      const styleSheet = document.styleSheets[0];
-      const cssRules = styleSheet?.cssRules || [];
-      for (let i = 0, ii = cssRules.length; i < ii; i++) {
-        const rule = cssRules[i];
-        if (rule instanceof CSSMediaRule && rule.media?.[0] === "(prefers-color-scheme: dark)") {
-          if (cssTheme === ViewerCssTheme.LIGHT) {
-            styleSheet.deleteRule(i);
-            return;
-          }
-          const darkRules = /^@media \(prefers-color-scheme: dark\) {\n\s*([\w\s-.,:;/\\{}()]+)\n}$/.exec(rule.cssText);
-          if (darkRules?.[1]) {
-            styleSheet.deleteRule(i);
-            styleSheet.insertRule(darkRules[1], i);
-          }
-          return;
-        }
-      }
-    } catch (reason) {
-      console.error(`_forceCssTheme: "${reason?.message}".`);
-    }
-  },
   async _initializeViewerComponents() {
     const {
       appConfig,
       externalServices,
       l10n
     } = this;
-    const eventBus = externalServices.isInAutomation ? new AutomationEventBus() : new EventBus();
+    const eventBus = AppOptions.get("isInAutomation") ? new AutomationEventBus() : new EventBus();
     this.eventBus = eventBus;
     this.overlayManager = new OverlayManager();
     const pdfRenderingQueue = new PDFRenderingQueue();
@@ -9949,7 +9913,7 @@ const PDFViewerApplication = {
     } = this;
     let file;
     file = window.location.href;
-    if (!this.supportsDocumentFonts) {
+    if (!AppOptions.get("supportsDocumentFonts")) {
       AppOptions.set("disableFontFace", true);
       this.l10n.get("pdfjs-web-fonts-disabled").then(msg => {
         console.warn(msg);
@@ -10022,21 +9986,21 @@ const PDFViewerApplication = {
     return shadow(this, "supportsFullscreen", document.fullscreenEnabled);
   },
   get supportsPinchToZoom() {
-    return this.externalServices.supportsPinchToZoom;
+    return shadow(this, "supportsPinchToZoom", AppOptions.get("supportsPinchToZoom"));
   },
   get supportsIntegratedFind() {
-    return this.externalServices.supportsIntegratedFind;
-  },
-  get supportsDocumentFonts() {
-    return this.externalServices.supportsDocumentFonts;
+    return shadow(this, "supportsIntegratedFind", AppOptions.get("supportsIntegratedFind"));
   },
   get loadingBar() {
     const barElement = document.getElementById("loadingBar");
     const bar = barElement ? new ProgressBar(barElement) : null;
     return shadow(this, "loadingBar", bar);
   },
-  get supportedMouseWheelZoomModifierKeys() {
-    return this.externalServices.supportedMouseWheelZoomModifierKeys;
+  get supportsMouseWheelZoomCtrlKey() {
+    return shadow(this, "supportsMouseWheelZoomCtrlKey", AppOptions.get("supportsMouseWheelZoomCtrlKey"));
+  },
+  get supportsMouseWheelZoomMetaKey() {
+    return shadow(this, "supportsMouseWheelZoomMetaKey", AppOptions.get("supportsMouseWheelZoomMetaKey"));
   },
   initPassiveLoading(file) {
     this.setTitleUsingUrl(file, file);
@@ -10073,9 +10037,9 @@ const PDFViewerApplication = {
   },
   setTitleUsingUrl(url = "", downloadUrl = null) {
     this.url = url;
-    this.baseUrl = url.split("#")[0];
+    this.baseUrl = url.split("#", 1)[0];
     if (downloadUrl) {
-      this._downloadUrl = downloadUrl === url ? this.baseUrl : downloadUrl.split("#")[0];
+      this._downloadUrl = downloadUrl === url ? this.baseUrl : downloadUrl.split("#", 1)[0];
     }
     if (isDataScheme(url)) {
       this._hideViewBookmark();
@@ -10158,14 +10122,12 @@ const PDFViewerApplication = {
     }
     const workerParams = AppOptions.getAll(OptionKind.WORKER);
     Object.assign(GlobalWorkerOptions, workerParams);
+    AppOptions.set("docBaseUrl", this.baseUrl);
     const apiParams = AppOptions.getAll(OptionKind.API);
-    const params = {
-      canvasMaxAreaInBytes: this.externalServices.canvasMaxAreaInBytes,
+    const loadingTask = getDocument({
       ...apiParams,
       ...args
-    };
-    params.docBaseUrl ||= this.baseUrl;
-    const loadingTask = getDocument(params);
+    });
     this.pdfLoadingTask = loadingTask;
     loadingTask.onPassword = (updateCallback, reason) => {
       if (this.isViewerEmbedded) {
@@ -11240,7 +11202,8 @@ function setZoomDisabledTimeout() {
 function webViewerWheel(evt) {
   const {
     pdfViewer,
-    supportedMouseWheelZoomModifierKeys,
+    supportsMouseWheelZoomCtrlKey,
+    supportsMouseWheelZoomMetaKey,
     supportsPinchToZoom
   } = PDFViewerApplication;
   if (pdfViewer.isInPresentationMode) {
@@ -11250,7 +11213,7 @@ function webViewerWheel(evt) {
   let scaleFactor = Math.exp(-evt.deltaY / 100);
   const isBuiltInMac = FeatureTest.platform.isMac;
   const isPinchToZoom = evt.ctrlKey && !PDFViewerApplication._isCtrlKeyDown && deltaMode === WheelEvent.DOM_DELTA_PIXEL && evt.deltaX === 0 && (Math.abs(scaleFactor - 1) < 0.05 || isBuiltInMac) && evt.deltaZ === 0;
-  if (isPinchToZoom || evt.ctrlKey && supportedMouseWheelZoomModifierKeys.ctrlKey || evt.metaKey && supportedMouseWheelZoomModifierKeys.metaKey) {
+  if (isPinchToZoom || evt.ctrlKey && supportsMouseWheelZoomCtrlKey || evt.metaKey && supportsMouseWheelZoomMetaKey) {
     evt.preventDefault();
     if (zoomDisabledTimeout || document.visibilityState === "hidden" || PDFViewerApplication.overlayManager.active) {
       return;
@@ -11700,7 +11663,6 @@ class BasePreferences {
     "scrollModeOnLoad": -1,
     "spreadModeOnLoad": -1,
     "textLayerMode": 1,
-    "viewerCssTheme": 0,
     "viewOnLoad": 0,
     "disableAutoFetch": false,
     "disableFontFace": false,
@@ -11714,12 +11676,29 @@ class BasePreferences {
     if (this.constructor === BasePreferences) {
       throw new Error("Cannot initialize BasePreferences.");
     }
-    this.#initializedPromise = this._readFromStorage(this.#defaults).then(prefs => {
+    this.#initializedPromise = this._readFromStorage(this.#defaults).then(({
+      browserPrefs,
+      prefs
+    }) => {
+      const BROWSER_PREFS = {
+        "canvasMaxAreaInBytes": -1,
+        "isInAutomation": false,
+        "supportsDocumentFonts": true,
+        "supportsIntegratedFind": false,
+        "supportsMouseWheelZoomCtrlKey": true,
+        "supportsMouseWheelZoomMetaKey": true,
+        "supportsPinchToZoom": true
+      };
+      const options = Object.create(null);
+      for (const [name, defaultVal] of Object.entries(BROWSER_PREFS)) {
+        const prefVal = browserPrefs?.[name];
+        options[name] = typeof prefVal === typeof defaultVal ? prefVal : defaultVal;
+      }
       for (const [name, defaultVal] of Object.entries(this.#defaults)) {
         const prefVal = prefs?.[name];
-        this.#prefs[name] = typeof prefVal === typeof defaultVal ? prefVal : defaultVal;
+        options[name] = this.#prefs[name] = typeof prefVal === typeof defaultVal ? prefVal : defaultVal;
       }
-      AppOptions.setAll(this.#prefs, true);
+      AppOptions.setAll(options, true);
     });
   }
   async _writeToStorage(prefObj) {
@@ -12115,30 +12094,6 @@ class FirefoxExternalServices extends DefaultExternalServices {
   static createScripting(options) {
     return FirefoxScripting;
   }
-  static get supportsPinchToZoom() {
-    const support = FirefoxCom.requestSync("supportsPinchToZoom");
-    return shadow(this, "supportsPinchToZoom", support);
-  }
-  static get supportsIntegratedFind() {
-    const support = FirefoxCom.requestSync("supportsIntegratedFind");
-    return shadow(this, "supportsIntegratedFind", support);
-  }
-  static get supportsDocumentFonts() {
-    const support = FirefoxCom.requestSync("supportsDocumentFonts");
-    return shadow(this, "supportsDocumentFonts", support);
-  }
-  static get supportedMouseWheelZoomModifierKeys() {
-    const support = FirefoxCom.requestSync("supportedMouseWheelZoomModifierKeys");
-    return shadow(this, "supportedMouseWheelZoomModifierKeys", support);
-  }
-  static get isInAutomation() {
-    const isInAutomation = FirefoxCom.requestSync("isInAutomation");
-    return shadow(this, "isInAutomation", isInAutomation);
-  }
-  static get canvasMaxAreaInBytes() {
-    const maxArea = FirefoxCom.requestSync("getCanvasMaxArea");
-    return shadow(this, "canvasMaxAreaInBytes", maxArea);
-  }
   static async getNimbusExperimentData() {
     const nimbusData = await FirefoxCom.requestAsync("getNimbusExperimentData", null);
     return nimbusData && JSON.parse(nimbusData);
@@ -12300,8 +12255,8 @@ PDFPrintServiceFactory.instance = {
 
 
 
-const pdfjsVersion = '4.0.158';
-const pdfjsBuild = '0329b5e13';
+const pdfjsVersion = '4.0.189';
+const pdfjsBuild = '50f52b43a';
 const AppConstants = null;
 window.PDFViewerApplication = PDFViewerApplication;
 window.PDFViewerApplicationConstants = AppConstants;

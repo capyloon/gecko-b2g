@@ -955,7 +955,7 @@ inline bool RestyleHint::DefinitelyRecascadesAllSubtree() const {
 }
 
 template <>
-ImageResolution StyleImage::GetResolution() const;
+ImageResolution StyleImage::GetResolution(const ComputedStyle&) const;
 
 template <>
 inline const StyleImage& StyleImage::FinalImage() const {
@@ -970,9 +970,6 @@ inline const StyleImage& StyleImage::FinalImage() const {
   static auto sNone = StyleImage::None();
   return sNone;
 }
-
-template <>
-Maybe<CSSIntSize> StyleImage::GetIntrinsicSize() const;
 
 template <>
 inline bool StyleImage::IsImageRequestType() const {
@@ -1129,6 +1126,20 @@ inline bool StyleDisplay::IsInlineInside() const {
 
 inline bool StyleDisplay::IsInlineOutside() const {
   return Outside() == StyleDisplayOutside::Inline || IsInternalRuby();
+}
+
+inline float StyleZoom::Zoom(float aValue) const {
+  if (*this == ONE) {
+    return aValue;
+  }
+  return ToFloat() * aValue;
+}
+
+inline float StyleZoom::Unzoom(float aValue) const {
+  if (*this == ONE) {
+    return aValue;
+  }
+  return aValue / ToFloat();
 }
 
 }  // namespace mozilla

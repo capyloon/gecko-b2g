@@ -695,6 +695,11 @@ workers:
             implementation: generic-worker
             os: windows
             worker-type: 'gecko-{alias}'
+        win11-64-2009(-hw-ref):
+            provisioner: releng-hardware
+            implementation: generic-worker
+            os: windows
+            worker-type: '{alias}'
         win10-64-2009(|-gpu|-ssd|-source|-ssd-gpu):
             provisioner: 'gecko-t'
             implementation: generic-worker
@@ -752,7 +757,7 @@ mac-notarization:
 
 mac-signing:
     hardened-sign-config:
-        by-release-level:
+        by-hardened-signing-type:
             production:
                 - deep: false
                   runtime: true

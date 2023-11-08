@@ -599,34 +599,6 @@ TextureFlags D3D11TextureData::GetTextureFlags() const {
 }
 
 DXGIYCbCrTextureData* DXGIYCbCrTextureData::Create(
-    IDirect3DTexture9* aTextureY, IDirect3DTexture9* aTextureCb,
-    IDirect3DTexture9* aTextureCr, HANDLE aHandleY, HANDLE aHandleCb,
-    HANDLE aHandleCr, const gfx::IntSize& aSize, const gfx::IntSize& aSizeY,
-    const gfx::IntSize& aSizeCbCr, gfx::ColorDepth aColorDepth,
-    YUVColorSpace aYUVColorSpace, gfx::ColorRange aColorRange) {
-  if (!aHandleY || !aHandleCb || !aHandleCr || !aTextureY || !aTextureCb ||
-      !aTextureCr) {
-    return nullptr;
-  }
-
-  DXGIYCbCrTextureData* texture = new DXGIYCbCrTextureData();
-  texture->mHandles[0] = aHandleY;
-  texture->mHandles[1] = aHandleCb;
-  texture->mHandles[2] = aHandleCr;
-  texture->mD3D9Textures[0] = aTextureY;
-  texture->mD3D9Textures[1] = aTextureCb;
-  texture->mD3D9Textures[2] = aTextureCr;
-  texture->mSize = aSize;
-  texture->mSizeY = aSizeY;
-  texture->mSizeCbCr = aSizeCbCr;
-  texture->mColorDepth = aColorDepth;
-  texture->mYUVColorSpace = aYUVColorSpace;
-  texture->mColorRange = aColorRange;
-
-  return texture;
-}
-
-DXGIYCbCrTextureData* DXGIYCbCrTextureData::Create(
     ID3D11Texture2D* aTextureY, ID3D11Texture2D* aTextureCb,
     ID3D11Texture2D* aTextureCr, const gfx::IntSize& aSize,
     const gfx::IntSize& aSizeY, const gfx::IntSize& aSizeCbCr,
@@ -789,7 +761,7 @@ DXGITextureHostD3D11::DXGITextureHostD3D11(
       mGpuProcessTextureId(aDescriptor.gpuProcessTextureId()),
       mArrayIndex(aDescriptor.arrayIndex()),
       mSize(aDescriptor.size()),
-      mHandle(aDescriptor.handle()),
+      mHandle((HANDLE)aDescriptor.handle()),
       mFormat(aDescriptor.format()),
       mHasKeyedMutex(aDescriptor.hasKeyedMutex()),
       mColorSpace(aDescriptor.colorSpace()),
@@ -1116,9 +1088,9 @@ DXGIYCbCrTextureHostD3D11::DXGIYCbCrTextureHostD3D11(
       mColorDepth(aDescriptor.colorDepth()),
       mYUVColorSpace(aDescriptor.yUVColorSpace()),
       mColorRange(aDescriptor.colorRange()) {
-  mHandles[0] = aDescriptor.handleY();
-  mHandles[1] = aDescriptor.handleCb();
-  mHandles[2] = aDescriptor.handleCr();
+  mHandles[0] = (HANDLE)aDescriptor.handleY();
+  mHandles[1] = (HANDLE)aDescriptor.handleCb();
+  mHandles[2] = (HANDLE)aDescriptor.handleCr();
 }
 
 void DXGIYCbCrTextureHostD3D11::CreateRenderTexture(

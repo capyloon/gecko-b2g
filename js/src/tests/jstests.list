@@ -609,18 +609,19 @@ skip script test262/built-ins/AsyncGeneratorPrototype/return/return-state-comple
 skip script test262/built-ins/AsyncGeneratorPrototype/return/return-suspendedStart-broken-promise.js
 skip script test262/built-ins/AsyncGeneratorPrototype/return/return-suspendedYield-broken-promise-try-catch.js
 
-# https://github.com/tc39/proposal-intl-numberformat-v3/pull/107
-skip script test262/intl402/NumberFormat/test-option-useGrouping.js
+# Requires Unicode 15.1
+skip script test262/built-ins/RegExp/unicodeSets/generated/rgi-emoji-15.1.js
 
-# https://github.com/tc39/test262/pull/3768
-skip script test262/intl402/DateTimeFormat/constructor-options-order.js
-skip script test262/intl402/DateTimeFormat/constructor-options-order-dayPeriod.js
-skip script test262/intl402/DateTimeFormat/constructor-options-order-timedate-style.js
-skip script test262/intl402/DateTimeFormat/constructor-options-order-fractionalSecondDigits.js
+# Time zone canonicalization proposal.
+skip script test262/intl402/DateTimeFormat/timezone-not-canonicalized.js
+skip script test262/intl402/DateTimeFormat/timezone-case-insensitive.js
 
-# https://github.com/tc39/test262/pull/3875
-skip script test262/intl402/NumberFormat/throws-for-maximumFractionDigits-over-limit.js
-skip script test262/intl402/NumberFormat/throws-for-minimumFractionDigits-over-limit.js
+# Resolved options reordered.
+# https://github.com/tc39/ecma402/pull/811
+skip script test262/intl402/NumberFormat/constructor-option-read-order.js
+skip script test262/intl402/NumberFormat/prototype/resolvedOptions/return-keys-order-default.js
+skip script test262/intl402/PluralRules/constructor-option-read-order.js
+skip script test262/intl402/PluralRules/prototype/resolvedOptions/return-keys-order-default.js
 
 
 ###########################################################
@@ -670,6 +671,54 @@ skip script test262/built-ins/Array/fromAsync/this-constructor-operations.js
 # Time zone offsets with sub-minute precision no longer allowed.
 skip script test262/staging/Temporal/Regex/old/instant.js
 skip script test262/staging/Temporal/Regex/old/timezone.js
+
+# https://github.com/tc39/test262/pull/3929
+skip script test262/harness/verifyProperty-value-error.js
+skip script test262/harness/verifyProperty-desc-is-not-object.js
+
+# These tests seem incorrect, see https://github.com/tc39/test262/pull/3907
+skip script test262/language/statements/class/decorator/syntax/class-valid/decorator-member-expr-private-identifier.js
+skip script test262/language/expressions/class/decorator/syntax/class-valid/decorator-member-expr-private-identifier.js
+
+# https://github.com/tc39/test262/pull/3899
+skip script test262/built-ins/Temporal/PlainMonthDay/from/fields-missing-properties.js
+skip script test262/built-ins/Temporal/PlainMonthDay/prototype/with/basic.js
+skip script test262/built-ins/Temporal/Calendar/prototype/monthDayFromFields/missing-properties.js
+skip script test262/built-ins/Temporal/Calendar/prototype/monthDayFromFields/fields-missing-properties.js
+
+# https://github.com/tc39/test262/pull/3946
+skip script test262/intl402/Locale/likely-subtags.js
+skip script test262/intl402/Locale/prototype/minimize/removing-likely-subtags-first-adds-likely-subtags.js
+
+# https://github.com/tc39/test262/pull/3947
+skip script test262/built-ins/RegExp/unicode_full_case_folding.js
+
+# Tests need to be regenerated for Unicode 15.1
+# https://github.com/tc39/test262/issues/3945
+skip script test262/built-ins/RegExp/property-escapes/generated/Alphabetic.js
+skip script test262/built-ins/RegExp/property-escapes/generated/XID_Start.js
+skip script test262/built-ins/RegExp/property-escapes/generated/Unified_Ideograph.js
+skip script test262/built-ins/RegExp/property-escapes/generated/XID_Continue.js
+skip script test262/built-ins/RegExp/property-escapes/generated/General_Category_-_Letter.js
+skip script test262/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Han.js
+skip script test262/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Malayalam.js
+skip script test262/built-ins/RegExp/property-escapes/generated/Ideographic.js
+skip script test262/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Sinhala.js
+skip script test262/built-ins/RegExp/property-escapes/generated/General_Category_-_Other.js
+skip script test262/built-ins/RegExp/property-escapes/generated/IDS_Binary_Operator.js
+skip script test262/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Letter.js
+skip script test262/built-ins/RegExp/property-escapes/generated/Script_-_Han.js
+skip script test262/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Common.js
+skip script test262/built-ins/RegExp/property-escapes/generated/General_Category_-_Symbol.js
+skip script test262/built-ins/RegExp/property-escapes/generated/Script_-_Common.js
+skip script test262/built-ins/RegExp/property-escapes/generated/ID_Continue.js
+skip script test262/built-ins/RegExp/property-escapes/generated/Sentence_Terminal.js
+skip script test262/built-ins/RegExp/property-escapes/generated/General_Category_-_Unassigned.js
+skip script test262/built-ins/RegExp/property-escapes/generated/ID_Start.js
+skip script test262/built-ins/RegExp/property-escapes/generated/Grapheme_Base.js
+skip script test262/built-ins/RegExp/property-escapes/generated/Assigned.js
+skip script test262/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Symbol.js
+skip script test262/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Sharada.js
 
 
 ##############################################
@@ -1234,6 +1283,8 @@ skip script test262/intl402/Temporal/Calendar/prototype/eraYear/argument-propert
 skip script test262/intl402/Temporal/Calendar/prototype/eraYear/argument-string-unknown-annotation.js
 skip script test262/intl402/Temporal/Calendar/prototype/eraYear/argument-string-multiple-time-zone.js
 skip script test262/intl402/Temporal/Calendar/prototype/eraYear/argument-string-critical-unknown-annotation.js
+skip script test262/intl402/Temporal/Calendar/prototype/eraYear/argument-builtin-calendar-no-array-iteration.js
+skip script test262/intl402/Temporal/Calendar/prototype/era/argument-builtin-calendar-no-array-iteration.js
 skip script test262/intl402/Temporal/Calendar/prototype/era/argument-zoneddatetime-convert.js
 skip script test262/intl402/Temporal/Calendar/prototype/era/argument-string-with-utc-designator.js
 skip script test262/intl402/Temporal/Calendar/prototype/era/argument-wrong-type.js
@@ -1305,6 +1356,20 @@ skip script test262/staging/Intl402/Temporal/old/non-iso-calendars.js
 skip script test262/staging/Intl402/Temporal/old/indian-calendar.js
 skip script test262/staging/Intl402/Temporal/old/instant-toLocaleString.js
 
-# These tests seem incorrect, see https://github.com/tc39/test262/pull/3907
-skip script test262/language/statements/class/decorator/syntax/class-valid/decorator-member-expr-private-identifier.js
-skip script test262/language/expressions/class/decorator/syntax/class-valid/decorator-member-expr-private-identifier.js
+# Time zone identifier canonicalization.
+skip script test262/intl402/Temporal/ZonedDateTime/from/do-not-canonicalize-iana-identifiers.js
+skip script test262/intl402/Temporal/ZonedDateTime/from/timezone-case-insensitive.js
+skip script test262/intl402/Temporal/TimeZone/links-europe.js
+skip script test262/intl402/Temporal/TimeZone/links-etcetera.js
+skip script test262/intl402/Temporal/TimeZone/links-backzone.js
+skip script test262/intl402/Temporal/TimeZone/links-northamerica.js
+skip script test262/intl402/Temporal/TimeZone/links-backward.js
+skip script test262/intl402/Temporal/TimeZone/etc-timezone.js
+skip script test262/intl402/Temporal/TimeZone/iana-legacy-names.js
+skip script test262/intl402/Temporal/TimeZone/basic.js
+skip script test262/intl402/Temporal/TimeZone/links-asia.js
+skip script test262/intl402/Temporal/TimeZone/non-canonical-utc.js
+skip script test262/intl402/Temporal/TimeZone/from/iana-legacy-names.js
+skip script test262/intl402/Temporal/TimeZone/from/etc-timezone.js
+skip script test262/intl402/Temporal/TimeZone/from/argument-valid.js
+skip script test262/intl402/Temporal/TimeZone/from/timezone-case-insensitive.js

@@ -53,6 +53,7 @@
 #include "mozilla/dom/RadioGroupContainer.h"
 #include "mozilla/dom/TreeOrderedArray.h"
 #include "mozilla/dom/ViewportMetaData.h"
+#include "mozilla/dom/LargestContentfulPaint.h"
 #include "mozilla/glean/GleanMetrics.h"
 #include "nsAtom.h"
 #include "nsCOMArray.h"
@@ -1170,9 +1171,6 @@ class Document : public nsINode,
     if (aParent) {
       RecomputeResistFingerprinting();
       mIgnoreDocGroupMismatches = aParent->mIgnoreDocGroupMismatches;
-      if (!mIsDevToolsDocument) {
-        mIsDevToolsDocument = mParentDocument->IsDevToolsDocument();
-      }
     }
   }
 
@@ -1347,6 +1345,16 @@ class Document : public nsINode,
   Maybe<ClientState> GetClientState() const;
   Maybe<ServiceWorkerDescriptor> GetController() const;
 
+  //  Given a node, get a weak reference to it and append that reference to
+  //  mBlockedNodesByClassifier. Can be used later on to look up a node in it.
+  //  (e.g., by the UI)
+  // /
+  void AddBlockedNodeByClassifier(nsINode* aNode) {
+    if (aNode) {
+      mBlockedNodesByClassifier.AppendElement(do_GetWeakReference(aNode));
+    }
+  }
+
   // Returns the size of the mBlockedNodesByClassifier array.
   //
   // This array contains nodes that have been blocked to prevent user tracking,
@@ -1362,17 +1370,14 @@ class Document : public nsINode,
   // Weak references to blocked nodes are added in the mBlockedNodesByClassifier
   // array but they are not removed when those nodes are removed from the tree
   // or even garbage collected.
-  long BlockedNodeByClassifierCount() const {
+  size_t BlockedNodeByClassifierCount() const {
     return mBlockedNodesByClassifier.Length();
   }
 
-  //
   // Returns strong references to mBlockedNodesByClassifier. (Document.h)
-  //
   // This array contains nodes that have been blocked to prevent
   // user tracking. They most likely have had their nsIChannel
   // canceled by the URL classifier (Safebrowsing).
-  //
   already_AddRefed<nsSimpleContentList> BlockedNodesByClassifier() const;
 
   // Helper method that returns true if the document has storage-access sandbox
@@ -2429,6 +2434,10 @@ class Document : public nsINode,
 
   LinkedList<MediaQueryList>& MediaQueryLists() { return mDOMMediaQueryLists; }
 
+  nsTHashtable<LCPEntryHashEntry>& ContentIdentifiersForLCP() {
+    return mContentIdentifiersForLCP;
+  }
+
   /**
    * Get the compatibility mode for this document
    */
@@ -2525,8 +2534,6 @@ class Document : public nsINode,
     }
     return root->mInChromeDocShell;
   }
-
-  bool IsDevToolsDocument() const { return mIsDevToolsDocument; }
 
   bool IsBeingUsedAsImage() const { return mIsBeingUsedAsImage; }
 
@@ -3567,23 +3574,6 @@ class Document : public nsINode,
   inline ImageDocument* AsImageDocument();
   inline const ImageDocument* AsImageDocument() const;
 
-  /*
-   * Given a node, get a weak reference to it and append that reference to
-   * mBlockedNodesByClassifier. Can be used later on to look up a node in it.
-   * (e.g., by the UI)
-   */
-  void AddBlockedNodeByClassifier(nsINode* node) {
-    if (!node) {
-      return;
-    }
-
-    nsWeakPtr weakNode = do_GetWeakReference(node);
-
-    if (weakNode) {
-      mBlockedNodesByClassifier.AppendElement(weakNode);
-    }
-  }
-
   gfxUserFontSet* GetUserFontSet();
   void FlushUserFontSet();
   void MarkUserFontSetDirty();
@@ -3607,6 +3597,10 @@ class Document : public nsINode,
   // Reports document use counters via telemetry.  This method only has an
   // effect once per document, and so is called during document destruction.
   void ReportDocumentUseCounters();
+
+  // Reports largest contentful paint via telemetry. We want the most up to
+  // date value for LCP and so this is called during document destruction.
+  void ReportLCP();
 
   // Report how lazyload performs for this document.
   void ReportDocumentLazyLoadCounters();
@@ -4622,13 +4616,6 @@ class Document : public nsINode,
   // True if we're loaded in a chrome docshell.
   bool mInChromeDocShell : 1;
 
-  // True if our current document is a DevTools document. Either the url is
-  // about:devtools-toolbox or the parent document already has
-  // mIsDevToolsDocument set to true.
-  // This is used to avoid applying High Contrast mode to DevTools documents.
-  // See Bug 1575766.
-  bool mIsDevToolsDocument : 1;
-
   // True is this document is synthetic : stand alone image, video, audio
   // file, etc.
   bool mIsSyntheticDocument : 1;
@@ -5043,6 +5030,11 @@ class Document : public nsINode,
 
   // Our live MediaQueryLists
   LinkedList<MediaQueryList> mDOMMediaQueryLists;
+
+  // A hashset to keep track of which {element, imgRequestProxy}
+  // combination has been processed to avoid considering the same
+  // element twice for LargestContentfulPaint.
+  nsTHashtable<LCPEntryHashEntry> mContentIdentifiersForLCP;
 
   // Array of observers
   nsTObserverArray<nsIDocumentObserver*> mObservers;

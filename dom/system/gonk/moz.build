@@ -25,6 +25,7 @@ XPIDL_MODULE = "dom_system_gonk"
 EXPORTS += [
     "AudioChannelManager.h",
     "AudioManager.h",
+    "GonkAudioTypes.h",
     "RndisController.h",
     "SystemProperty.h",
     "SystemWorkerManager.h",
@@ -35,6 +36,7 @@ UNIFIED_SOURCES += [
     "AudioManager.cpp",
     "AutoMounter.cpp",
     "AutoMounterSetting.cpp",
+    "GonkAudioSystem.cpp",
     "RndisController.cpp",
     "SystemProperty.cpp",
     "SystemWorkerManager.cpp",

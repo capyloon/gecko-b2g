@@ -11,6 +11,8 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
+  AppProvidedSearchEngine:
+    "resource://gre/modules/AppProvidedSearchEngine.sys.mjs",
   AddonSearchEngine: "resource://gre/modules/AddonSearchEngine.sys.mjs",
   IgnoreLists: "resource://gre/modules/IgnoreLists.sys.mjs",
   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
@@ -449,9 +451,9 @@ export class SearchService {
    * Test only variable to indicate an error should occur during
    * search service initialization.
    *
-   * @type {boolean}
+   * @type {string}
    */
-  willThrowErrorDuringInitInTest = false;
+  errorToThrowInTest = null;
 
   // Test-only function to reset just the engine selector so that it can
   // load a different configuration.
@@ -1355,46 +1357,26 @@ export class SearchService {
   async #init() {
     lazy.logConsole.debug("init");
 
-    TelemetryStopwatch.start("SEARCH_SERVICE_INIT_MS");
     const timerId = Glean.searchService.startupTime.start();
 
     this.#doPreInitWork();
 
+    let initSection;
     try {
-      this.#maybeThrowErrorInTest();
+      initSection = "Settings";
+      this.#maybeThrowErrorInTest(initSection);
+      const settings = await this._settings.get();
 
-      let settings = await this._settings.get();
-      await this.#loadEngines(settings);
+      initSection = "FetchEngines";
+      this.#maybeThrowErrorInTest(initSection);
+      const { engines, privateDefault } =
+        await this._fetchEngineSelectorEngines();
 
-      // If we've got this far, but the application is now shutting down,
-      // then we need to abandon any further work, especially not writing
-      // the settings. We do this, because the add-on manager has also
-      // started shutting down and as a result, we might have an incomplete
-      // picture of the installed search engines. Writing the settings at
-      // this stage would potentially mean the user would loose their engine
-      // data.
-      // We will however, rebuild the settings on next start up if we detect
-      // it is necessary.
-      if (Services.startup.shuttingDown) {
-        let exception = Components.Exception(
-          "#init: abandoning init due to shutting down",
-          Cr.NS_ERROR_ABORT
-        );
-        this.#initDeferredPromise.reject(exception);
-        throw exception;
-      }
-
-      // Make sure the current list of engines is persisted, without the need to wait.
-      lazy.logConsole.debug("#init: engines loaded, writing settings");
-      this.#initializationStatus = "success";
-      this.#initDeferredPromise.resolve();
-
-      this.#addObservers();
-
-      TelemetryStopwatch.finish("SEARCH_SERVICE_INIT_MS");
-      Glean.searchService.startupTime.stopAndAccumulate(timerId);
+      initSection = "LoadEngines";
+      this.#maybeThrowErrorInTest(initSection);
+      await this.#loadEngines(settings, engines, privateDefault);
     } catch (ex) {
-      TelemetryStopwatch.cancel("SEARCH_SERVICE_INIT_MS");
+      Glean.searchService.initializationStatus[`failed${initSection}`].add();
       Glean.searchService.startupTime.cancel(timerId);
 
       lazy.logConsole.error("#init: failure initializing search:", ex);
@@ -1403,6 +1385,35 @@ export class SearchService {
 
       throw ex;
     }
+
+    // If we've got this far, but the application is now shutting down,
+    // then we need to abandon any further work, especially not writing
+    // the settings. We do this, because the add-on manager has also
+    // started shutting down and as a result, we might have an incomplete
+    // picture of the installed search engines. Writing the settings at
+    // this stage would potentially mean the user would loose their engine
+    // data.
+    // We will however, rebuild the settings on next start up if we detect
+    // it is necessary.
+    if (Services.startup.shuttingDown) {
+      Glean.searchService.startupTime.cancel(timerId);
+
+      let ex = Components.Exception(
+        "#init: abandoning init due to shutting down",
+        Cr.NS_ERROR_ABORT
+      );
+
+      this.#initializationStatus = "failed";
+      this.#initDeferredPromise.reject(ex);
+      throw ex;
+    }
+
+    this.#initializationStatus = "success";
+    Glean.searchService.initializationStatus.success.add();
+    this.#initDeferredPromise.resolve();
+    this.#addObservers();
+
+    Glean.searchService.startupTime.stopAndAccumulate(timerId);
 
     this.#recordTelemetryData();
 
@@ -1498,9 +1509,13 @@ export class SearchService {
       }
     }
 
-    // If we have not finished initializing, then we wait for the initialization
-    // to complete.
-    await this.promiseInitialized;
+    try {
+      await this.promiseInitialized;
+    } catch (ex) {
+      // If there's a problem with initialization return early to allow
+      // search service to continue in a limited mode without engines.
+      return;
+    }
 
     // We try to remove engines manually, as this should be more efficient and
     // we don't really want to cause a re-init as this upsets unit tests.
@@ -1609,8 +1624,12 @@ export class SearchService {
    *
    * @param {object} settings
    *   An object representing the search engine settings.
+   * @param {Array} engines
+   *   An array containing the engines objects from remote settings.
+   * @param {object} privateDefault
+   *   An object representing the private default search engine.
    */
-  async #loadEngines(settings) {
+  async #loadEngines(settings, engines, privateDefault) {
     // Get user's current settings and search engine before we load engines from
     // config. These values will be compared after engines are loaded.
     let prevMetaData = { ...settings?.metaData };
@@ -1618,38 +1637,41 @@ export class SearchService {
     let prevAppDefaultEngineId = prevMetaData?.appDefaultEngineId;
 
     lazy.logConsole.debug("#loadEngines: start");
-    let { engines, privateDefault } = await this._fetchEngineSelectorEngines();
     this.#setDefaultAndOrdersFromSelector(engines, privateDefault);
 
     // We've done what we can without the add-on manager, now ensure that
     // it has finished starting before we continue.
-    await lazy.AddonManager.readyPromise;
+    if (!lazy.SearchUtils.newSearchConfigEnabled) {
+      await lazy.AddonManager.readyPromise;
+    }
 
     let newEngines = await this.#loadEnginesFromConfig(engines);
     for (let engine of newEngines) {
       this.#addEngineToStore(engine);
     }
 
-    lazy.logConsole.debug(
-      "#loadEngines: loading",
-      this.#startupExtensions.size,
-      "engines reported by AddonManager startup"
-    );
-    for (let extension of this.#startupExtensions) {
-      try {
-        await this.#installExtensionEngine(
-          extension,
-          [lazy.SearchUtils.DEFAULT_TAG],
-          true
-        );
-      } catch (ex) {
-        lazy.logConsole.error(
-          `#installExtensionEngine failed for ${extension.id}`,
-          ex
-        );
+    if (!lazy.SearchUtils.newSearchConfigEnabled) {
+      lazy.logConsole.debug(
+        "#loadEngines: loading",
+        this.#startupExtensions.size,
+        "engines reported by AddonManager startup"
+      );
+      for (let extension of this.#startupExtensions) {
+        try {
+          await this.#installExtensionEngine(
+            extension,
+            [lazy.SearchUtils.DEFAULT_TAG],
+            true
+          );
+        } catch (ex) {
+          lazy.logConsole.error(
+            `#installExtensionEngine failed for ${extension.id}`,
+            ex
+          );
+        }
       }
+      this.#startupExtensions.clear();
     }
-    this.#startupExtensions.clear();
 
     this.#loadEnginesFromPolicies();
 
@@ -3245,16 +3267,21 @@ export class SearchService {
 
   /**
    * This function is called at the beginning of search service init.
-   * Checks willThrowErrorDuringInitInTest, if the boolean is true then
-   * we throw an error in test environment.
+   * If the error type set in a test environment matches errorType
+   * passed to this function, we throw an error.
+   *
+   * @param {string} errorType
+   *   The error that can occur during search service init.
    *
    */
-  #maybeThrowErrorInTest() {
+  #maybeThrowErrorInTest(errorType) {
     if (
       Services.env.exists("XPCSHELL_TEST_PROFILE_DIR") &&
-      this.willThrowErrorDuringInitInTest
+      this.errorToThrowInTest === errorType
     ) {
-      throw new Error("Fake error during search service initialization.");
+      throw new Error(
+        `Fake ${errorType} error during search service initialization.`
+      );
     }
   }
 
@@ -3559,18 +3586,27 @@ export class SearchService {
         ? config.webExtension.locale
         : lazy.SearchUtils.DEFAULT_TAG;
 
-    let engine = new lazy.AddonSearchEngine({
-      isAppProvided: true,
-      details: {
-        extensionID: config.webExtension.id,
+    if (!lazy.SearchUtils.newSearchConfigEnabled) {
+      let engine = new lazy.AddonSearchEngine({
+        isAppProvided: true,
+        details: {
+          extensionID: config.webExtension.id,
+          locale,
+        },
+      });
+      await engine.init({
         locale,
+        config,
+      });
+      return engine;
+    }
+
+    return new lazy.AppProvidedSearchEngine({
+      details: {
+        locale,
+        config,
       },
     });
-    await engine.init({
-      locale,
-      config,
-    });
-    return engine;
   }
 
   /**

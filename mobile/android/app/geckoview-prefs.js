@@ -150,6 +150,8 @@ pref("browser.tabs.remote.autostart", true);
 // Bug 1809922 to enable translations
 #ifdef NIGHTLY_BUILD
   pref("browser.translations.enable", true);
+  // Used for mocking data for GeckoView Translations tests, should use in addition with an automation check.
+  pref("browser.translations.geckoview.enableAllTestMocks", false);
 #endif
 
 // SSL error page behaviour (bug 437372)
@@ -269,7 +271,6 @@ pref("formhelper.autozoom", true);
 pref("geckoview.console.enabled", false);
 
 #ifdef NIGHTLY_BUILD
-  pref("geckoview.shopping.enabled", true);
   // Testing flag for geckoview shopping product. When true, sendAttributionEvent
   // will return "TEST_AID_RESPONSE" for products with "TEST_AID" id.
   pref("geckoview.shopping.test_response", false);

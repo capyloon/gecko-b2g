@@ -1540,7 +1540,7 @@ void StyleImage::ResolveImage(Document& aDoc, const StyleImage* aOld) {
 }
 
 template <>
-ImageResolution StyleImage::GetResolution() const {
+ImageResolution StyleImage::GetResolution(const ComputedStyle& aStyle) const {
   ImageResolution resolution;
   if (imgRequestProxy* request = GetImageRequest()) {
     RefPtr<imgIContainer> image;
@@ -1557,28 +1557,10 @@ ImageResolution StyleImage::GetResolution() const {
       resolution.ScaleBy(r);
     }
   }
+  if (aStyle.EffectiveZoom() != StyleZoom::ONE) {
+    resolution.ScaleBy(1.0f / aStyle.EffectiveZoom().ToFloat());
+  }
   return resolution;
-}
-
-template <>
-Maybe<CSSIntSize> StyleImage::GetIntrinsicSize() const {
-  imgRequestProxy* request = GetImageRequest();
-  if (!request) {
-    return Nothing();
-  }
-  RefPtr<imgIContainer> image;
-  request->GetImage(getter_AddRefs(image));
-  if (!image) {
-    return Nothing();
-  }
-  // FIXME(emilio): Seems like this should be smarter about unspecified width /
-  // height, aspect ratio, etc, but this preserves the current behavior of our
-  // only caller for now...
-  int32_t w = 0, h = 0;
-  image->GetWidth(&w);
-  image->GetHeight(&h);
-  GetResolution().ApplyTo(w, h);
-  return Some(CSSIntSize{w, h});
 }
 
 // --------------------

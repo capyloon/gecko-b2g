@@ -23,6 +23,7 @@
 #include <iostream>
 #endif
 
+#include "bytesinkutil.h"
 #include "cmemory.h"
 #include "cstring.h"
 #include "unicode/msgfmt.h"
@@ -35,6 +36,7 @@
 #include "uresimp.h"
 #include "hash.h"
 #include "gregoimp.h"
+#include "ulocimp.h"
 #include "uresimp.h"
 
 
@@ -397,17 +399,19 @@ DateIntervalInfo::initializeData(const Locale& locale, UErrorCode& status)
 
     // Get the correct calendar type
     const char * calendarTypeToUse = gGregorianTag; // initial default
-    char         calendarType[ULOC_KEYWORDS_CAPACITY]; // to be filled in with the type to use, if all goes well
     char         localeWithCalendarKey[ULOC_LOCALE_IDENTIFIER_CAPACITY];
     // obtain a locale that always has the calendar key value that should be used
     (void)ures_getFunctionalEquivalent(localeWithCalendarKey, ULOC_LOCALE_IDENTIFIER_CAPACITY, nullptr,
                                      "calendar", "calendar", locName, nullptr, false, &status);
     localeWithCalendarKey[ULOC_LOCALE_IDENTIFIER_CAPACITY-1] = 0; // ensure null termination
     // now get the calendar key value from that locale
-    int32_t calendarTypeLen = uloc_getKeywordValue(localeWithCalendarKey, "calendar", calendarType,
-                                                   ULOC_KEYWORDS_CAPACITY, &status);
-    if (U_SUCCESS(status) && calendarTypeLen < ULOC_KEYWORDS_CAPACITY) {
-        calendarTypeToUse = calendarType;
+    CharString calendarType;
+    {
+        CharStringByteSink sink(&calendarType);
+        ulocimp_getKeywordValue(localeWithCalendarKey, "calendar", sink, &status);
+    }
+    if (U_SUCCESS(status)) {
+        calendarTypeToUse = calendarType.data();
     }
     status = U_ZERO_ERROR;
 
@@ -587,9 +591,10 @@ DateIntervalInfo::getBestSkeleton(const UnicodeString& skeleton,
     UBool replacedAlternateChars = false;
     const UnicodeString* inputSkeleton = &skeleton;
     UnicodeString copySkeleton;
-    if ( skeleton.indexOf(LOW_Z) != -1 || skeleton.indexOf(LOW_K) != -1 || skeleton.indexOf(CAP_K) != -1 || skeleton.indexOf(LOW_A) != -1 || skeleton.indexOf(LOW_B) != -1 ) {
+    if ( skeleton.indexOf(LOW_Z) != -1 || skeleton.indexOf(CAP_O) != -1 || skeleton.indexOf(LOW_K) != -1 || skeleton.indexOf(CAP_K) != -1 || skeleton.indexOf(LOW_A) != -1 || skeleton.indexOf(LOW_B) != -1 ) {
         copySkeleton = skeleton;
         copySkeleton.findAndReplace(UnicodeString(LOW_Z), UnicodeString(LOW_V));
+        copySkeleton.findAndReplace(UnicodeString(CAP_O), UnicodeString(LOW_V));
         copySkeleton.findAndReplace(UnicodeString(LOW_K), UnicodeString(CAP_H));
         copySkeleton.findAndReplace(UnicodeString(CAP_K), UnicodeString(LOW_H));
         copySkeleton.findAndReplace(UnicodeString(LOW_A), UnicodeString());

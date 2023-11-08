@@ -1549,12 +1549,6 @@
   value: true
   mirror: always
 
-# Password protection
-- name: browser.safebrowsing.passwords.enabled
-  type: bool
-  value: false
-  mirror: always
-
 # Phishing protection
 - name: browser.safebrowsing.phishing.enabled
   type: bool
@@ -2134,11 +2128,6 @@
   value: false
   mirror: always
 
-- name: devtools.toolbox.force-chrome-prefs
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
 #---------------------------------------------------------------------------
 # Prefs starting with "docshell."
 #---------------------------------------------------------------------------
@@ -2472,7 +2461,7 @@
 # Whether the LargestContentfulPaint API will be gathered and returned by performance observer*
 - name: dom.enable_largest_contentful_paint
   type: RelaxedAtomicBool
-  value: false
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
 
 # Whether performance.GetEntries* will contain an entry for the active document
@@ -3946,7 +3935,7 @@
 
 - name: dom.select.showPicker.enabled
   type: bool
-  value: true
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
 
 - name: dom.separate_event_queue_for_post_message.enabled
@@ -4991,7 +4980,7 @@
 # <iframe loading="lazy">
 - name: dom.iframe_lazy_loading.enabled
   type: RelaxedAtomicBool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
 
 #---------------------------------------------------------------------------
@@ -6290,6 +6279,12 @@
 
 # whether to always search all font cmaps during system font fallback
 - name: gfx.font_rendering.fallback.always_use_cmaps
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
+# whether to do font fallback for codepoints with General Category = Unassigned
+- name: gfx.font_rendering.fallback.unassigned_chars
   type: RelaxedAtomicBool
   value: false
   mirror: always
@@ -7694,6 +7689,12 @@
     type: bool
     value: false
     mirror: always
+
+  # Experimental support for Symbols as WeakMap keys in JavaScript.
+-   name: javascript.options.experimental.symbols_as_weakmap_keys
+    type: bool
+    value: false
+    mirror: always
 #endif  // NIGHTLY_BUILD
 
 #ifdef NIGHTLY_BUILD
@@ -9075,6 +9076,11 @@
   mirror: always
 
 - name: layout.css.text-wrap-balance-after-clamp.enabled
+  type: bool
+  value: true
+  mirror: always
+
+- name: layout.css.text-align.justify-only-after-last-tab
   type: bool
   value: true
   mirror: always
@@ -12105,7 +12111,7 @@
 # all the progress events on the main thread
 - name: network.send_OnDataFinished_after_progress_updates
   type: RelaxedAtomicBool
-  value: true
+  value: false
   mirror: always
 
 # Perform all network access on the socket process.
@@ -14076,7 +14082,7 @@
 #if defined(MOZ_WMF_MEDIA_ENGINE)
 -   name: security.sandbox.utility-wmf-cdm.lpac.enabled
     type: RelaxedAtomicBool
-    value: false
+    value: true
     mirror: always
 #endif
 
@@ -16071,7 +16077,7 @@
 #  * -1: locally, no fallback
 - name: widget.windows.utility_process_file_picker
   type: RelaxedAtomicInt32
-  value: -1
+  value: 0
   mirror: always
 
 # The number of messages of each type to keep for display in
