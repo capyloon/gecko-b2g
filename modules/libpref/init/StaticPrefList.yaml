@@ -1158,6 +1158,12 @@
   value: "path_user"
   mirror: never
 
+# Should CA ignore the system setting and use silent notifications?
+- name: browser.contentanalysis.silent_notifications
+  type: bool
+  value: false
+  mirror: always
+
 # Content blocking for Enhanced Tracking Protection
 - name: browser.contentblocking.database.enabled
   type: bool
@@ -1628,6 +1634,13 @@
 # from parent-process BrowsingContexts
 - name: browser.tabs.documentchannel.parent-controlled
   type: bool
+  value: true
+  mirror: always
+
+# If set, use DocumentChannel to attempt a speculative load from the
+# parent whenever it's not possible to directly load from the parent.
+- name: browser.tabs.documentchannel.speculative-load
+  type: bool
   value: false
   mirror: always
 
@@ -2020,7 +2033,7 @@
 # selectors for every page.
 - name: cookiebanners.service.enableGlobalRules
   type: bool
-  value: false
+  value: true
   mirror: always
 
 # Whether global rules are allowed to run in sub-frames. Running query selectors
@@ -2044,6 +2057,13 @@
 - name: cookiebanners.cookieInjector.defaultExpiryRelative
   type: uint32_t
   value: 31536000
+  mirror: always
+
+# Whether the banner clicking code only get executed once when the site is
+# loaded in the browsing session.
+- name: cookiebanners.bannerClicking.executeOnce
+  type: bool
+  value: true
   mirror: always
 
 #---------------------------------------------------------------------------
@@ -2203,7 +2223,7 @@
 # main thread.
 - name: dom.animations.mainthread-synchronization-with-geometric-animations
   type: bool
-  value: @IS_NOT_NIGHTLY_BUILD@
+  value: false
   mirror: always
 
 # dom.audiochannel.mutedByDefault actually means "suspended by default".
@@ -2421,6 +2441,19 @@
   value: false
   mirror: always
   rust: true
+
+# Whether CustomStateSet is enabled
+- name: dom.element.customstateset.enabled
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+  rust: true
+
+# Whether the invoketarget attribute implementation is enabled
+- name: dom.element.invokers.enabled
+  type: bool
+  value: false
+  mirror: always
 
 - name: dom.mouse_capture.enabled
   type: bool
@@ -3935,7 +3968,7 @@
 
 - name: dom.select.showPicker.enabled
   type: bool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
 
 - name: dom.separate_event_queue_for_post_message.enabled
@@ -4023,7 +4056,7 @@
 
 - name: dom.workers.importScripts.enforceStrictMimeType
   type: RelaxedAtomicBool
-  value: @IS_EARLY_BETA_OR_EARLIER@
+  value: true
   mirror: always
 
 # Is support for modules (new Worker(..., {type: "module"})) enabled for workers?
@@ -4743,6 +4776,15 @@
   mirror: always
   rust: true
 
+# Whether to pass labels to the hardware abstraction layer. This is only useful when
+# inspecting a WebGPU workload in a GPU debugging tool like renderdoc. Enabling it
+# exposes poorly tested driver API surfaces so it should not be enabled by default.
+- name: dom.webgpu.hal-labels
+  type: bool
+  value: false
+  mirror: once
+  rust: true
+
 # Is support for HTMLInputElement.webkitEntries enabled?
 - name: dom.webkitBlink.filesystem.enabled
   type: bool
@@ -4769,6 +4811,11 @@
 - name: dom.webnotifications.enabled
   type: RelaxedAtomicBool
   value: true
+  mirror: always
+
+- name: dom.webnotifications.privateBrowsing.enableDespiteLimitations
+  type: RelaxedAtomicBool
+  value: false
   mirror: always
 
 - name: dom.webnotifications.requireuserinteraction
@@ -7861,7 +7908,7 @@
 #if defined(ENABLE_WASM_TAIL_CALLS)
 -   name: javascript.options.wasm_tail_calls
     type: bool
-    value: @IS_NIGHTLY_BUILD@
+    value: true
     mirror: always
 #endif  // defined(ENABLE_WASM_TAIL_CALLS)
 
@@ -8693,7 +8740,7 @@
 # Is support for (linear|radial|conic)-gradient color interpolation methods enabled?
 - name: layout.css.gradient-color-interpolation-method.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
   rust: true
 
@@ -8921,7 +8968,7 @@
 # Is support for -moz-prefixed transition properties enabled?
 - name: layout.css.prefixes.transitions
   type: bool
-  value: true
+  value: @IS_NOT_NIGHTLY_BUILD@
   mirror: always
 
 # Is CSS error reporting enabled?
@@ -10355,11 +10402,6 @@
     value: 8
     mirror: always
 
--   name: media.wmf.dxva.d3d9.amd-pre-uvd4.disabled
-    type: RelaxedAtomicBool
-    value: true
-    mirror: always
-
 -   name: media.wmf.use-nv12-format
     type: RelaxedAtomicBool
     value: true
@@ -10455,6 +10497,12 @@
 #else
     value: false
 #endif
+    mirror: always
+
+# Use IsTypeSupportedEx for PlayReady
+-   name: media.eme.playready.istypesupportedex
+    type: RelaxedAtomicBool
+    value: false
     mirror: always
 
 # Enable HEVC support via the windows media foundation
@@ -10766,11 +10814,6 @@
 - name: media.resume-background-video-on-tabhover
   type: bool
   value: true
-  mirror: always
-
-- name: media.videocontrols.lock-video-orientation
-  type: bool
-  value: false
   mirror: always
 
 # Media Seamless Looping
@@ -12268,12 +12311,6 @@
   value: 2
   mirror: always
 
-# If true, only use the token once
-- name: network.ssl_tokens_cache_use_only_once
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
 # The maximum allowed length for a URL - 1MB default.
 - name: network.standard-url.max-length
   type: RelaxedAtomicUint32
@@ -12725,7 +12762,7 @@
 
 - name: network.http.http2.move_to_pending_list_after_network_change
   type: RelaxedAtomicBool
-  value: false
+  value: @IS_EARLY_BETA_OR_EARLIER@
   mirror: always
 
 # Enable HTTP/3
@@ -12800,7 +12837,7 @@
 # When a Http/3 connection failed, whether to retry with a different IP address.
 - name: network.http.http3.retry_different_ip_family
   type: RelaxedAtomicBool
-  value: false
+  value: @IS_EARLY_BETA_OR_EARLIER@
   mirror: always
 
 # This is for testing purpose. When true, nsUDPSocket::SendWithAddress will
@@ -12814,6 +12851,14 @@
 # 0 => NewReno
 # 1 => Cubic
 - name: network.http.http3.cc_algorithm
+  type: RelaxedAtomicUint32
+  value: 1
+  mirror: always
+  rust: true
+
+# It represents the maximum duration that we used to accumulate
+# callback timeouts before we set a timer and break out of the loop.
+- name: network.http.http3.max_accumlated_time_ms
   type: RelaxedAtomicUint32
   value: 1
   mirror: always
@@ -14193,6 +14238,12 @@
   value: false
   mirror: always
 
+# Dispatch WebAuthn requests to the macOS platform API
+- name: security.webauthn.enable_macos_passkeys
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
 # Dispatch WebAuthn requests to authenticator-rs
 - name: security.webauth.webauthn_enable_usbtoken
   type: RelaxedAtomicBool
@@ -14729,6 +14780,12 @@
 - name: svg.use-element.recursive-clone-limit
   type: uint32_t
   value: 8
+  mirror: always
+
+# Whether <svg:use> with a data: URL as href is allowed
+- name: svg.use-element.data-url-href.allowed
+  type: bool
+  value: false
   mirror: always
 
 #---------------------------------------------------------------------------

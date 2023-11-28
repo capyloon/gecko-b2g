@@ -66,7 +66,7 @@ skip-if = [
 skip-if = ["a11y_checks"] # Bugs 1858041 and 1849028 for intermittent a11y_checks results
 
 ["browser_rules_css-compatibility-toggle-rules.js"]
-skip-if = ["a11y_checks"] # Bugs 1858041, 1849028 and 1849230 for causing intermittent crashes
+fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
 
 ["browser_rules_css-compatibility-tooltip-telemetry.js"]
 
@@ -148,13 +148,10 @@ skip-if = [
 ]
 
 ["browser_rules_inactive_css_display-justify.js"]
-fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
 
 ["browser_rules_inactive_css_flexbox.js"]
-fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
 
 ["browser_rules_inactive_css_grid.js"]
-fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
 
 ["browser_rules_inactive_css_inline.js"]
 
@@ -328,32 +325,26 @@ fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and
 ["browser_rules_select-and-copy-styles.js"]
 
 ["browser_rules_selector-highlighter-iframe-picker.js"]
-fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
 
 ["browser_rules_selector-highlighter-nested-rules.js"]
-fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
 
 ["browser_rules_selector-highlighter-on-navigate.js"]
-fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
 
 ["browser_rules_selector-highlighter_01.js"]
-fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
 
 ["browser_rules_selector-highlighter_02.js"]
-fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
 
 ["browser_rules_selector-highlighter_03.js"]
-fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
 
 ["browser_rules_selector-highlighter_04.js"]
-fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
 
 ["browser_rules_selector-highlighter_05.js"]
-fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
 
 ["browser_rules_selector-highlighter_order.js"]
 
 ["browser_rules_selector_highlight.js"]
+
+["browser_rules_selector_warnings.js"]
 
 ["browser_rules_shadowdom_slot_rules.js"]
 

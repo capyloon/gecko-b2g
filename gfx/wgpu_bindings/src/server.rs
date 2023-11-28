@@ -20,7 +20,6 @@ use std::borrow::Cow;
 #[allow(unused_imports)]
 use std::mem;
 use std::os::raw::c_void;
-use std::ptr;
 use std::slice;
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -41,6 +40,8 @@ use winapi::Interface;
 /// signed 32 bits integer, so beyond a certain size, large allocations will need some form
 /// of driver allow/blocklist.
 pub const MAX_BUFFER_SIZE: wgt::BufferAddress = 1u64 << 30u64;
+const MAX_BUFFER_SIZE_U32: u32 = MAX_BUFFER_SIZE as u32;
+
 // Mesa has issues with height/depth that don't fit in a 16 bits signed integers.
 const MAX_TEXTURE_EXTENT: u32 = std::i16::MAX as u32;
 
@@ -50,8 +51,22 @@ fn restrict_limits(limits: wgt::Limits) -> wgt::Limits {
         max_texture_dimension_1d: limits.max_texture_dimension_1d.min(MAX_TEXTURE_EXTENT),
         max_texture_dimension_2d: limits.max_texture_dimension_2d.min(MAX_TEXTURE_EXTENT),
         max_texture_dimension_3d: limits.max_texture_dimension_3d.min(MAX_TEXTURE_EXTENT),
+        max_sampled_textures_per_shader_stage: limits
+            .max_sampled_textures_per_shader_stage
+            .min(256),
+        max_samplers_per_shader_stage: limits.max_samplers_per_shader_stage.min(256),
+        max_storage_textures_per_shader_stage: limits
+            .max_storage_textures_per_shader_stage
+            .min(256),
+        max_uniform_buffers_per_shader_stage: limits.max_uniform_buffers_per_shader_stage.min(256),
+        max_uniform_buffer_binding_size: limits
+            .max_uniform_buffer_binding_size
+            .min(MAX_BUFFER_SIZE_U32),
+        max_storage_buffer_binding_size: limits
+            .max_storage_buffer_binding_size
+            .min(MAX_BUFFER_SIZE_U32),
         max_non_sampler_bindings: 10_000,
-        .. limits
+        ..limits
     }
 }
 
@@ -77,10 +92,12 @@ pub extern "C" fn wgpu_server_new(
     log::info!("Initializing WGPU server");
     let backends_pref = static_prefs::pref!("dom.webgpu.wgpu-backend").to_string();
     let backends = if backends_pref.is_empty() {
-        #[cfg(windows)] {
+        #[cfg(windows)]
+        {
             wgt::Backends::DX12
         }
-        #[cfg(not(windows))] {
+        #[cfg(not(windows))]
+        {
             wgt::Backends::PRIMARY
         }
     } else {
@@ -90,12 +107,18 @@ pub extern "C" fn wgpu_server_new(
         );
         wgc::instance::parse_backends_from_comma_list(&backends_pref)
     };
+
+    let mut instance_flags = wgt::InstanceFlags::from_build_config().with_env();
+    if !static_prefs::pref!("dom.webgpu.hal-labels") {
+        instance_flags.insert(wgt::InstanceFlags::DISCARD_HAL_LABELS);
+    }
+
     let global = wgc::global::Global::new(
         "wgpu",
         factory,
         wgt::InstanceDescriptor {
             backends,
-            flags: wgt::InstanceFlags::from_build_config().with_env(),
+            flags: instance_flags,
             dx12_shader_compiler: wgt::Dx12Compiler::Fxc,
             gles_minor_version: wgt::Gles3MinorVersion::Automatic,
         },
@@ -215,7 +238,11 @@ pub unsafe extern "C" fn wgpu_server_adapter_pack_info(
                     wgt::DeviceType::IntegratedGpu | wgt::DeviceType::DiscreteGpu => true,
                     _ => false,
                 };
-                assert!(is_hardware, "Expected a hardware gpu adapter, got {:?}", device_type);
+                assert!(
+                    is_hardware,
+                    "Expected a hardware gpu adapter, got {:?}",
+                    device_type
+                );
             }
 
             let info = AdapterInformation {
@@ -263,8 +290,10 @@ pub unsafe extern "C" fn wgpu_server_adapter_request_device(
     let trace_path = trace_string
         .as_ref()
         .map(|string| std::path::Path::new(string.as_str()));
-    let (_, error) =
-        gfx_select!(self_id => global.adapter_request_device(self_id, &desc, trace_path, new_id));
+    // TODO: in https://github.com/gfx-rs/wgpu/pull/3626/files#diff-033343814319f5a6bd781494692ea626f06f6c3acc0753a12c867b53a646c34eR97
+    // which introduced the queue id parameter, the queue id is also the device id. I don't know how applicable this is to
+    // other situations (this one in particular).
+    let (_, _, error) = gfx_select!(self_id => global.adapter_request_device(self_id, &desc, trace_path, new_id, new_id));
     if let Some(err) = error {
         error_buf.init(err);
     }
@@ -420,7 +449,7 @@ pub unsafe extern "C" fn wgpu_server_buffer_map(
     let callback = wgc::resource::BufferMapCallback::from_c(callback);
     let operation = wgc::resource::BufferMapOperation {
         host: map_mode,
-        callback,
+        callback: Some(callback),
     };
     // All errors are also exposed to the mapping callback, so we handle them there and ignore
     // the returned value of buffer_map_async.
@@ -495,62 +524,6 @@ pub extern "C" fn wgpu_server_buffer_drop(global: &Global, self_id: id::BufferId
     gfx_select!(self_id => global.buffer_drop(self_id, false));
 }
 
-/// Owns gpu resource that can be used by the wgpu implementation.
-/// It is created and destroyed by gecko side's ExternalTexture.
-#[repr(transparent)]
-pub struct TextureRaw {
-    #[cfg(target_os = "windows")]
-    d3d12_resource: d3d12::Resource,
-    #[cfg(not(target_os = "windows"))]
-    _dummy: bool, // FFI requests field
-}
-
-#[allow(unused_variables)]
-#[no_mangle]
-pub extern "C" fn wgpu_server_create_external_texture_raw(
-    global: &mut Global,
-    device_id: id::DeviceId,
-    shared_texture_handle: *mut c_void,
-) -> *mut TextureRaw {
-    assert!(device_id.backend() == wgt::Backend::Dx12);
-
-    #[cfg(target_os = "windows")]
-    if device_id.backend() == wgt::Backend::Dx12 {
-        let mut resource = d3d12::Resource::null();
-
-        let dx12_device = unsafe {
-            global.device_as_hal::<wgc::api::Dx12, _, d3d12::Device>(device_id, |hal_device| {
-                hal_device.unwrap().raw_device().clone()
-            })
-        };
-
-        let hr = unsafe {
-            dx12_device.OpenSharedHandle(
-                shared_texture_handle,
-                &d3d12_ty::ID3D12Resource::uuidof(),
-                resource.mut_void(),
-            )
-        };
-
-        if hr != 0 {
-            return ptr::null_mut();
-        }
-
-        let texture = TextureRaw {
-            d3d12_resource: resource,
-        };
-
-        return Box::into_raw(Box::new(texture));
-    }
-
-    ptr::null_mut()
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn wgpu_server_destroy_external_texture_raw(texture: *mut TextureRaw) {
-    let _ = Box::from_raw(texture);
-}
-
 extern "C" {
     #[allow(dead_code)]
     fn wgpu_server_use_external_texture_for_swap_chain(
@@ -566,12 +539,13 @@ extern "C" {
         width: u32,
         height: u32,
         format: wgt::TextureFormat,
+        usage: wgt::TextureUsages,
     ) -> bool;
     #[allow(dead_code)]
-    fn wgpu_server_get_external_texture_raw(
+    fn wgpu_server_get_external_texture_handle(
         param: *mut c_void,
         id: id::TextureId,
-    ) -> *mut TextureRaw;
+    ) -> *mut c_void;
 }
 
 impl Global {
@@ -620,6 +594,7 @@ impl Global {
                                 desc.size.width,
                                 desc.size.height,
                                 desc.format,
+                                desc.usage,
                             )
                         };
                         if ret != true {
@@ -629,18 +604,40 @@ impl Global {
                             });
                             return;
                         }
-                        let texture_wgpu =
-                            unsafe { wgpu_server_get_external_texture_raw(self.owner, id) };
-                        if texture_wgpu.is_null() {
+
+                        let dx12_device = unsafe {
+                            self.device_as_hal::<wgc::api::Dx12, _, d3d12::Device>(
+                                self_id,
+                                |hal_device| hal_device.unwrap().raw_device().clone(),
+                            )
+                        };
+
+                        let handle =
+                            unsafe { wgpu_server_get_external_texture_handle(self.owner, id) };
+                        if handle.is_null() {
                             error_buf.init(ErrMsg {
-                                message: "Failed to get external texture wgpu",
+                                message: "Failed to get external texture handle",
                                 r#type: ErrorBufferType::Internal,
                             });
-                            return;
                         }
+                        let mut resource = d3d12::Resource::null();
+                        let hr = unsafe {
+                            dx12_device.OpenSharedHandle(
+                                handle,
+                                &d3d12_ty::ID3D12Resource::uuidof(),
+                                resource.mut_void(),
+                            )
+                        };
+                        if hr != 0 {
+                            error_buf.init(ErrMsg {
+                                message: "Failed to open shared handle",
+                                r#type: ErrorBufferType::Internal,
+                            });
+                        }
+
                         let hal_texture = unsafe {
                             <wgh::api::Dx12 as wgh::Api>::Device::texture_from_raw(
-                                (*texture_wgpu).d3d12_resource.clone(),
+                                resource,
                                 wgt::TextureFormat::Bgra8Unorm,
                                 wgt::TextureDimension::D2,
                                 desc.size,
@@ -681,13 +678,15 @@ impl Global {
                 }
             }
             DeviceAction::RenderPipelineGetBindGroupLayout(pipeline_id, index, bgl_id) => {
-                let (_, error) = self.render_pipeline_get_bind_group_layout::<A>(pipeline_id, index, bgl_id);
+                let (_, error) =
+                    self.render_pipeline_get_bind_group_layout::<A>(pipeline_id, index, bgl_id);
                 if let Some(err) = error {
                     error_buf.init(err);
                 }
             }
             DeviceAction::ComputePipelineGetBindGroupLayout(pipeline_id, index, bgl_id) => {
-                let (_, error) = self.compute_pipeline_get_bind_group_layout::<A>(pipeline_id, index, bgl_id);
+                let (_, error) =
+                    self.compute_pipeline_get_bind_group_layout::<A>(pipeline_id, index, bgl_id);
                 if let Some(err) = error {
                     error_buf.init(err);
                 }
@@ -984,11 +983,6 @@ pub extern "C" fn wgpu_server_encoder_drop(global: &Global, self_id: id::Command
 }
 
 #[no_mangle]
-pub extern "C" fn wgpu_server_command_buffer_drop(global: &Global, self_id: id::CommandBufferId) {
-    gfx_select!(self_id => global.command_buffer_drop(self_id));
-}
-
-#[no_mangle]
 pub extern "C" fn wgpu_server_render_bundle_drop(global: &Global, self_id: id::RenderBundleId) {
     gfx_select!(self_id => global.render_bundle_drop(self_id));
 }
@@ -1001,12 +995,15 @@ pub unsafe extern "C" fn wgpu_server_encoder_copy_texture_to_buffer(
     dst_buffer: wgc::id::BufferId,
     dst_layout: &crate::ImageDataLayout,
     size: &wgt::Extent3d,
+    mut error_buf: ErrorBuffer,
 ) {
     let destination = wgc::command::ImageCopyBuffer {
         buffer: dst_buffer,
         layout: dst_layout.into_wgt(),
     };
-    gfx_select!(self_id => global.command_encoder_copy_texture_to_buffer(self_id, source, &destination, size)).unwrap();
+    if let Err(err) = gfx_select!(self_id => global.command_encoder_copy_texture_to_buffer(self_id, source, &destination, size)) {
+        error_buf.init(err);
+    }
 }
 
 /// # Safety
@@ -1099,6 +1096,14 @@ pub extern "C" fn wgpu_server_compute_pipeline_drop(
 #[no_mangle]
 pub extern "C" fn wgpu_server_render_pipeline_drop(global: &Global, self_id: id::RenderPipelineId) {
     gfx_select!(self_id => global.render_pipeline_drop(self_id));
+}
+
+#[no_mangle]
+pub extern "C" fn wgpu_server_texture_destroy(
+    global: &Global,
+    self_id: id::TextureId,
+) {
+    let _ = gfx_select!(self_id => global.texture_destroy(self_id));
 }
 
 #[no_mangle]

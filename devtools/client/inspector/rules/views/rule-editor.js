@@ -250,9 +250,34 @@ RuleEditor.prototype = {
             this.doc.createTextNode(`@import ${ancestorData.value}`)
           );
         } else if (ancestorData.selectorText) {
+          // @backward-compat { version 121 } Newer server now send a `selectors` property
+          // (and no `selectorText` anymore), that we're using to display the selectors.
+          // This if block can be removed when 121 hits release.
           selectorContainer.append(
             this.doc.createTextNode(ancestorData.selectorText)
           );
+        } else if (ancestorData.selectors) {
+          ancestorData.selectors.forEach((selector, i) => {
+            if (i !== 0) {
+              createChild(selectorContainer, "span", {
+                class: "ruleview-selector-separator",
+                textContent: ", ",
+              });
+            }
+
+            const selectorEl = createChild(selectorContainer, "span", {
+              class: "ruleview-selector",
+              textContent: selector,
+            });
+
+            const warningsContainer = this._createWarningsElementForSelector(
+              i,
+              ancestorData.selectorWarnings
+            );
+            if (warningsContainer) {
+              selectorEl.append(warningsContainer);
+            }
+          });
         } else {
           // We shouldn't get here as `type` should only match to what can be set in
           // the StyleRuleActor form, but just in case, let's return an empty string.
@@ -287,7 +312,7 @@ RuleEditor.prototype = {
     });
 
     this.selectorText = createChild(header, "span", {
-      class: "ruleview-selectorcontainer",
+      class: "ruleview-selectors-container",
       tabindex: this.isSelectorEditable ? "0" : "-1",
     });
 
@@ -301,6 +326,14 @@ RuleEditor.prototype = {
         element: this.selectorText,
         done: this._onSelectorDone,
         cssProperties: this.rule.cssProperties,
+        // (Shift+)Tab will move the focus to the previous/next editable field (so property name,
+        // or new property of the previous rule).
+        focusEditableFieldAfterApply: true,
+        focusEditableFieldContainerSelector: ".ruleview-rule",
+        // We don't want Enter to trigger the next editable field, just to validate
+        // what the user entered, close the editor, and focus the span so the user can
+        // navigate with the keyboard as expected.
+        stopOnReturn: true,
       });
     }
 
@@ -317,11 +350,10 @@ RuleEditor.prototype = {
 
       const isHighlighted = this.ruleView.isSelectorHighlighted(selector);
       // Handling of click events is delegated to CssRuleView.handleEvent()
-      createChild(header, "span", {
+      createChild(header, "button", {
         class:
           "ruleview-selectorhighlighter js-toggle-selector-highlighter" +
           (isHighlighted ? " highlighted" : ""),
-        role: "button",
         "aria-pressed": isHighlighted,
         // This is used in rules.js for the selector highlighter
         "data-computed-selector": desugaredSelector,
@@ -398,6 +430,52 @@ RuleEditor.prototype = {
         this.newProperty();
       });
     }
+  },
+
+  /**
+   * Returns the selector warnings element, or null if selector at selectorIndex
+   * does not have any warning.
+   *
+   * @param {Integer} selectorIndex: The index of the selector we want to create the
+   *        warnings for
+   * @param {Array<Object>} selectorWarnings: An array of object of the following shape:
+   *        - {Integer} index: The index of the selector this applies to
+   *        - {String} kind: Identifies the warning
+   * @returns {Element|null}
+   */
+  _createWarningsElementForSelector(selectorIndex, selectorWarnings) {
+    if (!selectorWarnings) {
+      return null;
+    }
+
+    const warningKinds = [];
+    for (const { index, kind } of selectorWarnings) {
+      if (index !== selectorIndex) {
+        continue;
+      }
+      warningKinds.push(kind);
+    }
+
+    if (!warningKinds.length) {
+      return null;
+    }
+
+    const warningsContainer = this.doc.createElement("div");
+    warningsContainer.classList.add(
+      "ruleview-selector-warnings",
+      "has-tooltip"
+    );
+
+    warningsContainer.setAttribute(
+      "data-selector-warning-kind",
+      warningKinds.join(",")
+    );
+
+    if (warningKinds.includes("UnconstrainedHas")) {
+      warningsContainer.classList.add("slow");
+    }
+
+    return warningsContainer;
   },
 
   /**
@@ -563,11 +641,11 @@ RuleEditor.prototype = {
         }
 
         const desugaredSelector = desugaredSelectors[i];
-        const containerClass = this.rule.matchedDesugaredSelectors.includes(
-          desugaredSelector
-        )
-          ? "ruleview-selector-matched"
-          : "ruleview-selector-unmatched";
+        const matchedSelector =
+          this.rule.matchedDesugaredSelectors.includes(desugaredSelector);
+        const containerClass =
+          "ruleview-selector " + (matchedSelector ? "matched" : "unmatched");
+
         const selectorContainer = createChild(this.selectorText, "span", {
           class: containerClass,
         });
@@ -582,7 +660,7 @@ RuleEditor.prototype = {
               selectorClass = "ruleview-selector-attribute";
               break;
             case SELECTOR_ELEMENT:
-              selectorClass = "ruleview-selector";
+              selectorClass = "ruleview-selector-element";
               break;
             case SELECTOR_PSEUDO_CLASS:
               selectorClass = PSEUDO_CLASSES.some(
@@ -600,10 +678,26 @@ RuleEditor.prototype = {
             class: selectorClass,
           });
         }
+
+        const warningsContainer = this._createWarningsElementForSelector(
+          i,
+          this.rule.domRule.selectorWarnings
+        );
+        if (warningsContainer) {
+          selectorContainer.append(warningsContainer);
+        }
       });
     }
 
+    let focusedElSelector;
     if (reset) {
+      // If we're going to reset the rule (i.e. if this is the `element` rule),
+      // we want to restore the focus after the rule is populated.
+      // So if this element contains the active element, retrieve its selector for later use.
+      if (this.element.contains(this.doc.activeElement)) {
+        focusedElSelector = CssLogic.findCssSelector(this.doc.activeElement);
+      }
+
       while (this.propertyList.hasChildNodes()) {
         this.propertyList.removeChild(this.propertyList.lastChild);
       }
@@ -617,6 +711,17 @@ RuleEditor.prototype = {
         // If an editor already existed, append it to the bottom now to make sure the
         // order of editors in the DOM follow the order of the rule's properties.
         this.propertyList.appendChild(prop.editor.element);
+      }
+    }
+
+    if (focusedElSelector) {
+      const elementToFocus = this.doc.querySelector(focusedElSelector);
+      if (elementToFocus && this.element.contains(elementToFocus)) {
+        // We need to wait for a tick for the focus to be properly set
+        setTimeout(() => {
+          elementToFocus.focus();
+          this.ruleView.emitForTests("rule-editor-focus-reset");
+        }, 0);
       }
     }
   },
@@ -878,6 +983,11 @@ RuleEditor.prototype = {
       // pseudo-element rules and the like.
       this.element.parentNode.replaceChild(editor.element, this.element);
 
+      // As the rules elements will be replaced, and given that the inplace-editor doesn't
+      // wait for this `done` callback to be resolved, the focus management we do there
+      // will be useless as this specific code will usually happen later (and the focused
+      // element might be replaced).
+      // Because of this, we need to handle setting the focus ourselves from here.
       editor._moveSelectorFocus(direction);
     } catch (err) {
       this.isEditing = false;
@@ -886,8 +996,7 @@ RuleEditor.prototype = {
   },
 
   /**
-   * Handle moving the focus change after a tab or return keypress in the
-   * selector inplace editor.
+   * Handle moving the focus change after a Tab keypress in the selector inplace editor.
    *
    * @param {Number} direction
    *        The move focus direction number.

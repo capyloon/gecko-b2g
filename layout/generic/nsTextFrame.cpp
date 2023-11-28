@@ -643,7 +643,11 @@ void GlyphObserver::NotifyGlyphsChanged() {
 
 int32_t nsTextFrame::GetContentEnd() const {
   nsTextFrame* next = GetNextContinuation();
-  return next ? next->GetContentOffset() : TextFragment()->GetLength();
+  // In case of allocation failure when setting/modifying the textfragment,
+  // it's possible our text might be missing. So we check the fragment length,
+  // in addition to the offset of the next continuation (if any).
+  int32_t fragLen = TextFragment()->GetLength();
+  return next ? std::min(fragLen, next->GetContentOffset()) : fragLen;
 }
 
 struct FlowLengthProperty {
@@ -1043,9 +1047,10 @@ class BuildTextRunsScanner {
     // was no previous text frame on this line.
     nsIFrame* mAncestorControllingInitialBreak;
 
-    int32_t GetContentEnd() {
-      return mEndFrame ? mEndFrame->GetContentOffset()
-                       : mStartFrame->TextFragment()->GetLength();
+    int32_t GetContentEnd() const {
+      int32_t fragLen = mStartFrame->TextFragment()->GetLength();
+      return mEndFrame ? std::min(fragLen, mEndFrame->GetContentOffset())
+                       : fragLen;
     }
   };
 
@@ -1124,8 +1129,8 @@ class BuildTextRunsScanner {
 };
 
 static nsIFrame* FindLineContainer(nsIFrame* aFrame) {
-  while (aFrame && (aFrame->IsFrameOfType(nsIFrame::eLineParticipant) ||
-                    aFrame->CanContinueTextRun())) {
+  while (aFrame &&
+         (aFrame->IsLineParticipant() || aFrame->CanContinueTextRun())) {
     aFrame = aFrame->GetParent();
   }
   return aFrame;
@@ -3608,14 +3613,17 @@ void nsTextFrame::PropertyProvider::GetSpacing(Range aRange,
 
 static bool CanAddSpacingAfter(const gfxTextRun* aTextRun, uint32_t aOffset,
                                bool aNewlineIsSignificant) {
+  const auto* g = aTextRun->GetCharacterGlyphs();
+  MOZ_ASSERT(aOffset < aTextRun->GetLength());
+  if (aNewlineIsSignificant && g[aOffset].CharIsNewline()) {
+    return false;
+  }
   if (aOffset + 1 >= aTextRun->GetLength()) {
     return true;
   }
-  const auto* g = aTextRun->GetCharacterGlyphs();
   return g[aOffset + 1].IsClusterStart() &&
          g[aOffset + 1].IsLigatureGroupStart() &&
-         !g[aOffset].CharIsFormattingControl() && !g[aOffset].CharIsTab() &&
-         !(aNewlineIsSignificant && g[aOffset].CharIsNewline());
+         !g[aOffset].CharIsFormattingControl() && !g[aOffset].CharIsTab();
 }
 
 static gfxFloat ComputeTabWidthAppUnits(const nsIFrame* aFrame) {
@@ -4207,7 +4215,7 @@ class nsContinuingTextFrame final : public nsTextFrame {
                                  nsPresContext* aPresContext)
       : nsTextFrame(aStyle, aPresContext, kClassID) {}
 
-  nsTextFrame* mPrevContinuation;
+  nsTextFrame* mPrevContinuation = nullptr;
   nsTextFrame* mFirstContinuation = nullptr;
 };
 
@@ -5011,8 +5019,7 @@ static already_AddRefed<gfxTextRun> GenerateTextRunForEmphasisMarks(
 static nsRubyFrame* FindFurthestInlineRubyAncestor(nsTextFrame* aFrame) {
   nsRubyFrame* rubyFrame = nullptr;
   for (nsIFrame* frame = aFrame->GetParent();
-       frame && frame->IsFrameOfType(nsIFrame::eLineParticipant);
-       frame = frame->GetParent()) {
+       frame && frame->IsLineParticipant(); frame = frame->GetParent()) {
     if (frame->IsRubyFrame()) {
       rubyFrame = static_cast<nsRubyFrame*>(frame);
     }
@@ -10335,10 +10342,7 @@ void nsTextFrame::ToCString(nsCString& aBuf) const {
     return;
   }
 
-  // Limit the length to fragment length in case the text has not been reflowed.
-  const uint32_t fragLength =
-      std::min(frag->GetLength(), AssertedCast<uint32_t>(GetContentEnd()));
-
+  const uint32_t fragLength = AssertedCast<uint32_t>(GetContentEnd());
   uint32_t fragOffset = AssertedCast<uint32_t>(GetContentOffset());
 
   while (fragOffset < fragLength) {

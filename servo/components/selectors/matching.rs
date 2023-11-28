@@ -508,11 +508,7 @@ fn relative_selector_match_early<E: Element>(
     if context
         .selector_caches
         .relative_selector_filter_map
-        .fast_reject(
-            element,
-            selector,
-            context.quirks_mode(),
-        )
+        .fast_reject(element, selector, context.quirks_mode())
     {
         // Alright, add as unmatched to cache.
         context.selector_caches.relative_selector.add(
@@ -525,8 +521,27 @@ fn relative_selector_match_early<E: Element>(
     None
 }
 
+fn match_relative_selectors<E: Element>(
+    selectors: &[RelativeSelector<E::Impl>],
+    element: &E,
+    context: &mut MatchingContext<E::Impl>,
+    rightmost: Rightmost,
+) -> bool {
+    if context.relative_selector_anchor().is_some() {
+        // FIXME(emilio): This currently can happen with nesting, and it's not fully
+        // correct, arguably. But the ideal solution isn't super-clear either. For now,
+        // cope with it and explicitly reject it at match time. See [1] for discussion.
+        //
+        // [1]: https://github.com/w3c/csswg-drafts/issues/9600
+        return false;
+    }
+    context.nest_for_relative_selector(element.opaque(), |context| {
+        do_match_relative_selectors(selectors, element, context, rightmost)
+    })
+}
+
 /// Matches a relative selector in a list of relative selectors.
-fn matches_relative_selectors<E: Element>(
+fn do_match_relative_selectors<E: Element>(
     selectors: &[RelativeSelector<E::Impl>],
     element: &E,
     context: &mut MatchingContext<E::Impl>,
@@ -672,7 +687,9 @@ fn assigned_slot<E>(element: &E, context: &MatchingContext<E::Impl>) -> Option<E
 where
     E: Element,
 {
-    debug_assert!(element.assigned_slot().map_or(true, |s| s.is_html_slot_element()));
+    debug_assert!(element
+        .assigned_slot()
+        .map_or(true, |s| s.is_html_slot_element()));
     let scope = context.current_host?;
     let mut current_slot = element.assigned_slot()?;
     while current_slot.containing_shadow_host().unwrap().opaque() != scope {
@@ -1088,11 +1105,9 @@ where
         Component::Negation(ref list) => context.shared.nest_for_negation(|context| {
             !matches_complex_selector_list(list.slice(), element, context, rightmost)
         }),
-        Component::Has(ref relative_selectors) => context
-            .shared
-            .nest_for_relative_selector(element.opaque(), |context| {
-                matches_relative_selectors(relative_selectors, element, context, rightmost)
-            }),
+        Component::Has(ref relative_selectors) => {
+            match_relative_selectors(relative_selectors, element, context.shared, rightmost)
+        },
         Component::Combinator(_) => unsafe {
             debug_unreachable!("Shouldn't try to selector-match combinators")
         },

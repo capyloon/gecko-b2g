@@ -52,8 +52,14 @@ pub fn new_prio_u8(num_aggregators: u8, bits: u32) -> Result<Prio3Sum, VdafError
     Prio3::new(num_aggregators, Sum::new(bits as usize)?)
 }
 
+pub fn new_prio_vecu8(num_aggregators: u8, len: usize) -> Result<Prio3SumVec, VdafError> {
+    let chunk_length = prio::vdaf::prio3::optimal_chunk_length(8 * len);
+    Prio3::new(num_aggregators, SumVec::new(8, len, chunk_length)?)
+}
+
 pub fn new_prio_vecu16(num_aggregators: u8, len: usize) -> Result<Prio3SumVec, VdafError> {
-    Prio3::new(num_aggregators, SumVec::new(1, len)?)
+    let chunk_length = prio::vdaf::prio3::optimal_chunk_length(16 * len);
+    Prio3::new(num_aggregators, SumVec::new(16, len, chunk_length)?)
 }
 
 enum Role {
@@ -101,23 +107,6 @@ trait Shardable {
     ) -> Result<(Vec<u8>, Vec<Vec<u8>>), Box<dyn std::error::Error>>;
 }
 
-impl Shardable for ThinVec<u16> {
-    fn shard(
-        &self,
-        nonce: &[u8; 16],
-    ) -> Result<(Vec<u8>, Vec<Vec<u8>>), Box<dyn std::error::Error>> {
-        let prio = new_prio_vecu16(2, self.len())?;
-
-        let measurement: Vec<u128> = self.iter().map(|e| (*e as u128)).collect();
-        let (public_share, input_shares) = prio.shard(&measurement, nonce)?;
-
-        debug_assert_eq!(input_shares.len(), 2);
-
-        let encoded_input_shares = input_shares.iter().map(|s| s.get_encoded()).collect();
-        let encoded_public_share = public_share.get_encoded();
-        Ok((encoded_public_share, encoded_input_shares))
-    }
-}
 impl Shardable for u8 {
     fn shard(
         &self,
@@ -135,10 +124,46 @@ impl Shardable for u8 {
     }
 }
 
+impl Shardable for ThinVec<u8> {
+    fn shard(
+        &self,
+        nonce: &[u8; 16],
+    ) -> Result<(Vec<u8>, Vec<Vec<u8>>), Box<dyn std::error::Error>> {
+        let prio = new_prio_vecu8(2, self.len())?;
+
+        let measurement: Vec<u128> = self.iter().map(|e| (*e as u128)).collect();
+        let (public_share, input_shares) = prio.shard(&measurement, nonce)?;
+
+        debug_assert_eq!(input_shares.len(), 2);
+
+        let encoded_input_shares = input_shares.iter().map(|s| s.get_encoded()).collect();
+        let encoded_public_share = public_share.get_encoded();
+        Ok((encoded_public_share, encoded_input_shares))
+    }
+}
+
+impl Shardable for ThinVec<u16> {
+    fn shard(
+        &self,
+        nonce: &[u8; 16],
+    ) -> Result<(Vec<u8>, Vec<Vec<u8>>), Box<dyn std::error::Error>> {
+        let prio = new_prio_vecu16(2, self.len())?;
+
+        let measurement: Vec<u128> = self.iter().map(|e| (*e as u128)).collect();
+        let (public_share, input_shares) = prio.shard(&measurement, nonce)?;
+
+        debug_assert_eq!(input_shares.len(), 2);
+
+        let encoded_input_shares = input_shares.iter().map(|s| s.get_encoded()).collect();
+        let encoded_public_share = public_share.get_encoded();
+        Ok((encoded_public_share, encoded_input_shares))
+    }
+}
+
 /// Pre-fill the info part of the HPKE sealing with the constants from the standard.
 fn make_base_info() -> Vec<u8> {
     let mut info = Vec::<u8>::new();
-    const START: &[u8] = "dap-04 input share".as_bytes();
+    const START: &[u8] = "dap-07 input share".as_bytes();
     info.extend(START);
     const FIXED: u8 = 1;
     info.push(FIXED);
@@ -221,7 +246,8 @@ fn get_dap_report_internal<T: Shardable>(
     Ok(Report {
         metadata,
         public_share: encoded_public_share,
-        encrypted_input_shares: vec![leader_payload, helper_payload],
+        leader_encrypted_input_share: leader_payload,
+        helper_encrypted_input_share: helper_payload,
     })
 }
 
@@ -242,6 +268,33 @@ pub extern "C" fn dapGetReportU8(
         leader_hpke_config_encoded,
         helper_hpke_config_encoded,
         &measurement,
+        &task_id.as_slice().try_into().unwrap(),
+        time_precision,
+    ) {
+        let encoded_report = report.get_encoded();
+        out_report.extend(encoded_report);
+
+        true
+    } else {
+        false
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn dapGetReportVecU8(
+    leader_hpke_config_encoded: &ThinVec<u8>,
+    helper_hpke_config_encoded: &ThinVec<u8>,
+    measurement: &ThinVec<u8>,
+    task_id: &ThinVec<u8>,
+    time_precision: u64,
+    out_report: &mut ThinVec<u8>,
+) -> bool {
+    assert_eq!(task_id.len(), 32);
+
+    if let Ok(report) = get_dap_report_internal::<ThinVec<u8>>(
+        leader_hpke_config_encoded,
+        helper_hpke_config_encoded,
+        measurement,
         &task_id.as_slice().try_into().unwrap(),
         time_precision,
     ) {

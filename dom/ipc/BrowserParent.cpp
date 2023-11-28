@@ -1389,10 +1389,8 @@ IPCResult BrowserParent::RecvNewWindowGlobal(
   // the wrong type of webIsolated process
   EnumSet<ContentParent::ValidatePrincipalOptions> validationOptions = {};
   nsCOMPtr<nsIURI> docURI = aInit.documentURI();
-  if (docURI->SchemeIs("about") || docURI->SchemeIs("blob") ||
-      docURI->SchemeIs("chrome")) {
+  if (docURI->SchemeIs("blob") || docURI->SchemeIs("chrome")) {
     // XXXckerschb TODO - Do not use SystemPrincipal for:
-    // Bug 1700639: about:plugins
     // Bug 1699385: Remove allowSystem for blobs
     // Bug 1698087: chrome://devtools/content/shared/webextension-fallback.html
     // chrome reftests, e.g.
@@ -1400,6 +1398,20 @@ IPCResult BrowserParent::RecvNewWindowGlobal(
     //   * chrome://reftest/content/xul-document-load/test003.xhtml
     //   * chrome://reftest/content/forms/input/text/centering-1.xhtml
     validationOptions = {ContentParent::ValidatePrincipalOptions::AllowSystem};
+  }
+
+  // Some reftests have frames inside their chrome URIs and those load
+  // about:blank:
+  if (xpc::IsInAutomation() && docURI->SchemeIs("about")) {
+    WindowGlobalParent* wgp = browsingContext->GetParentWindowContext();
+    nsAutoCString spec;
+    NS_ENSURE_SUCCESS(docURI->GetSpec(spec),
+                      IPC_FAIL(this, "Should have spec for about: URI"));
+    if (spec.Equals("about:blank") && wgp &&
+        wgp->DocumentPrincipal()->IsSystemPrincipal()) {
+      validationOptions = {
+          ContentParent::ValidatePrincipalOptions::AllowSystem};
+    }
   }
 
   if (!mManager->ValidatePrincipal(aInit.principal(), validationOptions)) {
@@ -3060,7 +3072,10 @@ mozilla::ipc::IPCResult BrowserParent::RecvNotifyContentBlockingEvent(
     nsTArray<nsCString>&& aTrackingFullHashes,
     const Maybe<
         mozilla::ContentBlockingNotifier::StorageAccessPermissionGrantedReason>&
-        aReason) {
+        aReason,
+    const Maybe<mozilla::ContentBlockingNotifier::CanvasFingerprinter>&
+        aCanvasFingerprinter,
+    const Maybe<bool>& aCanvasFingerprinterKnownText) {
   RefPtr<BrowsingContext> bc = GetBrowsingContext();
 
   if (!bc || bc->IsDiscarded()) {
@@ -3083,8 +3098,9 @@ mozilla::ipc::IPCResult BrowserParent::RecvNotifyContentBlockingEvent(
       aRequestData.requestURI(), aRequestData.originalRequestURI(),
       aRequestData.matchedList());
 
-  wgp->NotifyContentBlockingEvent(aEvent, request, aBlocked, aTrackingOrigin,
-                                  aTrackingFullHashes, aReason);
+  wgp->NotifyContentBlockingEvent(
+      aEvent, request, aBlocked, aTrackingOrigin, aTrackingFullHashes, aReason,
+      aCanvasFingerprinter, aCanvasFingerprinterKnownText);
 
   return IPC_OK();
 }

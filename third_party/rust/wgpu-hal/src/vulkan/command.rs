@@ -23,7 +23,7 @@ impl super::Texture {
                 buffer_offset: r.buffer_layout.offset,
                 buffer_row_length: r.buffer_layout.bytes_per_row.map_or(0, |bpr| {
                     let block_size = format
-                        .block_size(Some(r.texture_base.aspect.map()))
+                        .block_copy_size(Some(r.texture_base.aspect.map()))
                         .unwrap();
                     block_width * (bpr / block_size)
                 }),
@@ -600,7 +600,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
         &mut self,
         layout: &super::PipelineLayout,
         stages: wgt::ShaderStages,
-        offset: u32,
+        offset_bytes: u32,
         data: &[u32],
     ) {
         unsafe {
@@ -608,7 +608,7 @@ impl crate::CommandEncoder<super::Api> for super::CommandEncoder {
                 self.active,
                 layout.raw,
                 conv::map_shader_stage(stages),
-                offset,
+                offset_bytes,
                 slice::from_raw_parts(data.as_ptr() as _, data.len() * 4),
             )
         };

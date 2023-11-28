@@ -330,8 +330,8 @@ nsresult HTMLEditorEventListener::HandleSecondaryMouseButtonDown(
     return NS_ERROR_FAILURE;
   }
 
-  if (EditorUtils::IsPointInSelection(*selection, *parentContent,
-                                      AssertedCast<uint32_t>(offset))) {
+  if (nsContentUtils::IsPointInSelection(*selection, *parentContent,
+                                         AssertedCast<uint32_t>(offset))) {
     return NS_OK;
   }
 
@@ -410,8 +410,8 @@ nsresult HTMLEditorEventListener::MouseClick(
     return NS_OK;
   }
 
-  RefPtr<Element> element =
-      Element::FromEventTargetOrNull(aMouseClickEvent->GetDOMEventTarget());
+  RefPtr<Element> element = Element::FromEventTargetOrNull(
+      aMouseClickEvent->GetOriginalDOMEventTarget());
   if (NS_WARN_IF(!element)) {
     return NS_ERROR_FAILURE;
   }

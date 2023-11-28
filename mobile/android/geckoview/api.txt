@@ -424,11 +424,12 @@ package org.mozilla.geckoview {
     field public static final int CONTENT = 16;
     field public static final int CRYPTOMINING = 64;
     field public static final int DEFAULT = 46;
+    field public static final int EMAIL = 512;
     field public static final int FINGERPRINTING = 128;
     field public static final int NONE = 0;
     field public static final int SOCIAL = 8;
     field public static final int STP = 256;
-    field public static final int STRICT = 254;
+    field public static final int STRICT = 766;
     field public static final int TEST = 32;
   }
 
@@ -603,6 +604,7 @@ package org.mozilla.geckoview {
     ctor protected Event();
     field public static final int ALLOWED_TRACKING_CONTENT = 32;
     field public static final int BLOCKED_CRYPTOMINING_CONTENT = 2048;
+    field public static final int BLOCKED_EMAILTRACKING_CONTENT = 4194304;
     field public static final int BLOCKED_FINGERPRINTING_CONTENT = 64;
     field public static final int BLOCKED_SOCIALTRACKING_CONTENT = 65536;
     field public static final int BLOCKED_TRACKING_CONTENT = 4096;
@@ -617,6 +619,8 @@ package org.mozilla.geckoview {
     field public static final int COOKIES_LOADED_TRACKER = 262144;
     field public static final int COOKIES_PARTITIONED_FOREIGN = -2147483648;
     field public static final int LOADED_CRYPTOMINING_CONTENT = 2097152;
+    field public static final int LOADED_EMAILTRACKING_LEVEL_1_CONTENT = 8388608;
+    field public static final int LOADED_EMAILTRACKING_LEVEL_2_CONTENT = 256;
     field public static final int LOADED_FINGERPRINTING_CONTENT = 1024;
     field public static final int LOADED_LEVEL_1_TRACKING_CONTENT = 8192;
     field public static final int LOADED_LEVEL_2_TRACKING_CONTENT = 1048576;
@@ -876,6 +880,7 @@ package org.mozilla.geckoview {
     method @Nullable public GeckoRuntime getRuntime();
     method @Nullable public Rect getScreenSizeOverride();
     method @Nullable public RuntimeTelemetry.Delegate getTelemetryDelegate();
+    method public boolean getTranslationsOfferPopup();
     method public boolean getUseMaxScreenDepth();
     method public boolean getWebFontsEnabled();
     method public boolean getWebManifestEnabled();
@@ -900,6 +905,7 @@ package org.mozilla.geckoview {
     method @NonNull public GeckoRuntimeSettings setLoginAutofillEnabled(boolean);
     method @NonNull public GeckoRuntimeSettings setPreferredColorScheme(int);
     method @NonNull public GeckoRuntimeSettings setRemoteDebuggingEnabled(boolean);
+    method @NonNull public GeckoRuntimeSettings setTranslationsOfferPopup(boolean);
     method @NonNull public GeckoRuntimeSettings setWebFontsEnabled(boolean);
     method @NonNull public GeckoRuntimeSettings setWebManifestEnabled(boolean);
     field public static final int ALLOW_ALL = 0;
@@ -945,6 +951,7 @@ package org.mozilla.geckoview {
     method @NonNull public GeckoRuntimeSettings.Builder remoteDebuggingEnabled(boolean);
     method @NonNull public GeckoRuntimeSettings.Builder screenSizeOverride(int, int);
     method @NonNull public GeckoRuntimeSettings.Builder telemetryDelegate(@NonNull RuntimeTelemetry.Delegate);
+    method @NonNull public GeckoRuntimeSettings.Builder translationsOfferPopup(boolean);
     method @NonNull public GeckoRuntimeSettings.Builder useMaxScreenDepth(boolean);
     method @NonNull public GeckoRuntimeSettings.Builder webFontsEnabled(boolean);
     method @NonNull public GeckoRuntimeSettings.Builder webManifest(boolean);
@@ -1692,6 +1699,7 @@ package org.mozilla.geckoview {
     field @Nullable public final GeckoSession.ReviewAnalysis.Highlight highlights;
     field public final long lastAnalysisTime;
     field public final boolean needsAnalysis;
+    field public final boolean notEnoughReviews;
     field public final boolean pageNotSupported;
     field @Nullable public final String productId;
   }
@@ -1707,6 +1715,7 @@ package org.mozilla.geckoview {
     method @AnyThread @NonNull public GeckoSession.ReviewAnalysis.Builder highlights(@Nullable GeckoSession.ReviewAnalysis.Highlight);
     method @AnyThread @NonNull public GeckoSession.ReviewAnalysis.Builder lastAnalysisTime(long);
     method @AnyThread @NonNull public GeckoSession.ReviewAnalysis.Builder needsAnalysis(@NonNull Boolean);
+    method @AnyThread @NonNull public GeckoSession.ReviewAnalysis.Builder notEnoughReviews(@NonNull Boolean);
     method @AnyThread @NonNull public GeckoSession.ReviewAnalysis.Builder pageNotSupported(@NonNull Boolean);
     method @AnyThread @NonNull public GeckoSession.ReviewAnalysis.Builder productId(@Nullable String);
   }
@@ -2249,16 +2258,22 @@ package org.mozilla.geckoview {
     ctor public RuntimeTranslation();
     method @AnyThread @NonNull public static GeckoResult<Long> checkPairDownloadSize(@NonNull String, @NonNull String);
     method @AnyThread @NonNull public static GeckoResult<Long> checkPairDownloadSize(@NonNull TranslationsController.SessionTranslation.TranslationPair);
+    method @AnyThread @NonNull public static GeckoResult<String> getLanguageSetting(@NonNull String);
+    method @AnyThread @NonNull public static GeckoResult<Map<String,String>> getLanguageSettings();
     method @AnyThread @NonNull public static GeckoResult<Boolean> isTranslationsEngineSupported();
     method @AnyThread @NonNull public static GeckoResult<List<TranslationsController.RuntimeTranslation.LanguageModel>> listModelDownloadStates();
     method @AnyThread @NonNull public static GeckoResult<TranslationsController.RuntimeTranslation.TranslationSupport> listSupportedLanguages();
     method @AnyThread @NonNull public static GeckoResult<Void> manageLanguageModel(@NonNull TranslationsController.RuntimeTranslation.ModelManagementOptions);
     method @AnyThread @NonNull public static GeckoResult<List<String>> preferredLanguages();
+    method @AnyThread @NonNull public static GeckoResult<Void> setLanguageSettings(@NonNull String, @NonNull String);
     field public static final String ALL = "all";
+    field public static final String ALWAYS = "always";
     field public static final String CACHE = "cache";
     field public static final String DELETE = "delete";
     field public static final String DOWNLOAD = "download";
     field public static final String LANGUAGE = "language";
+    field public static final String NEVER = "never";
+    field public static final String OFFER = "offer";
   }
 
   public static class TranslationsController.RuntimeTranslation.LanguageModel {
@@ -2266,6 +2281,9 @@ package org.mozilla.geckoview {
     field @NonNull public final Boolean isDownloaded;
     field @Nullable public final TranslationsController.Language language;
     field public final long size;
+  }
+
+  @Retention(value=RetentionPolicy.SOURCE) public static interface TranslationsController.RuntimeTranslation.LanguageSetting {
   }
 
   @AnyThread public static class TranslationsController.RuntimeTranslation.ModelManagementOptions {
@@ -2298,7 +2316,9 @@ package org.mozilla.geckoview {
   public static class TranslationsController.SessionTranslation {
     ctor public SessionTranslation(GeckoSession);
     method @AnyThread @NonNull public TranslationsController.SessionTranslation.Handler getHandler();
+    method @AnyThread @NonNull public GeckoResult<Boolean> getNeverTranslateSiteSetting();
     method @AnyThread @NonNull public GeckoResult<Void> restoreOriginalPage();
+    method @AnyThread @NonNull public GeckoResult<Void> setNeverTranslateSiteSetting(@NonNull Boolean);
     method @AnyThread @NonNull public GeckoResult<Void> translate(@NonNull String, @NonNull String, @Nullable TranslationsController.SessionTranslation.TranslationOptions);
     method @AnyThread @NonNull public GeckoResult<Void> translate(@NonNull TranslationsController.SessionTranslation.TranslationPair, @Nullable TranslationsController.SessionTranslation.TranslationOptions);
   }
@@ -2699,6 +2719,7 @@ package org.mozilla.geckoview {
     method @UiThread default public void onInstallationFailed(@Nullable WebExtension, @NonNull WebExtension.InstallException);
     method @UiThread default public void onInstalled(@NonNull WebExtension);
     method @UiThread default public void onInstalling(@NonNull WebExtension);
+    method @UiThread default public void onReady(@NonNull WebExtension);
     method @UiThread default public void onUninstalled(@NonNull WebExtension);
     method @UiThread default public void onUninstalling(@NonNull WebExtension);
   }

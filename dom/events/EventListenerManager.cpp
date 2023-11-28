@@ -7,7 +7,7 @@
 // Microsoft's API Name hackery sucks
 #undef CreateEvent
 
-#include "js/ColumnNumber.h"  // JS::ColumnNumberZeroOrigin
+#include "js/ColumnNumber.h"  // JS::ColumnNumberOneOrigin
 #include "js/loader/LoadedScript.h"
 #include "mozilla/BasicEvents.h"
 #include "mozilla/BinarySearch.h"
@@ -1062,7 +1062,7 @@ nsresult EventListenerManager::SetEventHandler(nsAtom* aName,
     // Perform CSP check
     nsCOMPtr<nsIContentSecurityPolicy> csp = doc->GetCsp();
     uint32_t lineNum = 0;
-    JS::ColumnNumberZeroOrigin columnNum;
+    JS::ColumnNumberOneOrigin columnNum;
 
     JSContext* cx = nsContentUtils::GetCurrentJSContext();
     if (cx && !JS::DescribeScriptedCaller(cx, nullptr, &lineNum, &columnNum)) {
@@ -1078,7 +1078,7 @@ nsresult EventListenerManager::SetEventHandler(nsAtom* aName,
           true,    // aParserCreated (true because attribute event handler)
           aElement,
           nullptr,  // nsICSPEventListener
-          aBody, lineNum, columnNum.zeroOriginValue(), &allowsInlineScript);
+          aBody, lineNum, columnNum.oneOriginValue(), &allowsInlineScript);
       NS_ENSURE_SUCCESS(rv, rv);
 
       // return early if CSP wants us to block inline scripts

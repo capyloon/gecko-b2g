@@ -94,6 +94,30 @@ assertEq(wasmGcReadField(wasmGcReadField(result, 1), 1), 4);
 assertEq(wasmGcReadField(wasmGcReadField(result, 2), 0), 5);
 assertEq(wasmGcReadField(wasmGcReadField(result, 2), 1), 6);
 
+// any.convert_extern and extern.convert_any
+
+let {testString, testArray} = wasmEvalText(`(module
+        (type $array (array i32))
+        (import "env" "s" (global $s (ref extern)))
+        (global $s' (ref extern) (extern.convert_any (any.convert_extern (global.get $s))))
+        (func (export "testString") (result (ref extern))
+           (global.get $s'))
+        (global $a (ref $array) (array.new_fixed $array 1 (i32.const 0)))
+        (global $a' (ref any) (any.convert_extern (extern.convert_any (global.get $a))))
+        (func (export "testArray") (result i32)
+           (ref.eq (global.get $a) (ref.cast (ref eq) (global.get $a'))))
+)`, {env:{s:"abc"}}).exports;
+
+assertEq(testString(), 'abc');
+assertEq(testArray(), 1);
+
+wasmFailValidateText(`(module
+	(global $g (ref extern) (extern.convert_any (any.convert_extern (ref.null extern))))
+)`, /expected/);
+wasmFailValidateText(`(module
+	(global $g (ref extern) (any.convert_extern (extern.convert_any (ref.null any))))
+)`, /expected/);
+
 // Simple table initialization
 {
   const { t1, t2, t1init } = wasmEvalText(`(module

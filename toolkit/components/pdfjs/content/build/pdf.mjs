@@ -75,6 +75,7 @@ __webpack_require__.d(__webpack_exports__, {
   XfaLayer: () => (/* reexport */ XfaLayer),
   build: () => (/* reexport */ build),
   createValidAbsoluteUrl: () => (/* reexport */ createValidAbsoluteUrl),
+  fetchData: () => (/* reexport */ fetchData),
   getDocument: () => (/* reexport */ getDocument),
   getFilenameFromUrl: () => (/* reexport */ getFilenameFromUrl),
   getPdfFilenameFromUrl: () => (/* reexport */ getPdfFilenameFromUrl),
@@ -1202,18 +1203,24 @@ class DOMCanvasFactory extends BaseCanvasFactory {
     return canvas;
   }
 }
-async function fetchData(url, asTypedArray = false) {
+async function fetchData(url, type = "text") {
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(response.statusText);
   }
-  return asTypedArray ? new Uint8Array(await response.arrayBuffer()) : stringToBytes(await response.text());
+  switch (type) {
+    case "arraybuffer":
+      return response.arrayBuffer();
+    case "json":
+      return response.json();
+  }
+  return response.text();
 }
 class DOMCMapReaderFactory extends BaseCMapReaderFactory {
   _fetchData(url, compressionType) {
-    return fetchData(url, this.isCompressed).then(data => {
+    return fetchData(url, this.isCompressed ? "arraybuffer" : "text").then(data => {
       return {
-        cMapData: data,
+        cMapData: data instanceof ArrayBuffer ? new Uint8Array(data) : stringToBytes(data),
         compressionType
       };
     });
@@ -1221,7 +1228,9 @@ class DOMCMapReaderFactory extends BaseCMapReaderFactory {
 }
 class DOMStandardFontDataFactory extends BaseStandardFontDataFactory {
   _fetchData(url) {
-    return fetchData(url, true);
+    return fetchData(url, "arraybuffer").then(data => {
+      return new Uint8Array(data);
+    });
   }
 }
 class DOMSVGFactory extends BaseSVGFactory {
@@ -1948,7 +1957,9 @@ class AnnotationEditorUIManager {
     }], [["Backspace", "alt+Backspace", "ctrl+Backspace", "shift+Backspace", "mac+Backspace", "mac+alt+Backspace", "mac+ctrl+Backspace", "Delete", "ctrl+Delete", "shift+Delete", "mac+Delete"], proto.delete, {
       checker: textInputChecker
     }], [["Enter", "mac+Enter"], proto.addNewEditorFromKeyboard, {
-      checker: self => self.#container.contains(document.activeElement) && !self.isEnterHandled
+      checker: (self, {
+        target: el
+      }) => !(el instanceof HTMLButtonElement) && self.#container.contains(el) && !self.isEnterHandled
     }], [[" ", "mac+ "], proto.addNewEditorFromKeyboard, {
       checker: self => self.#container.contains(document.activeElement)
     }], [["Escape", "mac+Escape"], proto.unselectAll], [["ArrowLeft", "mac+ArrowLeft"], proto.translateSelectedEditors, {
@@ -2746,7 +2757,72 @@ class AnnotationEditorUIManager {
   }
 }
 
+;// CONCATENATED MODULE: ./src/display/editor/toolbar.js
+
+class EditorToolbar {
+  #toolbar = null;
+  #editor;
+  #buttons = null;
+  constructor(editor) {
+    this.#editor = editor;
+  }
+  render() {
+    const editToolbar = this.#toolbar = document.createElement("div");
+    editToolbar.className = "editToolbar";
+    editToolbar.addEventListener("contextmenu", noContextMenu);
+    editToolbar.addEventListener("pointerdown", EditorToolbar.#pointerDown);
+    const buttons = this.#buttons = document.createElement("div");
+    buttons.className = "buttons";
+    editToolbar.append(buttons);
+    this.#addDeleteButton();
+    return editToolbar;
+  }
+  static #pointerDown(e) {
+    e.stopPropagation();
+  }
+  #focusIn(e) {
+    this.#editor._focusEventsAllowed = false;
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  #focusOut(e) {
+    this.#editor._focusEventsAllowed = true;
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  #addListenersToElement(element) {
+    element.addEventListener("focusin", this.#focusIn.bind(this), {
+      capture: true
+    });
+    element.addEventListener("focusout", this.#focusOut.bind(this), {
+      capture: true
+    });
+    element.addEventListener("contextmenu", noContextMenu);
+  }
+  hide() {
+    this.#toolbar.classList.add("hidden");
+  }
+  show() {
+    this.#toolbar.classList.remove("hidden");
+  }
+  #addDeleteButton() {
+    const button = document.createElement("button");
+    button.className = "delete";
+    button.tabIndex = 0;
+    button.setAttribute("data-l10n-id", "pdfjs-editor-remove-button");
+    this.#addListenersToElement(button);
+    button.addEventListener("click", e => {
+      this.#editor._uiManager.delete();
+    });
+    this.#buttons.append(button);
+  }
+  remove() {
+    this.#toolbar.remove();
+  }
+}
+
 ;// CONCATENATED MODULE: ./src/display/editor/editor.js
+
 
 
 
@@ -2763,6 +2839,7 @@ class AnnotationEditor {
   #savedDimensions = null;
   #boundFocusin = this.focusin.bind(this);
   #boundFocusout = this.focusout.bind(this);
+  #editToolbar = null;
   #focusedResizerName = "";
   #hasBeenClicked = false;
   #isEditing = false;
@@ -3440,6 +3517,20 @@ class AnnotationEditor {
     });
     this.#altTextWasFromKeyBoard = false;
   }
+  addEditToolbar() {
+    if (this.#editToolbar || this.#isInEditMode) {
+      return;
+    }
+    this.#editToolbar = new EditorToolbar(this);
+    this.div.append(this.#editToolbar.render());
+  }
+  removeEditToolbar() {
+    if (!this.#editToolbar) {
+      return;
+    }
+    this.#editToolbar.remove();
+    this.#editToolbar = null;
+  }
   getClientDimensions() {
     return this.div.getBoundingClientRect();
   }
@@ -3644,6 +3735,7 @@ class AnnotationEditor {
       this.#moveInDOMTimeout = null;
     }
     this.#stopResizing();
+    this.removeEditToolbar();
   }
   get isResizable() {
     return false;
@@ -3763,6 +3855,8 @@ class AnnotationEditor {
   select() {
     this.makeResizable();
     this.div?.classList.add("selectedEditor");
+    this.addEditToolbar();
+    this.#editToolbar?.show();
   }
   unselect() {
     this.#resizersDiv?.classList.add("hidden");
@@ -3770,6 +3864,7 @@ class AnnotationEditor {
     if (this.div?.contains(document.activeElement)) {
       this._uiManager.currentLayer.div.focus();
     }
+    this.#editToolbar?.hide();
   }
   updateParams(type, value) {}
   disableEditing() {
@@ -8060,7 +8155,7 @@ function getDocument(src) {
   }
   const fetchDocParams = {
     docId,
-    apiVersion: '4.0.189',
+    apiVersion: '4.0.246',
     data,
     password,
     disableAutoFetch,
@@ -9684,8 +9779,8 @@ class InternalRenderTask {
     }
   }
 }
-const version = '4.0.189';
-const build = '50f52b43a';
+const version = '4.0.246';
+const build = '086a5921d';
 
 ;// CONCATENATED MODULE: ./src/display/text_layer.js
 
@@ -11304,7 +11399,9 @@ class TextWidgetAnnotationElement extends WidgetAnnotationElement {
           }
           elementData.lastCommittedValue = target.value;
           elementData.commitKey = 1;
-          elementData.focused = true;
+          if (!this.data.actions?.Focus) {
+            elementData.focused = true;
+          }
         });
         element.addEventListener("updatefromsandbox", jsEvent => {
           this.showElementAndHideCanvas(jsEvent.target);
@@ -11408,7 +11505,9 @@ class TextWidgetAnnotationElement extends WidgetAnnotationElement {
           if (!elementData.focused || !event.relatedTarget) {
             return;
           }
-          elementData.focused = false;
+          if (!this.data.actions?.Blur) {
+            elementData.focused = false;
+          }
           const {
             value
           } = event.target;
@@ -13621,7 +13720,7 @@ class InkEditor extends AnnotationEditor {
     this.#disableEditing = true;
     this.div.classList.add("disabled");
     this.#fitToContent(true);
-    this.makeResizable();
+    this.select();
     this.parent.addInkEditorIfNeeded(true);
     this.moveInDOM();
     this.div.focus({
@@ -14866,8 +14965,8 @@ class AnnotationEditorLayer {
 
 
 
-const pdfjsVersion = '4.0.189';
-const pdfjsBuild = '50f52b43a';
+const pdfjsVersion = '4.0.246';
+const pdfjsBuild = '086a5921d';
 
 var __webpack_exports__AbortException = __webpack_exports__.AbortException;
 var __webpack_exports__AnnotationEditorLayer = __webpack_exports__.AnnotationEditorLayer;
@@ -14898,6 +14997,7 @@ var __webpack_exports__VerbosityLevel = __webpack_exports__.VerbosityLevel;
 var __webpack_exports__XfaLayer = __webpack_exports__.XfaLayer;
 var __webpack_exports__build = __webpack_exports__.build;
 var __webpack_exports__createValidAbsoluteUrl = __webpack_exports__.createValidAbsoluteUrl;
+var __webpack_exports__fetchData = __webpack_exports__.fetchData;
 var __webpack_exports__getDocument = __webpack_exports__.getDocument;
 var __webpack_exports__getFilenameFromUrl = __webpack_exports__.getFilenameFromUrl;
 var __webpack_exports__getPdfFilenameFromUrl = __webpack_exports__.getPdfFilenameFromUrl;
@@ -14911,4 +15011,4 @@ var __webpack_exports__setLayerDimensions = __webpack_exports__.setLayerDimensio
 var __webpack_exports__shadow = __webpack_exports__.shadow;
 var __webpack_exports__updateTextLayer = __webpack_exports__.updateTextLayer;
 var __webpack_exports__version = __webpack_exports__.version;
-export { __webpack_exports__AbortException as AbortException, __webpack_exports__AnnotationEditorLayer as AnnotationEditorLayer, __webpack_exports__AnnotationEditorParamsType as AnnotationEditorParamsType, __webpack_exports__AnnotationEditorType as AnnotationEditorType, __webpack_exports__AnnotationEditorUIManager as AnnotationEditorUIManager, __webpack_exports__AnnotationLayer as AnnotationLayer, __webpack_exports__AnnotationMode as AnnotationMode, __webpack_exports__CMapCompressionType as CMapCompressionType, __webpack_exports__DOMSVGFactory as DOMSVGFactory, __webpack_exports__FeatureTest as FeatureTest, __webpack_exports__GlobalWorkerOptions as GlobalWorkerOptions, __webpack_exports__ImageKind as ImageKind, __webpack_exports__InvalidPDFException as InvalidPDFException, __webpack_exports__MissingPDFException as MissingPDFException, __webpack_exports__OPS as OPS, __webpack_exports__PDFDataRangeTransport as PDFDataRangeTransport, __webpack_exports__PDFDateString as PDFDateString, __webpack_exports__PDFWorker as PDFWorker, __webpack_exports__PasswordResponses as PasswordResponses, __webpack_exports__PermissionFlag as PermissionFlag, __webpack_exports__PixelsPerInch as PixelsPerInch, __webpack_exports__PromiseCapability as PromiseCapability, __webpack_exports__RenderingCancelledException as RenderingCancelledException, __webpack_exports__UnexpectedResponseException as UnexpectedResponseException, __webpack_exports__Util as Util, __webpack_exports__VerbosityLevel as VerbosityLevel, __webpack_exports__XfaLayer as XfaLayer, __webpack_exports__build as build, __webpack_exports__createValidAbsoluteUrl as createValidAbsoluteUrl, __webpack_exports__getDocument as getDocument, __webpack_exports__getFilenameFromUrl as getFilenameFromUrl, __webpack_exports__getPdfFilenameFromUrl as getPdfFilenameFromUrl, __webpack_exports__getXfaPageViewport as getXfaPageViewport, __webpack_exports__isDataScheme as isDataScheme, __webpack_exports__isPdfFile as isPdfFile, __webpack_exports__noContextMenu as noContextMenu, __webpack_exports__normalizeUnicode as normalizeUnicode, __webpack_exports__renderTextLayer as renderTextLayer, __webpack_exports__setLayerDimensions as setLayerDimensions, __webpack_exports__shadow as shadow, __webpack_exports__updateTextLayer as updateTextLayer, __webpack_exports__version as version };
+export { __webpack_exports__AbortException as AbortException, __webpack_exports__AnnotationEditorLayer as AnnotationEditorLayer, __webpack_exports__AnnotationEditorParamsType as AnnotationEditorParamsType, __webpack_exports__AnnotationEditorType as AnnotationEditorType, __webpack_exports__AnnotationEditorUIManager as AnnotationEditorUIManager, __webpack_exports__AnnotationLayer as AnnotationLayer, __webpack_exports__AnnotationMode as AnnotationMode, __webpack_exports__CMapCompressionType as CMapCompressionType, __webpack_exports__DOMSVGFactory as DOMSVGFactory, __webpack_exports__FeatureTest as FeatureTest, __webpack_exports__GlobalWorkerOptions as GlobalWorkerOptions, __webpack_exports__ImageKind as ImageKind, __webpack_exports__InvalidPDFException as InvalidPDFException, __webpack_exports__MissingPDFException as MissingPDFException, __webpack_exports__OPS as OPS, __webpack_exports__PDFDataRangeTransport as PDFDataRangeTransport, __webpack_exports__PDFDateString as PDFDateString, __webpack_exports__PDFWorker as PDFWorker, __webpack_exports__PasswordResponses as PasswordResponses, __webpack_exports__PermissionFlag as PermissionFlag, __webpack_exports__PixelsPerInch as PixelsPerInch, __webpack_exports__PromiseCapability as PromiseCapability, __webpack_exports__RenderingCancelledException as RenderingCancelledException, __webpack_exports__UnexpectedResponseException as UnexpectedResponseException, __webpack_exports__Util as Util, __webpack_exports__VerbosityLevel as VerbosityLevel, __webpack_exports__XfaLayer as XfaLayer, __webpack_exports__build as build, __webpack_exports__createValidAbsoluteUrl as createValidAbsoluteUrl, __webpack_exports__fetchData as fetchData, __webpack_exports__getDocument as getDocument, __webpack_exports__getFilenameFromUrl as getFilenameFromUrl, __webpack_exports__getPdfFilenameFromUrl as getPdfFilenameFromUrl, __webpack_exports__getXfaPageViewport as getXfaPageViewport, __webpack_exports__isDataScheme as isDataScheme, __webpack_exports__isPdfFile as isPdfFile, __webpack_exports__noContextMenu as noContextMenu, __webpack_exports__normalizeUnicode as normalizeUnicode, __webpack_exports__renderTextLayer as renderTextLayer, __webpack_exports__setLayerDimensions as setLayerDimensions, __webpack_exports__shadow as shadow, __webpack_exports__updateTextLayer as updateTextLayer, __webpack_exports__version as version };

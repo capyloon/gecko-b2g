@@ -1,6 +1,11 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
+Services.scriptloader.loadSubScript(
+  "chrome://mochitests/content/browser/toolkit/components/shopping/test/browser/head.js",
+  this
+);
+
 const { sinon } = ChromeUtils.importESModule(
   "resource://testing-common/Sinon.sys.mjs"
 );
@@ -84,7 +89,8 @@ const MOCK_STALE_PRODUCT_RESPONSE = {
 const MOCK_NOT_ENOUGH_REVIEWS_PRODUCT_RESPONSE = {
   ...MOCK_UNPOPULATED_DATA,
   product_id: "ABCD123",
-  needs_analysis: true,
+  needs_analysis: false,
+  not_enough_reviews: true,
 };
 
 const MOCK_ANALYZED_PRODUCT_RESPONSE = {

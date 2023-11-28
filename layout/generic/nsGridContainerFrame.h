@@ -123,10 +123,6 @@ class nsGridContainerFrame final : public nsContainerFrame,
   nscoord GetMinISize(gfxContext* aRenderingContext) override;
   nscoord GetPrefISize(gfxContext* aRenderingContext) override;
   void MarkIntrinsicISizesDirty() override;
-  bool IsFrameOfType(uint32_t aFlags) const override {
-    return nsContainerFrame::IsFrameOfType(
-        aFlags & ~nsIFrame::eCanContainOverflowContainers);
-  }
 
   void BuildDisplayList(nsDisplayListBuilder* aBuilder,
                         const nsDisplayListSet& aLists) override;
@@ -338,6 +334,9 @@ class nsGridContainerFrame final : public nsContainerFrame,
   using LineNameList =
       const mozilla::StyleOwnedSlice<mozilla::StyleCustomIdent>;
   void AddImplicitNamedAreas(mozilla::Span<LineNameList>);
+  using StyleLineNameListValue =
+      const mozilla::StyleGenericLineNameListValue<mozilla::StyleInteger>;
+  void AddImplicitNamedAreas(mozilla::Span<StyleLineNameListValue>);
 
   /**
    * Reflow and place our children.
@@ -511,6 +510,10 @@ class nsGridContainerFrame final : public nsContainerFrame,
   // Store the given TrackSizes in aAxis on a UsedTrackSizes frame property.
   void StoreUsedTrackSizes(LogicalAxis aAxis,
                            const nsTArray<TrackSize>& aSizes);
+
+  // The internal implementation for AddImplicitNamedAreas().
+  void AddImplicitNamedAreasInternal(LineNameList& aNameList,
+                                     ImplicitNamedAreas* aAreas);
 
   /**
    * Cached values to optimize GetMinISize/GetPrefISize.

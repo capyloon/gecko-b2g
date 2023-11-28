@@ -2976,6 +2976,8 @@ void CanvasRenderingContext2D::ClearRect(double aX, double aY, double aW,
 
 void CanvasRenderingContext2D::FillRect(double aX, double aY, double aW,
                                         double aH) {
+  mFeatureUsage |= CanvasFeatureUsage::FillRect;
+
   if (!ValidateRect(aX, aY, aW, aH, true)) {
     return;
   }
@@ -3252,6 +3254,8 @@ void CanvasRenderingContext2D::StrokeImpl(const gfx::Path& aPath) {
 }
 
 void CanvasRenderingContext2D::Stroke() {
+  mFeatureUsage |= CanvasFeatureUsage::Stroke;
+
   EnsureUserSpacePath();
   if (!IsTargetValid()) {
     return;
@@ -3749,6 +3753,8 @@ void CanvasRenderingContext2D::TransformCurrentPath(const Matrix& aTransform) {
 
 void CanvasRenderingContext2D::SetFont(const nsACString& aFont,
                                        ErrorResult& aError) {
+  mFeatureUsage |= CanvasFeatureUsage::SetFont;
+
   SetFontInternal(aFont, aError);
   if (aError.Failed()) {
     return;
@@ -4152,22 +4158,45 @@ void CanvasRenderingContext2D::FillText(const nsAString& aText, double aX,
                                         double aY,
                                         const Optional<double>& aMaxWidth,
                                         ErrorResult& aError) {
-  DebugOnly<TextMetrics*> metrics = DrawOrMeasureText(
+  // We try to match the most commonly observed strings used by canvas
+  // fingerprinting scripts. We do a prefix match, because that means having to
+  // match fewer bytes and sometimes the strings is followed by a few random
+  // characters.
+  // - Cwm fjordbank gly
+  //   Used by FingerprintJS
+  //   (https://github.com/fingerprintjs/fingerprintjs/blob/4c4b2c8455e701b8341b2b766d1939cf5de4b615/src/sources/canvas.ts#L119)
+  //   and others
+  // - Hel$&?6%){mZ+#@
+  // - <@nv45. F1n63r,Pr1n71n6!
+  // Usually there are at most a handful (usually ~1/2) fillText calls by
+  // fingerprinters
+  if (mFillTextCalls <= 5) {
+    if (StringBeginsWith(aText, u"Cwm fjord"_ns) ||
+        StringBeginsWith(aText, u"Hel$&?6%"_ns) ||
+        StringBeginsWith(aText, u"<@nv45. "_ns)) {
+      mFeatureUsage |= CanvasFeatureUsage::KnownFingerprintText;
+    }
+    mFillTextCalls++;
+  }
+
+  DebugOnly<UniquePtr<TextMetrics>> metrics = DrawOrMeasureText(
       aText, aX, aY, aMaxWidth, TextDrawOperation::FILL, aError);
-  MOZ_ASSERT(!metrics);  // drawing operation never returns TextMetrics
+  MOZ_ASSERT(
+      !metrics.inspect());  // drawing operation never returns TextMetrics
 }
 
 void CanvasRenderingContext2D::StrokeText(const nsAString& aText, double aX,
                                           double aY,
                                           const Optional<double>& aMaxWidth,
                                           ErrorResult& aError) {
-  DebugOnly<TextMetrics*> metrics = DrawOrMeasureText(
+  DebugOnly<UniquePtr<TextMetrics>> metrics = DrawOrMeasureText(
       aText, aX, aY, aMaxWidth, TextDrawOperation::STROKE, aError);
-  MOZ_ASSERT(!metrics);  // drawing operation never returns TextMetrics
+  MOZ_ASSERT(
+      !metrics.inspect());  // drawing operation never returns TextMetrics
 }
 
-TextMetrics* CanvasRenderingContext2D::MeasureText(const nsAString& aRawText,
-                                                   ErrorResult& aError) {
+UniquePtr<TextMetrics> CanvasRenderingContext2D::MeasureText(
+    const nsAString& aRawText, ErrorResult& aError) {
   Optional<double> maxWidth;
   return DrawOrMeasureText(aRawText, 0, 0, maxWidth, TextDrawOperation::MEASURE,
                            aError);
@@ -4526,8 +4555,8 @@ struct MOZ_STACK_CLASS CanvasBidiProcessor final
   bool mIgnoreSetText = false;
 };
 
-TextMetrics* CanvasRenderingContext2D::DrawOrMeasureText(
-    const nsAString& aRawText, float aX, float aY,
+UniquePtr<TextMetrics> CanvasRenderingContext2D::DrawOrMeasureText(
+    const nsAString& aText, float aX, float aY,
     const Optional<double>& aMaxWidth, TextDrawOperation aOp,
     ErrorResult& aError) {
   RefPtr<gfxFontGroup> currentFontStyle = GetCurrentFontStyle();
@@ -4540,7 +4569,7 @@ TextMetrics* CanvasRenderingContext2D::DrawOrMeasureText(
   RefPtr<Document> document = presShell ? presShell->GetDocument() : nullptr;
 
   // replace all the whitespace characters with U+0020 SPACE
-  nsAutoString textToDraw(aRawText);
+  nsAutoString textToDraw(aText);
   TextReplaceWhitespaceCharacters(textToDraw);
 
   // According to spec, the API should return an empty array if maxWidth was
@@ -4599,8 +4628,8 @@ TextMetrics* CanvasRenderingContext2D::DrawOrMeasureText(
   if (currentFontStyle->GetStyle()->size == 0.0F) {
     aError = NS_OK;
     if (aOp == TextDrawOperation::MEASURE) {
-      return new TextMetrics(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                             0.0, 0.0);
+      return MakeUnique<TextMetrics>(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                     0.0, 0.0, 0.0, 0.0);
     }
     return nullptr;
   }
@@ -4610,8 +4639,8 @@ TextMetrics* CanvasRenderingContext2D::DrawOrMeasureText(
     // This may not be correct - what should TextMetrics contain in the case of
     // infinite width or height?
     if (aOp == TextDrawOperation::MEASURE) {
-      return new TextMetrics(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                             0.0, 0.0);
+      return MakeUnique<TextMetrics>(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                     0.0, 0.0, 0.0, 0.0);
     }
     return nullptr;
   }
@@ -4778,7 +4807,7 @@ TextMetrics* CanvasRenderingContext2D::DrawOrMeasureText(
     double actualBoundingBoxDescent =
         processor.mBoundingBox.YMost() + baselineAnchor;
     auto baselines = font->GetBaselines(fontOrientation);
-    return new TextMetrics(
+    return MakeUnique<TextMetrics>(
         totalWidth, actualBoundingBoxLeft, actualBoundingBoxRight,
         fontMetrics.maxAscent - baselineAnchor,   // fontBBAscent
         fontMetrics.maxDescent + baselineAnchor,  // fontBBDescent
@@ -6231,10 +6260,9 @@ static already_AddRefed<ImageData> CreateImageData(
   }
 
   // Create the fast typed array; it's initialized to 0 by default.
-  JSObject* darray = Uint8ClampedArray::Create(aCx, aContext, len.value());
-  if (!darray) {
-    // TODO: Should use OOMReporter.
-    aError.Throw(NS_ERROR_OUT_OF_MEMORY);
+  JSObject* darray =
+      Uint8ClampedArray::Create(aCx, aContext, len.value(), aError);
+  if (aError.Failed()) {
     return nullptr;
   }
 

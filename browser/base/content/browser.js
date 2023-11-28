@@ -24,6 +24,7 @@ ChromeUtils.defineESModuleGetters(this, {
   BrowserUsageTelemetry: "resource:///modules/BrowserUsageTelemetry.sys.mjs",
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
   Color: "resource://gre/modules/Color.sys.mjs",
+  ContentAnalysis: "resource:///modules/ContentAnalysis.sys.mjs",
   ContextualIdentityService:
     "resource://gre/modules/ContextualIdentityService.sys.mjs",
   CustomizableUI: "resource:///modules/CustomizableUI.sys.mjs",
@@ -64,6 +65,7 @@ ChromeUtils.defineESModuleGetters(this, {
   PromptUtils: "resource://gre/modules/PromptUtils.sys.mjs",
   ReaderMode: "resource://gre/modules/ReaderMode.sys.mjs",
   ResetPBMPanel: "resource:///modules/ResetPBMPanel.sys.mjs",
+  ReportBrokenSite: "resource:///modules/ReportBrokenSite.sys.mjs",
   SafeBrowsing: "resource://gre/modules/SafeBrowsing.sys.mjs",
   Sanitizer: "resource:///modules/Sanitizer.sys.mjs",
   SaveToPocket: "chrome://pocket/content/SaveToPocket.sys.mjs",
@@ -1755,8 +1757,6 @@ var gBrowserInit = {
 
       // Stop the about:blank load
       gBrowser.stop();
-      // make sure it has a docshell
-      gBrowser.docShell;
 
       // Remove the speculative focus from the urlbar to let the url be formatted.
       gURLBar.removeAttribute("focused");
@@ -1871,12 +1871,14 @@ var gBrowserInit = {
     BrowserOffline.init();
     CanvasPermissionPromptHelper.init();
     WebAuthnPromptHelper.init();
+    ContentAnalysis.initialize();
 
     // Initialize the full zoom setting.
     // We do this before the session restore service gets initialized so we can
     // apply full zoom settings to tabs restored by the session restore service.
     FullZoom.init();
     PanelUI.init(shouldSuppressPopupNotifications);
+    ReportBrokenSite.init(gBrowser);
 
     UpdateUrlbarSearchSplitterState();
 
@@ -4997,6 +4999,15 @@ var XULBrowserWindow = {
 
     this.overLink = url;
     LinkTargetDisplay.update();
+  },
+
+  onEnterDOMFullscreen() {
+    // Clear the status panel.
+    this.hideOverLinkImmediately = true;
+    this.setOverLink("");
+    this.hideOverLinkImmediately = false;
+    this.status = "";
+    this.setDefaultStatus("");
   },
 
   showTooltip(xDevPix, yDevPix, tooltip, direction, browser) {

@@ -120,7 +120,8 @@ void CacheRegisterAllocator::saveIonLiveRegisters(MacroAssembler& masm,
   // Step 2. Figure out the size of our live regs.  This is consistent with
   // the fact that we're using storeRegsInMask to generate the save code and
   // PopRegsInMask to generate the restore code.
-  size_t sizeOfLiveRegsInBytes = masm.PushRegsInMaskSizeInBytes(liveRegs);
+  size_t sizeOfLiveRegsInBytes =
+      MacroAssembler::PushRegsInMaskSizeInBytes(liveRegs);
 
   MOZ_ASSERT(sizeOfLiveRegsInBytes > 0);
 
@@ -1958,12 +1959,12 @@ void IonIC::attachCacheIRStub(JSContext* cx, const CacheIRWriter& writer,
 
   size_t bytesNeeded = stubInfo->stubDataOffset() + stubInfo->stubDataSize();
 
-  // Allocate the IonICStub in the optimized stub space. Ion stubs and
+  // Allocate the IonICStub in the JitZone's stub space. Ion stubs and
   // CacheIRStubInfo instances for Ion stubs can be purged on GC. That's okay
   // because the stub code is rooted separately when we make a VM call, and
   // stub code should never access the IonICStub after making a VM call. The
   // IonICStub::poison method poisons the stub to catch bugs in this area.
-  ICStubSpace* stubSpace = cx->zone()->jitZone()->optimizedStubSpace();
+  ICStubSpace* stubSpace = cx->zone()->jitZone()->stubSpace();
   void* newStubMem = stubSpace->alloc(bytesNeeded);
   if (!newStubMem) {
     return;

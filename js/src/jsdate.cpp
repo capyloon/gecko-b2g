@@ -801,21 +801,26 @@ static bool ParseDigits(size_t* result, const CharT* s, size_t* i,
 /*
  * Read and convert decimal digits to the right of a decimal point,
  * representing a fractional integer, from s[*i] into *result
- * while *i < limit.
+ * while *i < limit, up to 3 digits. Consumes any digits beyond 3
+ * without affecting the result.
  *
  * Succeed if any digits are converted. Advance *i only
  * as digits are consumed.
  */
 template <typename CharT>
-static bool ParseFractional(double* result, const CharT* s, size_t* i,
+static bool ParseFractional(int* result, const CharT* s, size_t* i,
                             size_t limit) {
-  double factor = 0.1;
+  int factor = 100;
   size_t init = *i;
-  *result = 0.0;
-  while (*i < limit && ('0' <= s[*i] && s[*i] <= '9')) {
+  *result = 0;
+  for (; *i < limit && ('0' <= s[*i] && s[*i] <= '9'); ++(*i)) {
+    if (*i - init >= 3) {
+      // If we're past 3 digits, do nothing with it, but continue to
+      // consume the remainder of the digits
+      continue;
+    }
     *result += (s[*i] - '0') * factor;
-    factor *= 0.1;
-    ++(*i);
+    factor /= 10;
   }
   return *i != init;
 }
@@ -881,16 +886,6 @@ static int DaysInMonth(int year, int month) {
  *
  * These are:
  *
- *   Standalone time part:
- *     Any of the time formats below can be parsed without a date part.
- *     E.g. "T19:00:00Z" will parse successfully. The date part will then
- *     default to 1970-01-01.
- *
- *   'T' from the time part may be replaced with a space character:
- *     "1970-01-01 12:00:00Z" will parse successfully. Note that only a single
- *     space is permitted and this is not permitted in the standalone
- *     version above.
- *
  *   One or more decimal digits for milliseconds:
  *     The specification requires exactly three decimal digits for
  *     the fractional part but we allow for one or more digits.
@@ -898,11 +893,6 @@ static int DaysInMonth(int year, int month) {
  *   Time zone specifier without ':':
  *     We allow the time zone to be specified without a ':' character.
  *     E.g. "T19:00:00+0700" is equivalent to "T19:00:00+07:00".
- *
- *   One or two digits for months, days, hours, minutes and seconds:
- *     The specification requires exactly two decimal digits for the fields
- *     above. We allow for one or two decimal digits. I.e. "1970-1-1" is
- *     equivalent to "1970-01-01".
  *
  * Date part:
  *
@@ -924,16 +914,16 @@ static int DaysInMonth(int year, int month) {
  *     Thh:mm:ssTZD (eg T19:20:30+01:00)
  *
  *  Hours, minutes, seconds and a decimal fraction of a second:
- *     Thh:mm:ss.sTZD (eg T19:20:30.45+01:00)
+ *     Thh:mm:ss.sssTZD (eg T19:20:30.45+01:00)
  *
  * where:
  *
  *   YYYY = four-digit year or six digit year as +YYYYYY or -YYYYYY
  *   MM   = two-digit month (01=January, etc.)
  *   DD   = two-digit day of month (01 through 31)
- *   hh   = one or two digits of hour (00 through 23) (am/pm NOT allowed)
- *   mm   = one or two digits of minute (00 through 59)
- *   ss   = one or two digits of second (00 through 59)
+ *   hh   = two digits of hour (00 through 24) (am/pm NOT allowed)
+ *   mm   = two digits of minute (00 through 59)
+ *   ss   = two digits of second (00 through 59)
  *   sss  = one or more digits representing a decimal fraction of a second
  *   TZD  = time zone designator (Z or +hh:mm or -hh:mm or missing for local)
  */
@@ -941,7 +931,6 @@ template <typename CharT>
 static bool ParseISOStyleDate(DateTimeInfo::ForceUTC forceUTC, const CharT* s,
                               size_t length, ClippedTime* result) {
   size_t i = 0;
-  size_t pre = 0;
   int tzMul = 1;
   int dateMul = 1;
   size_t year = 1970;
@@ -950,12 +939,10 @@ static bool ParseISOStyleDate(DateTimeInfo::ForceUTC forceUTC, const CharT* s,
   size_t hour = 0;
   size_t min = 0;
   size_t sec = 0;
-  double frac = 0;
+  int msec = 0;
   bool isLocalTime = false;
   size_t tzHour = 0;
   size_t tzMin = 0;
-  bool isPermissive = false;
-  bool isStrict = false;
 
 #define PEEK(ch) (i < length && s[i] == ch)
 
@@ -985,19 +972,6 @@ static bool ParseISOStyleDate(DateTimeInfo::ForceUTC forceUTC, const CharT* s,
     return false;                                \
   }
 
-#define NEED_NDIGITS_OR_LESS(n, field)                 \
-  pre = i;                                             \
-  if (!ParseDigitsNOrLess(n, &field, s, &i, length)) { \
-    return false;                                      \
-  }                                                    \
-  if (i < pre + (n)) {                                 \
-    if (isStrict) {                                    \
-      return false;                                    \
-    } else {                                           \
-      isPermissive = true;                             \
-    }                                                  \
-  }
-
   if (PEEK('+') || PEEK('-')) {
     if (PEEK('-')) {
       dateMul = -1;
@@ -1020,29 +994,21 @@ static bool ParseISOStyleDate(DateTimeInfo::ForceUTC forceUTC, const CharT* s,
 
 done_date:
   if (PEEK('T')) {
-    if (isPermissive) {
-      // Require standard format "[+00]1970-01-01" if a time part marker "T"
-      // exists
-      return false;
-    }
-    isStrict = true;
-    i++;
-  } else if (PEEK(' ')) {
-    i++;
+    ++i;
   } else {
     goto done;
   }
 
-  NEED_NDIGITS_OR_LESS(2, hour);
+  NEED_NDIGITS(2, hour);
   NEED(':');
-  NEED_NDIGITS_OR_LESS(2, min);
+  NEED_NDIGITS(2, min);
 
   if (PEEK(':')) {
     ++i;
-    NEED_NDIGITS_OR_LESS(2, sec);
+    NEED_NDIGITS(2, sec);
     if (PEEK('.')) {
       ++i;
-      if (!ParseFractional(&frac, s, &i, length)) {
+      if (!ParseFractional(&msec, s, &i, length)) {
         return false;
       }
     }
@@ -1056,13 +1022,6 @@ done_date:
     }
     ++i;
     NEED_NDIGITS(2, tzHour);
-    /*
-     * Non-standard extension to the ISO date format:
-     * allow two digits for the time zone offset.
-     */
-    if (i >= length && !isStrict) {
-      goto done;
-    }
     /*
      * Non-standard extension to the ISO date format (permitted by ES5):
      * allow "-0700" as a time zone offset, not just "-07:00".
@@ -1079,7 +1038,7 @@ done:
   if (year > 275943  // ceil(1e8/365) + 1970
       || (month == 0 || month > 12) ||
       (day == 0 || day > size_t(DaysInMonth(year, month))) || hour > 24 ||
-      ((hour == 24) && (min > 0 || sec > 0 || frac > 0)) || min > 59 ||
+      ((hour == 24) && (min > 0 || sec > 0 || msec > 0)) || min > 59 ||
       sec > 59 || tzHour > 23 || tzMin > 59) {
     return false;
   }
@@ -1090,23 +1049,22 @@ done:
 
   month -= 1; /* convert month to 0-based */
 
-  double msec = MakeDate(MakeDay(dateMul * double(year), month, day),
-                         MakeTime(hour, min, sec, frac * 1000.0));
+  double date = MakeDate(MakeDay(dateMul * double(year), month, day),
+                         MakeTime(hour, min, sec, msec));
 
   if (isLocalTime) {
-    msec = UTC(forceUTC, msec);
+    date = UTC(forceUTC, date);
   } else {
-    msec -= tzMul * (tzHour * msPerHour + tzMin * msPerMinute);
+    date -= tzMul * (tzHour * msPerHour + tzMin * msPerMinute);
   }
 
-  *result = TimeClip(msec);
-  return NumbersAreIdentical(msec, result->toDouble());
+  *result = TimeClip(date);
+  return NumbersAreIdentical(date, result->toDouble());
 
 #undef PEEK
 #undef NEED
 #undef DONE_UNLESS
 #undef NEED_NDIGITS
-#undef NEED_NDIGITS_OR_LESS
 }
 
 int FixupNonFullYear(int year) {
@@ -1135,15 +1093,57 @@ bool IsPrefixOfKeyword(const CharT* s, size_t len, const char* keyword) {
   return len == 0;
 }
 
-static constexpr const char* const months_names[] = {
-    "january", "february", "march",     "april",   "may",      "june",
-    "july",    "august",   "september", "october", "november", "december",
+static constexpr const char* const month_prefixes[] = {
+    "jan", "feb", "mar", "apr", "may", "jun",
+    "jul", "aug", "sep", "oct", "nov", "dec",
 };
+
+/**
+ * Given a string s of length >= 3, checks if it begins,
+ * case-insensitive, with the given lower case prefix.
+ */
+template <typename CharT>
+bool StartsWithMonthPrefix(const CharT* s, const char* prefix) {
+  MOZ_ASSERT(strlen(prefix) == 3);
+
+  for (size_t i = 0; i < 3; ++i) {
+    MOZ_ASSERT(IsAsciiAlpha(*s));
+    MOZ_ASSERT(IsAsciiLowercaseAlpha(*prefix));
+
+    if (unicode::ToLowerCase(static_cast<Latin1Char>(*s)) != *prefix) {
+      return false;
+    }
+
+    ++s, ++prefix;
+  }
+
+  return true;
+}
+
+template <typename CharT>
+bool IsMonthName(const CharT* s, size_t len, int* mon) {
+  // Month abbreviations < 3 chars are not accepted.
+  if (len < 3) {
+    return false;
+  }
+
+  for (size_t m = 0; m < std::size(month_prefixes); ++m) {
+    if (StartsWithMonthPrefix(s, month_prefixes[m])) {
+      // Use numeric value.
+      *mon = m + 1;
+      return true;
+    }
+  }
+
+  return false;
+}
 
 /*
  * Try to parse the following date formats:
  *   dd-MMM-yyyy
  *   dd-MMM-yy
+ *   MMM-dd-yyyy
+ *   MMM-dd-yy
  *   yyyy-MMM-dd
  *   yy-MMM-dd
  *
@@ -1154,52 +1154,42 @@ template <typename CharT>
 static bool TryParseDashedDatePrefix(const CharT* s, size_t length,
                                      size_t* indexOut, int* yearOut,
                                      int* monOut, int* mdayOut) {
-  size_t i = 0;
+  size_t i = *indexOut;
 
+  size_t pre = i;
   size_t mday;
   if (!ParseDigitsNOrLess(6, &mday, s, &i, length)) {
     return false;
   }
-  size_t mdayDigits = i;
+  size_t mdayDigits = i - pre;
 
   if (i >= length || s[i] != '-') {
     return false;
   }
   ++i;
 
-  size_t start = i;
-  for (; i < length; i++) {
-    if (!IsAsciiAlpha(s[i])) {
-      break;
+  int mon = 0;
+  if (*monOut == -1) {
+    // If month wasn't already set by ParseDate, it must be in the middle of
+    // this format, let's look for it
+    size_t start = i;
+    for (; i < length; i++) {
+      if (!IsAsciiAlpha(s[i])) {
+        break;
+      }
     }
-  }
 
-  // The shortest month is "may".
-  static constexpr size_t ShortestMonthNameLength = 3;
-  if (i - start < ShortestMonthNameLength) {
-    return false;
-  }
-
-  size_t mon = 0;
-  for (size_t m = 0; m < std::size(months_names); ++m) {
-    // If the field isn't a prefix of the month (an exact match is *not*
-    // required), try the next one.
-    if (IsPrefixOfKeyword(s + start, i - start, months_names[m])) {
-      // Use numeric value.
-      mon = m + 1;
-      break;
+    if (!IsMonthName(s + start, i - start, &mon)) {
+      return false;
     }
-  }
-  if (mon == 0) {
-    return false;
+
+    if (i >= length || s[i] != '-') {
+      return false;
+    }
+    ++i;
   }
 
-  if (i >= length || s[i] != '-') {
-    return false;
-  }
-  ++i;
-
-  size_t pre = i;
+  pre = i;
   size_t year;
   if (!ParseDigitsNOrLess(6, &year, s, &i, length)) {
     return false;
@@ -1226,7 +1216,9 @@ static bool TryParseDashedDatePrefix(const CharT* s, size_t length,
 
   *indexOut = i;
   *yearOut = year;
-  *monOut = mon;
+  if (*monOut == -1) {
+    *monOut = mon;
+  }
   *mdayOut = mday;
   return true;
 }
@@ -1249,7 +1241,7 @@ template <typename CharT>
 static bool TryParseDashedNumericDatePrefix(const CharT* s, size_t length,
                                             size_t* indexOut, int* yearOut,
                                             int* monOut, int* mdayOut) {
-  size_t i = 0;
+  size_t i = *indexOut;
 
   size_t first;
   if (!ParseDigitsNOrLess(6, &first, s, &i, length)) {
@@ -1339,19 +1331,6 @@ static constexpr CharsAndAction keywords[] = {
   { "friday", 0 },
   { "saturday", 0 },
   { "sunday", 0 },
-  // Months.
-  { "january", 1 },
-  { "february", 2 },
-  { "march", 3 },
-  { "april", 4, },
-  { "may", 5 },
-  { "june", 6 },
-  { "july", 7 },
-  { "august", 8 },
-  { "september", 9 },
-  { "october", 10 },
-  { "november", 11 },
-  { "december", 12 },
   // Time zone abbreviations.
   { "gmt", 10000 + 0 },
   { "z", 10000 + 0 },
@@ -1379,35 +1358,67 @@ constexpr size_t MinKeywordLength(const CharsAndAction (&keywords)[N]) {
 
 template <typename CharT>
 static bool ParseDate(DateTimeInfo::ForceUTC forceUTC, const CharT* s,
-                      size_t length, ClippedTime* result) {
-  if (ParseISOStyleDate(forceUTC, s, length, result)) {
-    return true;
-  }
-
+                      size_t length, ClippedTime* result,
+                      bool* countLateWeekday) {
   if (length == 0) {
     return false;
   }
 
-  int year = -1;
+  if (ParseISOStyleDate(forceUTC, s, length, result)) {
+    return true;
+  }
+
+  size_t index = 0;
   int mon = -1;
+  bool seenMonthName = false;
+
+  // Before we begin, we need to scrub any words from the beginning of the
+  // string up to the first number, recording the month if we encounter it
+  for (; index < length; index++) {
+    int c = s[index];
+
+    if (strchr(" ,.-/", c)) {
+      continue;
+    }
+    if (!IsAsciiAlpha(c)) {
+      break;
+    }
+
+    size_t start = index;
+    index++;
+    for (; index < length; index++) {
+      if (!IsAsciiAlpha(s[index])) {
+        break;
+      }
+    }
+
+    if (IsMonthName(s + start, index - start, &mon)) {
+      seenMonthName = true;
+    }
+  }
+
+  if (index >= length) {
+    return false;
+  }
+
+  int year = -1;
   int mday = -1;
   int hour = -1;
   int min = -1;
   int sec = -1;
-  double frac = 0;
+  int msec = 0;
   int tzOffset = -1;
 
   // One of '+', '-', ':', '/', or 0 (the default value).
   int prevc = 0;
 
   bool seenPlusMinus = false;
-  bool seenMonthName = false;
   bool seenFullYear = false;
   bool negativeYear = false;
   // Includes "GMT", "UTC", "UT", and "Z" timezone keywords
   bool seenGmtAbbr = false;
-
-  size_t index = 0;
+  // For telemetry purposes
+  bool seenLateWeekday = false;
 
   // Try parsing the leading dashed-date.
   //
@@ -1601,7 +1612,7 @@ static bool ParseDate(DateTimeInfo::ForceUTC forceUTC, const CharT* s,
         sec = /*byte*/ n;
         if (c == '.') {
           index++;
-          if (!ParseFractional(&frac, s, &index, length)) {
+          if (!ParseFractional(&msec, s, &index, length)) {
             return false;
           }
         }
@@ -1641,6 +1652,44 @@ static bool ParseDate(DateTimeInfo::ForceUTC forceUTC, const CharT* s,
 
       size_t k = std::size(keywords);
       while (k-- > 0) {
+        // Record a month if it is a month name. Note that some numbers are
+        // initially treated as months; if a numeric field has already been
+        // interpreted as a month, store that value to the actually appropriate
+        // date component and set the month here.
+        int tryMonth;
+        if (IsMonthName(s + start, index - start, &tryMonth)) {
+          if (seenMonthName) {
+            // Overwrite the previous month name
+            mon = tryMonth;
+            break;
+          }
+
+          seenMonthName = true;
+
+          if (mon < 0) {
+            mon = tryMonth;
+          } else if (mday < 0) {
+            mday = mon;
+            mon = tryMonth;
+          } else if (year < 0) {
+            if (mday > 0) {
+              // If the date is of the form f l month, then when month is
+              // reached we have f in mon and l in mday. In order to be
+              // consistent with the f month l and month f l forms, we need to
+              // swap so that f is in mday and l is in year.
+              year = mday;
+              mday = mon;
+            } else {
+              year = mon;
+            }
+            mon = tryMonth;
+          } else {
+            return false;
+          }
+
+          break;
+        }
+
         const CharsAndAction& keyword = keywords[k];
 
         // If the field isn't a prefix of the keyword (an exact match is *not*
@@ -1654,6 +1703,7 @@ static bool ParseDate(DateTimeInfo::ForceUTC forceUTC, const CharT* s,
         // Completely ignore days of the week, and don't derive any semantics
         // from them.
         if (action == 0) {
+          seenLateWeekday = true;
           break;
         }
 
@@ -1680,48 +1730,13 @@ static bool ParseDate(DateTimeInfo::ForceUTC forceUTC, const CharT* s,
           break;
         }
 
-        // Record a month if none has been seen before.  (Note that some numbers
-        // are initially treated as months; if a numeric field has already been
-        // interpreted as a month, store that value to the actually appropriate
-        // date component and set the month here.
-        if (action <= 12) {
-          if (seenMonthName) {
-            return false;
-          }
-
-          seenMonthName = true;
-
-          if (mon < 0) {
-            mon = action;
-          } else if (mday < 0) {
-            mday = mon;
-            mon = action;
-          } else if (year < 0) {
-            if (mday > 0) {
-              // If the date is of the form f l month, then when month is
-              // reached we have f in mon and l in mday. In order to be
-              // consistent with the f month l and month f l forms, we need to
-              // swap so that f is in mday and l is in year.
-              year = mday;
-              mday = mon;
-            } else {
-              year = mon;
-            }
-            mon = action;
-          } else {
-            return false;
-          }
-
-          break;
-        }
-
         // Finally, record a time zone offset.
         MOZ_ASSERT(action >= 10000);
         tzOffset = action - 10000;
         break;
       }
 
-      if (k == size_t(-1)) {
+      if (k == size_t(-1) && (!seenMonthName || mday != -1)) {
         return false;
       }
 
@@ -1812,24 +1827,47 @@ static bool ParseDate(DateTimeInfo::ForceUTC forceUTC, const CharT* s,
     hour = 0;
   }
 
-  double msec = MakeDate(MakeDay(year, mon, mday),
-                         MakeTime(hour, min, sec, frac * 1000.0));
+  double date =
+      MakeDate(MakeDay(year, mon, mday), MakeTime(hour, min, sec, msec));
+
   if (tzOffset == -1) { /* no time zone specified, have to use local */
-    msec = UTC(forceUTC, msec);
+    date = UTC(forceUTC, date);
   } else {
-    msec += tzOffset * msPerMinute;
+    date += tzOffset * msPerMinute;
   }
 
-  *result = TimeClip(msec);
+  // Setting this down here so that it only counts the telemetry in
+  // the case of a successful parse.
+  if (seenLateWeekday) {
+    *countLateWeekday = true;
+  }
+
+  *result = TimeClip(date);
   return true;
 }
 
 static bool ParseDate(DateTimeInfo::ForceUTC forceUTC, JSLinearString* s,
-                      ClippedTime* result) {
-  AutoCheckCannotGC nogc;
-  return s->hasLatin1Chars()
-             ? ParseDate(forceUTC, s->latin1Chars(nogc), s->length(), result)
-             : ParseDate(forceUTC, s->twoByteChars(nogc), s->length(), result);
+                      ClippedTime* result, JSContext* cx) {
+  bool countLateWeekday = false;
+  bool success;
+
+  {
+    AutoCheckCannotGC nogc;
+    success = s->hasLatin1Chars()
+                  ? ParseDate(forceUTC, s->latin1Chars(nogc), s->length(),
+                              result, &countLateWeekday)
+                  : ParseDate(forceUTC, s->twoByteChars(nogc), s->length(),
+                              result, &countLateWeekday);
+  }
+
+  // We are running telemetry to see if support for day of week after
+  // mday can be dropped. It is being done here to keep
+  // JSRuntime::setUseCounter out of AutoCheckCannotGC's scope.
+  if (countLateWeekday) {
+    cx->runtime()->setUseCounter(cx->global(), JSUseCounter::LATE_WEEKDAY);
+  }
+
+  return success;
 }
 
 static bool date_parse(JSContext* cx, unsigned argc, Value* vp) {
@@ -1851,7 +1889,7 @@ static bool date_parse(JSContext* cx, unsigned argc, Value* vp) {
   }
 
   ClippedTime result;
-  if (!ParseDate(ForceUTC(cx->realm()), linearStr, &result)) {
+  if (!ParseDate(ForceUTC(cx->realm()), linearStr, &result, cx)) {
     args.rval().setNaN();
     return true;
   }
@@ -3679,7 +3717,7 @@ static bool DateOneArgument(JSContext* cx, const CallArgs& args) {
         return false;
       }
 
-      if (!ParseDate(ForceUTC(cx->realm()), linearStr, &t)) {
+      if (!ParseDate(ForceUTC(cx->realm()), linearStr, &t, cx)) {
         t = ClippedTime::invalid();
       }
     } else {

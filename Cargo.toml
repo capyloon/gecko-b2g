@@ -138,7 +138,7 @@ wasi = { path = "build/rust/wasi" }
 # else we do use requires backtrace, so dummy it out for now.
 backtrace = { path = "build/rust/backtrace" }
 
-# Patch bindgen 0.63, 0.64 and 0.66 to 0.68
+# Patch bindgen 0.63, 0.64 and 0.66 to 0.69
 bindgen_0_63 = { package = "bindgen", path = "build/rust/bindgen-0.63" }
 bindgen_0_64 = { package = "bindgen", path = "build/rust/bindgen-0.64" }
 bindgen = { path = "build/rust/bindgen" }
@@ -177,6 +177,10 @@ moz_asserts = { path = "mozglue/static/rust/moz_asserts" }
 # builds.
 # Workaround for https://github.com/rust-lang/cargo/issues/11232
 rure = { path = "third_party/rust/rure" }
+
+# To-be-published changes.
+cssparser = { git = "https://github.com/servo/rust-cssparser", rev = "aaa966d9d6ae70c4b8a62bb5e3a14c068bb7dff0" }
+cssparser-macros = { git = "https://github.com/servo/rust-cssparser", rev = "aaa966d9d6ae70c4b8a62bb5e3a14c068bb7dff0" }
 
 # Other overrides
 chardetng = { git = "https://github.com/hsivonen/chardetng", rev = "3484d3e3ebdc8931493aa5df4d7ee9360a90e76b" }

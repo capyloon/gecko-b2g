@@ -2103,14 +2103,6 @@ static void ResetEnteredCounts(const ICEntry* icEntry) {
   }
 }
 
-static ICStubSpace* StubSpaceForStub(bool makesGCCalls, JSScript* script,
-                                     ICScript* icScript) {
-  if (makesGCCalls) {
-    return icScript->jitScriptStubSpace();
-  }
-  return script->zone()->jitZone()->optimizedStubSpace();
-}
-
 static const uint32_t MaxFoldedShapes = 16;
 
 const JSClass ShapeListObject::class_ = {"JIT ShapeList", 0, &classOps_};
@@ -2351,7 +2343,7 @@ bool js::jit::TryFoldingStubs(JSContext* cx, ICFallbackStub* fallback,
   }
 
   // Replace the existing stubs with the new folded stub.
-  fallback->discardStubs(cx, icEntry);
+  fallback->discardStubs(cx->zone(), icEntry);
 
   ICAttachResult result = AttachBaselineCacheIRStub(
       cx, writer, cacheKind, script, icScript, fallback, "StubFold");
@@ -2599,7 +2591,7 @@ ICAttachResult js::jit::AttachBaselineCacheIRStub(
     JitSpew(JitSpew_BaselineICFallback,
             "Tried attaching identical stub for (%s:%u:%u)",
             outerScript->filename(), outerScript->lineno(),
-            outerScript->column().zeroOriginValue());
+            outerScript->column().oneOriginValue());
     return ICAttachResult::DuplicateStub;
   }
 
@@ -2624,6 +2616,9 @@ ICAttachResult js::jit::AttachBaselineCacheIRStub(
     cx->zone()->jitZone()->clearStubFoldingBailoutData();
     if (stub->usedByTranspiler() && owningScript->hasIonScript()) {
       owningScript->ionScript()->resetNumFixableBailouts();
+    } else {
+      // Update the last IC counter if this is not a bailout from Ion.
+      owningScript->updateLastICStubCounter();
     }
     return ICAttachResult::Attached;
   }
@@ -2632,9 +2627,7 @@ ICAttachResult js::jit::AttachBaselineCacheIRStub(
 
   size_t bytesNeeded = stubInfo->stubDataOffset() + stubInfo->stubDataSize();
 
-  ICStubSpace* stubSpace =
-      StubSpaceForStub(stubInfo->makesGCCalls(), outerScript, icScript);
-  void* newStubMem = stubSpace->alloc(bytesNeeded);
+  void* newStubMem = jitZone->stubSpace()->alloc(bytesNeeded);
   if (!newStubMem) {
     return ICAttachResult::OOM;
   }
@@ -2660,6 +2653,11 @@ ICAttachResult js::jit::AttachBaselineCacheIRStub(
   writer.copyStubData(newStub->stubDataStart());
   newStub->setTypeData(writer.typeData());
   stub->addNewStub(icEntry, newStub);
+
+  JSScript* owningScript = icScript->isInlined()
+                               ? icScript->inliningRoot()->owningScript()
+                               : outerScript;
+  owningScript->updateLastICStubCounter();
   return ICAttachResult::Attached;
 }
 

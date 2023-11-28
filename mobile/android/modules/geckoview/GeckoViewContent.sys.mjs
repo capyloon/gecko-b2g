@@ -131,6 +131,39 @@ export class GeckoViewContent extends GeckoViewModule {
     }
   }
 
+  #sendDOMFullScreenEventToAllChildren(aEvent) {
+    let { browsingContext } = this.actor;
+
+    while (browsingContext) {
+      if (!browsingContext.currentWindowGlobal) {
+        break;
+      }
+
+      const currentPid = browsingContext.currentWindowGlobal.osPid;
+      const parentPid = browsingContext.parent?.currentWindowGlobal.osPid;
+
+      if (currentPid != parentPid) {
+        if (!browsingContext.parent) {
+          // Top level browsing context. Use origin actor (Bug 1505916).
+          const chromeBC = browsingContext.topChromeWindow?.browsingContext;
+          const requestOrigin = chromeBC?.fullscreenRequestOrigin?.get();
+          if (requestOrigin) {
+            requestOrigin.browsingContext.currentWindowGlobal
+              .getActor("GeckoViewContent")
+              .sendAsyncMessage(aEvent, {});
+            delete chromeBC.fullscreenRequestOrigin;
+            return;
+          }
+        }
+        const actor =
+          browsingContext.currentWindowGlobal.getActor("GeckoViewContent");
+        actor.sendAsyncMessage(aEvent, {});
+      }
+
+      browsingContext = browsingContext.parent;
+    }
+  }
+
   // Bundle event handler.
   onEvent(aEvent, aData, aCallback) {
     debug`onEvent: event=${aEvent}, data=${aData}`;
@@ -252,11 +285,15 @@ export class GeckoViewContent extends GeckoViewModule {
       case "MozDOMFullscreen:Entered":
         if (this.browser == aEvent.target) {
           // Remote browser; dispatch to content process.
-          this.sendToAllChildren("GeckoView:DOMFullscreenEntered");
+          this.#sendDOMFullScreenEventToAllChildren(
+            "GeckoView:DOMFullscreenEntered"
+          );
         }
         break;
       case "MozDOMFullscreen:Exited":
-        this.sendToAllChildren("GeckoView:DOMFullscreenExited");
+        this.#sendDOMFullScreenEventToAllChildren(
+          "GeckoView:DOMFullscreenExited"
+        );
         break;
       case "pagetitlechanged":
         this.eventDispatcher.sendRequest({
@@ -340,6 +377,26 @@ export class GeckoViewContent extends GeckoViewModule {
   }
 
   async _requestAnalysis(aData, aCallback) {
+    if (
+      Cu.isInAutomation &&
+      Services.prefs.getBoolPref("geckoview.shopping.mock_test_response", false)
+    ) {
+      const analysis = {
+        analysis_url: "https://www.example.com/mock_analysis_url",
+        product_id: "ABCDEFG123",
+        grade: "B",
+        adjusted_rating: 4.5,
+        needs_analysis: true,
+        page_not_supported: true,
+        not_enough_reviews: true,
+        highlights: null,
+        last_analysis_time: 12345,
+        deleted_product_reported: true,
+        deleted_product: true,
+      };
+      aCallback.onSuccess({ analysis });
+      return;
+    }
     const url = Services.io.newURI(aData.url);
     if (!lazy.isProductURL(url)) {
       aCallback.onError(`Cannot requestAnalysis on a non-product url.`);
@@ -355,6 +412,14 @@ export class GeckoViewContent extends GeckoViewModule {
   }
 
   async _requestCreateAnalysis(aData, aCallback) {
+    if (
+      Cu.isInAutomation &&
+      Services.prefs.getBoolPref("geckoview.shopping.mock_test_response", false)
+    ) {
+      const status = "pending";
+      aCallback.onSuccess(status);
+      return;
+    }
     const url = Services.io.newURI(aData.url);
     if (!lazy.isProductURL(url)) {
       aCallback.onError(`Cannot requestCreateAnalysis on a non-product url.`);
@@ -370,6 +435,14 @@ export class GeckoViewContent extends GeckoViewModule {
   }
 
   async _requestAnalysisCreationStatus(aData, aCallback) {
+    if (
+      Cu.isInAutomation &&
+      Services.prefs.getBoolPref("geckoview.shopping.mock_test_response", false)
+    ) {
+      const status = "in_progress";
+      aCallback.onSuccess(status);
+      return;
+    }
     const url = Services.io.newURI(aData.url);
     if (!lazy.isProductURL(url)) {
       aCallback.onError(
@@ -408,19 +481,17 @@ export class GeckoViewContent extends GeckoViewModule {
   }
 
   async _sendAttributionEvent(aEvent, aData, aCallback) {
-    // TODO (bug1859055): remove product object once sendAttributionEvent() is static
-    const product = new lazy.ShoppingProduct(
-      "http://example.com/dp/ABCDEFG123"
-    );
     let result;
-    if (Services.prefs.getBoolPref("geckoview.shopping.test_response", true)) {
+    if (
+      Cu.isInAutomation &&
+      Services.prefs.getBoolPref("geckoview.shopping.mock_test_response", false)
+    ) {
       result = { TEST_AID: "TEST_AID_RESPONSE" };
     } else {
-      // TODO (bug 1860897): source will be changed to geckoview_android
-      result = await product.sendAttributionEvent(
+      result = await lazy.ShoppingProduct.sendAttributionEvent(
         aEvent,
         aData.aid,
-        "firefox_android"
+        "geckoview_android"
       );
     }
     if (!result || !(aData.aid in result) || !result[aData.aid]) {
@@ -431,6 +502,27 @@ export class GeckoViewContent extends GeckoViewModule {
   }
 
   async _requestRecommendations(aData, aCallback) {
+    if (
+      Cu.isInAutomation &&
+      Services.prefs.getBoolPref("geckoview.shopping.mock_test_response", false)
+    ) {
+      const recommendations = [
+        {
+          name: "Mock Product",
+          url: "https://example.com/mock_url",
+          image_url: "https://example.com/mock_image_url",
+          price: "450",
+          currency: "USD",
+          grade: "C",
+          adjusted_rating: 3.5,
+          analysis_url: "https://example.com/mock_analysis_url",
+          sponsored: true,
+          aid: "mock_aid",
+        },
+      ];
+      aCallback.onSuccess({ recommendations });
+      return;
+    }
     const url = Services.io.newURI(aData.url);
     if (!lazy.isProductURL(url)) {
       aCallback.onError(`Cannot requestRecommendations on a non-product url.`);

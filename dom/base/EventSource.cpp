@@ -378,7 +378,7 @@ EventSourceImpl::EventSourceImpl(EventSource* aEventSource,
       mIsShutDown(false),
       mSharedData(SharedData{aEventSource}, "EventSourceImpl::mSharedData"),
       mScriptLine(0),
-      mScriptColumn(0),
+      mScriptColumn(1),
       mInnerWindowID(0),
       mCookieJarSettings(aCookieJarSettings),
       mTargetThread(NS_GetCurrentThread()) {
@@ -1825,7 +1825,7 @@ class WorkerRunnableDispatcher final : public WorkerRunnable {
   WorkerRunnableDispatcher(RefPtr<EventSourceImpl>&& aImpl,
                            WorkerPrivate* aWorkerPrivate,
                            already_AddRefed<nsIRunnable> aEvent)
-      : WorkerRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount),
+      : WorkerRunnable(aWorkerPrivate, WorkerThread),
         mEventSourceImpl(std::move(aImpl)),
         mEvent(std::move(aEvent)) {}
 

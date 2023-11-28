@@ -628,7 +628,7 @@ class nsContainerFrame : public nsSplittableFrame {
     MOZ_ASSERT(aOverflowContainers.NotEmpty(), "Shouldn't set an empty list!");
     MOZ_ASSERT(!GetProperty(OverflowContainersProperty()),
                "Shouldn't override existing list!");
-    MOZ_ASSERT(IsFrameOfType(nsIFrame::eCanContainOverflowContainers),
+    MOZ_ASSERT(CanContainOverflowContainers(),
                "This type of frame can't have overflow containers!");
     auto* list = new (PresShell()) nsFrameList(std::move(aOverflowContainers));
     SetProperty(OverflowContainersProperty(), list);
@@ -640,7 +640,7 @@ class nsContainerFrame : public nsSplittableFrame {
                "Shouldn't set an empty list!");
     MOZ_ASSERT(!GetProperty(ExcessOverflowContainersProperty()),
                "Shouldn't override existing list!");
-    MOZ_ASSERT(IsFrameOfType(nsIFrame::eCanContainOverflowContainers),
+    MOZ_ASSERT(CanContainOverflowContainers(),
                "This type of frame can't have overflow containers!");
     auto* list =
         new (PresShell()) nsFrameList(std::move(aExcessOverflowContainers));
@@ -736,16 +736,6 @@ class nsContainerFrame : public nsSplittableFrame {
    *          It's an error to push a parent's first child frame.
    */
   void PushChildrenToOverflow(nsIFrame* aFromChild, nsIFrame* aPrevSibling);
-
-  /**
-   * Same as above, except that this pushes frames to the next-in-flow
-   * frame and changes the geometric parent of the pushed frames when
-   * there is a next-in-flow frame.
-   *
-   * Updates the next-in-flow's child count. Does <b>not</b> update the
-   * pusher's child count.
-   */
-  void PushChildren(nsIFrame* aFromChild, nsIFrame* aPrevSibling);
 
   /**
    * Iterate our children in our principal child list in the normal document

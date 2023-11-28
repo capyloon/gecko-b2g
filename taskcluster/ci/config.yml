@@ -150,6 +150,7 @@ treeherder:
         'W-swr-cf': 'Web platform tests confirm falure with software webrender enabled'
         'W-b': 'Web platform tests (backlog)'
         'W-b-nofis': 'Web platform tests (backlog) without fission enabled'
+        'W-pb': 'Web platform tests with private browsing enabled'
         'X': 'Xpcshell tests'
         'X-cf': 'Xpcshell tests confirm failure'
         'X-condprof': 'Xpcshell tests with a conditioned profile'
@@ -790,7 +791,13 @@ mac-signing:
                 - deep: false
                   runtime: true
                   force: true
-                  entitlements: security/mac/hardenedruntime/v2/production/browser.xml
+                  entitlements:
+                      by-build-platform:
+                          .*devedition.*: security/mac/hardenedruntime/v2/production/firefoxdeveloperedition.browser.xml
+                          default:
+                              by-project:
+                                  mozilla-central: security/mac/hardenedruntime/v2/production/nightly.browser.xml
+                                  default: security/mac/hardenedruntime/v2/production/firefox.browser.xml
                   globs:
                       - "/Contents/MacOS/firefox-bin"
                       - "/"  # The .app

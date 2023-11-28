@@ -1,7 +1,9 @@
 import base64
+from enum import Enum
 from typing import Any, Dict, List, Mapping, MutableMapping, Optional, Union
 
 from ._module import BidiModule, command
+from ..undefined import UNDEFINED, Undefined
 
 
 class ElementOptions(Dict[str, Any]):
@@ -24,6 +26,11 @@ class BoxOptions(Dict[str, Any]):
 ClipOptions = Union[ElementOptions, BoxOptions]
 
 
+class OriginOptions(Enum):
+    DOCUMENT = "document"
+    VIEWPORT = "viewport"
+
+
 class BrowsingContext(BidiModule):
     @command
     def activate(self, context: str) -> Mapping[str, Any]:
@@ -31,12 +38,18 @@ class BrowsingContext(BidiModule):
 
     @command
     def capture_screenshot(
-        self, context: str, clip: Optional[ClipOptions] = None
+        self,
+        context: str,
+        clip: Optional[ClipOptions] = None,
+        origin: Optional[OriginOptions] = None,
     ) -> Mapping[str, Any]:
         params: MutableMapping[str, Any] = {"context": context}
 
         if clip is not None:
             params["clip"] = clip
+
+        if origin is not None:
+            params["origin"] = origin
 
         return params
 
@@ -175,5 +188,22 @@ class BrowsingContext(BidiModule):
         return result["data"]
 
     @command
-    def set_viewport(self, context: str, viewport: Optional[Mapping[str, Any]] = None) -> Mapping[str, Any]:
-        return {"context": context, "viewport": viewport}
+    def set_viewport(self,
+                     context: str,
+                     viewport: Union[Optional[Mapping[str, Any]], Undefined] = UNDEFINED,
+                     device_pixel_ratio: Union[Optional[float], Undefined] = UNDEFINED) -> Mapping[str, Any]:
+        params: MutableMapping[str, Any] = {
+            "context": context,
+        }
+
+        if viewport is not UNDEFINED:
+            params["viewport"] = viewport
+
+        if device_pixel_ratio is not UNDEFINED:
+            params["devicePixelRatio"] = device_pixel_ratio
+
+        return params
+
+    @command
+    def traverse_history(self, context: str, delta: int) -> Mapping[str, Any]:
+        return {"context": context, "delta": delta}

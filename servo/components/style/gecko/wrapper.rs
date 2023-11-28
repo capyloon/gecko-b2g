@@ -19,7 +19,7 @@ use crate::bloom::each_relevant_element_hash;
 use crate::context::{PostAnimationTasks, QuirksMode, SharedStyleContext, UpdateAnimationsTasks};
 use crate::data::ElementData;
 use crate::dom::{LayoutIterator, NodeInfo, OpaqueNode, TDocument, TElement, TNode, TShadowRoot};
-use crate::gecko::selector_parser::{NonTSPseudoClass, PseudoElement, SelectorImpl};
+use crate::gecko::selector_parser::{CustomState, NonTSPseudoClass, PseudoElement, SelectorImpl};
 use crate::gecko::snapshot_helpers;
 use crate::gecko_bindings::bindings;
 use crate::gecko_bindings::bindings::Gecko_ElementHasAnimations;
@@ -304,7 +304,8 @@ impl<'ln> GeckoNode<'ln> {
 
     #[inline]
     fn set_selector_flags(&self, flags: u32) {
-        self.selector_flags_atomic().fetch_or(flags, Ordering::Relaxed);
+        self.selector_flags_atomic()
+            .fetch_or(flags, Ordering::Relaxed);
     }
 
     #[inline]
@@ -1212,6 +1213,20 @@ impl<'le> TElement for GeckoElement<'le> {
     }
 
     #[inline]
+    fn has_custom_state(&self, state: &CustomState) -> bool {
+        if !self.is_html_element() {
+            return false;
+        }
+        let check_state_ptr: *const nsAtom = state.0.as_ptr();
+        self.extended_slots().map_or(false, |slot| {
+            (&slot.mCustomStates).iter().any(|setstate| {
+                let setstate_ptr: *const nsAtom = setstate.mRawPtr;
+                setstate_ptr == check_state_ptr
+            })
+        })
+    }
+
+    #[inline]
     fn has_part_attr(&self) -> bool {
         self.as_node()
             .get_bool_flag(nsINode_BooleanFlag::ElementHasPart)
@@ -1236,9 +1251,7 @@ impl<'le> TElement for GeckoElement<'le> {
         F: FnMut(&AtomIdent),
     {
         for attr in self.attrs() {
-            unsafe {
-                AtomIdent::with(attr.mName.name(), |a| callback(a))
-            }
+            unsafe { AtomIdent::with(attr.mName.name(), |a| callback(a)) }
         }
     }
 
@@ -1352,7 +1365,10 @@ impl<'le> TElement for GeckoElement<'le> {
             return None;
         }
 
-        PseudoElement::from_pseudo_type(unsafe { bindings::Gecko_GetImplementedPseudo(self.0) }, None)
+        PseudoElement::from_pseudo_type(
+            unsafe { bindings::Gecko_GetImplementedPseudo(self.0) },
+            None,
+        )
     }
 
     #[inline]
@@ -1875,7 +1891,8 @@ impl<'le> ::selectors::Element for GeckoElement<'le> {
         // Handle flags that apply to the element.
         let self_flags = flags.for_self();
         if !self_flags.is_empty() {
-            self.as_node().set_selector_flags(selector_flags_to_node_flags(flags))
+            self.as_node()
+                .set_selector_flags(selector_flags_to_node_flags(flags))
         }
 
         // Handle flags that apply to the parent.
@@ -2002,11 +2019,14 @@ impl<'le> ::selectors::Element for GeckoElement<'le> {
             NonTSPseudoClass::MozRevealed |
             NonTSPseudoClass::MozValueEmpty => self.state().intersects(pseudo_class.state_flag()),
             // TODO: This applying only to HTML elements is weird.
-            NonTSPseudoClass::Dir(ref dir) => self.is_html_element() && self.state().intersects(dir.element_state()),
+            NonTSPseudoClass::Dir(ref dir) => {
+                self.is_html_element() && self.state().intersects(dir.element_state())
+            },
             NonTSPseudoClass::AnyLink => self.is_link(),
             NonTSPseudoClass::Link => {
                 self.is_link() && context.visited_handling().matches_unvisited()
             },
+            NonTSPseudoClass::CustomState(ref state) => self.has_custom_state(state),
             NonTSPseudoClass::Visited => {
                 self.is_link() && context.visited_handling().matches_visited()
             },

@@ -105,6 +105,9 @@ this.AccessibilityUtils = (function () {
     interactiveRule: true,
     // Checks that accessible object has a non-empty label.
     labelRule: true,
+    // Checks that a node is enabled and is expected to be enabled via
+    // the accessibility API.
+    mustBeEnabled: true,
     // Checks that a node has a corresponging accessible object.
     mustHaveAccessibleRule: true,
     // Checks that accessible object (and its corresponding node) have a non-
@@ -220,7 +223,7 @@ this.AccessibilityUtils = (function () {
 
   /**
    * Determine if an accessible is a keyboard focusable browser toolbar button.
-   * Browser toolbar buttons aren't keyboard focusable in the normal way.
+   * Browser toolbar buttons aren't keyboard focusable in the usual way.
    * Instead, focus is managed by JS code which sets tabindex on a single
    * button at a time. Thus, we need to special case the focusable check for
    * these buttons.
@@ -231,15 +234,38 @@ this.AccessibilityUtils = (function () {
       return false;
     }
     const toolbar = node.closest("toolbar");
-    if (!toolbar || toolbar.getAttribute("keyNav") != "true") {
+    if (
+      !toolbar ||
+      toolbar.getAttribute("keyNav") != "true" ||
+      node.id == "urlbar-go-button"
+    ) {
       return false;
     }
     return node.ownerGlobal.ToolbarKeyboardNavigator._isButton(node);
   }
 
   /**
+   * Determine if an accessible is a keyboard focusable option within a listbox.
+   * We use it in the Url bar results - these controls are't keyboard focusable
+   * in the usual way. Instead, focus is managed by JS code which sets tabindex
+   * on a single option at a time. Thus, we need to special case the focusable
+   * check for these option items.
+   */
+  function isKeyboardFocusableOption(accessible) {
+    const node = accessible.DOMNode;
+    if (!node || !node.ownerGlobal) {
+      return false;
+    }
+    const urlbarListbox = node.closest(".urlbarView-results");
+    if (!urlbarListbox || urlbarListbox.getAttribute("role") != "listbox") {
+      return false;
+    }
+    return node.getAttribute("role") == "option";
+  }
+
+  /**
    * Determine if an accessible is a keyboard focusable PanelMultiView control.
-   * These controls aren't keyboard focusable in the normal way. Instead, focus
+   * These controls aren't keyboard focusable in the usual way. Instead, focus
    * is managed by JS code which sets tabindex dynamically. Thus, we need to
    * special case the focusable check for these controls.
    */
@@ -256,6 +282,28 @@ this.AccessibilityUtils = (function () {
       node.ownerGlobal.PanelView.forNode(panelview)._tabNavigableWalker.filter(
         node
       ) == NodeFilter.FILTER_ACCEPT
+    );
+  }
+
+  /**
+   * Determine if an accessible is a keyboard focusable button in the url bar.
+   * Url bar buttons aren't keyboard focusable in the usual way. Instead,
+   * focus is managed by JS code which sets tabindex on a single button at a
+   * time. Thus, we need to special case the focusable check for these buttons.
+   */
+  function isKeyboardFocusableUrlbarButton(accessible) {
+    const node = accessible.DOMNode;
+    if (!node || !node.ownerGlobal) {
+      return false;
+    }
+    const hbox = node.closest(".urlbarView > .search-one-offs");
+    if (!hbox || hbox.getAttribute("disabletab") != "true") {
+      return false;
+    }
+    return (
+      node.getAttribute("tabindex") == "-1" &&
+      node.tagName == "button" &&
+      node.classList.contains("searchbar-engine-one-off-item")
     );
   }
 
@@ -293,7 +341,9 @@ this.AccessibilityUtils = (function () {
   function isKeyboardFocusable(accessible) {
     if (
       isKeyboardFocusableBrowserToolbarButton(accessible) ||
+      isKeyboardFocusableOption(accessible) ||
       isKeyboardFocusablePanelMultiViewControl(accessible) ||
+      isKeyboardFocusableUrlbarButton(accessible) ||
       isKeyboardFocusableXULTab(accessible)
     ) {
       return true;
@@ -362,9 +412,9 @@ this.AccessibilityUtils = (function () {
    *        Accessible object.
    */
   function assertEnabled(accessible) {
-    if (matchState(accessible, STATE_UNAVAILABLE)) {
+    if (gEnv.mustBeEnabled && matchState(accessible, STATE_UNAVAILABLE)) {
       a11yFail(
-        "Node is enabled but disabled via the accessibility API",
+        "Node expected to be enabled but is disabled via the accessibility API",
         accessible
       );
     }
@@ -378,7 +428,11 @@ this.AccessibilityUtils = (function () {
    *        Accessible object for a node.
    */
   function assertFocusable(accessible) {
-    if (gEnv.focusableRule && !isKeyboardFocusable(accessible)) {
+    if (
+      gEnv.mustBeEnabled &&
+      gEnv.focusableRule &&
+      !isKeyboardFocusable(accessible)
+    ) {
       const ariaRoles = getAriaRoles(accessible);
       // Do not force ARIA combobox or listbox to be focusable.
       if (!ariaRoles.includes("combobox") && !ariaRoles.includes("listbox")) {
@@ -415,13 +469,21 @@ this.AccessibilityUtils = (function () {
    *        Accessible object for a node.
    */
   function assertInteractive(accessible) {
-    if (gEnv.actionCountRule && accessible.actionCount === 0) {
+    if (
+      gEnv.mustBeEnabled &&
+      gEnv.actionCountRule &&
+      accessible.actionCount === 0
+    ) {
       a11yFail("Node does not support any accessible actions", accessible);
 
       return;
     }
 
-    if (gEnv.interactiveRule && !INTERACTIVE_ROLES.has(accessible.role)) {
+    if (
+      gEnv.mustBeEnabled &&
+      gEnv.interactiveRule &&
+      !INTERACTIVE_ROLES.has(accessible.role)
+    ) {
       if (
         // Labels that have a label for relation with their target are clickable.
         (accessible.role !== Ci.nsIAccessibleRole.ROLE_LABEL ||
@@ -682,13 +744,17 @@ this.AccessibilityUtils = (function () {
       gEnv = { ...DEFAULT_ENV };
     },
 
-    reset(a11yChecks = false) {
+    reset(a11yChecks = false, testPath = "") {
       gA11YChecks = a11yChecks;
 
       const { Services } = SpecialPowers;
       // Disable accessibility service if it is running and if a11y checks are
-      // disabled.
-      if (!gA11YChecks && Services.appinfo.accessibilityEnabled) {
+      // disabled. However, don't do this for accessibility engine tests.
+      if (
+        !gA11YChecks &&
+        Services.appinfo.accessibilityEnabled &&
+        !testPath.startsWith("chrome://mochitests/content/browser/accessible/")
+      ) {
         Services.prefs.setIntPref(FORCE_DISABLE_ACCESSIBILITY_PREF, 1);
         Services.prefs.clearUserPref(FORCE_DISABLE_ACCESSIBILITY_PREF);
       }

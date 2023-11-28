@@ -605,13 +605,19 @@ pref("toolkit.telemetry.unified", true);
 pref("toolkit.telemetry.dap_enabled", false);
 // Verification tasks
 pref("toolkit.telemetry.dap_task1_enabled", false);
+pref("toolkit.telemetry.dap_task1_taskid", "");
+// URL visit counting
+pref("toolkit.telemetry.dap_visit_counting_enabled", false);
+// Note: format of patterns is "<proto>://<host>/<path>"
+// See https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Match_patterns
+pref("toolkit.telemetry.dap_visit_counting_experiment_list", "[]");
 // Leader endpoint for the DAP protocol
-pref("toolkit.telemetry.dap_leader", "https://dap-02.api.divviup.org");
+pref("toolkit.telemetry.dap_leader", "https://dap-07-1.api.divviup.org/");
 // Not used for anything. Just additional information.
 pref("toolkit.telemetry.dap_leader_owner", "ISRG");
 // Second DAP server. Only two are currently supported.
-pref("toolkit.telemetry.dap_helper", "https://helper1.dap.cloudflareresearch.com/v02");
-pref("toolkit.telemetry.dap_helper_owner", "Cloudflare");
+pref("toolkit.telemetry.dap_helper", "https://dap.services.mozilla.com");
+pref("toolkit.telemetry.dap_helper_owner", "Mozilla");
 pref("toolkit.telemetry.dap.logLevel", "Warn");
 
 // AsyncShutdown delay before crashing in case of shutdown freeze
@@ -709,6 +715,7 @@ pref("devtools.performance.recording.threads.remote", "[\"GeckoMain\",\"Composit
 // the host machine. This is used in order to look up symbol information from
 // build artifacts of local builds.
 pref("devtools.performance.recording.objdirs", "[]");
+pref("devtools.performance.recording.power.external-url", "");
 // The popup will display some introductory text the first time it is displayed.
 pref("devtools.performance.popup.intro-displayed", false);
 
@@ -1665,10 +1672,12 @@ pref("intl.hyphenation-alias.no-*", "nb");
 pref("intl.hyphenation-alias.nb-*", "nb");
 pref("intl.hyphenation-alias.nn-*", "nn");
 
-// In German, we allow hyphenation of capitalized words; otherwise not.
+// In German and Finnish, we allow hyphenation of capitalized words; otherwise not.
+// (Should this be extended to other languages? Should the default be changed?)
 pref("intl.hyphenate-capitalized.de-1996", true);
 pref("intl.hyphenate-capitalized.de-1901", true);
 pref("intl.hyphenate-capitalized.de-CH", true);
+pref("intl.hyphenate-capitalized.fi", true);
 
 // All prefs of default font should be "auto".
 pref("font.name.serif.ar", "");
@@ -1844,11 +1853,14 @@ pref("services.settings.poll_interval", 86400); // 24H
 // other channels always report events.
 pref("services.common.uptake.sampleRate", 1);   // 1%
 
-pref("extensions.abuseReport.enabled", true);
-// Allow AMO to handoff reports to the Firefox integrated dialog.
-pref("extensions.abuseReport.amWebAPI.enabled", true);
+pref("extensions.abuseReport.enabled", false);
+// Whether abuse report originated from AMO should use the Firefox integrated dialog.
+pref("extensions.abuseReport.amWebAPI.enabled", false);
 pref("extensions.abuseReport.url", "https://services.addons.mozilla.org/api/v4/abuse/report/addon/");
 pref("extensions.abuseReport.amoDetailsURL", "https://services.addons.mozilla.org/api/v4/addons/addon/");
+// Whether Firefox integrated abuse reporting feature should be opening the new abuse report form hosted on AMO.
+pref("extensions.abuseReport.amoFormEnabled", false);
+pref("extensions.abuseReport.amoFormURL", "https://addons.mozilla.org/%LOCALE%/%APP%/feedback/addon/%addonID%/");
 
 // Blocklist preferences
 pref("extensions.blocklist.enabled", true);
@@ -3351,7 +3363,7 @@ pref("urlclassifier.features.emailtracking.datacollection.allowlistTables", "moz
 pref("urlclassifier.disallow_completions", "goog-downloadwhite-digest256,base-track-digest256,mozstd-trackwhite-digest256,content-track-digest256,mozplugin-block-digest256,mozplugin2-block-digest256,ads-track-digest256,social-track-digest256,analytics-track-digest256,base-fingerprinting-track-digest256,content-fingerprinting-track-digest256,base-cryptomining-track-digest256,content-cryptomining-track-digest256,fanboyannoyance-ads-digest256,fanboysocial-ads-digest256,easylist-ads-digest256,easyprivacy-ads-digest256,adguard-ads-digest256,social-tracking-protection-digest256,social-tracking-protection-facebook-digest256,social-tracking-protection-linkedin-digest256,social-tracking-protection-twitter-digest256,base-email-track-digest256,content-email-track-digest256");
 
 // Workaround for Google Recaptcha
-pref("urlclassifier.trackingAnnotationSkipURLs", "google.com/recaptcha/,*.google.com/recaptcha/");
+pref("urlclassifier.trackingAnnotationSkipURLs", "google.com/recaptcha/,*.google.com/recaptcha/,d3vox9szr7t2nm.cloudfront.net");
 pref("privacy.rejectForeign.allowList", "");
 
 // The list of email webapp sites
@@ -3582,7 +3594,7 @@ pref("webextensions.storage.sync.serverURL", "https://webextensions.settings.ser
 pref("dom.input.fallbackUploadDir", "");
 
 // Turn rewriting of youtube embeds on/off
-#if defined(NIGHTLY_BUILD)
+#if defined(EARLY_BETA_OR_EARLIER)
   pref("plugins.rewrite_youtube_embeds", false);
 #else
   pref("plugins.rewrite_youtube_embeds", true);
@@ -3604,7 +3616,6 @@ pref("browser.sanitizer.loglevel", "Warn");
 // engine https://browser.mt/. See Bug 971044. Note that this pref can be turned
 // on in different apps like Firefox Desktop, even if it's disabled by default here.
 pref("browser.translations.enable", false);
-
 // Set to "All" to see all logs, which are useful for debugging. Set to "Info" to see
 // the application logic logs, and not all of the translated messages, which can be
 // slow and overwhelming.
@@ -3620,10 +3631,6 @@ pref("browser.translations.neverTranslateLanguages", "");
 // and the full page translations uses HTML. Set this pref to true to use the HTML
 // translation behavior on about:translations. Requires a page refresh.
 pref("browser.translations.useHTML", false);
-// Normally there is a UI to ask the user to translate a page, this pref makes it
-// so that the page automatically performs a translation if one is detected as being
-// required.
-pref("browser.translations.autoTranslate", false);
 // Automatically popup an offer to translate on sites.
 pref("browser.translations.automaticallyPopup", true);
 // Simulate the behavior of using a device that does not support the translations engine.
@@ -3635,13 +3642,6 @@ pref("browser.translations.simulateUnsupportedEngine", false);
 // between 0ms and the timeoutMS provided.
 pref("browser.translations.chaos.errors", false);
 pref("browser.translations.chaos.timeoutMS", 0);
-
-// A pref to manage the use of fastText for language detection in Translations.
-// The feature was initially built using fastText, but we are now putting it
-// behind a pref while we investigate some performance improvements.
-// In the meantime, we will use CLD2, which is already available in tree.
-// See https://bugzilla.mozilla.org/show_bug.cgi?id=1836974
-pref("browser.translations.languageIdentification.useFastText", false);
 
 // When a user cancels this number of authentication dialogs coming from
 // a single web page in a row, all following authentication dialogs will

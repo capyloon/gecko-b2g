@@ -8,7 +8,7 @@
 # documentation and how to modify this file.
 repo: mozilla-central
 created_at: '2021-10-14T12:50:40.073465'
-updated_at: '2023-10-31T23:48:55.507564'
+updated_at: '2023-11-16T11:14:06.284084'
 export:
   path: ./docs/mots/index.rst
   format: rst
@@ -565,6 +565,10 @@ people:
     bmo_id: 646284
     name: Jens Stutte
     nick: jstutte
+  - &jsudiaman
+    bmo_id: 713253
+    name: Jonathan Sudiaman
+    nick: jsudiaman
   - &jteow
     bmo_id: 701257
     name: James Teow
@@ -955,10 +959,6 @@ people:
     bmo_id: 164722
     name: Tantek Çelik
     nick: tantek
-  - &tanvi
-    bmo_id: 430652
-    name: Tanvi Vyas
-    nick: tanvi
   - &tcampbell
     bmo_id: 586681
     name: Ted Campbell
@@ -1336,16 +1336,17 @@ modules:
         - Jonathan Kingston
         - Thomas Nguyen
         - François Marier
+        - Tanvi Vyas
+        - Andrea Marchesini
       group: dev-security
       components:
         - 'Core::DOM: Security'
     owners:
       - *ckerschb
     peers:
-      - *tanvi
       - *dveditz
-      - *baku
       - *freddy
+      - *tschuster
     machine_name: core_content_security
 
   - name: 'Core: Cookies'
@@ -2804,6 +2805,10 @@ modules:
       - third_party/rust/wgpu-core/**/*
       - third_party/rust/wgpu-hal/**/*
       - third_party/rust/wgpu-types/**/*
+      - testing/web-platform/tests/webgpu/**/*
+      - testing/web-platform/meta/webgpu/**/*
+      - testing/web-platform/mozilla/tests/webgpu/**/*
+      - testing/web-platform/mozilla/meta/webgpu/**/*
     meta:
       group: dev-platform
       url: https://wiki.mozilla.org/Platform/GFX/WebGPU
@@ -3374,6 +3379,7 @@ modules:
         peers:
           - *sfoster
           - *kcochrane
+          - *jsudiaman
         meta:
       - name: Form Autofill
         description: Form detection and autocomplete.
@@ -4244,5 +4250,5 @@ modules:
         - Ryan Tilder
       group: dev-platform
 hashes:
-  config: 446f87fc6c8a780b734b0ce717cf08e788002bb4
-  export: cb8fafd9fd8165ea6662e59d64053db91a8c32b2
+  config: d5b62265988dc82ca65cc890040bb62f7b0d7cf9
+  export: 71d3735e528428378a13e202f072302ab8edfb4b

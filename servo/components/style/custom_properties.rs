@@ -9,9 +9,12 @@
 use crate::applicable_declarations::CascadePriority;
 use crate::media_queries::Device;
 use crate::properties::{CSSWideKeyword, CustomDeclaration, CustomDeclarationValue};
-use crate::properties_and_values::registry::PropertyRegistration;
-use crate::properties_and_values::value::SpecifiedValue as SpecifiedRegisteredValue;
+use crate::properties_and_values::{
+    registry::PropertyRegistration,
+    value::{AllowComputationallyDependent, SpecifiedValue as SpecifiedRegisteredValue},
+};
 use crate::selector_map::{PrecomputedHashMap, PrecomputedHashSet, PrecomputedHasher};
+use crate::stylesheets::UrlExtraData;
 use crate::stylist::Stylist;
 use crate::values::computed;
 use crate::Atom;
@@ -36,7 +39,7 @@ use style_traits::{CssWriter, ParseError, StyleParseErrorKind, ToCss};
 #[derive(Debug, MallocSizeOf)]
 pub struct CssEnvironment;
 
-type EnvironmentEvaluator = fn(device: &Device) -> VariableValue;
+type EnvironmentEvaluator = fn(device: &Device, url_data: &UrlExtraData) -> VariableValue;
 
 struct EnvironmentVariable {
     name: Atom,
@@ -52,20 +55,20 @@ macro_rules! make_variable {
     }};
 }
 
-fn get_safearea_inset_top(device: &Device) -> VariableValue {
-    VariableValue::pixels(device.safe_area_insets().top)
+fn get_safearea_inset_top(device: &Device, url_data: &UrlExtraData) -> VariableValue {
+    VariableValue::pixels(device.safe_area_insets().top, url_data)
 }
 
-fn get_safearea_inset_bottom(device: &Device) -> VariableValue {
-    VariableValue::pixels(device.safe_area_insets().bottom)
+fn get_safearea_inset_bottom(device: &Device, url_data: &UrlExtraData) -> VariableValue {
+    VariableValue::pixels(device.safe_area_insets().bottom, url_data)
 }
 
-fn get_safearea_inset_left(device: &Device) -> VariableValue {
-    VariableValue::pixels(device.safe_area_insets().left)
+fn get_safearea_inset_left(device: &Device, url_data: &UrlExtraData) -> VariableValue {
+    VariableValue::pixels(device.safe_area_insets().left, url_data)
 }
 
-fn get_safearea_inset_right(device: &Device) -> VariableValue {
-    VariableValue::pixels(device.safe_area_insets().right)
+fn get_safearea_inset_right(device: &Device, url_data: &UrlExtraData) -> VariableValue {
+    VariableValue::pixels(device.safe_area_insets().right, url_data)
 }
 
 #[derive(Debug)]
@@ -91,41 +94,41 @@ impl ThemeColor {
             ThemeColor::WallpaperMutedDark => static_prefs::pref!("theme.wallpaper.muted-dark"),
         };
 
-        let mut value = VariableValue::empty();
+        let mut value = VariableValue::empty(&UrlExtraData::new(std::ptr::null_mut()));
         value.css = css.to_string();
         value
     }
 }
 
-fn get_theme_wallpaper_vibrant(_device: &Device) -> VariableValue {
+fn get_theme_wallpaper_vibrant(_device: &Device, _url_data: &UrlExtraData) -> VariableValue {
     ThemeColor::WallpaperVibrant.variable_value()
 }
 
-fn get_theme_wallpaper_vibrant_dark(_device: &Device) -> VariableValue {
+fn get_theme_wallpaper_vibrant_dark(_device: &Device, _url_data: &UrlExtraData) -> VariableValue {
     ThemeColor::WallpaperVibrantDark.variable_value()
 }
 
-fn get_theme_wallpaper_vibrant_light(_device: &Device) -> VariableValue {
+fn get_theme_wallpaper_vibrant_light(_device: &Device, _url_data: &UrlExtraData) -> VariableValue {
     ThemeColor::WallpaperVibrantLight.variable_value()
 }
 
-fn get_theme_wallpaper_muted(_device: &Device) -> VariableValue {
+fn get_theme_wallpaper_muted(_device: &Device, _url_data: &UrlExtraData) -> VariableValue {
     ThemeColor::WallpaperMuted.variable_value()
 }
 
-fn get_theme_wallpaper_muted_dark(_device: &Device) -> VariableValue {
+fn get_theme_wallpaper_muted_dark(_device: &Device, _url_data: &UrlExtraData) -> VariableValue {
     ThemeColor::WallpaperMutedDark.variable_value()
 }
 
-fn get_theme_wallpaper_muted_light(_device: &Device) -> VariableValue {
+fn get_theme_wallpaper_muted_light(_device: &Device, _url_data: &UrlExtraData) -> VariableValue {
     ThemeColor::WallpaperMutedLight.variable_value()
 }
 
-fn get_theme_wallpaper_accent(_device: &Device) -> VariableValue {
+fn get_theme_wallpaper_accent(_device: &Device, _url_data: &UrlExtraData) -> VariableValue {
     ThemeColor::WallpaperAccent.variable_value()
 }
 
-fn get_content_preferred_color_scheme(device: &Device) -> VariableValue {
+fn get_content_preferred_color_scheme(device: &Device, url_data: &UrlExtraData) -> VariableValue {
     use crate::gecko::media_features::PrefersColorScheme;
     let prefers_color_scheme = unsafe {
         crate::gecko_bindings::bindings::Gecko_MediaFeatures_PrefersColorScheme(
@@ -133,14 +136,17 @@ fn get_content_preferred_color_scheme(device: &Device) -> VariableValue {
             /* use_content = */ true,
         )
     };
-    VariableValue::ident(match prefers_color_scheme {
-        PrefersColorScheme::Light => "light",
-        PrefersColorScheme::Dark => "dark",
-    })
+    VariableValue::ident(
+        match prefers_color_scheme {
+            PrefersColorScheme::Light => "light",
+            PrefersColorScheme::Dark => "dark",
+        },
+        url_data,
+    )
 }
 
-fn get_scrollbar_inline_size(device: &Device) -> VariableValue {
-    VariableValue::pixels(device.scrollbar_inline_size().px())
+fn get_scrollbar_inline_size(device: &Device, url_data: &UrlExtraData) -> VariableValue {
+    VariableValue::pixels(device.scrollbar_inline_size().px(), url_data)
 }
 
 static ENVIRONMENT_VARIABLES: [EnvironmentVariable; 11] = [
@@ -170,14 +176,14 @@ macro_rules! lnf_int {
 
 macro_rules! lnf_int_variable {
     ($atom:expr, $id:ident, $ctor:ident) => {{
-        fn __eval(_: &Device) -> VariableValue {
-            VariableValue::$ctor(lnf_int!($id))
+        fn __eval(_: &Device, url_data: &UrlExtraData) -> VariableValue {
+            VariableValue::$ctor(lnf_int!($id), url_data)
         }
         make_variable!($atom, __eval)
     }};
 }
 
-static CHROME_ENVIRONMENT_VARIABLES: [EnvironmentVariable; 6] = [
+static CHROME_ENVIRONMENT_VARIABLES: [EnvironmentVariable; 7] = [
     lnf_int_variable!(
         atom!("-moz-gtk-csd-titlebar-radius"),
         TitlebarRadius,
@@ -198,6 +204,11 @@ static CHROME_ENVIRONMENT_VARIABLES: [EnvironmentVariable; 6] = [
         GTKCSDMaximizeButtonPosition,
         integer
     ),
+    lnf_int_variable!(
+        atom!("-moz-overlay-scrollbar-fade-duration"),
+        ScrollbarFadeDuration,
+        int_ms
+    ),
     make_variable!(
         atom!("-moz-content-preferred-color-scheme"),
         get_content_preferred_color_scheme
@@ -207,17 +218,17 @@ static CHROME_ENVIRONMENT_VARIABLES: [EnvironmentVariable; 6] = [
 
 impl CssEnvironment {
     #[inline]
-    fn get(&self, name: &Atom, device: &Device) -> Option<VariableValue> {
+    fn get(&self, name: &Atom, device: &Device, url_data: &UrlExtraData) -> Option<VariableValue> {
         if let Some(var) = ENVIRONMENT_VARIABLES.iter().find(|var| var.name == *name) {
-            return Some((var.evaluator)(device));
+            return Some((var.evaluator)(device, url_data));
         }
-        if !device.chrome_rules_enabled_for_document() {
+        if !url_data.chrome_rules_enabled() {
             return None;
         }
         let var = CHROME_ENVIRONMENT_VARIABLES
             .iter()
             .find(|var| var.name == *name)?;
-        Some((var.evaluator)(device))
+        Some((var.evaluator)(device, url_data))
     }
 }
 
@@ -241,15 +252,27 @@ pub fn parse_name(s: &str) -> Result<&str, ()> {
 ///
 /// We preserve the original CSS for serialization, and also the variable
 /// references to other custom property names.
-#[derive(Clone, Debug, MallocSizeOf, PartialEq, ToShmem)]
+#[derive(Clone, Debug, MallocSizeOf, ToShmem)]
 pub struct VariableValue {
     css: String,
+
+    /// The url data of the stylesheet where this value came from.
+    pub url_data: UrlExtraData,
 
     first_token_type: TokenSerializationType,
     last_token_type: TokenSerializationType,
 
     /// var() or env() references.
     references: VarOrEnvReferences,
+}
+
+trivial_to_computed_value!(VariableValue);
+
+// For all purposes, we want values to be considered equal if their css text is equal.
+impl PartialEq for VariableValue {
+    fn eq(&self, other: &Self) -> bool {
+        self.css == other.css
+    }
 }
 
 impl ToCss for SpecifiedValue {
@@ -431,11 +454,29 @@ impl VarOrEnvReferences {
 }
 
 impl VariableValue {
-    fn empty() -> Self {
+    fn empty(url_data: &UrlExtraData) -> Self {
         Self {
             css: String::new(),
-            last_token_type: TokenSerializationType::nothing(),
-            first_token_type: TokenSerializationType::nothing(),
+            last_token_type: Default::default(),
+            first_token_type: Default::default(),
+            url_data: url_data.clone(),
+            references: Default::default(),
+        }
+    }
+
+    /// Create a new custom property without parsing if the CSS is known to be valid and contain no
+    /// references.
+    pub fn new(
+        css: String,
+        url_data: &UrlExtraData,
+        first_token_type: TokenSerializationType,
+        last_token_type: TokenSerializationType,
+    ) -> Self {
+        Self {
+            css,
+            url_data: url_data.clone(),
+            first_token_type,
+            last_token_type,
             references: Default::default(),
         }
     }
@@ -511,7 +552,10 @@ impl VariableValue {
     }
 
     /// Parse a custom property value.
-    pub fn parse<'i, 't>(input: &mut Parser<'i, 't>) -> Result<Arc<Self>, ParseError<'i>> {
+    pub fn parse<'i, 't>(
+        input: &mut Parser<'i, 't>,
+        url_data: &UrlExtraData,
+    ) -> Result<Arc<Self>, ParseError<'i>> {
         let mut references = VarOrEnvReferences::default();
 
         let (first_token_type, css, last_token_type) =
@@ -524,6 +568,7 @@ impl VariableValue {
 
         Ok(Arc::new(VariableValue {
             css,
+            url_data: url_data.clone(),
             first_token_type,
             last_token_type,
             references,
@@ -531,49 +576,72 @@ impl VariableValue {
     }
 
     /// Create VariableValue from an int.
-    fn integer(number: i32) -> Self {
-        Self::from_token(Token::Number {
-            has_sign: false,
-            value: number as f32,
-            int_value: Some(number),
-        })
+    fn integer(number: i32, url_data: &UrlExtraData) -> Self {
+        Self::from_token(
+            Token::Number {
+                has_sign: false,
+                value: number as f32,
+                int_value: Some(number),
+            },
+            url_data,
+        )
     }
 
     /// Create VariableValue from an int.
-    fn ident(ident: &'static str) -> Self {
-        Self::from_token(Token::Ident(ident.into()))
+    fn ident(ident: &'static str, url_data: &UrlExtraData) -> Self {
+        Self::from_token(Token::Ident(ident.into()), url_data)
     }
 
     /// Create VariableValue from a float amount of CSS pixels.
-    fn pixels(number: f32) -> Self {
+    fn pixels(number: f32, url_data: &UrlExtraData) -> Self {
         // FIXME (https://github.com/servo/rust-cssparser/issues/266):
         // No way to get TokenSerializationType::Dimension without creating
         // Token object.
-        Self::from_token(Token::Dimension {
-            has_sign: false,
-            value: number,
-            int_value: None,
-            unit: CowRcStr::from("px"),
-        })
+        Self::from_token(
+            Token::Dimension {
+                has_sign: false,
+                value: number,
+                int_value: None,
+                unit: CowRcStr::from("px"),
+            },
+            url_data,
+        )
+    }
+
+    /// Create VariableValue from an integer amount of milliseconds.
+    fn int_ms(number: i32, url_data: &UrlExtraData) -> Self {
+        Self::from_token(
+            Token::Dimension {
+                has_sign: false,
+                value: number as f32,
+                int_value: Some(number),
+                unit: CowRcStr::from("ms"),
+            },
+            url_data,
+        )
     }
 
     /// Create VariableValue from an integer amount of CSS pixels.
-    fn int_pixels(number: i32) -> Self {
-        Self::from_token(Token::Dimension {
-            has_sign: false,
-            value: number as f32,
-            int_value: Some(number),
-            unit: CowRcStr::from("px"),
-        })
+    fn int_pixels(number: i32, url_data: &UrlExtraData) -> Self {
+        Self::from_token(
+            Token::Dimension {
+                has_sign: false,
+                value: number as f32,
+                int_value: Some(number),
+                unit: CowRcStr::from("px"),
+            },
+            url_data,
+        )
     }
 
-    fn from_token(token: Token) -> Self {
+    fn from_token(token: Token, url_data: &UrlExtraData) -> Self {
         let token_type = token.serialization_type();
         let mut css = token.to_css_string();
         css.shrink_to_fit();
 
         VariableValue {
             css,
+            url_data: url_data.clone(),
             first_token_type: token_type,
             last_token_type: token_type,
             references: Default::default(),
@@ -642,10 +710,7 @@ fn parse_declaration_value_block<'i, 't>(
     let mut token = match input.next_including_whitespace_and_comments() {
         Ok(token) => token,
         Err(_) => {
-            return Ok((
-                TokenSerializationType::nothing(),
-                TokenSerializationType::nothing(),
-            ));
+            return Ok(Default::default());
         },
     };
     let first_token_type = token.serialization_type();
@@ -790,6 +855,7 @@ fn parse_fallback<'i, 't>(input: &mut Parser<'i, 't>) -> Result<(), ParseError<'
 fn parse_and_substitute_fallback<'i>(
     input: &mut Parser<'i, '_>,
     custom_properties: &ComputedCustomProperties,
+    url_data: &UrlExtraData,
     stylist: &Stylist,
     computed_context: &computed::Context,
 ) -> Result<ComputedValue, ParseError<'i>> {
@@ -798,11 +864,11 @@ fn parse_and_substitute_fallback<'i>(
     let first_token_type = input
         .next_including_whitespace_and_comments()
         .ok()
-        .map_or_else(TokenSerializationType::nothing, |t| t.serialization_type());
+        .map_or_else(TokenSerializationType::default, |t| t.serialization_type());
     input.reset(&after_comma);
     let mut position = (after_comma.position(), first_token_type);
 
-    let mut fallback = ComputedValue::empty();
+    let mut fallback = ComputedValue::empty(url_data);
     let last_token_type = substitute_block(
         input,
         &mut position,
@@ -863,9 +929,17 @@ pub struct CustomPropertiesBuilder<'a, 'b: 'a> {
 impl<'a, 'b: 'a> CustomPropertiesBuilder<'a, 'b> {
     /// Create a new builder, inheriting from a given custom properties map.
     pub fn new(stylist: &'a Stylist, computed_context: &'a computed::Context<'b>) -> Self {
+        let is_root_element = computed_context.is_root_element();
+
         let inherited = computed_context.inherited_custom_properties();
         let initial_values = stylist.get_custom_property_initial_values();
-        let is_root_element = computed_context.is_root_element();
+
+        // Reuse flags from computing registered custom properties initial values, such as whether
+        // they depend on viewport units.
+        computed_context
+            .style()
+            .add_flags(stylist.get_custom_property_initial_values_flags());
+
         Self {
             seen: PrecomputedHashSet::default(),
             reverted: Default::default(),
@@ -931,14 +1005,27 @@ impl<'a, 'b: 'a> CustomPropertiesBuilder<'a, 'b> {
                     if let Some(registration) = custom_registration {
                         let mut input = ParserInput::new(&unparsed_value.css);
                         let mut input = Parser::new(&mut input);
+                        // TODO(bug 1856522): Substitute custom property references in font-*
+                        // declarations before computing registered custom properties containing
+                        // font-relative units.
                         if let Ok(value) = SpecifiedRegisteredValue::compute(
                             &mut input,
                             registration,
+                            &unparsed_value.url_data,
                             self.computed_context,
+                            AllowComputationallyDependent::Yes,
                         ) {
                             map.insert(custom_registration, name.clone(), value);
                         } else {
-                            map.remove(custom_registration, name);
+                            let inherited = self.computed_context.inherited_custom_properties();
+                            let is_root_element = self.computed_context.is_root_element();
+                            handle_invalid_at_computed_value_time(
+                                name,
+                                map,
+                                inherited,
+                                self.stylist,
+                                is_root_element,
+                            );
                         }
                         return;
                     }
@@ -1388,7 +1475,7 @@ fn substitute_references_in_value_and_apply(
     let inherited = computed_context.inherited_custom_properties();
     let is_root_element = computed_context.is_root_element();
     let custom_registration = stylist.get_custom_property_registration(&name);
-    let mut computed_value = ComputedValue::empty();
+    let mut computed_value = ComputedValue::empty(&value.url_data);
 
     {
         let mut input = ParserInput::new(&value.css);
@@ -1485,9 +1572,13 @@ fn substitute_references_in_value_and_apply(
             false
         } else {
             if let Some(registration) = custom_registration {
-                if let Ok(value) =
-                    SpecifiedRegisteredValue::compute(&mut input, registration, computed_context)
-                {
+                if let Ok(value) = SpecifiedRegisteredValue::compute(
+                    &mut input,
+                    registration,
+                    &computed_value.url_data,
+                    computed_context,
+                    AllowComputationallyDependent::Yes,
+                ) {
                     custom_properties.insert(custom_registration, name.clone(), value);
                 } else {
                     handle_invalid_at_computed_value_time(
@@ -1527,7 +1618,7 @@ fn substitute_block<'i>(
     stylist: &Stylist,
     computed_context: &computed::Context,
 ) -> Result<TokenSerializationType, ParseError<'i>> {
-    let mut last_token_type = TokenSerializationType::nothing();
+    let mut last_token_type = TokenSerializationType::default();
     let mut set_position_at_next_iteration = false;
     loop {
         let before_this_token = input.position();
@@ -1537,7 +1628,7 @@ fn substitute_block<'i>(
                 before_this_token,
                 match next {
                     Ok(token) => token.serialization_type(),
-                    Err(_) => TokenSerializationType::nothing(),
+                    Err(_) => TokenSerializationType::default(),
                 },
             );
             set_position_at_next_iteration = false;
@@ -1575,7 +1666,11 @@ fn substitute_block<'i>(
                     let value = if is_env {
                         registration = None;
                         let device = stylist.device();
-                        if let Some(v) = device.environment().get(&name, device) {
+                        if let Some(v) = device.environment().get(
+                            &name,
+                            device,
+                            &partial_computed_value.url_data,
+                        ) {
                             env_value = v;
                             Some(&env_value)
                         } else {
@@ -1594,6 +1689,7 @@ fn substitute_block<'i>(
                                 let fallback = parse_and_substitute_fallback(
                                     input,
                                     custom_properties,
+                                    &partial_computed_value.url_data,
                                     stylist,
                                     computed_context,
                                 )?;
@@ -1602,7 +1698,9 @@ fn substitute_block<'i>(
                                 if let Err(_) = SpecifiedRegisteredValue::compute(
                                     &mut fallback_input,
                                     registration,
+                                    &partial_computed_value.url_data,
                                     computed_context,
+                                    AllowComputationallyDependent::Yes,
                                 ) {
                                     return Err(input
                                         .new_custom_error(StyleParseErrorKind::UnspecifiedError));
@@ -1620,6 +1718,7 @@ fn substitute_block<'i>(
                         let fallback = parse_and_substitute_fallback(
                             input,
                             custom_properties,
+                            &partial_computed_value.url_data,
                             stylist,
                             computed_context,
                         )?;
@@ -1631,7 +1730,9 @@ fn substitute_block<'i>(
                             if let Ok(fallback) = SpecifiedRegisteredValue::compute(
                                 &mut fallback_input,
                                 registration,
+                                &fallback.url_data,
                                 computed_context,
+                                AllowComputationallyDependent::Yes,
                             ) {
                                 partial_computed_value.push_variable(input, &fallback)?;
                             } else {
@@ -1684,10 +1785,11 @@ pub fn substitute<'i>(
     input: &'i str,
     first_token_type: TokenSerializationType,
     custom_properties: &ComputedCustomProperties,
+    url_data: &UrlExtraData,
     stylist: &Stylist,
     computed_context: &computed::Context,
 ) -> Result<String, ParseError<'i>> {
-    let mut substituted = ComputedValue::empty();
+    let mut substituted = ComputedValue::empty(url_data);
     let mut input = ParserInput::new(input);
     let mut input = Parser::new(&mut input);
     let mut position = (input.position(), first_token_type);

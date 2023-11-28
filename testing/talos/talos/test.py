@@ -112,6 +112,7 @@ class TsBase(Test):
         "gecko_profile_entries",
         "gecko_profile_features",
         "gecko_profile_threads",
+        "gecko_profile_extra_threads",
         "gecko_profile_startup",
         "preferences",
         "xperf_counters",
@@ -341,6 +342,7 @@ class PageloaderTest(Test):
         "gecko_profile_entries",
         "gecko_profile_features",
         "gecko_profile_threads",
+        "gecko_profile_extra_threads",
         "tptimeout",
         "win_counters",
         "w7_counters",
@@ -574,6 +576,7 @@ class damp(PageloaderTest):
     tploadnocache = True
     tpmozafterpaint = False
     gecko_profile_interval = 10
+    gecko_profile_extra_threads = "DOM Worker"
     win_counters = w7_counters = linux_counters = mac_counters = None
     filters = filter.ignore_first.prepare(1) + filter.median.prepare()
     preferences = {"devtools.memory.enabled": True}
@@ -628,6 +631,29 @@ class glvideo(PageloaderTest):
     tpchrome = False
     timeout = 600
     gecko_profile_interval = 2
+    gecko_profile_extra_threads = "CanvasRenderer,CanvasWorker,MediaSupervisor"
+    win_counters = w7_counters = linux_counters = mac_counters = None
+    filters = filter.ignore_first.prepare(1) + filter.median.prepare()
+    unit = "ms"
+
+
+@register_test()
+class canvas2dvideo(PageloaderTest):
+    """
+    Canvas2D video texture update with 1080p video.
+    Measures mean tick time across 100 ticks.
+    (each tick is drawImage(<video>)+setTimeout(0))
+    """
+
+    tpmanifest = "${talos}/tests/canvas2d/canvas2dvideo.manifest"
+    tpcycles = 1
+    tppagecycles = 5
+    tploadnocache = True
+    tpmozafterpaint = False
+    tpchrome = False
+    timeout = 600
+    gecko_profile_interval = 2
+    gecko_profile_extra_threads = "CanvasRenderer,CanvasWorker,MediaSupervisor"
     win_counters = w7_counters = linux_counters = mac_counters = None
     filters = filter.ignore_first.prepare(1) + filter.median.prepare()
     unit = "ms"

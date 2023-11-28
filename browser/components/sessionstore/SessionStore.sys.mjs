@@ -1847,7 +1847,9 @@ var SessionStoreInternal = {
             target.linkedBrowser,
             aEvent.detail.adoptedBy.linkedBrowser
           );
-        } else {
+        } else if (!aEvent.detail.skipSessionStore) {
+          // `skipSessionStore` is set by tab close callers to indicate that we
+          // shouldn't record the closed tab.
           this.onTabClose(win, target);
         }
         this.onTabRemove(win, target);
@@ -2358,7 +2360,7 @@ var SessionStoreInternal = {
           // It's possible that a tab switched its privacy state at some point
           // before our flush, so we need to filter again.
           lazy.PrivacyFilter.filterPrivateTabs(winData);
-          this.maybeSaveClosedWindow(winData, isLastWindow);
+          this.maybeSaveClosedWindow(winData, isLastWindow, true);
 
           if (!isLastWindow && winData.closedId > -1) {
             this._addClosedAction(
@@ -2437,7 +2439,7 @@ var SessionStoreInternal = {
    *        to call this method again asynchronously (for example, after
    *        a window flush).
    */
-  maybeSaveClosedWindow(winData, isLastWindow) {
+  maybeSaveClosedWindow(winData, isLastWindow, recordTelemetry = false) {
     // Make sure SessionStore is still running, and make sure that we
     // haven't chosen to forget this window.
     if (
@@ -2496,6 +2498,14 @@ var SessionStoreInternal = {
         }
         if (alreadyStored) {
           this._removeClosedWindow(winIndex);
+          return;
+        }
+        // we only do this after the TabStateFlusher promise resolves in ssi_onClose
+        if (recordTelemetry) {
+          let closedTabsHistogram = Services.telemetry.getHistogramById(
+            "FX_SESSION_RESTORE_CLOSED_TABS_NOT_SAVED"
+          );
+          closedTabsHistogram.add(winData._closedTabs.length);
         }
       }
     }
@@ -2728,23 +2738,12 @@ var SessionStoreInternal = {
 
     // Clear closed tab data.
     if (windowData._closedTabs.length) {
-      // Remove all of the closed tabs from the _lastClosedActions list
-      for (let closedTab of windowData._closedTabs) {
-        // If the closed tab's state still has a .permanentKey property then we
-        // haven't seen its final update message yet. Remove it from the map of
-        // closed tabs so that we will simply discard its last messages and will
-        // not add it back to the list of closed tabs again.
-        if (closedTab.permanentKey) {
-          this._closingTabMap.delete(closedTab.permanentKey);
-          this._tabClosingByWindowMap.delete(closedTab.permanentKey);
-          delete closedTab.permanentKey;
-        }
-        this._removeClosedAction(
-          this._LAST_ACTION_CLOSED_TAB,
-          closedTab.closedId
-        );
+      // Remove all of the closed tabs data.
+      // This also clears out the permenentKey-mapped data for pending state updates
+      // and removes the tabs from from the _lastClosedActions list
+      while (windowData._closedTabs.length) {
+        this.removeClosedTabData(windowData, windowData._closedTabs, 0);
       }
-
       // Reset the closed tab list.
       windowData._closedTabs = [];
       windowData._lastClosedTabGroupCount = -1;
@@ -2988,12 +2987,6 @@ var SessionStoreInternal = {
    *        Tab reference
    */
   onTabClose: function ssi_onTabClose(aWindow, aTab) {
-    // notify the tabbrowser that the tab state will be retrieved for the last time
-    // (so that extension authors can easily set data on soon-to-be-closed tabs)
-    var event = aWindow.document.createEvent("Events");
-    event.initEvent("SSTabClosing", true, false);
-    aTab.dispatchEvent(event);
-
     // don't update our internal state if we don't have to
     if (this._max_tabs_undo == 0) {
       return;

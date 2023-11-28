@@ -553,8 +553,16 @@ function assertPaused(dbg, msg = "client is paused") {
  * @param {Object} dbg
  * @param {String} url
  *        Optional URL of the script we should be pausing on.
+ * @param {Object} options
+ *         {Boolean} shouldWaitForLoadScopes
+ *        When paused in original files with original variable mapping disabled, scopes are
+ *        not going to exist, lets not wait for it. defaults to true
  */
-async function waitForPaused(dbg, url) {
+async function waitForPaused(
+  dbg,
+  url,
+  options = { shouldWaitForLoadedScopes: true }
+) {
   info("Waiting for the debugger to pause");
   const { getSelectedScope, getCurrentThread, getCurrentThreadFrames } =
     dbg.selectors;
@@ -566,7 +574,10 @@ async function waitForPaused(dbg, url) {
   );
 
   await waitForState(dbg, getCurrentThreadFrames, "fetched frames");
-  await waitForLoadedScopes(dbg);
+
+  if (options.shouldWaitForLoadedScopes) {
+    await waitForLoadedScopes(dbg);
+  }
   await waitForSelectedSource(dbg, url);
 }
 
@@ -642,7 +653,7 @@ function isFrameSelected(dbg, index, title) {
 }
 
 /**
- * Clear all the debugger related preferences.
+ *  Clear all the debugger related preferences.
  */
 async function clearDebuggerPreferences(prefs = []) {
   resetSchemaVersion();
@@ -657,7 +668,6 @@ async function clearDebuggerPreferences(prefs = []) {
   Services.prefs.clearUserPref("devtools.debugger.call-stack-visible");
   Services.prefs.clearUserPref("devtools.debugger.scopes-visible");
   Services.prefs.clearUserPref("devtools.debugger.skip-pausing");
-  Services.prefs.clearUserPref("devtools.debugger.map-scopes-enabled");
 
   for (const pref of prefs) {
     await pushPref(...pref);
@@ -869,14 +879,15 @@ function countTabs(dbg) {
  *
  * @memberof mochitest/actions
  * @param {Object} dbg
+ * @param {Object} pauseOptions
  * @return {Promise}
  * @static
  */
-async function stepOver(dbg) {
+async function stepOver(dbg, pauseOptions) {
   const pauseLine = getVisibleSelectedFrameLine(dbg);
   info(`Stepping over from ${pauseLine}`);
   await dbg.actions.stepOver();
-  return waitForPaused(dbg);
+  return waitForPaused(dbg, null, pauseOptions);
 }
 
 /**
@@ -1141,14 +1152,15 @@ async function invokeWithBreakpoint(
   fnName,
   filename,
   { line, column },
-  handler
+  handler,
+  pauseOptions
 ) {
   const source = await loadAndAddBreakpoint(dbg, filename, line, column);
 
   const invokeResult = invokeInTab(fnName);
 
   const invokeFailed = await Promise.race([
-    waitForPaused(dbg),
+    waitForPaused(dbg, null, pauseOptions),
     invokeResult.then(
       () => new Promise(() => {}),
       () => true
@@ -1703,6 +1715,7 @@ const selectors = {
   expressionNodes: ".expressions-list .tree-node",
   expressionPlus: ".watch-expressions-pane button.plus",
   expressionRefresh: ".watch-expressions-pane button.refresh",
+  expressionsHeader: ".watch-expressions-pane ._header .header-label",
   scopesHeader: ".scopes-pane ._header .header-label",
   breakpointItem: i => `.breakpoints-list div:nth-of-type(${i})`,
   breakpointLabel: i => `${selectors.breakpointItem(i)} .breakpoint-label`,
@@ -2028,6 +2041,29 @@ async function typeInPanel(dbg, text) {
   pressKey(dbg, "End");
   type(dbg, text);
   pressKey(dbg, "Enter");
+}
+
+async function toggleMapScopes(dbg) {
+  info("Turn on original variable mapping");
+  const scopesLoaded = waitForLoadedScopes(dbg);
+  const onDispatch = waitForDispatch(dbg.store, "TOGGLE_MAP_SCOPES");
+  clickElement(dbg, "mapScopesCheckbox");
+  return Promise.all([onDispatch, scopesLoaded]);
+}
+
+async function waitForPausedInOriginalFileAndToggleMapScopes(
+  dbg,
+  expectedSelectedSource = null
+) {
+  // Original variable mapping is not switched on, so do not wait for any loaded scopes
+  await waitForPaused(dbg, expectedSelectedSource, {
+    shouldWaitForLoadedScopes: false,
+  });
+  await toggleMapScopes(dbg);
+}
+
+function toggleExpressions(dbg) {
+  return findElement(dbg, "expressionsHeader").click();
 }
 
 function toggleScopes(dbg) {
@@ -2394,6 +2430,16 @@ function getTokenElAtLine(dbg, expression, line, column = 0) {
     }
     return childText === expression;
   });
+}
+
+/**
+ * Wait for a few ms and assert that a tooltip preview was not displayed.
+ * @param {*} dbg
+ */
+async function assertNoTooltip(dbg) {
+  await wait(200);
+  const el = findElement(dbg, "previewPopup");
+  is(el, null, "Tooltip should not exist");
 }
 
 /**
@@ -2802,7 +2848,11 @@ async function hasConsoleMessage({ toolbox }, msg) {
   });
 }
 
-function evaluateExpressionInConsole(hud, expression) {
+function evaluateExpressionInConsole(
+  hud,
+  expression,
+  expectedClassName = "result"
+) {
   const seenMessages = new Set(
     JSON.parse(
       hud.ui.outputNode
@@ -2814,7 +2864,7 @@ function evaluateExpressionInConsole(hud, expression) {
     const onNewMessage = messages => {
       for (const message of messages) {
         if (
-          message.node.classList.contains("result") &&
+          message.node.classList.contains(expectedClassName) &&
           !seenMessages.has(message.node.getAttribute("data-message-id"))
         ) {
           hud.ui.off("new-messages", onNewMessage);
@@ -3022,9 +3072,19 @@ async function selectBlackBoxContextMenuItem(dbg, itemName) {
   return wait;
 }
 
+function openOutlinePanel(dbg, waitForOutlineList = true) {
+  const outlineTab = findElementWithSelector(dbg, ".outline-tab a");
+  EventUtils.synthesizeMouseAtCenter(outlineTab, {}, outlineTab.ownerGlobal);
+
+  if (!waitForOutlineList) {
+    return Promise.resolve();
+  }
+
+  return waitForElementWithSelector(dbg, ".outline-list");
+}
+
 // Test empty panel when source has not function or class symbols
 // Test that anonymous functions do not show in the outline panel
-
 function assertOutlineItems(dbg, expectedItems) {
   const outlineItems = Array.from(
     findAllElementsWithSelector(
@@ -3037,4 +3097,15 @@ function assertOutlineItems(dbg, expectedItems) {
     expectedItems,
     "The expected items are displayed in the outline panel"
   );
+}
+
+async function checkAdditionalThreadCount(dbg, count) {
+  await waitForState(
+    dbg,
+    state => {
+      return dbg.selectors.getThreads().length == count;
+    },
+    "Have the expected number of additional threads"
+  );
+  ok(true, `Have ${count} threads`);
 }

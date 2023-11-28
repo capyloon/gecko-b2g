@@ -9,21 +9,51 @@
 #include "mozilla/ipc/BackgroundParent.h"
 #include "mozilla/StaticPrefs_security.h"
 
-#include "nsIWebAuthnService.h"
 #include "nsThreadUtils.h"
 #include "WebAuthnArgs.h"
 
 namespace mozilla::dom {
+
+void WebAuthnTransactionParent::CompleteTransaction() {
+  if (mTransactionId.isSome()) {
+    if (mRegisterPromiseRequest.Exists()) {
+      mRegisterPromiseRequest.Complete();
+    }
+    if (mSignPromiseRequest.Exists()) {
+      mSignPromiseRequest.Complete();
+    }
+    if (mWebAuthnService) {
+      // We have to do this to work around Bug 1864526.
+      mWebAuthnService->Cancel(mTransactionId.ref());
+    }
+    mTransactionId.reset();
+  }
+}
+
+void WebAuthnTransactionParent::DisconnectTransaction() {
+  mTransactionId.reset();
+  mRegisterPromiseRequest.DisconnectIfExists();
+  mSignPromiseRequest.DisconnectIfExists();
+  if (mWebAuthnService) {
+    mWebAuthnService->Reset();
+  }
+}
 
 mozilla::ipc::IPCResult WebAuthnTransactionParent::RecvRequestRegister(
     const uint64_t& aTransactionId,
     const WebAuthnMakeCredentialInfo& aTransactionInfo) {
   ::mozilla::ipc::AssertIsOnBackgroundThread();
 
+  if (!mWebAuthnService) {
+    mWebAuthnService = do_GetService("@mozilla.org/webauthn/service;1");
+    if (!mWebAuthnService) {
+      return IPC_FAIL_NO_REASON(this);
+    }
+  }
+
   // If there's an ongoing transaction, abort it.
   if (mTransactionId.isSome()) {
-    mRegisterPromiseRequest.DisconnectIfExists();
-    mSignPromiseRequest.DisconnectIfExists();
+    DisconnectTransaction();
     Unused << SendAbort(mTransactionId.ref(), NS_ERROR_DOM_ABORT_ERR);
   }
   mTransactionId = Some(aTransactionId);
@@ -39,8 +69,8 @@ mozilla::ipc::IPCResult WebAuthnTransactionParent::RecvRequestRegister(
           [this, parent, aTransactionId,
            inputClientData = aTransactionInfo.ClientDataJSON()](
               const WebAuthnRegisterPromise::ResolveValueType& aValue) {
-            mTransactionId.reset();
-            mRegisterPromiseRequest.Complete();
+            CompleteTransaction();
+
             nsCString clientData;
             nsresult rv = aValue->GetClientDataJSON(clientData);
             if (rv == NS_ERROR_NOT_AVAILABLE) {
@@ -121,19 +151,15 @@ mozilla::ipc::IPCResult WebAuthnTransactionParent::RecvRequestRegister(
           },
           [this, parent, aTransactionId](
               const WebAuthnRegisterPromise::RejectValueType aValue) {
-            mTransactionId.reset();
-            mRegisterPromiseRequest.Complete();
+            CompleteTransaction();
             Unused << parent->SendAbort(aTransactionId, aValue);
           })
       ->Track(mRegisterPromiseRequest);
 
-  nsCOMPtr<nsIWebAuthnService> webauthnService(
-      do_GetService("@mozilla.org/webauthn/service;1"));
-
   uint64_t browsingContextId = aTransactionInfo.BrowsingContextId();
   RefPtr<WebAuthnRegisterArgs> args(new WebAuthnRegisterArgs(aTransactionInfo));
 
-  nsresult rv = webauthnService->MakeCredential(
+  nsresult rv = mWebAuthnService->MakeCredential(
       aTransactionId, browsingContextId, args, promiseHolder);
   if (NS_FAILED(rv)) {
     promiseHolder->Reject(NS_ERROR_DOM_NOT_ALLOWED_ERR);
@@ -147,9 +173,15 @@ mozilla::ipc::IPCResult WebAuthnTransactionParent::RecvRequestSign(
     const WebAuthnGetAssertionInfo& aTransactionInfo) {
   ::mozilla::ipc::AssertIsOnBackgroundThread();
 
+  if (!mWebAuthnService) {
+    mWebAuthnService = do_GetService("@mozilla.org/webauthn/service;1");
+    if (!mWebAuthnService) {
+      return IPC_FAIL_NO_REASON(this);
+    }
+  }
+
   if (mTransactionId.isSome()) {
-    mRegisterPromiseRequest.DisconnectIfExists();
-    mSignPromiseRequest.DisconnectIfExists();
+    DisconnectTransaction();
     Unused << SendAbort(mTransactionId.ref(), NS_ERROR_DOM_ABORT_ERR);
   }
   mTransactionId = Some(aTransactionId);
@@ -165,8 +197,7 @@ mozilla::ipc::IPCResult WebAuthnTransactionParent::RecvRequestSign(
           [this, parent, aTransactionId,
            inputClientData = aTransactionInfo.ClientDataJSON()](
               const WebAuthnSignPromise::ResolveValueType& aValue) {
-            mTransactionId.reset();
-            mSignPromiseRequest.Complete();
+            CompleteTransaction();
 
             nsCString clientData;
             nsresult rv = aValue->GetClientDataJSON(clientData);
@@ -238,17 +269,14 @@ mozilla::ipc::IPCResult WebAuthnTransactionParent::RecvRequestSign(
           },
           [this, parent,
            aTransactionId](const WebAuthnSignPromise::RejectValueType aValue) {
-            mTransactionId.reset();
-            mSignPromiseRequest.Complete();
+            CompleteTransaction();
             Unused << parent->SendAbort(aTransactionId, aValue);
           })
       ->Track(mSignPromiseRequest);
 
   RefPtr<WebAuthnSignArgs> args(new WebAuthnSignArgs(aTransactionInfo));
 
-  nsCOMPtr<nsIWebAuthnService> webauthnService(
-      do_GetService("@mozilla.org/webauthn/service;1"));
-  nsresult rv = webauthnService->GetAssertion(
+  nsresult rv = mWebAuthnService->GetAssertion(
       aTransactionId, aTransactionInfo.BrowsingContextId(), args,
       promiseHolder);
   if (NS_FAILED(rv)) {
@@ -267,17 +295,86 @@ mozilla::ipc::IPCResult WebAuthnTransactionParent::RecvRequestCancel(
     return IPC_OK();
   }
 
-  mRegisterPromiseRequest.DisconnectIfExists();
-  mSignPromiseRequest.DisconnectIfExists();
-  mTransactionId.reset();
+  DisconnectTransaction();
+  return IPC_OK();
+}
 
-  nsCOMPtr<nsIWebAuthnService> webauthnService(
+mozilla::ipc::IPCResult WebAuthnTransactionParent::RecvRequestIsUVPAA(
+    RequestIsUVPAAResolver&& aResolver) {
+#ifdef MOZ_WIDGET_ANDROID
+  // Try the nsIWebAuthnService. If we're configured for tests we
+  // will get a result. Otherwise we expect NS_ERROR_NOT_IMPLEMENTED.
+  nsCOMPtr<nsIWebAuthnService> service(
       do_GetService("@mozilla.org/webauthn/service;1"));
-  if (webauthnService) {
-    webauthnService->Reset();
+  bool available;
+  nsresult rv = service->GetIsUVPAA(&available);
+  if (NS_SUCCEEDED(rv)) {
+    aResolver(available);
+    return IPC_OK();
   }
 
+  // Don't consult the platform API if resident key support is disabled.
+  if (!StaticPrefs::
+          security_webauthn_webauthn_enable_android_fido2_residentkey()) {
+    aResolver(false);
+    return IPC_OK();
+  }
+
+  // The GeckoView implementation of
+  // isUserVerifiyingPlatformAuthenticatorAvailable does not block, but we must
+  // call it on the main thread. It returns a MozPromise which we can ->Then to
+  // call aResolver on the IPDL background thread.
+  //
+  // Bug 1550788: there is an unnecessary layer of dispatching here: ipdl ->
+  // main -> a background thread. Other platforms just do ipdl -> a background
+  // thread.
+  nsCOMPtr<nsISerialEventTarget> target = GetCurrentSerialEventTarget();
+  nsCOMPtr<nsIRunnable> runnable(NS_NewRunnableFunction(
+      __func__, [target, resolver = std::move(aResolver)]() {
+        auto result = java::WebAuthnTokenManager::
+            WebAuthnIsUserVerifyingPlatformAuthenticatorAvailable();
+        auto geckoResult = java::GeckoResult::LocalRef(std::move(result));
+        MozPromise<bool, bool, false>::FromGeckoResult(geckoResult)
+            ->Then(
+                target, __func__,
+                [resolver](
+                    const MozPromise<bool, bool, false>::ResolveOrRejectValue&
+                        aValue) {
+                  if (aValue.IsResolve()) {
+                    resolver(aValue.ResolveValue());
+                  } else {
+                    resolver(false);
+                  }
+                });
+      }));
+  NS_DispatchToMainThread(runnable.forget());
   return IPC_OK();
+
+#else
+
+  nsCOMPtr<nsISerialEventTarget> target = GetCurrentSerialEventTarget();
+  nsCOMPtr<nsIRunnable> runnable(NS_NewRunnableFunction(
+      __func__, [target, resolver = std::move(aResolver)]() {
+        bool available;
+        nsCOMPtr<nsIWebAuthnService> service(
+            do_GetService("@mozilla.org/webauthn/service;1"));
+        nsresult rv = service->GetIsUVPAA(&available);
+        if (NS_FAILED(rv)) {
+          available = false;
+        }
+        BoolPromise::CreateAndResolve(available, __func__)
+            ->Then(target, __func__,
+                   [resolver](const BoolPromise::ResolveOrRejectValue& value) {
+                     if (value.IsResolve()) {
+                       resolver(value.ResolveValue());
+                     } else {
+                       resolver(false);
+                     }
+                   });
+      }));
+  NS_DispatchBackgroundTask(runnable.forget(), NS_DISPATCH_EVENT_MAY_BLOCK);
+  return IPC_OK();
+#endif
 }
 
 mozilla::ipc::IPCResult WebAuthnTransactionParent::RecvDestroyMe() {
@@ -305,15 +402,7 @@ void WebAuthnTransactionParent::ActorDestroy(ActorDestroyReason aWhy) {
   // the channel disconnects. Ensure the token manager forgets about us.
 
   if (mTransactionId.isSome()) {
-    mRegisterPromiseRequest.DisconnectIfExists();
-    mSignPromiseRequest.DisconnectIfExists();
-    mTransactionId.reset();
-
-    nsCOMPtr<nsIWebAuthnService> webauthnService(
-        do_GetService("@mozilla.org/webauthn/service;1"));
-    if (webauthnService) {
-      webauthnService->Reset();
-    }
+    DisconnectTransaction();
   }
 }
 

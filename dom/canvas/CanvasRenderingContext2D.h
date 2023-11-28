@@ -27,6 +27,7 @@
 #include "gfxUtils.h"
 #include "nsICanvasRenderingContextInternal.h"
 #include "nsColor.h"
+#include "nsRFPService.h"
 #include "nsIFrame.h"
 
 class gfxFontGroup;
@@ -232,8 +233,8 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
   void StrokeText(const nsAString& aText, double aX, double aY,
                   const Optional<double>& aMaxWidth,
                   mozilla::ErrorResult& aError);
-  TextMetrics* MeasureText(const nsAString& aRawText,
-                           mozilla::ErrorResult& aError);
+  UniquePtr<TextMetrics> MeasureText(const nsAString& aRawText,
+                                     mozilla::ErrorResult& aError);
 
   void DrawImage(const CanvasImageSource& aImage, double aDx, double aDy,
                  mozilla::ErrorResult& aError) {
@@ -531,6 +532,8 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
   enum class Style : uint8_t { STROKE = 0, FILL, MAX };
 
   void LineTo(const mozilla::gfx::Point& aPoint) {
+    mFeatureUsage |= CanvasFeatureUsage::LineTo;
+
     if (!aPoint.IsFinite()) {
       return;
     }
@@ -571,6 +574,8 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
    * if you call this function.
    */
   MOZ_CAN_RUN_SCRIPT_BOUNDARY void UpdateFilter(bool aFlushIfNeeded);
+
+  CanvasFeatureUsage FeatureUsage() const { return mFeatureUsage; }
 
  protected:
   /**
@@ -941,9 +946,11 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
    * Returns a TextMetrics object _only_ if the operation is measure;
    * drawing operations (fill or stroke) always return nullptr.
    */
-  TextMetrics* DrawOrMeasureText(const nsAString& aText, float aX, float aY,
-                                 const Optional<double>& aMaxWidth,
-                                 TextDrawOperation aOp, ErrorResult& aError);
+  UniquePtr<TextMetrics> DrawOrMeasureText(const nsAString& aText, float aX,
+                                           float aY,
+                                           const Optional<double>& aMaxWidth,
+                                           TextDrawOperation aOp,
+                                           ErrorResult& aError);
 
   // A clip or a transform, recorded and restored in order.
   struct ClipState {
@@ -1128,6 +1135,10 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
 
   bool mWriteOnly;
   bool mClipsNeedConverting = false;
+
+  uint8_t mFillTextCalls = 0;
+  // Flags used by the fingerprinting detection heuristic
+  CanvasFeatureUsage mFeatureUsage = CanvasFeatureUsage::None;
 
   virtual void AddZoneWaitingForGC();
   virtual void AddAssociatedMemory();

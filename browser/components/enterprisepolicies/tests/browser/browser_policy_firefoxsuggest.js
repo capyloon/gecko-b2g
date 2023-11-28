@@ -31,8 +31,9 @@ add_task(async function test_firefox_suggest_with_policy() {
         "Sponsored suggestions is enabled"
       );
       is(
-        browser.contentDocument.getElementById("firefoxSuggestDataCollection")
-          .checked,
+        browser.contentDocument.getElementById(
+          "firefoxSuggestDataCollectionToggle"
+        ).pressed,
         true,
         "Improve suggest is enabled"
       );
@@ -49,8 +50,9 @@ add_task(async function test_firefox_suggest_with_policy() {
         "Sponsored suggestions is enabled"
       );
       is(
-        browser.contentDocument.getElementById("firefoxSuggestDataCollection")
-          .disabled,
+        browser.contentDocument.getElementById(
+          "firefoxSuggestDataCollectionToggle"
+        ).disabled,
         true,
         "Improve suggest is enabled"
       );

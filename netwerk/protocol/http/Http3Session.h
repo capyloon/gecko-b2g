@@ -215,7 +215,7 @@ class Http3Session final : public nsAHttpTransaction, public nsAHttpConnection {
 
   uint64_t MaxDatagramSize(uint64_t aSessionId);
 
-  void SetSendOrder(Http3StreamBase* aStream, int64_t aSendOrder);
+  void SetSendOrder(Http3StreamBase* aStream, Maybe<int64_t> aSendOrder);
 
   void CloseWebTransportConn();
 
@@ -375,6 +375,10 @@ class Http3Session final : public nsAHttpTransaction, public nsAHttpConnection {
   bool mHasWebTransportSession = false;
   // When true, we don't add this connection info into the Http/3 excluded list.
   bool mDontExclude = false;
+  // The lifetime of the UDP socket is managed by the HttpConnectionUDP. This
+  // is only used in Http3Session::ProcessOutput. Using raw pointer here to
+  // improve performance.
+  nsIUDPSocket* mSocket;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(Http3Session, NS_HTTP3SESSION_IID);

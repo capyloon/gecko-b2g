@@ -177,6 +177,12 @@ bitflags::bitflags! {
     }
 }
 
+impl Default for Backends {
+    fn default() -> Self {
+        Self::all()
+    }
+}
+
 impl_bitflags!(Backends);
 
 impl From<Backend> for Backends {
@@ -2097,6 +2103,15 @@ impl TextureFormatFeatureFlags {
             _ => false,
         }
     }
+
+    /// A `Vec` of supported sample counts.
+    pub fn supported_sample_counts(&self) -> Vec<u32> {
+        let all_possible_sample_counts: [u32; 5] = [1, 2, 4, 8, 16];
+        all_possible_sample_counts
+            .into_iter()
+            .filter(|&sc| self.sample_count_supported(sc))
+            .collect()
+    }
 }
 
 impl_bitflags!(TextureFormatFeatureFlags);
@@ -2798,7 +2813,9 @@ impl TextureFormat {
         }
     }
 
-    /// Returns the dimension of a block of texels.
+    /// Returns the dimension of a [block](https://gpuweb.github.io/gpuweb/#texel-block) of texels.
+    ///
+    /// Uncompressed formats have a block dimension of `(1, 1)`.
     pub fn block_dimensions(&self) -> (u32, u32) {
         match *self {
             Self::R8Unorm
@@ -3210,14 +3227,34 @@ impl TextureFormat {
         }
     }
 
-    /// Returns the [texel block size](https://gpuweb.github.io/gpuweb/#texel-block-size)
-    /// of this format.
+    /// The number of bytes one [texel block](https://gpuweb.github.io/gpuweb/#texel-block) occupies during an image copy, if applicable.
+    ///
+    /// Known as the [texel block copy footprint](https://gpuweb.github.io/gpuweb/#texel-block-copy-footprint).
+    ///
+    /// Note that for uncompressed formats this is the same as the size of a single texel,
+    /// since uncompressed formats have a block size of 1x1.
     ///
     /// Returns `None` if any of the following are true:
     ///  - the format is combined depth-stencil and no `aspect` was provided
     ///  - the format is `Depth24Plus`
     ///  - the format is `Depth24PlusStencil8` and `aspect` is depth.
+    #[deprecated(since = "0.19.0", note = "Use `block_copy_size` instead.")]
     pub fn block_size(&self, aspect: Option<TextureAspect>) -> Option<u32> {
+        self.block_copy_size(aspect)
+    }
+
+    /// The number of bytes one [texel block](https://gpuweb.github.io/gpuweb/#texel-block) occupies during an image copy, if applicable.
+    ///
+    /// Known as the [texel block copy footprint](https://gpuweb.github.io/gpuweb/#texel-block-copy-footprint).
+    ///
+    /// Note that for uncompressed formats this is the same as the size of a single texel,
+    /// since uncompressed formats have a block size of 1x1.
+    ///
+    /// Returns `None` if any of the following are true:
+    ///  - the format is combined depth-stencil and no `aspect` was provided
+    ///  - the format is `Depth24Plus`
+    ///  - the format is `Depth24PlusStencil8` and `aspect` is depth.
+    pub fn block_copy_size(&self, aspect: Option<TextureAspect>) -> Option<u32> {
         match *self {
             Self::R8Unorm | Self::R8Snorm | Self::R8Uint | Self::R8Sint => Some(1),
 
@@ -4878,9 +4915,9 @@ pub struct SurfaceConfiguration<V> {
     /// The texture format of the swap chain. The only formats that are guaranteed are
     /// `Bgra8Unorm` and `Bgra8UnormSrgb`
     pub format: TextureFormat,
-    /// Width of the swap chain. Must be the same size as the surface.
+    /// Width of the swap chain. Must be the same size as the surface, and nonzero.
     pub width: u32,
-    /// Height of the swap chain. Must be the same size as the surface.
+    /// Height of the swap chain. Must be the same size as the surface, and nonzero.
     pub height: u32,
     /// Presentation mode of the swap chain. Fifo is the only mode guaranteed to be supported.
     /// FifoRelaxed, Immediate, and Mailbox will crash if unsupported, while AutoVsync and
@@ -6626,6 +6663,8 @@ pub use send_sync::*;
 
 #[doc(hidden)]
 mod send_sync {
+    pub trait WasmNotSendSync: WasmNotSend + WasmNotSync {}
+    impl<T: WasmNotSend + WasmNotSync> WasmNotSendSync for T {}
     #[cfg(any(
         not(target_arch = "wasm32"),
         all(
@@ -6691,4 +6730,16 @@ mod send_sync {
         )
     )))]
     impl<T> WasmNotSync for T {}
+}
+
+/// Reason for "lose the device".
+///
+/// Corresponds to [WebGPU `GPUDeviceLostReason`](https://gpuweb.github.io/gpuweb/#enumdef-gpudevicelostreason).
+#[repr(u8)]
+#[derive(Debug, Copy, Clone)]
+pub enum DeviceLostReason {
+    /// Triggered by driver
+    Unknown = 0,
+    /// After Device::destroy
+    Destroyed = 1,
 }

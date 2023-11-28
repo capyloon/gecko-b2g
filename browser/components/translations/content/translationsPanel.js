@@ -24,6 +24,7 @@ const PageAction = Object.freeze({
   NO_CHANGE: "NO_CHANGE",
   RESTORE_PAGE: "RESTORE_PAGE",
   TRANSLATE_PAGE: "TRANSLATE_PAGE",
+  CLOSE_PANEL: "CLOSE_PANEL",
 });
 
 /**
@@ -152,6 +153,11 @@ class CheckboxPageAction {
       case CheckboxPageAction.#computeState(1, 0, 0, 1):
       case CheckboxPageAction.#computeState(1, 0, 0, 0):
         return PageAction.RESTORE_PAGE;
+      case CheckboxPageAction.#computeState(0, 1, 0, 0):
+      case CheckboxPageAction.#computeState(0, 0, 0, 1):
+      case CheckboxPageAction.#computeState(0, 1, 0, 1):
+      case CheckboxPageAction.#computeState(0, 0, 0, 0):
+        return PageAction.CLOSE_PANEL;
     }
     return PageAction.NO_CHANGE;
   }
@@ -170,6 +176,10 @@ class CheckboxPageAction {
         return PageAction.RESTORE_PAGE;
       case CheckboxPageAction.#computeState(0, 1, 0, 1):
         return PageAction.TRANSLATE_PAGE;
+      case CheckboxPageAction.#computeState(0, 0, 1, 0):
+      case CheckboxPageAction.#computeState(0, 1, 0, 0):
+      case CheckboxPageAction.#computeState(0, 0, 0, 0):
+        return PageAction.CLOSE_PANEL;
     }
     return PageAction.NO_CHANGE;
   }
@@ -1245,17 +1255,6 @@ var TranslationsPanel = new (class {
   }
 
   /**
-   * Removes the translations button.
-   */
-  #hideTranslationsButton() {
-    const { button, buttonLocale, buttonCircleArrows } = this.buttonElements;
-    button.hidden = true;
-    buttonLocale.hidden = true;
-    buttonCircleArrows.hidden = true;
-    button.removeAttribute("translationsactive");
-  }
-
-  /**
    * Returns true if translations is currently active, otherwise false.
    *
    * @returns {boolean}
@@ -1356,6 +1355,10 @@ var TranslationsPanel = new (class {
         await this.onTranslate();
         break;
       }
+      case PageAction.CLOSE_PANEL: {
+        PanelMultiView.hidePopup(this.elements.panel);
+        break;
+      }
     }
   }
 
@@ -1446,7 +1449,7 @@ var TranslationsPanel = new (class {
   onLocationChange(browser) {
     if (browser.currentURI.spec.startsWith("about:reader")) {
       // Hide the translations button when entering reader mode.
-      TranslationsPanel.#hideTranslationsButton();
+      this.buttonElements.button.hidden = true;
     }
   }
 
@@ -1543,6 +1546,9 @@ var TranslationsPanel = new (class {
           (hasSupportedLanguage &&
             (await TranslationsParent.getIsTranslationsEngineSupported()))
         ) {
+          // Keep track if the button was originally hidden, because it will be shown now.
+          const wasButtonHidden = button.hidden;
+
           button.hidden = false;
           if (requestedTranslationPair) {
             // The translation is active, update the urlbar button.
@@ -1602,11 +1608,13 @@ var TranslationsPanel = new (class {
             }
           }
 
-          if (!button.hidden) {
+          // The button was hidden, but now it is shown.
+          if (wasButtonHidden) {
             PageActions.sendPlacedInUrlbarTrigger(button);
           }
-        } else {
-          this.#hideTranslationsButton();
+        } else if (!button.hidden) {
+          // There are no translations visible, hide the button.
+          button.hidden = true;
         }
 
         switch (error) {

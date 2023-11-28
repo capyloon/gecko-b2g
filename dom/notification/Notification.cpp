@@ -332,7 +332,6 @@ class NotificationWorkerRunnable : public MainThreadWorkerRunnable {
 
   bool WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override {
     aWorkerPrivate->AssertIsOnWorkerThread();
-    aWorkerPrivate->ModifyBusyCountFromWorker(true);
     // WorkerScope might start dying at the moment. And WorkerRunInternal()
     // should not be executed once WorkerScope is dying, since
     // WorkerRunInternal() might access resources which already been freed
@@ -342,11 +341,6 @@ class NotificationWorkerRunnable : public MainThreadWorkerRunnable {
       WorkerRunInternal(aWorkerPrivate);
     }
     return true;
-  }
-
-  void PostRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate,
-               bool aRunResult) override {
-    aWorkerPrivate->ModifyBusyCountFromWorker(false);
   }
 
   virtual void WorkerRunInternal(WorkerPrivate* aWorkerPrivate) = 0;
@@ -381,7 +375,6 @@ class ReleaseNotificationRunnable final : public NotificationWorkerRunnable {
 
   bool WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) override {
     aWorkerPrivate->AssertIsOnWorkerThread();
-    aWorkerPrivate->ModifyBusyCountFromWorker(true);
     // ReleaseNotificationRunnable is only used in StrongWorkerRef's shutdown
     // callback. At the moment, it is supposed to executing
     // mNotification->ReleaseObject() safely even though the corresponding
@@ -506,7 +499,10 @@ NotificationPermissionRequest::Run() {
   bool blocked = false;
   if (isSystem) {
     mPermission = NotificationPermission::Granted;
-  } else if (mPrincipal->GetPrivateBrowsingId() != 0) {
+  } else if (
+      mPrincipal->GetPrivateBrowsingId() != 0 &&
+      !StaticPrefs::
+          dom_webnotifications_privateBrowsing_enableDespiteLimitations()) {
     mPermission = NotificationPermission::Denied;
     blocked = true;
   } else {
@@ -1706,7 +1702,9 @@ NotificationPermission Notification::GetPermissionInternal(
     return NotificationPermission::Denied;
   }
 
-  if (principal->GetPrivateBrowsingId() != 0) {
+  if (principal->GetPrivateBrowsingId() != 0 &&
+      !StaticPrefs::
+          dom_webnotifications_privateBrowsing_enableDespiteLimitations()) {
     return NotificationPermission::Denied;
   }
   // Disallow showing notification if our origin is not the same origin as the

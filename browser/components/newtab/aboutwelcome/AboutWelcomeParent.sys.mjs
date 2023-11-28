@@ -12,6 +12,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   BuiltInThemes: "resource:///modules/BuiltInThemes.sys.mjs",
   FxAccounts: "resource://gre/modules/FxAccounts.sys.mjs",
   LangPackMatcher: "resource://gre/modules/LangPackMatcher.sys.mjs",
+  ShellService: "resource:///modules/ShellService.sys.mjs",
   SpecialMessageActions:
     "resource://messaging-system/lib/SpecialMessageActions.sys.mjs",
 });
@@ -49,24 +50,6 @@ const LIGHT_WEIGHT_THEMES = {
   DARK: "firefox-compact-dark@mozilla.org",
   LIGHT: "firefox-compact-light@mozilla.org",
   ALPENGLOW: "firefox-alpenglow@mozilla.org",
-  "PLAYMAKER-SOFT": "playmaker-soft-colorway@mozilla.org",
-  "PLAYMAKER-BALANCED": "playmaker-balanced-colorway@mozilla.org",
-  "PLAYMAKER-BOLD": "playmaker-bold-colorway@mozilla.org",
-  "EXPRESSIONIST-SOFT": "expressionist-soft-colorway@mozilla.org",
-  "EXPRESSIONIST-BALANCED": "expressionist-balanced-colorway@mozilla.org",
-  "EXPRESSIONIST-BOLD": "expressionist-bold-colorway@mozilla.org",
-  "VISIONARY-SOFT": "visionary-soft-colorway@mozilla.org",
-  "VISIONARY-BALANCED": "visionary-balanced-colorway@mozilla.org",
-  "VISIONARY-BOLD": "visionary-bold-colorway@mozilla.org",
-  "ACTIVIST-SOFT": "activist-soft-colorway@mozilla.org",
-  "ACTIVIST-BALANCED": "activist-balanced-colorway@mozilla.org",
-  "ACTIVIST-BOLD": "activist-bold-colorway@mozilla.org",
-  "DREAMER-SOFT": "dreamer-soft-colorway@mozilla.org",
-  "DREAMER-BALANCED": "dreamer-balanced-colorway@mozilla.org",
-  "DREAMER-BOLD": "dreamer-bold-colorway@mozilla.org",
-  "INNOVATOR-SOFT": "innovator-soft-colorway@mozilla.org",
-  "INNOVATOR-BALANCED": "innovator-balanced-colorway@mozilla.org",
-  "INNOVATOR-BOLD": "innovator-bold-colorway@mozilla.org",
 };
 
 class AboutWelcomeObserver {
@@ -125,6 +108,16 @@ export class AboutWelcomeParent extends JSWindowActorParent {
 
   startAboutWelcomeObserver() {
     this.AboutWelcomeObserver = new AboutWelcomeObserver();
+  }
+
+  // Static methods that calls into ShellService to check
+  // if Firefox is pinned or already default
+  static doesAppNeedPin() {
+    return lazy.ShellService.doesAppNeedPin();
+  }
+
+  static isDefaultBrowser() {
+    return lazy.ShellService.isDefaultBrowser();
   }
 
   didDestroy() {
@@ -201,6 +194,14 @@ export class AboutWelcomeParent extends JSWindowActorParent {
           key => LIGHT_WEIGHT_THEMES[key] === activeTheme?.id
         );
         return themeShortName?.toLowerCase();
+      case "AWPage:DOES_APP_NEED_PIN":
+        return AboutWelcomeParent.doesAppNeedPin();
+      case "AWPage:NEED_DEFAULT":
+        // Only need to set default if we're supposed to check and not default.
+        return (
+          Services.prefs.getBoolPref("browser.shell.checkDefaultBrowser") &&
+          !AboutWelcomeParent.isDefaultBrowser()
+        );
       case "AWPage:WAIT_FOR_MIGRATION_CLOSE":
         // Support multiples types of migration: 1) content modal 2) old
         // migration modal 3) standalone content modal

@@ -117,6 +117,9 @@ support-files = [
 ["browser_search_telemetry_private.js"]
 support-files = ["searchTelemetry.html", "searchTelemetryAd.html", "serp.css"]
 
+["browser_search_telemetry_remote_settings_sync.js"]
+support-files = ["searchTelemetryAd.html", "serp.css"]
+
 ["browser_search_telemetry_searchbar.js"]
 https_first_disabled = true
 support-files = [
@@ -131,6 +134,9 @@ fail-if = [
 support-files = ["searchTelemetryAd_shopping.html"]
 
 ["browser_search_telemetry_sources.js"]
+support-files = ["searchTelemetry.html", "searchTelemetryAd.html"]
+
+["browser_search_telemetry_sources_about.js"]
 support-files = ["searchTelemetry.html", "searchTelemetryAd.html"]
 
 ["browser_search_telemetry_sources_ads.js"]
@@ -157,4 +163,7 @@ support-files = [
 support-files = ["searchTelemetryAd_searchbox_with_content.html"]
 
 ["browser_search_telemetry_sources_navigation.js"]
+support-files = ["searchTelemetry.html", "searchTelemetryAd.html"]
+
+["browser_search_telemetry_sources_webextension.js"]
 support-files = ["searchTelemetry.html", "searchTelemetryAd.html"]

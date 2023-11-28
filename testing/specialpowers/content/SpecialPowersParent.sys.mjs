@@ -74,7 +74,7 @@ async function createWindowlessBrowser({ isPrivate = false } = {}) {
   );
 
   const system = Services.scriptSecurityManager.getSystemPrincipal();
-  chromeShell.createAboutBlankContentViewer(system, system);
+  chromeShell.createAboutBlankDocumentViewer(system, system);
   windowlessBrowser.browsingContext.useGlobalHistory = false;
   chromeShell.loadURI(
     Services.io.newURI("chrome://extensions/content/dummy.xhtml"),
@@ -428,7 +428,7 @@ export class SpecialPowersParent extends JSWindowActorParent {
   _applyPrefs(actions) {
     let requiresRefresh = false;
     for (let pref of actions) {
-      // This logic should match PrefRequiresRefresh in reftest.jsm
+      // This logic should match PrefRequiresRefresh in reftest.sys.mjs
       requiresRefresh =
         requiresRefresh ||
         pref.name == "layout.css.prefers-color-scheme.content-override" ||
@@ -949,8 +949,8 @@ export class SpecialPowersParent extends JSWindowActorParent {
         case "Wakeup":
           return undefined;
 
-        case "EvictAllContentViewers":
-          this.browsingContext.top.sessionHistory.evictAllContentViewers();
+        case "EvictAllDocumentViewers":
+          this.browsingContext.top.sessionHistory.evictAllDocumentViewers();
           return undefined;
 
         case "getBaselinePrefs":

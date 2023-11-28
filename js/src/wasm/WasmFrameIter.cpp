@@ -19,7 +19,7 @@
 #include "wasm/WasmFrameIter.h"
 
 #include "jit/JitFrames.h"
-#include "js/ColumnNumber.h"  // JS::WasmFunctionIndex, LimitedColumnNumberZeroOrigin, JS::TaggedColumnNumberZeroOrigin, JS::TaggedColumnNumberOneOrigin
+#include "js/ColumnNumber.h"  // JS::WasmFunctionIndex, LimitedColumnNumberOneOrigin, JS::TaggedColumnNumberOneOrigin, JS::TaggedColumnNumberOneOrigin
 #include "vm/JitActivation.h"  // js::jit::JitActivation
 #include "vm/JSContext.h"
 #include "wasm/WasmDebugFrame.h"
@@ -284,21 +284,20 @@ uint32_t WasmFrameIter::funcIndex() const {
 }
 
 unsigned WasmFrameIter::computeLine(
-    JS::TaggedColumnNumberZeroOrigin* column) const {
+    JS::TaggedColumnNumberOneOrigin* column) const {
   if (instance()->isAsmJS()) {
     if (column) {
       *column =
-          JS::TaggedColumnNumberZeroOrigin(JS::LimitedColumnNumberZeroOrigin(
-              JS::WasmFunctionIndex::
-                  DefaultBinarySourceColumnNumberZeroOrigin));
+          JS::TaggedColumnNumberOneOrigin(JS::LimitedColumnNumberOneOrigin(
+              JS::WasmFunctionIndex::DefaultBinarySourceColumnNumberOneOrigin));
     }
     return lineOrBytecode_;
   }
 
   MOZ_ASSERT(!(codeRange_->funcIndex() &
-               JS::TaggedColumnNumberZeroOrigin::WasmFunctionTag));
+               JS::TaggedColumnNumberOneOrigin::WasmFunctionTag));
   if (column) {
-    *column = JS::TaggedColumnNumberZeroOrigin(
+    *column = JS::TaggedColumnNumberOneOrigin(
         JS::WasmFunctionIndex(codeRange_->funcIndex()));
   }
   return lineOrBytecode_;
@@ -314,14 +313,28 @@ void** WasmFrameIter::unwoundAddressOfReturnAddress() const {
 bool WasmFrameIter::debugEnabled() const {
   MOZ_ASSERT(!done());
 
-  // Only non-imported functions can have debug frames.
-  //
   // Metadata::debugEnabled is only set if debugging is actually enabled (both
   // requested, and available via baseline compilation), and Tier::Debug code
   // will be available.
-  return code_->metadata().debugEnabled &&
-         codeRange_->funcIndex() >=
-             code_->metadata(Tier::Debug).funcImports.length();
+  if (!code_->metadata().debugEnabled) {
+    return false;
+  }
+
+  // Only non-imported functions can have debug frames.
+  if (codeRange_->funcIndex() <
+      code_->metadata(Tier::Debug).funcImports.length()) {
+    return false;
+  }
+
+#ifdef ENABLE_WASM_TAIL_CALLS
+  // Debug frame is not present at the return stub.
+  const CallSite* site = code_->lookupCallSite((void*)resumePCinCurrentFrame_);
+  if (site && site->kind() == CallSite::ReturnStub) {
+    return false;
+  }
+#endif
+
+  return true;
 }
 
 DebugFrame* WasmFrameIter::debugFrame() const {

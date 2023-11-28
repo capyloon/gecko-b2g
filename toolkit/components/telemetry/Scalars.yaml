@@ -7,6 +7,23 @@
 
 # The following section contains the accessibility scalars.
 a11y:
+  always_underline_links:
+    bug_numbers:
+      - 1835194
+    description: >
+      Bool tracking if the user has always underline links enabled in firefox.
+    expires: never
+    kind: boolean
+    notification_emails:
+      - accessibility@mozilla.com
+      - mreschenberg@mozilla.com
+    products:
+      - 'firefox'
+    record_in_processes:
+      - 'main'
+    release_channel_collection: opt-out
+    keyed: false
+
   use_system_colors:
     bug_numbers:
       - 1835194
@@ -3546,7 +3563,7 @@ dom.event:
     keyed: true
     kind: uint
     notification_emails:
-      - mnakano@mozilla.com
+      - mnakano.birchill@mozilla.com
     release_channel_collection: opt-out
     products:
       - 'firefox'
@@ -3566,7 +3583,7 @@ dom.event:
     keyed: true
     kind: uint
     notification_emails:
-      - mnakano@mozilla.com
+      - mnakano.birchill@mozilla.com
     release_channel_collection: opt-out
     products:
       - 'firefox'
@@ -5070,11 +5087,28 @@ widget:
     expires: never
     kind: boolean
     notification_emails:
-      - mnakano@mozilla.com
+      - mnakano.birchill@mozilla.com
     release_channel_collection: opt-out
     products:
       - 'firefox'
       - 'fennec'
+    record_in_processes:
+      - 'main'
+
+  ime_name_on_windows_inserted_crlf:
+    bug_numbers:
+      - 1865256
+    description:
+      Same data as ime_name_on_windows, but only collecting IME names which
+      inserted CRLF to check whether the feature works.
+    keyed: true
+    expires: never
+    kind: boolean
+    notification_emails:
+      - mnakano.birchill@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
     record_in_processes:
       - 'main'
 
@@ -5107,7 +5141,7 @@ widget:
     expires: never
     kind: boolean
     notification_emails:
-      - mnakano@mozilla.com
+      - mnakano.birchill@mozilla.com
     release_channel_collection: opt-out
     products:
       - 'firefox'
@@ -5127,7 +5161,7 @@ widget:
     expires: never
     kind: boolean
     notification_emails:
-      - mnakano@mozilla.com
+      - mnakano.birchill@mozilla.com
     release_channel_collection: opt-out
     products:
       - 'firefox'
@@ -8848,7 +8882,7 @@ shopping:
       This scalar is mirroring the Glean metric named
       shopping.settings.nimbus_disabled_shopping, which is defined in
       toolkit/components/shopping/metrics.yaml.
-    expires: "122"
+    expires: "134"
     kind: boolean
     notification_emails:
       - betling@mozilla.com
@@ -8866,7 +8900,7 @@ shopping:
       This scalar is mirroring the Glean metric named
       shopping.settings.component_opted_out, which is defined in
       toolkit/components/shopping/metrics.yaml.
-    expires: "122"
+    expires: "134"
     kind: boolean
     notification_emails:
       - betling@mozilla.com
@@ -8884,7 +8918,7 @@ shopping:
       in browser. This scalar is mirroring the Glean metric named
       shopping.settings.has_onboarded, which is defined in
       toolkit/components/shopping/metrics.yaml.
-    expires: "122"
+    expires: "134"
     kind: boolean
     notification_emails:
       - betling@mozilla.com
@@ -8900,7 +8934,7 @@ shopping:
       Counts number of visits to a supported retailer product page while
       enrolled in either the control or treatment branches of the shopping
       experiment.
-    expires: "122"
+    expires: "134"
     kind: uint
     notification_emails:
       - betling@mozilla.com

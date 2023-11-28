@@ -13,6 +13,7 @@
 use crate::properties::{CSSWideKeyword, PropertyDeclaration, NonCustomPropertyIterator};
 use crate::properties::longhands;
 use crate::properties::longhands::visibility::computed_value::T as Visibility;
+use crate::properties::longhands::content_visibility::computed_value::T as ContentVisibility;
 use crate::properties::LonghandId;
 use std::ptr;
 use std::mem;
@@ -303,11 +304,11 @@ impl AnimationValue {
             }
             % endfor
             PropertyDeclaration::CSSWideKeyword(ref declaration) => {
-                match declaration.id {
+                match declaration.id.to_physical(context.builder.writing_mode) {
                     // We put all the animatable properties first in the hopes
                     // that it might increase match locality.
                     % for prop in data.longhands:
-                    % if prop.animatable:
+                    % if prop.animatable and not prop.logical:
                     LonghandId::${prop.camel_case} => {
                         // FIXME(emilio, bug 1533327): I think revert (and
                         // revert-layer) handling is not fine here, but what to
@@ -345,22 +346,12 @@ impl AnimationValue {
                         % if not prop.is_animatable_with_computed_value:
                         let computed = computed.to_animated_value();
                         % endif
-
-                        % if prop.logical:
-                        let wm = context.builder.writing_mode;
-                        <%helpers:logical_setter_helper name="${prop.name}">
-                        <%def name="inner(physical_ident)">
-                            AnimationValue::${to_camel_case(physical_ident)}(computed)
-                        </%def>
-                        </%helpers:logical_setter_helper>
-                        % else:
-                            AnimationValue::${prop.camel_case}(computed)
-                        % endif
+                        AnimationValue::${prop.camel_case}(computed)
                     },
                     % endif
                     % endfor
                     % for prop in data.longhands:
-                    % if not prop.animatable:
+                    % if not prop.animatable or prop.logical:
                     LonghandId::${prop.camel_case} => return None,
                     % endif
                     % endfor
@@ -580,6 +571,42 @@ impl ComputeSquaredDistance for Visibility {
 }
 
 impl ToAnimatedZero for Visibility {
+    #[inline]
+    fn to_animated_zero(&self) -> Result<Self, ()> {
+        Err(())
+    }
+}
+
+/// <https://drafts.csswg.org/css-contain-3/#content-visibility-animation>
+impl Animate for ContentVisibility {
+    #[inline]
+    fn animate(&self, other: &Self, procedure: Procedure) -> Result<Self, ()> {
+        match procedure {
+            Procedure::Interpolate { .. } => {
+                let (this_weight, other_weight) = procedure.weights();
+                match (*self, *other) {
+                    (ContentVisibility::Hidden, _) => {
+                        Ok(if other_weight > 0.0 { *other } else { *self })
+                    },
+                    (_, ContentVisibility::Hidden) => {
+                        Ok(if this_weight > 0.0 { *self } else { *other })
+                    },
+                    _ => Err(()),
+                }
+            },
+            _ => Err(()),
+        }
+    }
+}
+
+impl ComputeSquaredDistance for ContentVisibility {
+    #[inline]
+    fn compute_squared_distance(&self, other: &Self) -> Result<SquaredDistance, ()> {
+        Ok(SquaredDistance::from_sqrt(if *self == *other { 0. } else { 1. }))
+    }
+}
+
+impl ToAnimatedZero for ContentVisibility {
     #[inline]
     fn to_animated_zero(&self) -> Result<Self, ()> {
         Err(())

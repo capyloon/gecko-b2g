@@ -309,6 +309,8 @@ pub struct ReflectionInfo {
     pub uniforms: crate::FastHashMap<Handle<crate::GlobalVariable>, String>,
     /// Mapping between names and attribute locations.
     pub varying: crate::FastHashMap<String, VaryingLocation>,
+    /// List of push constant items in the shader.
+    pub push_constant_items: Vec<PushConstantItem>,
 }
 
 /// Mapping between a texture and its sampler, if it exists.
@@ -326,6 +328,50 @@ pub struct TextureMapping {
     pub texture: Handle<crate::GlobalVariable>,
     /// Handle to the associated sampler global variable, if it exists.
     pub sampler: Option<Handle<crate::GlobalVariable>>,
+}
+
+/// All information to bind a single uniform value to the shader.
+///
+/// Push constants are emulated using traditional uniforms in OpenGL.
+///
+/// These are composed of a set of primatives (scalar, vector, matrix) that
+/// are given names. Because they are not backed by the concept of a buffer,
+/// we must do the work of calculating the offset of each primative in the
+/// push constant block.
+#[derive(Debug, Clone)]
+pub struct PushConstantItem {
+    /// GL uniform name for the item. This name is the same as if you were
+    /// to access it directly from a GLSL shader.
+    ///
+    /// The with the following example, the following names will be generated,
+    /// one name per GLSL uniform.
+    ///
+    /// ```glsl
+    /// struct InnerStruct {
+    ///     value: f32,
+    /// }
+    ///
+    /// struct PushConstant {
+    ///     InnerStruct inner;
+    ///     vec4 array[2];
+    /// }
+    ///
+    /// uniform PushConstants _push_constant_binding_cs;
+    /// ```
+    ///
+    /// ```text
+    /// - _push_constant_binding_cs.inner.value
+    /// - _push_constant_binding_cs.array[0]
+    /// - _push_constant_binding_cs.array[1]
+    /// ```
+    ///
+    pub access_path: String,
+    /// Type of the uniform. This will only ever be a scalar, vector, or matrix.
+    pub ty: Handle<crate::Type>,
+    /// The offset in the push constant memory block this uniform maps to.
+    ///
+    /// The size of the uniform can be derived from the type.
+    pub offset: u32,
 }
 
 /// Helper structure that generates a number
@@ -425,8 +471,8 @@ pub enum Error {
     #[error("A call was made to an unsupported external: {0}")]
     UnsupportedExternal(String),
     /// A scalar with an unsupported width was requested.
-    #[error("A scalar with an unsupported width was requested: {0:?} {1:?}")]
-    UnsupportedScalar(crate::ScalarKind, crate::Bytes),
+    #[error("A scalar with an unsupported width was requested: {0:?}")]
+    UnsupportedScalar(crate::Scalar),
     /// A image was used with multiple samplers, which isn't supported.
     #[error("A image was used with multiple samplers")]
     ImageMultipleSamplers,
@@ -917,27 +963,20 @@ impl<'a, W: Write> Writer<'a, W> {
     fn write_value_type(&mut self, inner: &TypeInner) -> BackendResult {
         match *inner {
             // Scalars are simple we just get the full name from `glsl_scalar`
-            TypeInner::Scalar { kind, width }
-            | TypeInner::Atomic { kind, width }
+            TypeInner::Scalar(scalar)
+            | TypeInner::Atomic(scalar)
             | TypeInner::ValuePointer {
                 size: None,
-                kind,
-                width,
+                scalar,
                 space: _,
-            } => write!(self.out, "{}", glsl_scalar(kind, width)?.full)?,
+            } => write!(self.out, "{}", glsl_scalar(scalar)?.full)?,
             // Vectors are just `gvecN` where `g` is the scalar prefix and `N` is the vector size
-            TypeInner::Vector { size, kind, width }
+            TypeInner::Vector { size, scalar }
             | TypeInner::ValuePointer {
                 size: Some(size),
-                kind,
-                width,
+                scalar,
                 space: _,
-            } => write!(
-                self.out,
-                "{}vec{}",
-                glsl_scalar(kind, width)?.prefix,
-                size as u8
-            )?,
+            } => write!(self.out, "{}vec{}", glsl_scalar(scalar)?.prefix, size as u8)?,
             // Matrices are written with `gmatMxN` where `g` is the scalar prefix (only floats and
             // doubles are allowed), `M` is the columns count and `N` is the rows count
             //
@@ -946,11 +985,11 @@ impl<'a, W: Write> Writer<'a, W> {
             TypeInner::Matrix {
                 columns,
                 rows,
-                width,
+                scalar,
             } => write!(
                 self.out,
                 "{}mat{}x{}",
-                glsl_scalar(crate::ScalarKind::Float, width)?.prefix,
+                glsl_scalar(scalar)?.prefix,
                 columns as u8,
                 rows as u8
             )?,
@@ -1037,7 +1076,7 @@ impl<'a, W: Write> Writer<'a, W> {
             self.out,
             "{}{}{}{}{}{}{}",
             precision,
-            glsl_scalar(kind, 4)?.prefix,
+            glsl_scalar(crate::Scalar { kind, width: 4 })?.prefix,
             base,
             glsl_dimension(dim),
             ms,
@@ -1232,7 +1271,7 @@ impl<'a, W: Write> Writer<'a, W> {
                     crate::MathFunction::Dot => {
                         // if the expression is a Dot product with integer arguments,
                         // then the args needs baking as well
-                        if let TypeInner::Scalar { kind, .. } = *inner {
+                        if let TypeInner::Scalar(crate::Scalar { kind, .. }) = *inner {
                             match kind {
                                 crate::ScalarKind::Sint | crate::ScalarKind::Uint => {
                                     self.need_bake_expressions.insert(arg);
@@ -1264,8 +1303,8 @@ impl<'a, W: Write> Writer<'a, W> {
         handle: Handle<crate::GlobalVariable>,
         global: &crate::GlobalVariable,
     ) -> String {
-        match global.binding {
-            Some(ref br) => {
+        match (&global.binding, global.space) {
+            (&Some(ref br), _) => {
                 format!(
                     "_group_{}_binding_{}_{}",
                     br.group,
@@ -1273,7 +1312,10 @@ impl<'a, W: Write> Writer<'a, W> {
                     self.entry_point.stage.to_str()
                 )
             }
-            None => self.names[&NameKey::GlobalVariable(handle)].clone(),
+            (&None, crate::AddressSpace::PushConstant) => {
+                format!("_push_constant_binding_{}", self.entry_point.stage.to_str())
+            }
+            (&None, _) => self.names[&NameKey::GlobalVariable(handle)].clone(),
         }
     }
 
@@ -1283,15 +1325,20 @@ impl<'a, W: Write> Writer<'a, W> {
         handle: Handle<crate::GlobalVariable>,
         global: &crate::GlobalVariable,
     ) -> BackendResult {
-        match global.binding {
-            Some(ref br) => write!(
+        match (&global.binding, global.space) {
+            (&Some(ref br), _) => write!(
                 self.out,
                 "_group_{}_binding_{}_{}",
                 br.group,
                 br.binding,
                 self.entry_point.stage.to_str()
             )?,
-            None => write!(
+            (&None, crate::AddressSpace::PushConstant) => write!(
+                self.out,
+                "_push_constant_binding_{}",
+                self.entry_point.stage.to_str()
+            )?,
+            (&None, _) => write!(
                 self.out,
                 "{}",
                 &self.names[&NameKey::GlobalVariable(handle)]
@@ -2363,6 +2410,9 @@ impl<'a, W: Write> Writer<'a, W> {
                     crate::Literal::U32(value) => write!(self.out, "{}u", value)?,
                     crate::Literal::I32(value) => write!(self.out, "{}", value)?,
                     crate::Literal::Bool(value) => write!(self.out, "{}", value)?,
+                    crate::Literal::I64(_) => {
+                        return Err(Error::Custom("GLSL has no 64-bit integer type".into()));
+                    }
                 }
             }
             Expression::Constant(handle) => {
@@ -2748,10 +2798,10 @@ impl<'a, W: Write> Writer<'a, W> {
                                 if let Some(expr) = level {
                                     let cast_to_int = matches!(
                                         *ctx.resolve_type(expr, &self.module.types),
-                                        crate::TypeInner::Scalar {
+                                        crate::TypeInner::Scalar(crate::Scalar {
                                             kind: crate::ScalarKind::Uint,
                                             ..
-                                        }
+                                        })
                                     );
 
                                     write!(self.out, ", ")?;
@@ -2852,19 +2902,19 @@ impl<'a, W: Write> Writer<'a, W> {
                 let right_inner = ctx.resolve_type(right, &self.module.types);
 
                 let function = match (left_inner, right_inner) {
-                    (&Ti::Vector { kind, .. }, &Ti::Vector { .. }) => match op {
+                    (&Ti::Vector { scalar, .. }, &Ti::Vector { .. }) => match op {
                         Bo::Less
                         | Bo::LessEqual
                         | Bo::Greater
                         | Bo::GreaterEqual
                         | Bo::Equal
                         | Bo::NotEqual => BinaryOperation::VectorCompare,
-                        Bo::Modulo if kind == Sk::Float => BinaryOperation::Modulo,
-                        Bo::And if kind == Sk::Bool => {
+                        Bo::Modulo if scalar.kind == Sk::Float => BinaryOperation::Modulo,
+                        Bo::And if scalar.kind == Sk::Bool => {
                             op = crate::BinaryOperator::LogicalAnd;
                             BinaryOperation::VectorComponentWise
                         }
-                        Bo::InclusiveOr if kind == Sk::Bool => {
+                        Bo::InclusiveOr if scalar.kind == Sk::Bool => {
                             op = crate::BinaryOperator::LogicalOr;
                             BinaryOperation::VectorComponentWise
                         }
@@ -3117,7 +3167,11 @@ impl<'a, W: Write> Writer<'a, W> {
                     // geometry
                     Mf::Dot => match *ctx.resolve_type(arg, &self.module.types) {
                         crate::TypeInner::Vector {
-                            kind: crate::ScalarKind::Float,
+                            scalar:
+                                crate::Scalar {
+                                    kind: crate::ScalarKind::Float,
+                                    ..
+                                },
                             ..
                         } => "dot",
                         crate::TypeInner::Vector { size, .. } => {
@@ -3172,9 +3226,9 @@ impl<'a, W: Write> Writer<'a, W> {
                     // bits
                     Mf::CountTrailingZeros => {
                         match *ctx.resolve_type(arg, &self.module.types) {
-                            crate::TypeInner::Vector { size, kind, .. } => {
+                            crate::TypeInner::Vector { size, scalar, .. } => {
                                 let s = back::vector_size_str(size);
-                                if let crate::ScalarKind::Uint = kind {
+                                if let crate::ScalarKind::Uint = scalar.kind {
                                     write!(self.out, "min(uvec{s}(findLSB(")?;
                                     self.write_expr(arg, ctx)?;
                                     write!(self.out, ")), uvec{s}(32u))")?;
@@ -3184,8 +3238,8 @@ impl<'a, W: Write> Writer<'a, W> {
                                     write!(self.out, ")), uvec{s}(32u)))")?;
                                 }
                             }
-                            crate::TypeInner::Scalar { kind, .. } => {
-                                if let crate::ScalarKind::Uint = kind {
+                            crate::TypeInner::Scalar(scalar) => {
+                                if let crate::ScalarKind::Uint = scalar.kind {
                                     write!(self.out, "min(uint(findLSB(")?;
                                     self.write_expr(arg, ctx)?;
                                     write!(self.out, ")), 32u)")?;
@@ -3202,10 +3256,10 @@ impl<'a, W: Write> Writer<'a, W> {
                     Mf::CountLeadingZeros => {
                         if self.options.version.supports_integer_functions() {
                             match *ctx.resolve_type(arg, &self.module.types) {
-                                crate::TypeInner::Vector { size, kind, .. } => {
+                                crate::TypeInner::Vector { size, scalar } => {
                                     let s = back::vector_size_str(size);
 
-                                    if let crate::ScalarKind::Uint = kind {
+                                    if let crate::ScalarKind::Uint = scalar.kind {
                                         write!(self.out, "uvec{s}(ivec{s}(31) - findMSB(")?;
                                         self.write_expr(arg, ctx)?;
                                         write!(self.out, "))")?;
@@ -3217,8 +3271,8 @@ impl<'a, W: Write> Writer<'a, W> {
                                         write!(self.out, ", ivec{s}(0)))")?;
                                     }
                                 }
-                                crate::TypeInner::Scalar { kind, .. } => {
-                                    if let crate::ScalarKind::Uint = kind {
+                                crate::TypeInner::Scalar(scalar) => {
+                                    if let crate::ScalarKind::Uint = scalar.kind {
                                         write!(self.out, "uint(31 - findMSB(")?;
                                     } else {
                                         write!(self.out, "(")?;
@@ -3233,10 +3287,10 @@ impl<'a, W: Write> Writer<'a, W> {
                             };
                         } else {
                             match *ctx.resolve_type(arg, &self.module.types) {
-                                crate::TypeInner::Vector { size, kind, .. } => {
+                                crate::TypeInner::Vector { size, scalar } => {
                                     let s = back::vector_size_str(size);
 
-                                    if let crate::ScalarKind::Uint = kind {
+                                    if let crate::ScalarKind::Uint = scalar.kind {
                                         write!(self.out, "uvec{s}(")?;
                                         write!(self.out, "vec{s}(31.0) - floor(log2(vec{s}(")?;
                                         self.write_expr(arg, ctx)?;
@@ -3251,8 +3305,8 @@ impl<'a, W: Write> Writer<'a, W> {
                                         write!(self.out, ", ivec{s}(0u))))")?;
                                     }
                                 }
-                                crate::TypeInner::Scalar { kind, .. } => {
-                                    if let crate::ScalarKind::Uint = kind {
+                                crate::TypeInner::Scalar(scalar) => {
+                                    if let crate::ScalarKind::Uint = scalar.kind {
                                         write!(self.out, "uint(31.0 - floor(log2(float(")?;
                                         self.write_expr(arg, ctx)?;
                                         write!(self.out, ") + 0.5)))")?;
@@ -3306,14 +3360,17 @@ impl<'a, W: Write> Writer<'a, W> {
                 // Check if the argument is an unsigned integer and return the vector size
                 // in case it's a vector
                 let maybe_uint_size = match *ctx.resolve_type(arg, &self.module.types) {
-                    crate::TypeInner::Scalar {
+                    crate::TypeInner::Scalar(crate::Scalar {
                         kind: crate::ScalarKind::Uint,
                         ..
-                    } => Some(None),
+                    }) => Some(None),
                     crate::TypeInner::Vector {
-                        kind: crate::ScalarKind::Uint,
+                        scalar:
+                            crate::Scalar {
+                                kind: crate::ScalarKind::Uint,
+                                ..
+                            },
                         size,
-                        ..
                     } => Some(Some(size)),
                     _ => None,
                 };
@@ -3396,7 +3453,10 @@ impl<'a, W: Write> Writer<'a, W> {
                 match convert {
                     Some(width) => {
                         // this is similar to `write_type`, but with the target kind
-                        let scalar = glsl_scalar(target_kind, width)?;
+                        let scalar = glsl_scalar(crate::Scalar {
+                            kind: target_kind,
+                            width,
+                        })?;
                         match *inner {
                             TypeInner::Matrix { columns, rows, .. } => write!(
                                 self.out,
@@ -3417,10 +3477,12 @@ impl<'a, W: Write> Writer<'a, W> {
                         use crate::ScalarKind as Sk;
 
                         let target_vector_type = match *inner {
-                            TypeInner::Vector { size, width, .. } => Some(TypeInner::Vector {
+                            TypeInner::Vector { size, scalar } => Some(TypeInner::Vector {
                                 size,
-                                width,
-                                kind: target_kind,
+                                scalar: crate::Scalar {
+                                    kind: target_kind,
+                                    width: scalar.width,
+                                },
                             }),
                             _ => None,
                         };
@@ -3559,14 +3621,17 @@ impl<'a, W: Write> Writer<'a, W> {
             // Otherwise write just the expression (and the 1D hack if needed)
             None => {
                 let uvec_size = match *ctx.resolve_type(coordinate, &self.module.types) {
-                    TypeInner::Scalar {
+                    TypeInner::Scalar(crate::Scalar {
                         kind: crate::ScalarKind::Uint,
                         ..
-                    } => Some(None),
+                    }) => Some(None),
                     TypeInner::Vector {
                         size,
-                        kind: crate::ScalarKind::Uint,
-                        ..
+                        scalar:
+                            crate::Scalar {
+                                kind: crate::ScalarKind::Uint,
+                                ..
+                            },
                     } => Some(Some(size as u32)),
                     _ => None,
                 };
@@ -3899,7 +3964,11 @@ impl<'a, W: Write> Writer<'a, W> {
             // End the first branch
             write!(self.out, " : ")?;
             // Write the 0 value
-            write!(self.out, "{}vec4(", glsl_scalar(kind, 4)?.prefix,)?;
+            write!(
+                self.out,
+                "{}vec4(",
+                glsl_scalar(crate::Scalar { kind, width: 4 })?.prefix,
+            )?;
             self.write_zero_init_scalar(kind)?;
             // Close the zero value constructor
             write!(self.out, ")")?;
@@ -3952,13 +4021,13 @@ impl<'a, W: Write> Writer<'a, W> {
     fn write_zero_init_value(&mut self, ty: Handle<crate::Type>) -> BackendResult {
         let inner = &self.module.types[ty].inner;
         match *inner {
-            TypeInner::Scalar { kind, .. } | TypeInner::Atomic { kind, .. } => {
-                self.write_zero_init_scalar(kind)?;
+            TypeInner::Scalar(scalar) | TypeInner::Atomic(scalar) => {
+                self.write_zero_init_scalar(scalar.kind)?;
             }
-            TypeInner::Vector { kind, .. } => {
+            TypeInner::Vector { scalar, .. } => {
                 self.write_value_type(inner)?;
                 write!(self.out, "(")?;
-                self.write_zero_init_scalar(kind)?;
+                self.write_zero_init_scalar(scalar.kind)?;
                 write!(self.out, ")")?;
             }
             TypeInner::Matrix { .. } => {
@@ -4069,6 +4138,7 @@ impl<'a, W: Write> Writer<'a, W> {
             }
         }
 
+        let mut push_constant_info = None;
         for (handle, var) in self.module.global_variables.iter() {
             if info[handle].is_empty() {
                 continue;
@@ -4093,16 +4163,104 @@ impl<'a, W: Write> Writer<'a, W> {
                         let name = self.reflection_names_globals[&handle].clone();
                         uniforms.insert(handle, name);
                     }
+                    crate::AddressSpace::PushConstant => {
+                        let name = self.reflection_names_globals[&handle].clone();
+                        push_constant_info = Some((name, var.ty));
+                    }
                     _ => (),
                 },
             }
+        }
+
+        let mut push_constant_segments = Vec::new();
+        let mut push_constant_items = vec![];
+
+        if let Some((name, ty)) = push_constant_info {
+            // We don't have a layouter available to us, so we need to create one.
+            //
+            // This is potentially a bit wasteful, but the set of types in the program
+            // shouldn't be too large.
+            let mut layouter = crate::proc::Layouter::default();
+            layouter.update(self.module.to_ctx()).unwrap();
+
+            // We start with the name of the binding itself.
+            push_constant_segments.push(name);
+
+            // We then recursively collect all the uniform fields of the push constant.
+            self.collect_push_constant_items(
+                ty,
+                &mut push_constant_segments,
+                &layouter,
+                &mut 0,
+                &mut push_constant_items,
+            );
         }
 
         Ok(ReflectionInfo {
             texture_mapping,
             uniforms,
             varying: mem::take(&mut self.varying),
+            push_constant_items,
         })
+    }
+
+    fn collect_push_constant_items(
+        &mut self,
+        ty: Handle<crate::Type>,
+        segments: &mut Vec<String>,
+        layouter: &crate::proc::Layouter,
+        offset: &mut u32,
+        items: &mut Vec<PushConstantItem>,
+    ) {
+        // At this point in the recursion, `segments` contains the path
+        // needed to access `ty` from the root.
+
+        let layout = &layouter[ty];
+        *offset = layout.alignment.round_up(*offset);
+        match self.module.types[ty].inner {
+            // All these types map directly to GL uniforms.
+            TypeInner::Scalar { .. } | TypeInner::Vector { .. } | TypeInner::Matrix { .. } => {
+                // Build the full name, by combining all current segments.
+                let name: String = segments.iter().map(String::as_str).collect();
+                items.push(PushConstantItem {
+                    access_path: name,
+                    offset: *offset,
+                    ty,
+                });
+                *offset += layout.size;
+            }
+            // Arrays are recursed into.
+            TypeInner::Array { base, size, .. } => {
+                let crate::ArraySize::Constant(count) = size else {
+                    unreachable!("Cannot have dynamic arrays in push constants");
+                };
+
+                for i in 0..count.get() {
+                    // Add the array accessor and recurse.
+                    segments.push(format!("[{}]", i));
+                    self.collect_push_constant_items(base, segments, layouter, offset, items);
+                    segments.pop();
+                }
+
+                // Ensure the stride is kept by rounding up to the alignment.
+                *offset = layout.alignment.round_up(*offset)
+            }
+            TypeInner::Struct { ref members, .. } => {
+                for (index, member) in members.iter().enumerate() {
+                    // Add struct accessor and recurse.
+                    segments.push(format!(
+                        ".{}",
+                        self.names[&NameKey::StructMember(ty, index as u32)]
+                    ));
+                    self.collect_push_constant_items(member.ty, segments, layouter, offset, items);
+                    segments.pop();
+                }
+
+                // Ensure ending padding is kept by rounding up to the alignment.
+                *offset = layout.alignment.round_up(*offset)
+            }
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -4122,13 +4280,10 @@ struct ScalarString<'a> {
 ///
 /// # Errors
 /// If a [`Float`](crate::ScalarKind::Float) with an width that isn't 4 or 8
-const fn glsl_scalar(
-    kind: crate::ScalarKind,
-    width: crate::Bytes,
-) -> Result<ScalarString<'static>, Error> {
+const fn glsl_scalar(scalar: crate::Scalar) -> Result<ScalarString<'static>, Error> {
     use crate::ScalarKind as Sk;
 
-    Ok(match kind {
+    Ok(match scalar.kind {
         Sk::Sint => ScalarString {
             prefix: "i",
             full: "int",
@@ -4137,7 +4292,7 @@ const fn glsl_scalar(
             prefix: "u",
             full: "uint",
         },
-        Sk::Float => match width {
+        Sk::Float => match scalar.width {
             4 => ScalarString {
                 prefix: "",
                 full: "float",
@@ -4146,7 +4301,7 @@ const fn glsl_scalar(
                 prefix: "d",
                 full: "double",
             },
-            _ => return Err(Error::UnsupportedScalar(kind, width)),
+            _ => return Err(Error::UnsupportedScalar(scalar)),
         },
         Sk::Bool => ScalarString {
             prefix: "b",

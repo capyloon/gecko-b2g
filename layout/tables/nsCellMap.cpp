@@ -55,8 +55,7 @@ nsTableCellMap::nsTableCellMap(nsTableFrame& aTableFrame, bool aBorderCollapse)
     : mTableFrame(aTableFrame), mFirstMap(nullptr), mBCInfo(nullptr) {
   MOZ_COUNT_CTOR(nsTableCellMap);
 
-  nsTableFrame::RowGroupArray orderedRowGroups;
-  aTableFrame.OrderRowGroups(orderedRowGroups);
+  nsTableFrame::RowGroupArray orderedRowGroups = aTableFrame.OrderedRowGroups();
 
   nsTableRowGroupFrame* prior = nullptr;
   for (uint32_t rgX = 0; rgX < orderedRowGroups.Length(); rgX++) {
@@ -208,7 +207,16 @@ nsCellMap* nsTableCellMap::GetMapFor(const nsTableRowGroupFrame* aRowGroup,
 
   // If aRowGroup is a repeated header or footer find the header or footer it
   // was repeated from.
-  if (aRowGroup->IsRepeatable()) {
+  // Bug 1442018: we also need this search for header/footer frames that are
+  // not marked as _repeatable_ because they have a next-in-flow, as they may
+  // nevertheless have been _repeated_ from an earlier fragment.
+  auto isTableHeaderFooterGroup = [](const nsTableRowGroupFrame* aRG) -> bool {
+    const auto display = aRG->StyleDisplay()->mDisplay;
+    return display == StyleDisplay::TableHeaderGroup ||
+           display == StyleDisplay::TableFooterGroup;
+  };
+  if (aRowGroup->IsRepeatable() ||
+      (aRowGroup->GetNextInFlow() && isTableHeaderFooterGroup(aRowGroup))) {
     auto findOtherRowGroupOfType =
         [aRowGroup](nsTableFrame* aTable) -> nsTableRowGroupFrame* {
       const auto display = aRowGroup->StyleDisplay()->mDisplay;
@@ -235,10 +243,10 @@ nsCellMap* nsTableCellMap::GetMapFor(const nsTableRowGroupFrame* aRowGroup,
 }
 
 void nsTableCellMap::Synchronize(nsTableFrame* aTableFrame) {
-  nsTableFrame::RowGroupArray orderedRowGroups;
   AutoTArray<nsCellMap*, 8> maps;
 
-  aTableFrame->OrderRowGroups(orderedRowGroups);
+  nsTableFrame::RowGroupArray orderedRowGroups =
+      aTableFrame->OrderedRowGroups();
   if (!orderedRowGroups.Length()) {
     return;
   }

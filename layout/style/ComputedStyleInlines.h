@@ -90,10 +90,6 @@ bool ComputedStyle::IsFixedPosContainingBlockForNonSVGTextFrames() const {
     return true;
   }
 
-  if (disp.mTopLayer == StyleTopLayer::Top) {
-    return true;
-  }
-
   const auto& effects = *StyleEffects();
   return effects.HasFilters() || effects.HasBackdropFilters();
 }
@@ -110,11 +106,11 @@ bool ComputedStyle::IsFixedPosContainingBlock(
   }
   const auto& disp = *StyleDisplay();
   if (disp.IsFixedPosContainingBlockForContainLayoutAndPaintSupportingFrames() &&
-      aContextFrame->IsFrameOfType(nsIFrame::eSupportsContainLayoutAndPaint)) {
+      aContextFrame->SupportsContainLayoutAndPaint()) {
     return true;
   }
   if (disp.IsFixedPosContainingBlockForTransformSupportingFrames() &&
-      aContextFrame->IsFrameOfType(nsIFrame::eSupportsCSSTransforms)) {
+      aContextFrame->SupportsCSSTransforms()) {
     return true;
   }
   return false;

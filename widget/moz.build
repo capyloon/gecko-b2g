@@ -80,7 +80,8 @@ elif toolkit == "gtk":
 elif toolkit == "windows":
     XPIDL_SOURCES += [
         "nsIJumpListBuilder.idl",
-        "nsIJumpListItem.idl",
+        "nsILegacyJumpListBuilder.idl",
+        "nsILegacyJumpListItem.idl",
         "nsIPrintSettingsWin.idl",
         "nsITaskbarOverlayIconController.idl",
         "nsITaskbarPreview.idl",
@@ -166,6 +167,8 @@ EXPORTS += [
 
 EXPORTS.mozilla += [
     "BasicEvents.h",
+    "ClipboardReadRequestChild.h",
+    "ClipboardReadRequestParent.h",
     "ClipboardWriteRequestChild.h",
     "ClipboardWriteRequestParent.h",
     "ColorScheme.h",
@@ -215,6 +218,7 @@ EXPORTS.mozilla.widget += [
 ]
 
 UNIFIED_SOURCES += [
+    "ClipboardReadRequestParent.cpp",
     "ClipboardWriteRequestChild.cpp",
     "ClipboardWriteRequestParent.cpp",
     "CompositorWidget.cpp",
@@ -374,6 +378,7 @@ else:
 
 IPDL_SOURCES += [
     "LookAndFeelTypes.ipdlh",
+    "PClipboardReadRequest.ipdl",
     "PClipboardWriteRequest.ipdl",
 ]
 

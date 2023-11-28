@@ -237,7 +237,7 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
   mozilla::ipc::IPCResult RecvLoadURL(nsDocShellLoadState* aLoadState,
                                       const ParentShowInfo& aInfo);
 
-  mozilla::ipc::IPCResult RecvCreateAboutBlankContentViewer(
+  mozilla::ipc::IPCResult RecvCreateAboutBlankDocumentViewer(
       nsIPrincipal* aPrincipal, nsIPrincipal* aPartitionedPrincipal);
 
   mozilla::ipc::IPCResult RecvResumeLoad(const uint64_t& aPendingSwitchID,
@@ -673,7 +673,10 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
       const nsTArray<nsCString>& aTrackingFullHashes,
       const Maybe<
           ContentBlockingNotifier::StorageAccessPermissionGrantedReason>&
-          aReason);
+          aReason,
+      const Maybe<ContentBlockingNotifier::CanvasFingerprinter>&
+          aCanvasFingerprinter,
+      const Maybe<bool> aCanvasFingerprinterKnownText);
 
   bool GetUpdateHitRegion() const { return mUpdateHitRegion; }
 

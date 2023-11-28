@@ -14,7 +14,7 @@ edition = "2021"
 rust-version = "1.65"
 name = "naga"
 version = "0.14.0"
-authors = ["Naga Developers"]
+authors = ["gfx-rs developers"]
 exclude = [
     "bin/**/*",
     "tests/**/*",
@@ -22,7 +22,6 @@ exclude = [
     "target/**/*",
 ]
 description = "Shader translation infrastructure"
-homepage = "https://github.com/gfx-rs/naga"
 readme = "README.md"
 keywords = [
     "shader",
@@ -31,7 +30,7 @@ keywords = [
     "MSL",
 ]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/gfx-rs/naga"
+repository = "https://github.com/gfx-rs/wgpu/tree/trunk/naga"
 resolver = "2"
 
 [package.metadata.docs.rs]
@@ -56,7 +55,6 @@ optional = true
 
 [dependencies.codespan-reporting]
 version = "0.11.0"
-optional = true
 
 [dependencies.hexf-parse]
 version = "0.2.1"
@@ -75,7 +73,7 @@ version = "0.2.1"
 optional = true
 
 [dependencies.serde]
-version = "1.0.103"
+version = "1.0.193"
 features = ["derive"]
 optional = true
 
@@ -84,8 +82,7 @@ version = "0.2"
 optional = true
 
 [dependencies.termcolor]
-version = "1.0.4"
-optional = true
+version = "1.4.0"
 
 [dependencies.unicode-xid]
 version = "0.2.3"
@@ -98,6 +95,7 @@ env_logger = "0.10"
 ron = "0.8.0"
 
 [dev-dependencies.hlsl-snapshots]
+version = "0.1.0"
 path = "./hlsl-snapshots"
 
 [dev-dependencies.rspirv]
@@ -137,20 +135,13 @@ serialize = [
     "bitflags/serde",
     "indexmap/serde",
 ]
-span = [
-    "codespan-reporting",
-    "termcolor",
-]
 spv-in = [
     "petgraph",
     "spirv",
 ]
 spv-out = ["spirv"]
-validate = []
 wgsl-in = [
-    "codespan-reporting",
     "hexf-parse",
-    "termcolor",
     "unicode-xid",
 ]
 wgsl-out = []

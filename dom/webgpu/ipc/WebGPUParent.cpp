@@ -39,22 +39,23 @@ extern bool wgpu_server_use_external_texture_for_swap_chain(
 extern bool wgpu_server_ensure_external_texture_for_swap_chain(
     void* aParam, WGPUSwapChainId aSwapChainId, WGPUDeviceId aDeviceId,
     WGPUTextureId aTextureId, uint32_t aWidth, uint32_t aHeight,
-    struct WGPUTextureFormat aFormat) {
+    struct WGPUTextureFormat aFormat, WGPUTextureUsages aUsage) {
   auto* parent = static_cast<WebGPUParent*>(aParam);
 
   return parent->EnsureExternalTextureForSwapChain(
-      aSwapChainId, aDeviceId, aTextureId, aWidth, aHeight, aFormat);
+      aSwapChainId, aDeviceId, aTextureId, aWidth, aHeight, aFormat, aUsage);
 }
 
-extern WGPUTextureRaw* wgpu_server_get_external_texture_raw(void* aParam,
-                                                            WGPUTextureId aId) {
+extern void* wgpu_server_get_external_texture_handle(void* aParam,
+                                                     WGPUTextureId aId) {
   auto* parent = static_cast<WebGPUParent*>(aParam);
+
   auto externalTexture = parent->GetExternalTexture(aId);
   if (!externalTexture) {
     MOZ_ASSERT_UNREACHABLE("unexpected to be called");
     return nullptr;
   }
-  return externalTexture->GetTextureRaw();
+  return externalTexture->GetExternalTextureHandle();
 }
 
 }  // namespace ffi
@@ -439,7 +440,7 @@ ipc::IPCResult WebGPUParent::RecvAdapterRequestDevice(
   return IPC_OK();
 }
 
-ipc::IPCResult WebGPUParent::RecvAdapterDestroy(RawId aAdapterId) {
+ipc::IPCResult WebGPUParent::RecvAdapterDrop(RawId aAdapterId) {
   ffi::wgpu_server_adapter_drop(mContext.get(), aAdapterId);
   return IPC_OK();
 }
@@ -465,7 +466,7 @@ WebGPUParent::BufferMapData* WebGPUParent::GetBufferMapData(RawId aBufferId) {
   return &iter->second;
 }
 
-ipc::IPCResult WebGPUParent::RecvCreateBuffer(
+ipc::IPCResult WebGPUParent::RecvDeviceCreateBuffer(
     RawId aDeviceId, RawId aBufferId, dom::GPUBufferDescriptor&& aDesc,
     ipc::UnsafeSharedMemoryHandle&& aShmem) {
   webgpu::StringHelper label(aDesc.mLabel);
@@ -707,22 +708,32 @@ ipc::IPCResult WebGPUParent::RecvBufferDestroy(RawId aBufferId) {
   return IPC_OK();
 }
 
-ipc::IPCResult WebGPUParent::RecvTextureDestroy(RawId aTextureId) {
-  ffi::wgpu_server_texture_drop(mContext.get(), aTextureId);
-
+void WebGPUParent::RemoveExternalTexture(RawId aTextureId) {
   auto it = mExternalTextures.find(aTextureId);
   if (it != mExternalTextures.end()) {
     mExternalTextures.erase(it);
   }
+}
+
+ipc::IPCResult WebGPUParent::RecvTextureDestroy(RawId aTextureId,
+                                                RawId aDeviceId) {
+  ffi::wgpu_server_texture_destroy(mContext.get(), aTextureId);
+  RemoveExternalTexture(aTextureId);
   return IPC_OK();
 }
 
-ipc::IPCResult WebGPUParent::RecvTextureViewDestroy(RawId aTextureViewId) {
+ipc::IPCResult WebGPUParent::RecvTextureDrop(RawId aTextureId) {
+  ffi::wgpu_server_texture_drop(mContext.get(), aTextureId);
+  RemoveExternalTexture(aTextureId);
+  return IPC_OK();
+}
+
+ipc::IPCResult WebGPUParent::RecvTextureViewDrop(RawId aTextureViewId) {
   ffi::wgpu_server_texture_view_drop(mContext.get(), aTextureViewId);
   return IPC_OK();
 }
 
-ipc::IPCResult WebGPUParent::RecvSamplerDestroy(RawId aSamplerId) {
+ipc::IPCResult WebGPUParent::RecvSamplerDrop(RawId aSamplerId) {
   ffi::wgpu_server_sampler_drop(mContext.get(), aSamplerId);
   return IPC_OK();
 }
@@ -744,17 +755,12 @@ ipc::IPCResult WebGPUParent::RecvCommandEncoderFinish(
   return IPC_OK();
 }
 
-ipc::IPCResult WebGPUParent::RecvCommandEncoderDestroy(RawId aEncoderId) {
+ipc::IPCResult WebGPUParent::RecvCommandEncoderDrop(RawId aEncoderId) {
   ffi::wgpu_server_encoder_drop(mContext.get(), aEncoderId);
   return IPC_OK();
 }
 
-ipc::IPCResult WebGPUParent::RecvCommandBufferDestroy(RawId aCommandBufferId) {
-  ffi::wgpu_server_command_buffer_drop(mContext.get(), aCommandBufferId);
-  return IPC_OK();
-}
-
-ipc::IPCResult WebGPUParent::RecvRenderBundleDestroy(RawId aBundleId) {
+ipc::IPCResult WebGPUParent::RecvRenderBundleDrop(RawId aBundleId) {
   ffi::wgpu_server_render_bundle_drop(mContext.get(), aBundleId);
   return IPC_OK();
 }
@@ -808,37 +814,37 @@ ipc::IPCResult WebGPUParent::RecvQueueWriteAction(
   return IPC_OK();
 }
 
-ipc::IPCResult WebGPUParent::RecvBindGroupLayoutDestroy(RawId aBindGroupId) {
+ipc::IPCResult WebGPUParent::RecvBindGroupLayoutDrop(RawId aBindGroupId) {
   ffi::wgpu_server_bind_group_layout_drop(mContext.get(), aBindGroupId);
   return IPC_OK();
 }
 
-ipc::IPCResult WebGPUParent::RecvPipelineLayoutDestroy(RawId aLayoutId) {
+ipc::IPCResult WebGPUParent::RecvPipelineLayoutDrop(RawId aLayoutId) {
   ffi::wgpu_server_pipeline_layout_drop(mContext.get(), aLayoutId);
   return IPC_OK();
 }
 
-ipc::IPCResult WebGPUParent::RecvBindGroupDestroy(RawId aBindGroupId) {
+ipc::IPCResult WebGPUParent::RecvBindGroupDrop(RawId aBindGroupId) {
   ffi::wgpu_server_bind_group_drop(mContext.get(), aBindGroupId);
   return IPC_OK();
 }
 
-ipc::IPCResult WebGPUParent::RecvShaderModuleDestroy(RawId aModuleId) {
+ipc::IPCResult WebGPUParent::RecvShaderModuleDrop(RawId aModuleId) {
   ffi::wgpu_server_shader_module_drop(mContext.get(), aModuleId);
   return IPC_OK();
 }
 
-ipc::IPCResult WebGPUParent::RecvComputePipelineDestroy(RawId aPipelineId) {
+ipc::IPCResult WebGPUParent::RecvComputePipelineDrop(RawId aPipelineId) {
   ffi::wgpu_server_compute_pipeline_drop(mContext.get(), aPipelineId);
   return IPC_OK();
 }
 
-ipc::IPCResult WebGPUParent::RecvRenderPipelineDestroy(RawId aPipelineId) {
+ipc::IPCResult WebGPUParent::RecvRenderPipelineDrop(RawId aPipelineId) {
   ffi::wgpu_server_render_pipeline_drop(mContext.get(), aPipelineId);
   return IPC_OK();
 }
 
-ipc::IPCResult WebGPUParent::RecvImplicitLayoutDestroy(
+ipc::IPCResult WebGPUParent::RecvImplicitLayoutDrop(
     RawId aImplicitPlId, const nsTArray<RawId>& aImplicitBglIds) {
   ffi::wgpu_server_pipeline_layout_drop(mContext.get(), aImplicitPlId);
   for (const auto& id : aImplicitBglIds) {
@@ -863,15 +869,14 @@ ipc::IPCResult WebGPUParent::RecvDeviceCreateSwapChain(
       return IPC_OK();
   }
 
-  constexpr uint32_t kBufferAlignmentMask = 0xff;
-  const auto bufferStrideWithMask = CheckedInt<uint32_t>(aDesc.size().width) *
-                                        gfx::BytesPerPixel(aDesc.format()) +
-                                    kBufferAlignmentMask;
+  const auto bufferStrideWithMask =
+      Device::BufferStrideWithMask(aDesc.size(), aDesc.format());
   if (!bufferStrideWithMask.isValid()) {
     MOZ_ASSERT_UNREACHABLE("Invalid width / buffer stride!");
     return IPC_OK();
   }
 
+  constexpr uint32_t kBufferAlignmentMask = 0xff;
   const uint32_t bufferStride =
       bufferStrideWithMask.value() & ~kBufferAlignmentMask;
 
@@ -1171,9 +1176,16 @@ ipc::IPCResult WebGPUParent::RecvSwapChainPresent(
       static_cast<uint32_t>(size.height),
       1,
   };
-  ffi::wgpu_server_encoder_copy_texture_to_buffer(
-      mContext.get(), aCommandEncoderId, &texView, bufferId, &bufLayout,
-      &extent);
+
+  {
+    ErrorBuffer error;
+    ffi::wgpu_server_encoder_copy_texture_to_buffer(
+        mContext.get(), aCommandEncoderId, &texView, bufferId, &bufLayout,
+        &extent, error.ToFFI());
+    if (ForwardError(data->mDeviceId, error)) {
+      return IPC_OK();
+    }
+  }
   ffi::WGPUCommandBufferDescriptor commandDesc = {};
   {
     ErrorBuffer error;
@@ -1210,7 +1222,7 @@ ipc::IPCResult WebGPUParent::RecvSwapChainPresent(
   return IPC_OK();
 }
 
-ipc::IPCResult WebGPUParent::RecvSwapChainDestroy(
+ipc::IPCResult WebGPUParent::RecvSwapChainDrop(
     const layers::RemoteTextureOwnerId& aOwnerId) {
   if (mRemoteTextureOwner) {
     mRemoteTextureOwner->UnregisterTextureOwner(aOwnerId);
@@ -1400,7 +1412,7 @@ bool WebGPUParent::UseExternalTextureForSwapChain(
 bool WebGPUParent::EnsureExternalTextureForSwapChain(
     ffi::WGPUSwapChainId aSwapChainId, ffi::WGPUDeviceId aDeviceId,
     ffi::WGPUTextureId aTextureId, uint32_t aWidth, uint32_t aHeight,
-    struct ffi::WGPUTextureFormat aFormat) {
+    struct ffi::WGPUTextureFormat aFormat, ffi::WGPUTextureUsages aUsage) {
   auto ownerId = layers::RemoteTextureOwnerId{aSwapChainId._0};
   const auto& lookup = mPresentationDataMap.find(ownerId);
   if (lookup == mPresentationDataMap.end()) {
@@ -1420,7 +1432,7 @@ bool WebGPUParent::EnsureExternalTextureForSwapChain(
         data->mRecycledExternalTextures.front();
     // Check if the texture is recyclable.
     if (texture->mWidth == aWidth && texture->mHeight == aHeight &&
-        texture->mFormat.tag == aFormat.tag) {
+        texture->mFormat.tag == aFormat.tag && texture->mUsage == aUsage) {
       data->mRecycledExternalTextures.pop_front();
       mExternalTextures.emplace(aTextureId, texture);
       return true;
@@ -1428,8 +1440,8 @@ bool WebGPUParent::EnsureExternalTextureForSwapChain(
     data->mRecycledExternalTextures.clear();
   }
 
-  auto externalTexture =
-      CreateExternalTexture(aDeviceId, aTextureId, aWidth, aHeight, aFormat);
+  auto externalTexture = CreateExternalTexture(aDeviceId, aTextureId, aWidth,
+                                               aHeight, aFormat, aUsage);
   if (!externalTexture) {
     return false;
   }
@@ -1438,12 +1450,13 @@ bool WebGPUParent::EnsureExternalTextureForSwapChain(
 
 std::shared_ptr<ExternalTexture> WebGPUParent::CreateExternalTexture(
     ffi::WGPUDeviceId aDeviceId, ffi::WGPUTextureId aTextureId, uint32_t aWidth,
-    uint32_t aHeight, const struct ffi::WGPUTextureFormat aFormat) {
+    uint32_t aHeight, const struct ffi::WGPUTextureFormat aFormat,
+    ffi::WGPUTextureUsages aUsage) {
   MOZ_RELEASE_ASSERT(mExternalTextures.find(aTextureId) ==
                      mExternalTextures.end());
 
   UniquePtr<ExternalTexture> texture =
-      ExternalTexture::Create(aWidth, aHeight, aFormat);
+      ExternalTexture::Create(aWidth, aHeight, aFormat, aUsage);
   if (!texture) {
     MOZ_ASSERT_UNREACHABLE("unexpected to be called");
     return nullptr;
@@ -1455,16 +1468,6 @@ std::shared_ptr<ExternalTexture> WebGPUParent::CreateExternalTexture(
     gfxCriticalNoteOnce << "Failed to get shared handle";
     return nullptr;
   }
-
-  auto* textureRaw = wgpu_server_create_external_texture_raw(
-      mContext.get(), aDeviceId, sharedHandle);
-  if (!textureRaw) {
-    MOZ_ASSERT_UNREACHABLE("unexpected to be called");
-    gfxCriticalNoteOnce << "Failed to create TextureRaw";
-    return nullptr;
-  }
-
-  texture->SetTextureRaw(textureRaw);
 
   std::shared_ptr<ExternalTexture> shared(texture.release());
   mExternalTextures.emplace(aTextureId, shared);

@@ -285,7 +285,7 @@ fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and
 ["browser_webconsole_console_logging_workers_api.js"]
 skip-if = [
   "tsan", # Bug 1767724
-  "a11y_checks", # Bug 1849028 and 1849230 for causing crashes
+  "release_or_beta", # requires dom.postMessage.sharedArrayBuffer.bypassCOOP_COEP.insecure.enabled
 ]
 
 ["browser_webconsole_console_profile_unavailable.js"]
@@ -324,7 +324,6 @@ skip-if = [
 ]
 
 ["browser_webconsole_context_menu_copy_message_with_async_stacktrace.js"]
-skip-if = ["a11y_checks"] # Bug 1849028 and 1849230 for causing crashes
 
 ["browser_webconsole_context_menu_copy_message_with_framework_stacktrace.js"]
 fail-if = ["a11y_checks"] # Bug 1849028 clicked element may not be focusable and/or labeled
@@ -725,7 +724,6 @@ skip-if = [
 ["browser_webconsole_split_focus.js"]
 
 ["browser_webconsole_split_persist.js"]
-skip-if = ["a11y_checks"] # Bug 1849028 and 1849230 for causing crashes
 
 ["browser_webconsole_stacktrace_location_debugger_link.js"]
 
@@ -829,5 +827,6 @@ skip-if = ["true"] # Bug 1765369
 ["browser_webconsole_worker_promise_error.js"]
 
 ["browser_webconsole_worklet_console.js"]
+skip-if = ["release_or_beta"] # requires dom.postMessage.sharedArrayBuffer.bypassCOOP_COEP.insecure.enabled
 
 ["browser_webconsole_worklet_error.js"]

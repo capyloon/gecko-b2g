@@ -13,7 +13,7 @@
 #  include "jit/BaselineIC.h"
 #  include "jit/CacheIRCompiler.h"
 #  include "jit/JitScript.h"
-#  include "js/ColumnNumber.h"  // JS::LimitedColumnNumberZeroOrigin
+#  include "js/ColumnNumber.h"  // JS::LimitedColumnNumberOneOrigin
 #  include "vm/JSScript.h"
 
 #  include "vm/JSObject-inl.h"
@@ -142,8 +142,7 @@ void CacheIRHealth::spewShapeInformation(AutoStructuredSpewer& spew,
               {
                 spew->property("filename", baseScript->filename());
                 spew->property("line", baseScript->lineno());
-                spew->property("column",
-                               baseScript->column().zeroOriginValue());
+                spew->property("column", baseScript->column().oneOriginValue());
               }
               spew->endObject();
             }
@@ -272,9 +271,9 @@ bool CacheIRHealth::spewICEntryHealth(AutoStructuredSpewer& spew, JSContext* cx,
 
   // TODO: If a perf issue arises, look into improving the SrcNotes
   // API call below.
-  JS::LimitedColumnNumberZeroOrigin column;
+  JS::LimitedColumnNumberOneOrigin column;
   spew->property("lineno", PCToLineNumber(script, pc, &column));
-  spew->property("column", column.zeroOriginValue());
+  spew->property("column", column.oneOriginValue());
 
   ICStub* firstStub = entry->firstStub();
   if (!firstStub->isFallback()) {
@@ -307,7 +306,7 @@ void CacheIRHealth::spewScriptFinalWarmUpCount(JSContext* cx,
 
   spew->property("filename", filename);
   spew->property("line", script->lineno());
-  spew->property("column", script->column().zeroOriginValue());
+  spew->property("column", script->column().oneOriginValue());
   spew->property("finalWarmUpCount", warmUpCount);
 }
 

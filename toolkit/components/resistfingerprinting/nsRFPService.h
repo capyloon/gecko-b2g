@@ -11,6 +11,7 @@
 #include "ErrorList.h"
 #include "PLDHashTable.h"
 #include "mozilla/BasicEvents.h"
+#include "mozilla/ContentBlockingLog.h"
 #include "mozilla/gfx/Types.h"
 #include "mozilla/TypedEnumBits.h"
 #include "js/RealmOptions.h"
@@ -73,7 +74,8 @@ namespace mozilla {
 class WidgetKeyboardEvent;
 namespace dom {
 class Document;
-}
+enum class CanvasContextType : uint8_t;
+}  // namespace dom
 
 enum KeyboardLang { EN = 0x01 };
 
@@ -157,6 +159,29 @@ enum TimerPrecisionType {
   UnconditionalAKAHighRes = 2,
   Normal = 3,
   RFP = 4,
+};
+
+// ============================================================================
+
+enum class CanvasFeatureUsage : uint8_t {
+  None = 0,
+  KnownFingerprintText = 1 << 0,
+  SetFont = 1 << 1,
+  FillRect = 1 << 2,
+  LineTo = 1 << 3,
+  Stroke = 1 << 4
+};
+MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(CanvasFeatureUsage);
+
+class CanvasUsage {
+ public:
+  nsIntSize mSize;
+  dom::CanvasContextType mType;
+  CanvasFeatureUsage mFeatureUsage;
+
+  CanvasUsage(nsIntSize aSize, dom::CanvasContextType aType,
+              CanvasFeatureUsage aFeatureUsage)
+      : mSize(aSize), mType(aType), mFeatureUsage(aFeatureUsage) {}
 };
 
 // ============================================================================
@@ -324,6 +349,21 @@ class nsRFPService final : public nsIObserver, public nsIRFPService {
       nsIURI* aFirstPartyURI, nsIURI* aThirdPartyURI);
 
   // --------------------------------------------------------------------------
+
+  static void MaybeReportCanvasFingerprinter(nsTArray<CanvasUsage>& aUses,
+                                             nsIChannel* aChannel,
+                                             nsACString& aOriginNoSuffix);
+
+  static void MaybeReportFontFingerprinter(nsIChannel* aChannel,
+                                           nsACString& aOriginNoSuffix);
+
+  // --------------------------------------------------------------------------
+
+  // A helper function to check if there is a suspicious fingerprinting
+  // activity from given content blocking origin logs. It returns true if we
+  // detect suspicious fingerprinting activities.
+  static bool CheckSuspiciousFingerprintingActivity(
+      nsTArray<ContentBlockingLog::LogEntry>& aLogs);
 
  private:
   nsresult Init();

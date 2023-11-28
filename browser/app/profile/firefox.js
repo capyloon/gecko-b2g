@@ -21,6 +21,11 @@
 
 pref("browser.hiddenWindowChromeURL", "chrome://browser/content/hiddenWindowMac.xhtml");
 
+// Set add-ons abuse report related prefs specific to Firefox Desktop.
+pref("extensions.abuseReport.enabled", true);
+pref("extensions.abuseReport.amWebAPI.enabled", true);
+pref("extensions.abuseReport.amoFormEnabled", false);
+
 // Enables some extra Extension System Logging (can reduce performance)
 pref("extensions.logging.enabled", false);
 
@@ -293,6 +298,9 @@ pref("browser.shell.checkDefaultPDF.silencedByUser", false);
 // URL to navigate to when launching Firefox after accepting the Windows Default
 // Browser Agent "Set Firefox as default" call to action.
 pref("browser.shell.defaultBrowserAgent.thanksURL", "https://www.mozilla.org/%LOCALE%/firefox/set-as-default/thanks/");
+// Whether or not we want to run through the early startup idle task
+// which registers the firefox and firefox-private registry keys.
+pref("browser.shell.customProtocolsRegistered", false);
 #endif
 
 
@@ -433,8 +441,12 @@ pref("browser.urlbar.suggest.recentsearches",       true);
 // Feature gate pref for weather suggestions in the urlbar.
 pref("browser.urlbar.weather.featureGate", false);
 
-// Feature gate pref for clipboard suggestions in the urlbar.
+// Enable clipboard suggestions in Nightly.
+#ifdef NIGHTLY_BUILD
+pref("browser.urlbar.clipboard.featureGate", true);
+#else
 pref("browser.urlbar.clipboard.featureGate", false);
+#endif
 
 // When false, the weather suggestion will not be fetched when a VPN is
 // detected. When true, it will be fetched anyway.
@@ -470,6 +482,18 @@ pref("browser.urlbar.suggest.quicksuggest.sponsored", false, sticky);
 // user-branch value persists regardless of whatever Firefox Suggest scenarios,
 // with their various default-branch values, the user is enrolled in over time.
 pref("browser.urlbar.quicksuggest.dataCollection.enabled", false, sticky);
+
+// Whether the Firefox Suggest contextual opt-in result is enabled. If true,
+// this implicitly disables shouldShowOnboardingDialog.
+pref("browser.urlbar.quicksuggest.contextualOptIn", false);
+
+// Controls which variant of the copy is used for the Firefox Suggest
+// contextual opt-in result.
+pref("browser.urlbar.quicksuggest.contextualOptIn.sayHello", false);
+
+// Controls whether the Firefox Suggest contextual opt-in result appears at
+// the top of results or at the bottom, after one-off buttons.
+pref("browser.urlbar.quicksuggest.contextualOptIn.topPosition", true);
 
 // Whether the quick suggest feature in the urlbar is enabled.
 pref("browser.urlbar.quicksuggest.enabled", false);
@@ -1024,7 +1048,7 @@ pref("privacy.panicButton.enabled",         true);
 // Time until temporary permissions expire, in ms
 pref("privacy.temporary_permission_expire_time_ms",  3600000);
 
-// Enables protection mechanism against password spoofing for cross domain auh requests
+// Enables protection mechanism against password spoofing for cross domain auth requests
 // See bug 791594
 pref("privacy.authPromptSpoofingProtection",         true);
 
@@ -1296,6 +1320,10 @@ pref("places.frecency.origins.alternative.featureGate", false);
 // selects "Forget About This Site".
 pref("places.forgetThisSite.clearByBaseDomain", true);
 
+#ifdef NIGHTLY_BUILD
+pref("places.experimental.useSingleQueueTransactionManager", true);
+#endif
+
 // Whether to warm up network connections for places: menus and places: toolbar.
 pref("browser.places.speculativeConnect.enabled", true);
 
@@ -1419,6 +1447,7 @@ pref("browser.bookmarks.editDialog.maxRecentFolders", 7);
   pref("browser.taskbar.previews.enable", false);
   pref("browser.taskbar.previews.max", 20);
   pref("browser.taskbar.previews.cachetime", 5);
+  pref("browser.taskbar.lists.legacyBackend", true);
   pref("browser.taskbar.lists.enabled", true);
   pref("browser.taskbar.lists.frequent.enabled", true);
   pref("browser.taskbar.lists.recent.enabled", false);
@@ -1482,7 +1511,6 @@ pref("services.sync.prefs.sync.browser.safebrowsing.downloads.remote.block_poten
 pref("services.sync.prefs.sync.browser.safebrowsing.malware.enabled", true);
 pref("services.sync.prefs.sync.browser.safebrowsing.phishing.enabled", true);
 pref("services.sync.prefs.sync.browser.search.update", true);
-pref("services.sync.prefs.sync.browser.search.widget.inNavBar", true);
 pref("services.sync.prefs.sync.browser.startup.homepage", true);
 pref("services.sync.prefs.sync.browser.startup.page", true);
 pref("services.sync.prefs.sync.browser.startup.upgradeDialog.enabled", true);
@@ -2034,8 +2062,7 @@ pref("browser.vpn_promo.enabled", true);
 // Only show vpn card to certain regions. Comma separated string of two letter ISO 3166-1 country codes.
 // The most recent list of supported countries can be found at https://support.mozilla.org/en-US/kb/mozilla-vpn-countries-available-subscribe
 // The full list of supported country codes can also be found at https://github.com/mozilla/bedrock/search?q=VPN_COUNTRY_CODES
-pref("browser.contentblocking.report.vpn_regions", "as,at,be,ca,ch,de,es,fi,fr,gb,gg,ie,im,io,it,je,mp,my,nl,nz,pr,se,sg,uk,um,us,vg,vi"
-);
+pref("browser.contentblocking.report.vpn_regions", "ca,my,nz,sg,gb,gg,im,io,je,uk,vg,as,mp,pr,um,us,vi,de,fr,at,be,ch,es,it,ie,nl,se,fi,bg,cy,cz,dk,ee,hr,hu,lt,lu,lv,mt,pl,pt,ro,si,sk");
 
 // Avoid advertising Focus in certain regions.  Comma separated string of two letter
 // ISO 3166-1 country codes.
@@ -2124,6 +2151,12 @@ pref("privacy.webrtc.deviceGracePeriodTimeoutMs", 3600000);
 
 // Enable Fingerprinting Protection in private windows..
 pref("privacy.fingerprintingProtection.pbmode", true);
+
+// Enable including the content in the window title.
+// PBM users might want to disable this to avoid a possible source of disk
+// leaks.
+pref("privacy.exposeContentTitleInWindow", true);
+pref("privacy.exposeContentTitleInWindow.pbm", true);
 
 // Start the browser in e10s mode
 pref("browser.tabs.remote.autostart", true);
@@ -2820,6 +2853,8 @@ pref("browser.firefox-view.feature-tour", "{\"screen\":\"FIREFOX_VIEW_SPOTLIGHT\
 pref("browser.firefox-view.view-count", 0);
 // Maximum number of rows to show on the "History" page.
 pref("browser.firefox-view.max-history-rows", 300);
+// Enables search functionality in Firefox View.
+pref("browser.firefox-view.search.enabled", false);
 
 // If the user has seen the pdf.js feature tour this value reflects the tour
 // message id, the id of the last screen they saw, and whether they completed the tour
@@ -2829,7 +2864,6 @@ pref("browser.pdfjs.feature-tour", "{\"screen\":\"\",\"complete\":false}");
 // StaticPrefList.yaml for a description of the prefs.
 #ifdef NIGHTLY_BUILD
   pref("cookiebanners.service.mode.privateBrowsing", 1);
-  pref("cookiebanners.service.enableGlobalRules", true);
 #endif
 
 #if defined(EARLY_BETA_OR_EARLIER)
@@ -2874,6 +2908,21 @@ pref("cookiebanners.ui.desktop.cfrVariant", 0);
   pref("dom.security.credentialmanagement.identity.enabled", true);
 #endif
 
+#if defined(NIGHTLY_BUILD)
+pref("ui.new-webcompat-reporter.enabled", true);
+#else
+pref("ui.new-webcompat-reporter.enabled", false);
+#endif
+
+#if defined(EARLY_BETA_OR_EARLIER)
+pref("ui.new-webcompat-reporter.send-more-info-link", true);
+#else
+pref("ui.new-webcompat-reporter.send-more-info-link", false);
+#endif
+
+# 0 = disabled, 1 = reason optional, 2 = reason required.
+pref("ui.new-webcompat-reporter.reason-dropdown", 0);
+
 // Reset Private Browsing Session feature
 #if defined(NIGHTLY_BUILD)
   pref("browser.privatebrowsing.resetPBM.enabled", true);
@@ -2888,3 +2937,11 @@ pref("browser.privatebrowsing.resetPBM.showConfirmationDialog", true);
 #ifdef XP_MACOSX
   pref("browser.attribution.macos.enabled", false);
 #endif
+
+// the preferences related to the Nimbus experiment, to activate and deactivate
+// the the entire rollout or deactivate only the OS prompt (see: bug 1864216)
+pref("browser.mailto.dualPrompt", false);
+pref("browser.mailto.dualPrompt.os", false);
+// When visiting a site which uses registerProtocolHandler: Ask the user to set Firefox as
+// default mailto handler.
+pref("browser.mailto.prompt.os", true);

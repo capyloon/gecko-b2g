@@ -21,6 +21,9 @@ async function runTest({ mode, detectOnly = false, openPageOptions = {} }) {
     // Insert rules only if the feature is enabled.
     if (Services.cookieBanners.isEnabled) {
       insertTestClickRules();
+
+      // Clear executed records before testing.
+      Services.cookieBanners.removeAllExecutedRecords(false);
     }
   };
 

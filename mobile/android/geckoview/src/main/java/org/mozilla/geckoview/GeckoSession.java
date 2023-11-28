@@ -61,6 +61,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.ListIterator;
+import java.util.Locale;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
@@ -751,6 +752,11 @@ public class GeckoSession {
                     url -> {
                       if (url == null) {
                         throw new IllegalArgumentException("abort");
+                      }
+                      final String lowerCasedUri = url.toLowerCase(Locale.ROOT);
+                      if (lowerCasedUri.startsWith("http") || lowerCasedUri.startsWith("https")) {
+                        throw new IllegalArgumentException(
+                            "Unsupported URI scheme for an error page");
                       }
                       return url;
                     }));
@@ -3641,6 +3647,9 @@ public class GeckoSession {
     /** Boolean indicating if the page is not supported. */
     public final boolean pageNotSupported;
 
+    /** Boolean indicating if there are not enough reviews. */
+    public final boolean notEnoughReviews;
+
     /** Object containing highlights for product. */
     @Nullable public final Highlight highlights;
 
@@ -3660,6 +3669,7 @@ public class GeckoSession {
       adjustedRating = message.getDoubleObject("adjusted_rating");
       needsAnalysis = message.getBoolean("needs_analysis");
       pageNotSupported = message.getBoolean("page_not_supported");
+      notEnoughReviews = message.getBoolean("not_enough_reviews");
       if (message.getBundle("highlights") == null) {
         highlights = null;
       } else {
@@ -3676,12 +3686,13 @@ public class GeckoSession {
      * @param builder A ReviewAnalysis.Builder instance
      */
     protected ReviewAnalysis(final @NonNull Builder builder) {
-      adjustedRating = builder.mAdjustedRating;
       analysisURL = builder.mAnalysisUrl;
       productId = builder.mProductId;
       grade = builder.mGrade;
+      adjustedRating = builder.mAdjustedRating;
       needsAnalysis = builder.mNeedsAnalysis;
       pageNotSupported = builder.mPageNotSupported;
+      notEnoughReviews = builder.mNotEnoughReviews;
       highlights = builder.mHighlights;
       lastAnalysisTime = builder.mLastAnalysisTime;
       deletedProduct = builder.mDeletedProduct;
@@ -3696,6 +3707,7 @@ public class GeckoSession {
       /* package */ Double mAdjustedRating = 0.0;
       /* package */ Boolean mNeedsAnalysis = false;
       /* package */ Boolean mPageNotSupported = false;
+      /* package */ Boolean mNotEnoughReviews = false;
       /* package */ Highlight mHighlights = new Highlight();
       /* package */ long mLastAnalysisTime = 0;
       /* package */ Boolean mDeletedProductReported = false;
@@ -3780,6 +3792,19 @@ public class GeckoSession {
       public @NonNull ReviewAnalysis.Builder pageNotSupported(
           final @NonNull Boolean pageNotSupported) {
         mPageNotSupported = pageNotSupported;
+        return this;
+      }
+
+      /**
+       * Set the flag that indicates whether there are not enough reviews
+       *
+       * @param notEnoughReviews indicates whether there are not enough reviews
+       * @return This Builder instance.
+       */
+      @AnyThread
+      public @NonNull ReviewAnalysis.Builder notEnoughReviews(
+          final @NonNull Boolean notEnoughReviews) {
+        mNotEnoughReviews = notEnoughReviews;
         return this;
       }
 
@@ -4998,9 +5023,9 @@ public class GeckoSession {
      * @param session The GeckoSession that initiated the callback.
      * @param uri The URI that failed to load.
      * @param error A WebRequestError containing details about the error
-     * @return A URI to display as an error. Returning null will halt the load entirely. The
-     *     following special methods are made available to the URI: -
-     *     document.addCertException(isTemporary), returns Promise -
+     * @return A URI to display as an error (cannot be http/https). Returning null or http/https URL
+     *     will halt the load entirely. The following special methods are made available to the URI:
+     *     - document.addCertException(isTemporary), returns Promise -
      *     document.getFailedCertSecurityInfo(), returns FailedCertSecurityInfo -
      *     document.getNetErrorInfo(), returns NetErrorInfo document.reloadWithHttpsOnlyException()
      * @see <a

@@ -72,6 +72,7 @@
 #include "mozilla/CORSMode.h"
 #include "mozilla/CallState.h"
 #include "mozilla/CheckedInt.h"
+#include "mozilla/ClearOnShutdown.h"
 #include "mozilla/Components.h"
 #include "mozilla/ContentBlockingAllowList.h"
 #include "mozilla/CycleCollectedJSContext.h"
@@ -109,6 +110,7 @@
 #include "mozilla/Result.h"
 #include "mozilla/ResultExtensions.h"
 #include "mozilla/ScrollbarPreferences.h"
+#include "mozilla/ShutdownPhase.h"
 #include "mozilla/Span.h"
 #include "mozilla/StaticAnalysisFunctions.h"
 #include "mozilla/StaticPrefs_browser.h"
@@ -199,6 +201,7 @@
 #include "mozilla/dom/WorkerPrivate.h"
 #include "mozilla/dom/WorkerRunnable.h"
 #include "mozilla/dom/XULCommandEvent.h"
+#include "mozilla/glean/GleanPings.h"
 #include "mozilla/fallible.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/gfx/BaseMargin.h"
@@ -276,12 +279,12 @@
 #include "nsIContentPolicy.h"
 #include "nsIContentSecurityPolicy.h"
 #include "nsIContentSink.h"
-#include "nsIContentViewer.h"
 #include "nsIDOMWindowUtils.h"
 #include "nsIDocShell.h"
 #include "nsIDocShellTreeItem.h"
 #include "nsIDocumentEncoder.h"
 #include "nsIDocumentLoaderFactory.h"
+#include "nsIDocumentViewer.h"
 #include "nsIDragService.h"
 #include "nsIDragSession.h"
 #include "nsIFile.h"
@@ -828,6 +831,10 @@ nsresult nsContentUtils::Init() {
 
   if (XRE_IsParentProcess()) {
     AsyncPrecreateStringBundles();
+
+    RunOnShutdown(
+        [&] { glean_pings::UseCounters.Submit("app_shutdown_confirmed"_ns); },
+        ShutdownPhase::AppShutdownConfirmed);
   }
 
   RefPtr<UserInteractionObserver> uio = new UserInteractionObserver();
@@ -6719,31 +6726,6 @@ nsresult nsContentUtils::WrapNative(JSContext* cx, nsISupports* native,
   return rv;
 }
 
-nsresult nsContentUtils::CreateArrayBuffer(JSContext* aCx,
-                                           const nsACString& aData,
-                                           JSObject** aResult) {
-  if (!aCx) {
-    return NS_ERROR_FAILURE;
-  }
-
-  size_t dataLen = aData.Length();
-  *aResult = JS::NewArrayBuffer(aCx, dataLen);
-  if (!*aResult) {
-    return NS_ERROR_FAILURE;
-  }
-
-  if (dataLen > 0) {
-    NS_ASSERTION(JS::IsArrayBufferObject(*aResult), "What happened?");
-    JS::AutoCheckCannotGC nogc;
-    bool isShared;
-    memcpy(JS::GetArrayBufferData(*aResult, &isShared, nogc),
-           aData.BeginReading(), dataLen);
-    MOZ_ASSERT(!isShared);
-  }
-
-  return NS_OK;
-}
-
 void nsContentUtils::StripNullChars(const nsAString& aInStr,
                                     nsAString& aOutStr) {
   // In common cases where we don't have nulls in the
@@ -7063,8 +7045,8 @@ bool nsContentUtils::IsSystemOrPDFJS(JSContext* aCx, JSObject*) {
 }
 
 already_AddRefed<nsIDocumentLoaderFactory>
-nsContentUtils::FindInternalContentViewer(const nsACString& aType,
-                                          ContentViewerType* aLoaderType) {
+nsContentUtils::FindInternalDocumentViewer(const nsACString& aType,
+                                           DocumentViewerType* aLoaderType) {
   if (aLoaderType) {
     *aLoaderType = TYPE_UNSUPPORTED;
   }
@@ -7339,6 +7321,32 @@ int32_t nsContentUtils::GetAdjustedOffsetInTextControl(nsIFrame* aOffsetFrame,
   // Otherwise, we're within one of the text frames, in which case our offset
   // has already been correctly calculated.
   return aOffset;
+}
+
+// static
+bool nsContentUtils::IsPointInSelection(
+    const mozilla::dom::Selection& aSelection, const nsINode& aNode,
+    const uint32_t aOffset) {
+  if (aSelection.IsCollapsed()) {
+    return false;
+  }
+
+  const uint32_t rangeCount = aSelection.RangeCount();
+  for (const uint32_t i : IntegerRange(rangeCount)) {
+    MOZ_ASSERT(aSelection.RangeCount() == rangeCount);
+    RefPtr<const nsRange> range = aSelection.GetRangeAt(i);
+    if (NS_WARN_IF(!range)) {
+      // Don't bail yet, iterate through them all
+      continue;
+    }
+
+    // Done when we find a range that we are in
+    if (range->IsPointInRange(aNode, aOffset, IgnoreErrors())) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 // static
@@ -10459,22 +10467,6 @@ static bool HtmlObjectContentSupportsDocument(const nsCString& aMimeType) {
 }
 
 /* static */
-already_AddRefed<nsIPluginTag> nsContentUtils::PluginTagForType(
-    const nsCString& aMIMEType, bool aNoFakePlugin) {
-  RefPtr<nsPluginHost> pluginHost = nsPluginHost::GetInst();
-  nsCOMPtr<nsIPluginTag> tag;
-  NS_ENSURE_TRUE(pluginHost, nullptr);
-
-  // ShouldPlay will handle the case where the plugin is disabled
-  pluginHost->GetPluginTagForType(
-      aMIMEType,
-      aNoFakePlugin ? nsPluginHost::eExcludeFake : nsPluginHost::eExcludeNone,
-      getter_AddRefs(tag));
-
-  return tag.forget();
-}
-
-/* static */
 uint32_t nsContentUtils::HtmlObjectContentTypeForMIMEType(
     const nsCString& aMIMEType, bool aNoFakePlugin) {
   if (aMIMEType.IsEmpty()) {
@@ -10890,12 +10882,8 @@ bool nsContentUtils::StringifyJSON(JSContext* aCx, JS::Handle<JS::Value> aValue,
     case UndefinedIsNullStringLiteral: {
       aOutStr.Truncate();
       JS::Rooted<JS::Value> value(aCx, aValue);
-      nsAutoString serializedValue;
-      NS_ENSURE_TRUE(JS_Stringify(aCx, &value, nullptr, JS::NullHandleValue,
-                                  JSONCreator, &serializedValue),
-                     false);
-      aOutStr = serializedValue;
-      return true;
+      return JS_Stringify(aCx, &value, nullptr, JS::NullHandleValue,
+                          JSONCreator, &aOutStr);
     }
     case UndefinedIsVoidString: {
       aOutStr.SetIsVoid(true);

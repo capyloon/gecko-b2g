@@ -20,7 +20,7 @@ ChromeUtils.defineLazyGetter(this, "QuickSuggestTestUtils", () => {
 const CONTAINER_ID = "firefoxSuggestContainer";
 const NONSPONSORED_CHECKBOX_ID = "firefoxSuggestNonsponsored";
 const SPONSORED_CHECKBOX_ID = "firefoxSuggestSponsored";
-const DATA_COLLECTION_CHECKBOX_ID = "firefoxSuggestDataCollection";
+const DATA_COLLECTION_TOGGLE_ID = "firefoxSuggestDataCollectionToggle";
 const INFO_BOX_ID = "firefoxSuggestInfoBox";
 const INFO_TEXT_ID = "firefoxSuggestInfoText";
 const LEARN_MORE_CLASS = "firefoxSuggestLearnMore";
@@ -213,7 +213,7 @@ add_task(async function checkboxesAndInfoBox() {
   assertPrefUIState({
     [NONSPONSORED_CHECKBOX_ID]: true,
     [SPONSORED_CHECKBOX_ID]: true,
-    [DATA_COLLECTION_CHECKBOX_ID]: true,
+    [DATA_COLLECTION_TOGGLE_ID]: true,
   });
   await assertInfoBox("addressbar-firefox-suggest-info-all");
   await SpecialPowers.popPrefEnv();
@@ -231,7 +231,7 @@ add_task(async function checkboxesAndInfoBox() {
   assertPrefUIState({
     [NONSPONSORED_CHECKBOX_ID]: true,
     [SPONSORED_CHECKBOX_ID]: true,
-    [DATA_COLLECTION_CHECKBOX_ID]: false,
+    [DATA_COLLECTION_TOGGLE_ID]: false,
   });
   await assertInfoBox("addressbar-firefox-suggest-info-nonsponsored-sponsored");
   await SpecialPowers.popPrefEnv();
@@ -249,7 +249,7 @@ add_task(async function checkboxesAndInfoBox() {
   assertPrefUIState({
     [NONSPONSORED_CHECKBOX_ID]: true,
     [SPONSORED_CHECKBOX_ID]: false,
-    [DATA_COLLECTION_CHECKBOX_ID]: true,
+    [DATA_COLLECTION_TOGGLE_ID]: true,
   });
   await assertInfoBox("addressbar-firefox-suggest-info-nonsponsored-data");
   await SpecialPowers.popPrefEnv();
@@ -267,7 +267,7 @@ add_task(async function checkboxesAndInfoBox() {
   assertPrefUIState({
     [NONSPONSORED_CHECKBOX_ID]: true,
     [SPONSORED_CHECKBOX_ID]: false,
-    [DATA_COLLECTION_CHECKBOX_ID]: false,
+    [DATA_COLLECTION_TOGGLE_ID]: false,
   });
   await assertInfoBox("addressbar-firefox-suggest-info-nonsponsored");
   await SpecialPowers.popPrefEnv();
@@ -285,7 +285,7 @@ add_task(async function checkboxesAndInfoBox() {
   assertPrefUIState({
     [NONSPONSORED_CHECKBOX_ID]: false,
     [SPONSORED_CHECKBOX_ID]: true,
-    [DATA_COLLECTION_CHECKBOX_ID]: true,
+    [DATA_COLLECTION_TOGGLE_ID]: true,
   });
   await assertInfoBox("addressbar-firefox-suggest-info-sponsored-data");
   await SpecialPowers.popPrefEnv();
@@ -303,7 +303,7 @@ add_task(async function checkboxesAndInfoBox() {
   assertPrefUIState({
     [NONSPONSORED_CHECKBOX_ID]: false,
     [SPONSORED_CHECKBOX_ID]: true,
-    [DATA_COLLECTION_CHECKBOX_ID]: false,
+    [DATA_COLLECTION_TOGGLE_ID]: false,
   });
   await assertInfoBox("addressbar-firefox-suggest-info-sponsored");
   await SpecialPowers.popPrefEnv();
@@ -321,7 +321,7 @@ add_task(async function checkboxesAndInfoBox() {
   assertPrefUIState({
     [NONSPONSORED_CHECKBOX_ID]: false,
     [SPONSORED_CHECKBOX_ID]: false,
-    [DATA_COLLECTION_CHECKBOX_ID]: true,
+    [DATA_COLLECTION_TOGGLE_ID]: true,
   });
   await assertInfoBox("addressbar-firefox-suggest-info-data");
   await SpecialPowers.popPrefEnv();
@@ -339,7 +339,7 @@ add_task(async function checkboxesAndInfoBox() {
   assertPrefUIState({
     [NONSPONSORED_CHECKBOX_ID]: false,
     [SPONSORED_CHECKBOX_ID]: false,
-    [DATA_COLLECTION_CHECKBOX_ID]: false,
+    [DATA_COLLECTION_TOGGLE_ID]: false,
   });
   await assertInfoBox(null);
   await SpecialPowers.popPrefEnv();
@@ -347,21 +347,28 @@ add_task(async function checkboxesAndInfoBox() {
   gBrowser.removeCurrentTab();
 });
 
-// Clicks each of the checkboxes and makes sure the prefs and info box are updated.
-add_task(async function clickCheckboxes() {
+// Clicks each of the checkboxes and toggles and makes sure the prefs and info box are updated.
+add_task(async function clickCheckboxesOrToggle() {
   await openPreferencesViaOpenPreferencesAPI("privacy", { leaveOpen: true });
 
   let doc = gBrowser.selectedBrowser.contentDocument;
   let addressBarSection = doc.getElementById("locationBarGroup");
   addressBarSection.scrollIntoView();
 
-  async function clickCheckbox(id) {
-    let checkbox = doc.getElementById(id);
+  async function clickElement(id, eventName) {
+    let element = doc.getElementById(id);
+    let changed = BrowserTestUtils.waitForEvent(element, eventName);
+
+    if (eventName == "toggle") {
+      element = element.buttonEl;
+    }
+
     EventUtils.synthesizeMouseAtCenter(
-      checkbox,
+      element,
       {},
       gBrowser.selectedBrowser.contentWindow
     );
+    await changed;
   }
 
   // Set initial state.
@@ -375,12 +382,12 @@ add_task(async function clickCheckboxes() {
   assertPrefUIState({
     [NONSPONSORED_CHECKBOX_ID]: true,
     [SPONSORED_CHECKBOX_ID]: true,
-    [DATA_COLLECTION_CHECKBOX_ID]: true,
+    [DATA_COLLECTION_TOGGLE_ID]: true,
   });
   await assertInfoBox("addressbar-firefox-suggest-info-all");
 
   // non-sponsored checkbox
-  await clickCheckbox(NONSPONSORED_CHECKBOX_ID);
+  await clickElement(NONSPONSORED_CHECKBOX_ID, "command");
   Assert.ok(
     !Services.prefs.getBoolPref(
       "browser.urlbar.suggest.quicksuggest.nonsponsored"
@@ -390,12 +397,12 @@ add_task(async function clickCheckboxes() {
   assertPrefUIState({
     [NONSPONSORED_CHECKBOX_ID]: false,
     [SPONSORED_CHECKBOX_ID]: true,
-    [DATA_COLLECTION_CHECKBOX_ID]: true,
+    [DATA_COLLECTION_TOGGLE_ID]: true,
   });
   await assertInfoBox("addressbar-firefox-suggest-info-sponsored-data");
 
   // sponsored checkbox
-  await clickCheckbox(SPONSORED_CHECKBOX_ID);
+  await clickElement(SPONSORED_CHECKBOX_ID, "command");
   Assert.ok(
     !Services.prefs.getBoolPref(
       "browser.urlbar.suggest.quicksuggest.nonsponsored"
@@ -411,12 +418,12 @@ add_task(async function clickCheckboxes() {
   assertPrefUIState({
     [NONSPONSORED_CHECKBOX_ID]: false,
     [SPONSORED_CHECKBOX_ID]: false,
-    [DATA_COLLECTION_CHECKBOX_ID]: true,
+    [DATA_COLLECTION_TOGGLE_ID]: true,
   });
   await assertInfoBox("addressbar-firefox-suggest-info-data");
 
-  // data collection checkbox
-  await clickCheckbox(DATA_COLLECTION_CHECKBOX_ID);
+  // data collection toggle
+  await clickElement(DATA_COLLECTION_TOGGLE_ID, "toggle");
   Assert.ok(
     !Services.prefs.getBoolPref(
       "browser.urlbar.suggest.quicksuggest.nonsponsored"
@@ -427,18 +434,18 @@ add_task(async function clickCheckboxes() {
     !Services.prefs.getBoolPref(
       "browser.urlbar.suggest.quicksuggest.sponsored"
     ),
-    "suggest.quicksuggest.sponsored remains false after clicking data collection checkbox"
+    "suggest.quicksuggest.sponsored remains false after clicking data collection toggle"
   );
   Assert.ok(
     !Services.prefs.getBoolPref(
       "browser.urlbar.quicksuggest.dataCollection.enabled"
     ),
-    "quicksuggest.dataCollection.enabled is false after clicking data collection checkbox"
+    "quicksuggest.dataCollection.enabled is false after clicking data collection toggle"
   );
   assertPrefUIState({
     [NONSPONSORED_CHECKBOX_ID]: false,
     [SPONSORED_CHECKBOX_ID]: false,
-    [DATA_COLLECTION_CHECKBOX_ID]: false,
+    [DATA_COLLECTION_TOGGLE_ID]: false,
   });
   await assertInfoBox(null);
 
@@ -555,22 +562,24 @@ add_task(async function restoreDismissedSuggestions() {
 });
 
 /**
- * Verifies the state of pref related to checkboxes.
+ * Verifies the state of pref related to checkboxes or toggles.
  *
  * @param {object} stateByElementID
- *   Maps checkbox element IDs to booleans. Each boolean
+ *   Maps checkbox or toggle element IDs to booleans. Each boolean
  *   is the expected state of the corresponding ID.
- * @param {object} attr
- *   Attribute to check against the expected state. The "checked"
- *   attribute is verified by default, since this is mostly used
- *   for checkboxes.
  */
-function assertPrefUIState(stateByElementID, attr = "checked") {
+function assertPrefUIState(stateByElementID) {
   let doc = gBrowser.selectedBrowser.contentDocument;
   let container = doc.getElementById(CONTAINER_ID);
+  let attr;
   Assert.ok(BrowserTestUtils.is_visible(container), "The container is visible");
   for (let [id, state] of Object.entries(stateByElementID)) {
     let element = doc.getElementById(id);
+    if (element.tagName === "checkbox") {
+      attr = "checked";
+    } else if (element.tagName === "html:moz-toggle") {
+      attr = "pressed";
+    }
     Assert.equal(element[attr], state, "Expected state for ID: " + id);
   }
 }

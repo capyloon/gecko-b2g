@@ -51,12 +51,12 @@ using namespace mozilla::dom;
 bool nsJSUtils::GetCallingLocation(JSContext* aContext, nsACString& aFilename,
                                    uint32_t* aLineno, uint32_t* aColumn) {
   JS::AutoFilename filename;
-  JS::ColumnNumberZeroOrigin column;
+  JS::ColumnNumberOneOrigin column;
   if (!JS::DescribeScriptedCaller(aContext, &filename, aLineno, &column)) {
     return false;
   }
   if (aColumn) {
-    *aColumn = column.zeroOriginValue();
+    *aColumn = column.oneOriginValue();
   }
 
   return aFilename.Assign(filename.get(), fallible);
@@ -65,12 +65,12 @@ bool nsJSUtils::GetCallingLocation(JSContext* aContext, nsACString& aFilename,
 bool nsJSUtils::GetCallingLocation(JSContext* aContext, nsAString& aFilename,
                                    uint32_t* aLineno, uint32_t* aColumn) {
   JS::AutoFilename filename;
-  JS::ColumnNumberZeroOrigin column;
+  JS::ColumnNumberOneOrigin column;
   if (!JS::DescribeScriptedCaller(aContext, &filename, aLineno, &column)) {
     return false;
   }
   if (aColumn) {
-    *aColumn = column.zeroOriginValue();
+    *aColumn = column.oneOriginValue();
   }
 
   return aFilename.Assign(NS_ConvertUTF8toUTF16(filename.get()), fallible);

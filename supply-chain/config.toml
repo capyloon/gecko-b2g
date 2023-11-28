@@ -39,6 +39,18 @@ notes = "This is a pinned version of the upstream code, presumably to get a fix 
 audit-as-crates-io = true
 notes = "This is upstream plus a warning fix from bug 1823866."
 
+[policy.cssparser]
+audit-as-crates-io = true
+notes = "Upstream release plus a couple unpublished changes"
+
+[policy.cssparser-macros]
+audit-as-crates-io = true
+notes = "Upstream release plus a couple unpublished changes"
+
+[policy.d3d12]
+audit-as-crates-io = true
+notes = "Part of the wgpu repository, pinned as the rest of wgpu crates."
+
 [policy.diplomat]
 audit-as-crates-io = true
 notes = "Upstream version not to use syn 1.x"
@@ -159,7 +171,7 @@ audit-as-crates-io = false
 
 [policy.naga]
 audit-as-crates-io = true
-notes = "wgpu-core pins this crate."
+notes = "Part of the wgpu repository, pinned as the rest of wgpu crates."
 
 [policy.peek-poke]
 audit-as-crates-io = false
@@ -577,10 +589,6 @@ criteria = "safe-to-deploy"
 version = "0.2.1"
 criteria = "safe-to-deploy"
 
-[[exemptions.instant]]
-version = "0.1.12"
-criteria = "safe-to-deploy"
-
 [[exemptions.ioctl-sys]]
 version = "0.7.1"
 criteria = "safe-to-deploy"
@@ -657,10 +665,6 @@ criteria = "safe-to-deploy"
 version = "0.2.1"
 criteria = "safe-to-deploy"
 
-[[exemptions.miniz_oxide]]
-version = "0.5.3"
-criteria = "safe-to-deploy"
-
 [[exemptions.mio]]
 version = "0.8.0"
 criteria = "safe-to-deploy"
@@ -671,7 +675,7 @@ criteria = "safe-to-run"
 
 [[exemptions.miow]]
 version = "0.3.7"
-criteria = "safe-to-deploy"
+criteria = "safe-to-run"
 
 [[exemptions.multibase]]
 version = "0.9.1"
@@ -699,10 +703,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.nom]]
 version = "7.1.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.ntapi]]
-version = "0.3.7"
 criteria = "safe-to-deploy"
 
 [[exemptions.objc]]
@@ -779,10 +779,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.prost-derive]]
 version = "0.8.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.qlog]]
-version = "0.4.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.quick-error]]
@@ -889,10 +885,6 @@ criteria = "safe-to-deploy"
 version = "0.1.44"
 criteria = "safe-to-deploy"
 
-[[exemptions.tokio]]
-version = "1.17.0"
-criteria = "safe-to-run"
-
 [[exemptions.toml_datetime]]
 version = "0.6.2"
 criteria = "safe-to-deploy"
@@ -923,10 +915,6 @@ criteria = "safe-to-run"
 
 [[exemptions.unsigned-varint]]
 version = "0.7.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.url]]
-version = "2.1.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.uuid]]

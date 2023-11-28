@@ -23,9 +23,13 @@ let { XPCOMUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/XPCOMUtils.sys.mjs"
 );
 
+let { EventEmitter } = ChromeUtils.importESModule(
+  "resource://gre/modules/EventEmitter.sys.mjs"
+);
+
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
-  OHTTPConfigManager: "resource://gre/modules/OHTTPConfigManager.sys.mjs",
+  HPKEConfigManager: "resource://gre/modules/HPKEConfigManager.sys.mjs",
   ProductValidator: "chrome://global/content/shopping/ProductValidator.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
@@ -33,7 +37,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
 const API_RETRIES = 3;
 const API_RETRY_TIMEOUT = 100;
 const API_POLL_ATTEMPTS = 260;
-const API_POLL_INITIAL_WAIT = 20000;
+const API_POLL_INITIAL_WAIT = 1000;
 const API_POLL_WAIT = 1000;
 
 XPCOMUtils.defineLazyServiceGetters(lazy, {
@@ -104,7 +108,7 @@ function readFromStream(stream, count) {
  * let analysis = await product.requestAnalysis();
  * let recommendations = await product.requestRecommendations();
  */
-export class ShoppingProduct {
+export class ShoppingProduct extends EventEmitter {
   /**
    * Creates a product.
    *
@@ -115,6 +119,8 @@ export class ShoppingProduct {
    *  Should validation failures be allowed or return null
    */
   constructor(url, options = { allowValidationFailure: true }) {
+    super();
+
     this.allowValidationFailure = !!options.allowValidationFailure;
 
     this._abortController = new AbortController();
@@ -455,7 +461,7 @@ export class ShoppingProduct {
    *   The config bytes.
    */
   static async getOHTTPConfig(gatewayConfigURL) {
-    return lazy.OHTTPConfigManager.get(gatewayConfigURL);
+    return lazy.HPKEConfigManager.get(gatewayConfigURL);
   }
 
   /**
@@ -534,11 +540,15 @@ export class ShoppingProduct {
         ]),
         onStartRequest(request) {
           this._headers = {};
-          request
-            .QueryInterface(Ci.nsIHttpChannel)
-            .visitResponseHeaders((header, value) => {
-              this._headers[header.toLowerCase()] = value;
-            });
+          try {
+            request
+              .QueryInterface(Ci.nsIHttpChannel)
+              .visitResponseHeaders((header, value) => {
+                this._headers[header.toLowerCase()] = value;
+              });
+          } catch (error) {
+            this._headers = null;
+          }
         },
         onDataAvailable(request, stream, offset, count) {
           this._buffer.push(readFromStream(stream, count));
@@ -546,23 +556,42 @@ export class ShoppingProduct {
         onStopRequest(request, requestStatus) {
           signal.removeEventListener("abort", abortHandler);
           let result = this._buffer;
-          let httpStatus = request.QueryInterface(
-            Ci.nsIHttpChannel
-          ).responseStatus;
-          resolve({
-            ok: requestStatus == Cr.NS_OK && httpStatus == 200,
-            status: httpStatus,
-            headers: this._headers,
-            json() {
-              let decodedBuffer = result.reduce((accumulator, currVal) => {
-                return accumulator + lazy.decoder.decode(currVal);
-              }, "");
-              return JSON.parse(decodedBuffer);
-            },
-            blob() {
-              return new Blob(result, { type: "image/jpeg" });
-            },
-          });
+          try {
+            let ohttpStatus = request.QueryInterface(Ci.nsIObliviousHttpChannel)
+              .relayChannel.responseStatus;
+            if (ohttpStatus == 200) {
+              let httpStatus = request.QueryInterface(
+                Ci.nsIHttpChannel
+              ).responseStatus;
+              resolve({
+                ok: requestStatus == Cr.NS_OK && httpStatus == 200,
+                status: httpStatus,
+                headers: this._headers,
+                json() {
+                  let decodedBuffer = result.reduce((accumulator, currVal) => {
+                    return accumulator + lazy.decoder.decode(currVal);
+                  }, "");
+                  return JSON.parse(decodedBuffer);
+                },
+                blob() {
+                  return new Blob(result, { type: "image/jpeg" });
+                },
+              });
+            } else {
+              resolve({
+                ok: false,
+                status: ohttpStatus,
+                json() {
+                  return null;
+                },
+                blob() {
+                  return null;
+                },
+              });
+            }
+          } catch (error) {
+            reject(error);
+          }
         },
       };
       obliviousHttpChannel.asyncOpen(listener);
@@ -677,6 +706,9 @@ export class ShoppingProduct {
       }
       try {
         result = await this.requestAnalysisCreationStatus(undefined, options);
+        if (result?.progress) {
+          this.emit("analysis-progress", result.progress);
+        }
         isFinished =
           result &&
           result.status != "pending" &&

@@ -47,6 +47,7 @@ categories:
         - build/buildsystem
         - taskcluster
         - tools/moztreedocs
+        - mozbuild/vendor
     testing_doc:
         - testing/automated-testing
         - testing/treeherder-try
@@ -116,5 +117,6 @@ redirects:
 
 fatal warnings:
     - "WARNING: '([^']*)' reference target not found:((?!.rst).)*$"
+    - "WARNING: Include file '([^']*)' not found or reading it failed"
 
-max_num_warnings: 861
+max_num_warnings: 759

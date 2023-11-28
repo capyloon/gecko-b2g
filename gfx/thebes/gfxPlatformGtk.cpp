@@ -217,11 +217,11 @@ void gfxPlatformGtk::InitDmabufConfig() {
                          "FEATURE_FAILURE_REQUIRES_EGL"_ns);
   }
 
-  if (feature.IsEnabled()) {
-    nsAutoCString drmRenderDevice;
-    gfxInfo->GetDrmRenderDevice(drmRenderDevice);
-    gfxVars::SetDrmRenderDevice(drmRenderDevice);
+  nsAutoCString drmRenderDevice;
+  gfxInfo->GetDrmRenderDevice(drmRenderDevice);
+  gfxVars::SetDrmRenderDevice(drmRenderDevice);
 
+  if (feature.IsEnabled()) {
     if (!GetDMABufDevice()->IsEnabled(failureId)) {
       feature.ForceDisable(FeatureStatus::Failed, "Failed to configure",
                            failureId);
@@ -238,6 +238,10 @@ bool gfxPlatformGtk::InitVAAPIConfig(bool aForceEnabledByUser) {
   }
   feature.EnableByDefault();
 
+  if (aForceEnabledByUser) {
+    feature.UserForceEnable("Force enabled by pref");
+  }
+
   int32_t status = nsIGfxInfo::FEATURE_STATUS_UNKNOWN;
   nsCOMPtr<nsIGfxInfo> gfxInfo = components::GfxInfo::Service();
   nsCString failureId;
@@ -251,9 +255,6 @@ bool gfxPlatformGtk::InitVAAPIConfig(bool aForceEnabledByUser) {
   } else if (status != nsIGfxInfo::FEATURE_STATUS_OK) {
     feature.Disable(FeatureStatus::Blocklisted, "Blocklisted by gfxInfo",
                     failureId);
-  }
-  if (aForceEnabledByUser) {
-    feature.UserForceEnable("Force enabled by pref");
   }
   if (!gfxVars::UseEGL()) {
     feature.ForceDisable(FeatureStatus::Unavailable, "Requires EGL",

@@ -20,6 +20,7 @@
 #include "nsIPushErrorReporter.h"
 #include "nsISupportsImpl.h"
 #include "nsITimer.h"
+#include "nsIURI.h"
 #include "nsServiceManagerUtils.h"
 #include "nsTArray.h"
 #include "nsThreadUtils.h"
@@ -63,7 +64,6 @@
 #include "mozilla/dom/WorkerScope.h"
 #include "mozilla/extensions/ExtensionBrowser.h"
 #include "mozilla/ipc/IPCStreamUtils.h"
-#include "mozilla/net/MozURL.h"
 
 namespace mozilla::dom {
 
@@ -278,7 +278,7 @@ class ServiceWorkerOp::ServiceWorkerOpRunnable : public WorkerDebuggeeRunnable {
 
   ServiceWorkerOpRunnable(RefPtr<ServiceWorkerOp> aOwner,
                           WorkerPrivate* aWorkerPrivate)
-      : WorkerDebuggeeRunnable(aWorkerPrivate, WorkerThreadModifyBusyCount),
+      : WorkerDebuggeeRunnable(aWorkerPrivate, WorkerThread),
         mOwner(std::move(aOwner)) {
     AssertIsOnMainThread();
     MOZ_ASSERT(mOwner);
@@ -670,12 +670,10 @@ class PushEventOp final : public ExtendableEventOp {
     RootedDictionary<PushEventInit> pushEventInit(aCx);
 
     if (args.data().type() != OptionalPushData::Tvoid_t) {
-      auto& bytes = args.data().get_ArrayOfuint8_t();
-      JSObject* data =
-          Uint8Array::Create(aCx, bytes.Length(), bytes.Elements());
+      const auto& bytes = args.data().get_ArrayOfuint8_t();
+      JSObject* data = Uint8Array::Create(aCx, bytes, result);
 
-      if (!data) {
-        result = ErrorResult(NS_ERROR_FAILURE);
+      if (result.Failed()) {
         return false;
       }
 
@@ -1018,10 +1016,7 @@ class NotificationEventOp : public ExtendableEventOp,
     timer.swap(mTimer);
 
     // We swap first and then initialize the timer so that even if initializing
-    // fails, we still clean the busy count and interaction count correctly.
-    // The timer can't be initialized before modyfing the busy count since the
-    // timer thread could run and call the timeout but the worker may
-    // already be terminating and modifying the busy count could fail.
+    // fails, we still clean the interaction count correctly.
     uint32_t delay = mArgs.get_ServiceWorkerNotificationEventOpArgs()
                          .disableOpenClickDelay();
     rv = mTimer->InitWithCallback(this, delay, nsITimer::TYPE_ONE_SHOT);
@@ -1166,9 +1161,9 @@ class MessageEventOp final : public ExtendableEventOp {
       init.mPorts = std::move(ports);
     }
 
-    RefPtr<net::MozURL> mozUrl;
-    nsresult result = net::MozURL::Init(
-        getter_AddRefs(mozUrl), mArgs.get_ServiceWorkerMessageEventOpArgs()
+    nsCOMPtr<nsIURI> url;
+    nsresult result = NS_NewURI(getter_AddRefs(url),
+                                mArgs.get_ServiceWorkerMessageEventOpArgs()
                                     .clientInfoAndState()
                                     .info()
                                     .url());
@@ -1178,8 +1173,20 @@ class MessageEventOp final : public ExtendableEventOp {
       return false;
     }
 
+    OriginAttributes attrs;
+    nsCOMPtr<nsIPrincipal> principal =
+        BasePrincipal::CreateContentPrincipal(url, attrs);
+    if (!principal) {
+      return false;
+    }
+
     nsCString origin;
-    mozUrl->Origin(origin);
+    result = principal->GetOriginNoSuffix(origin);
+    if (NS_WARN_IF(NS_FAILED(result))) {
+      RejectAll(result);
+      rv.SuppressException();
+      return false;
+    }
 
     CopyUTF8toUTF16(origin, init.mOrigin);
 

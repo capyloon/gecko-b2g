@@ -35,7 +35,7 @@ use std::{
 use arrayvec::ArrayVec;
 use bitflags::bitflags;
 use metal::foreign_types::ForeignTypeRef as _;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 
 #[derive(Clone, Debug)]
 pub struct Api;
@@ -80,6 +80,7 @@ impl Instance {
 
 impl crate::Instance<Api> for Instance {
     unsafe fn init(_desc: &crate::InstanceDescriptor) -> Result<Self, crate::InstanceError> {
+        profiling::scope!("Init Metal Backend");
         // We do not enable metal validation based on the validation flags as it affects the entire
         // process. Instead, we enable the validation inside the test harness itself in tests/src/native.rs.
         Ok(Instance {
@@ -96,11 +97,14 @@ impl crate::Instance<Api> for Instance {
             #[cfg(target_os = "ios")]
             raw_window_handle::RawWindowHandle::UiKit(handle) => {
                 let _ = &self.managed_metal_layer_delegate;
-                Ok(unsafe { Surface::from_view(handle.ui_view, None) })
+                Ok(unsafe { Surface::from_view(handle.ui_view.as_ptr(), None) })
             }
             #[cfg(target_os = "macos")]
             raw_window_handle::RawWindowHandle::AppKit(handle) => Ok(unsafe {
-                Surface::from_view(handle.ns_view, Some(&self.managed_metal_layer_delegate))
+                Surface::from_view(
+                    handle.ns_view.as_ptr(),
+                    Some(&self.managed_metal_layer_delegate),
+                )
             }),
             _ => Err(crate::InstanceError::new(format!(
                 "window handle {window_handle:?} is not a Metal-compatible handle"
@@ -330,8 +334,8 @@ pub struct Device {
 pub struct Surface {
     view: Option<NonNull<objc::runtime::Object>>,
     render_layer: Mutex<metal::MetalLayer>,
-    swapchain_format: Option<wgt::TextureFormat>,
-    extent: wgt::Extent3d,
+    swapchain_format: RwLock<Option<wgt::TextureFormat>>,
+    extent: RwLock<wgt::Extent3d>,
     main_thread_id: thread::ThreadId,
     // Useful for UI-intensive applications that are sensitive to
     // window resizing.
@@ -359,7 +363,7 @@ unsafe impl Sync for SurfaceTexture {}
 
 impl crate::Queue<Api> for Queue {
     unsafe fn submit(
-        &mut self,
+        &self,
         command_buffers: &[&CommandBuffer],
         signal_fence: Option<(&mut Fence, crate::FenceValue)>,
     ) -> Result<(), crate::DeviceError> {
@@ -406,8 +410,8 @@ impl crate::Queue<Api> for Queue {
         Ok(())
     }
     unsafe fn present(
-        &mut self,
-        _surface: &mut Surface,
+        &self,
+        _surface: &Surface,
         texture: SurfaceTexture,
     ) -> Result<(), crate::SurfaceError> {
         let queue = &self.raw.lock();
@@ -691,6 +695,7 @@ impl PipelineStageInfo {
     }
 }
 
+#[derive(Debug)]
 pub struct RenderPipeline {
     raw: metal::RenderPipelineState,
     #[allow(dead_code)]
@@ -710,6 +715,7 @@ pub struct RenderPipeline {
 unsafe impl Send for RenderPipeline {}
 unsafe impl Sync for RenderPipeline {}
 
+#[derive(Debug)]
 pub struct ComputePipeline {
     raw: metal::ComputePipelineState,
     #[allow(dead_code)]

@@ -25,50 +25,76 @@ class PerformanceMainThread;
 
 struct LCPImageEntryKey {
   LCPImageEntryKey(Element* aElement, imgRequestProxy* aImgRequestProxy)
-      : mElement(aElement), mImageRequestProxy(aImgRequestProxy) {
+      : mElement(do_GetWeakReference(aElement)),
+        mImageRequestProxy(aImgRequestProxy) {
     MOZ_ASSERT(aElement);
     MOZ_ASSERT(aImgRequestProxy);
+
+    mHash = mozilla::HashGeneric(reinterpret_cast<uintptr_t>(aElement),
+                                 reinterpret_cast<uintptr_t>(aImgRequestProxy));
   }
 
   LCPImageEntryKey(const LCPImageEntryKey& aLCPImageEntryKey) {
     mElement = aLCPImageEntryKey.mElement;
     mImageRequestProxy = aLCPImageEntryKey.mImageRequestProxy;
+    mHash = aLCPImageEntryKey.mHash;
+  }
+
+  Element* GetElement() const {
+    nsCOMPtr<Element> element = do_QueryReferent(mElement);
+    return element;
+  }
+
+  imgRequestProxy* GetImgRequestProxy() const {
+    return static_cast<imgRequestProxy*>(mImageRequestProxy.get());
   }
 
   bool operator==(const LCPImageEntryKey& aOther) const {
-    return mElement == aOther.mElement &&
-           mImageRequestProxy == aOther.mImageRequestProxy;
+    imgRequestProxy* imgRequest = GetImgRequestProxy();
+    if (!imgRequest) {
+      return false;
+    }
+
+    imgRequestProxy* otherImgRequest = aOther.GetImgRequestProxy();
+    if (!otherImgRequest) {
+      return false;
+    }
+
+    Element* element = GetElement();
+    if (!element) {
+      return false;
+    }
+
+    Element* otherElement = aOther.GetElement();
+    if (!otherElement) {
+      return false;
+    }
+
+    return element == otherElement && imgRequest == otherImgRequest;
   }
 
   bool Equals(const Element* aElement,
               const imgRequestProxy* aImgRequestProxy) const {
-    return mElement == mElement && mImageRequestProxy == mImageRequestProxy;
+    Element* element = GetElement();
+    if (!element || !mImageRequestProxy) {
+      return false;
+    }
+
+    return element == aElement && mImageRequestProxy == mImageRequestProxy;
   }
 
-  RefPtr<Element> mElement;
-  RefPtr<imgRequestProxy> mImageRequestProxy;
+  nsWeakPtr mElement;
+
+  WeakPtr<PreloaderBase> mImageRequestProxy;
+
+  PLDHashNumber mHash = 0;
 
   ~LCPImageEntryKey() = default;
 };
 
-inline void ImplCycleCollectionUnlink(LCPImageEntryKey& aField) {
-  aField.mElement = nullptr;
-  aField.mImageRequestProxy = nullptr;
-}
-
-inline void ImplCycleCollectionTraverse(
-    nsCycleCollectionTraversalCallback& aCallback, LCPImageEntryKey& aField,
-    const char* aName, uint32_t aFlags = 0) {
-  ImplCycleCollectionTraverse(aCallback, aField.mElement,
-                              "LCPImageEntryKey.mElement", aFlags);
-  ImplCycleCollectionTraverse(aCallback, aField.mImageRequestProxy,
-                              "LCPImageEntryKey.mImageRequestProxy", aFlags);
-}
-
 struct LCPTextFrameHelper final {
   static void MaybeUnionTextFrame(nsTextFrame* aTextFrame,
                                   const nsRect& aRelativeToSelfRect);
-  static void HasContainingElementBeenProcessed();
 };
 
 class ImagePendingRendering final {
@@ -76,23 +102,15 @@ class ImagePendingRendering final {
   ImagePendingRendering(const LCPImageEntryKey& aLCPImageEntryKey,
                         DOMHighResTimeStamp aLoadTime);
 
-  Element* GetElement() const { return mLCPImageEntryKey.mElement; }
+  Element* GetElement() const { return mLCPImageEntryKey.GetElement(); }
 
   imgRequestProxy* GetImgRequestProxy() const {
-    return mLCPImageEntryKey.mImageRequestProxy;
+    return mLCPImageEntryKey.GetImgRequestProxy();
   }
 
   LCPImageEntryKey mLCPImageEntryKey;
   DOMHighResTimeStamp mLoadTime;
 };
-
-inline void ImplCycleCollectionTraverse(
-    nsCycleCollectionTraversalCallback& aCallback,
-    ImagePendingRendering& aField, const char* aName, uint32_t aFlags = 0) {
-  ImplCycleCollectionTraverse(aCallback, aField.mLCPImageEntryKey,
-                              "ImagePendingRendering.mImageEntryKey",
-                              aCallback.Flags());
-}
 
 class LCPEntryHashEntry : public PLDHashEntryHdr {
  public:
@@ -110,26 +128,11 @@ class LCPEntryHashEntry : public PLDHashEntryHdr {
 
   static KeyTypePointer KeyToPointer(KeyType& aKey) { return &aKey; }
 
-  static PLDHashNumber HashKey(KeyTypePointer aKey) {
-    if (!aKey) {
-      return 0;
-    }
-
-    return mozilla::HashGeneric(
-        reinterpret_cast<uintptr_t>(aKey->mElement.get()),
-        reinterpret_cast<uintptr_t>(aKey->mImageRequestProxy.get()));
-  }
+  static PLDHashNumber HashKey(KeyTypePointer aKey) { return aKey->mHash; }
   enum { ALLOW_MEMMOVE = true };
 
   LCPImageEntryKey mKey;
 };
-
-inline void ImplCycleCollectionTraverse(
-    nsCycleCollectionTraversalCallback& aCallback, LCPEntryHashEntry& aField,
-    const char* aName, uint32_t aFlags = 0) {
-  ImplCycleCollectionTraverse(aCallback, aField.mKey, "LCPEntryHashEntry.mKey",
-                              aFlags);
-}
 
 class LCPHelpers final {
  public:
@@ -206,9 +209,7 @@ class LargestContentfulPaint final : public PerformanceEntry {
 
   void QueueEntry();
 
-  const Maybe<LCPImageEntryKey>& GetLCPImageEntryKey() const {
-    return mLCPImageEntryKey;
-  }
+  Maybe<LCPImageEntryKey>& GetLCPImageEntryKey() { return mLCPImageEntryKey; }
 
  private:
   ~LargestContentfulPaint() = default;
@@ -227,7 +228,7 @@ class LargestContentfulPaint final : public PerformanceEntry {
   unsigned long mSize;
   nsCOMPtr<nsIURI> mURI;
 
-  RefPtr<Element> mElement;
+  nsWeakPtr mElement;
   RefPtr<nsAtom> mId;
 
   Maybe<LCPImageEntryKey> mLCPImageEntryKey;

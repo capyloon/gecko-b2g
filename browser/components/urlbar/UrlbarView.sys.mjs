@@ -1815,6 +1815,17 @@ export class UrlbarView {
             });
           };
           title.toggleAttribute("is-url", true);
+
+          let label = { id: "urlbar-result-action-visit-from-clipboard" };
+          this.#l10nCache.ensure(label).then(() => {
+            let { value } = this.#l10nCache.get(label);
+
+            // We don't have to unset these attributes because, excluding heuristic results,
+            // we never reuse results from different providers. Thus clipboard results can
+            // only be reused by other clipboard results.
+            title.setAttribute("aria-label", `${value}, ${title.innerText}`);
+            action.setAttribute("aria-hidden", "true");
+          });
           break;
         }
       // fall-through
@@ -2215,6 +2226,15 @@ export class UrlbarView {
       row.result.providerName == lazy.UrlbarProviderWeather.name
     ) {
       return { id: "urlbar-group-best-match" };
+    }
+
+    // Show "Shortcuts" if there's another result before that group.
+    if (
+      row.result.providerName == lazy.UrlbarProviderTopSites.name &&
+      this.#queryContext.results[0].providerName !=
+        lazy.UrlbarProviderTopSites.name
+    ) {
+      return { id: "urlbar-group-shortcuts" };
     }
 
     if (!this.#queryContext?.searchString || row.result.heuristic) {

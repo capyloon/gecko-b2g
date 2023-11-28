@@ -218,6 +218,14 @@ class Talos(
                 },
             ],
             [
+                ["--gecko-profile-extra-threads"],
+                {
+                    "dest": "gecko_profile_extra_threads",
+                    "type": "str",
+                    "help": "Comma-separated list of extra threads to add to the default list of threads to profile.",
+                },
+            ],
+            [
                 ["--disable-e10s"],
                 {
                     "dest": "e10s",
@@ -261,6 +269,15 @@ class Talos(
                     "dest": "skip_preflight",
                     "default": False,
                     "help": "skip preflight commands to prepare machine.",
+                },
+            ],
+            [
+                ["--screenshot-on-failure"],
+                {
+                    "action": "store_true",
+                    "dest": "screenshot_on_failure",
+                    "default": False,
+                    "help": "Take a screenshot when the test fails.",
                 },
             ],
         ]
@@ -559,6 +576,11 @@ class Talos(
             options += self.config["talos_extra_options"]
         if self.config.get("code_coverage", False):
             options.extend(["--code-coverage"])
+        if (
+            self.config.get("--screenshot-on-failure", False)
+            or os.environ.get("MOZ_AUTOMATION", None) is not None
+        ):
+            options.extend(["--screenshot-on-failure"])
 
         # Add extra_prefs defined by individual test suites in talos.json
         extra_prefs = self.query_suite_extra_prefs()
@@ -716,6 +738,7 @@ class Talos(
         # Use in-tree wptserve for Python 3.10 compatibility
         extract_dirs = [
             "tools/wptserve/*",
+            "tools/wpt_third_party/h2/*",
             "tools/wpt_third_party/pywebsocket3/*",
         ]
         return super(Talos, self).download_and_extract(

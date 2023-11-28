@@ -18,6 +18,12 @@
 
 ## These strings are used in the urlbar panel.
 
+# A label shown above the Shortcuts aka Top Sites group in the urlbar results
+# if there's another result before that group. This should be consistent with
+# addressbar-locbar-shortcuts-option.
+urlbar-group-shortcuts =
+  .label = Shortcuts
+
 # A label shown above the top pick group in the urlbar results.
 urlbar-group-best-match =
   .label = Top pick
@@ -166,18 +172,20 @@ addressbar-firefox-suggest-sponsored-desc = Support the development of { -brand-
 addressbar-firefox-suggest-private =
   .label = Show suggestions in Private Windows
 
-# Third Firefox Suggest checkbox main label and description. This checkbox
+# Third Firefox Suggest toggle button main label and description. This toggle
 # controls data collection related to the user's search string.
+# .description is transferred into a separate paragraph by the moz-toggle
+# custom element code.
 addressbar-firefox-suggest-data-collection =
   .label = Improve the { -firefox-suggest-brand-name } experience
-addressbar-firefox-suggest-data-collection-desc = Help create a richer search experience by allowing { -vendor-short-name } to process your search queries.
+  .description = Help create a richer search experience by allowing { -vendor-short-name } to process your search queries.
 
 # The "Learn more" link shown in the Firefox Suggest preferences UI.
 addressbar-locbar-firefox-suggest-learn-more = Learn more
 
 ## The following addressbar-firefox-suggest-info strings are shown in the
-## Firefox Suggest preferences UI in the info box underneath the checkboxes.
-## Each string is shown when a particular checkbox combination is active.
+## Firefox Suggest preferences UI in the info box underneath the toggle.
+## Each string is shown when a particular checkbox or toggle combination is active.
 
 # Non-sponsored suggestions: on
 # Sponsored suggestions: on
@@ -336,3 +344,16 @@ urlbar-result-menu-trending-why =
 # A message that replaces a result when the user dismisses all suggestions of a
 # particular type.
 urlbar-trending-dismissal-acknowledgment = Thanks for your feedback. You won’t see trending searches anymore.
+
+urlbar-firefox-suggest-contextual-opt-in-title-1 =
+  Find the best of the web, faster
+urlbar-firefox-suggest-contextual-opt-in-title-2 =
+  Say hello to smarter suggestions
+urlbar-firefox-suggest-contextual-opt-in-description-1 =
+  We’re building a better search experience. When you allow { -vendor-short-name } to process your search queries, we can create more relevant suggestions from { -brand-short-name } and our partners. Privacy-first, always.
+  <a data-l10n-name="learn-more-link">Learn more</a>
+urlbar-firefox-suggest-contextual-opt-in-description-2 =
+  { -firefox-suggest-brand-name } uses your search keywords to make contextual suggestions from { -brand-short-name } and our partners while keeping your privacy in mind.
+  <a data-l10n-name="learn-more-link">Learn more</a>
+urlbar-firefox-suggest-contextual-opt-in-allow = Allow suggestions
+urlbar-firefox-suggest-contextual-opt-in-dismiss = Not now

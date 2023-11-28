@@ -276,9 +276,8 @@ void nsContainerFrame::Destroy(DestroyContext& aContext) {
       SafelyDestroyFrameListProp(aContext, presShell, OverflowProperty());
     }
 
-    MOZ_ASSERT(
-        IsFrameOfType(eCanContainOverflowContainers) || !(hasOC || hasEOC),
-        "this type of frame shouldn't have overflow containers");
+    MOZ_ASSERT(CanContainOverflowContainers() || !(hasOC || hasEOC),
+               "this type of frame shouldn't have overflow containers");
     if (hasOC) {
       SafelyDestroyFrameListProp(aContext, presShell,
                                  OverflowContainersProperty());
@@ -339,13 +338,13 @@ void nsContainerFrame::GetChildLists(nsTArray<ChildList>* aLists) const {
       reinterpret_cast<L>(aValue)->AppendIfNonempty(aLists,
                                                     FrameChildListID::Overflow);
     } else if (aProp == OverflowContainersProperty()) {
-      MOZ_ASSERT(IsFrameOfType(nsIFrame::eCanContainOverflowContainers),
+      MOZ_ASSERT(CanContainOverflowContainers(),
                  "found unexpected OverflowContainersProperty");
       Unused << this;  // silence clang -Wunused-lambda-capture in opt builds
       reinterpret_cast<L>(aValue)->AppendIfNonempty(
           aLists, FrameChildListID::OverflowContainers);
     } else if (aProp == ExcessOverflowContainersProperty()) {
-      MOZ_ASSERT(IsFrameOfType(nsIFrame::eCanContainOverflowContainers),
+      MOZ_ASSERT(CanContainOverflowContainers(),
                  "found unexpected ExcessOverflowContainersProperty");
       Unused << this;  // silence clang -Wunused-lambda-capture in opt builds
       reinterpret_cast<L>(aValue)->AppendIfNonempty(
@@ -817,8 +816,7 @@ LogicalSize nsContainerFrame::ComputeAutoSize(
   nscoord availBased =
       aAvailableISize - aMargin.ISize(aWM) - aBorderPadding.ISize(aWM);
   // replaced elements always shrink-wrap
-  if (aFlags.contains(ComputeSizeFlag::ShrinkWrap) ||
-      IsFrameOfType(eReplaced)) {
+  if (aFlags.contains(ComputeSizeFlag::ShrinkWrap) || IsReplaced()) {
     // Only bother computing our 'auto' ISize if the result will be used.
     const auto& styleISize = aSizeOverrides.mStyleISize
                                  ? *aSizeOverrides.mStyleISize
@@ -988,7 +986,7 @@ void nsContainerFrame::FinishReflowChild(
     const WritingMode& aWM, const LogicalPoint& aPos,
     const nsSize& aContainerSize, nsIFrame::ReflowChildFlags aFlags) {
   MOZ_ASSERT(!aReflowInput || aReflowInput->mFrame == aKidFrame);
-  MOZ_ASSERT(aReflowInput || aKidFrame->IsFrameOfType(eMathML) ||
+  MOZ_ASSERT(aReflowInput || aKidFrame->IsMathMLFrame() ||
                  aKidFrame->IsTableCellFrame(),
              "aReflowInput should be passed in almost all cases");
 
@@ -1410,33 +1408,6 @@ void nsContainerFrame::PushChildrenToOverflow(nsIFrame* aFromChild,
   // Add the frames to our overflow list (let our next in flow drain
   // our overflow list when it is ready)
   SetOverflowFrames(mFrames.TakeFramesAfter(aPrevSibling));
-}
-
-void nsContainerFrame::PushChildren(nsIFrame* aFromChild,
-                                    nsIFrame* aPrevSibling) {
-  MOZ_ASSERT(aFromChild, "null pointer");
-  MOZ_ASSERT(aPrevSibling, "pushing first child");
-  MOZ_ASSERT(aPrevSibling->GetNextSibling() == aFromChild, "bad prev sibling");
-
-  // Disconnect aFromChild from its previous sibling
-  nsFrameList tail = mFrames.TakeFramesAfter(aPrevSibling);
-
-  nsContainerFrame* nextInFlow =
-      static_cast<nsContainerFrame*>(GetNextInFlow());
-  if (nextInFlow) {
-    // XXX This is not a very good thing to do. If it gets removed
-    // then remove the copy of this routine that doesn't do this from
-    // nsInlineFrame.
-    // When pushing and pulling frames we need to check for whether any
-    // views need to be reparented.
-    for (nsIFrame* f = aFromChild; f; f = f->GetNextSibling()) {
-      nsContainerFrame::ReparentFrameView(f, this, nextInFlow);
-    }
-    nextInFlow->mFrames.InsertFrames(nextInFlow, nullptr, std::move(tail));
-  } else {
-    // Add the frames to our overflow list
-    SetOverflowFrames(std::move(tail));
-  }
 }
 
 bool nsContainerFrame::PushIncompleteChildren(
@@ -2651,8 +2622,7 @@ bool nsContainerFrame::ShouldAvoidBreakInside(
 
 void nsContainerFrame::ConsiderChildOverflow(OverflowAreas& aOverflowAreas,
                                              nsIFrame* aChildFrame) {
-  if (StyleDisplay()->IsContainLayout() &&
-      IsFrameOfType(eSupportsContainLayoutAndPaint)) {
+  if (StyleDisplay()->IsContainLayout() && SupportsContainLayoutAndPaint()) {
     // If we have layout containment and are not a non-atomic, inline-level
     // principal box, we should only consider our child's ink overflow,
     // leaving the scrollable regions of the parent unaffected.

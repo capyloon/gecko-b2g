@@ -70,7 +70,6 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(PerformanceMainThread,
       mPendingEventTimingEntries, mEventCounts)
   tmp->mImageLCPEntryMap.Clear();
   tmp->mTextFrameUnions.Clear();
-  tmp->mImagesPendingRendering.Clear();
   mozilla::DropJSObjects(tmp);
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
@@ -79,8 +78,8 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(PerformanceMainThread,
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(
       mTiming, mNavigation, mDocEntry, mFCPTiming, mEventTimingEntries,
       mLargestContentfulPaintEntries, mFirstInputEvent, mPendingPointerDown,
-      mPendingEventTimingEntries, mEventCounts, mImagesPendingRendering,
-      mImageLCPEntryMap, mTextFrameUnions)
+      mPendingEventTimingEntries, mEventCounts, mImageLCPEntryMap,
+      mTextFrameUnions)
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
@@ -95,7 +94,7 @@ NS_IMPL_RELEASE_INHERITED(PerformanceMainThread, Performance)
 // QueryInterface implementation for PerformanceMainThread
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(PerformanceMainThread)
   NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
-  NS_INTERFACE_MAP_ENTRY(nsISupports)
+  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, EventTarget)
 NS_INTERFACE_MAP_END_INHERITING(Performance)
 
 PerformanceMainThread::PerformanceMainThread(nsPIDOMWindowInner* aWindow,
@@ -109,9 +108,38 @@ PerformanceMainThread::PerformanceMainThread(nsPIDOMWindowInner* aWindow,
     mEventCounts = new class EventCounts(GetParentObject());
   }
   CreateNavigationTimingEntry();
+
+  if (StaticPrefs::dom_enable_largest_contentful_paint()) {
+    nsCOMPtr<nsPIDOMWindowInner> owner = GetOwner();
+    MarkerInnerWindowId innerWindowID =
+        owner ? MarkerInnerWindowId(owner->WindowID())
+              : MarkerInnerWindowId::NoId();
+    // There might be multiple LCP entries and we only care about the latest one
+    // which is also the biggest value. That's why we need to record these
+    // markers in two different places:
+    // - During the Document unload, so we can record the closed pages.
+    // - During the profile capture, so we can record the open pages.
+    // We are capturing the second one here.
+    // Our static analysis doesn't allow capturing ref-counted pointers in
+    // lambdas, so we need to hide it in a uintptr_t. This is safe because this
+    // lambda will be destroyed in ~PerformanceMainThread().
+    uintptr_t self = reinterpret_cast<uintptr_t>(this);
+    profiler_add_state_change_callback(
+        // Using the "Pausing" state as "GeneratingProfile" profile happens too
+        // late; we can not record markers if the profiler is already paused.
+        ProfilingState::Pausing,
+        [self, innerWindowID](ProfilingState aProfilingState) {
+          const PerformanceMainThread* selfPtr =
+              reinterpret_cast<const PerformanceMainThread*>(self);
+
+          selfPtr->GetDOMTiming()->MaybeAddLCPProfilerMarker(innerWindowID);
+        },
+        self);
+  }
 }
 
 PerformanceMainThread::~PerformanceMainThread() {
+  profiler_remove_state_change_callback(reinterpret_cast<uintptr_t>(this));
   mozilla::DropJSObjects(this);
 }
 
@@ -657,15 +685,16 @@ void PerformanceMainThread::FinalizeLCPEntriesForText() {
 
   bool canFinalize = StaticPrefs::dom_enable_largest_contentful_paint() &&
                      !presContext->HasStoppedGeneratingLCP();
+  nsTHashMap<nsRefPtrHashKey<Element>, nsRect> textFrameUnion =
+      std::move(GetTextFrameUnions());
   if (canFinalize) {
-    for (const auto& textFrameUnion : GetTextFrameUnions()) {
+    for (const auto& textFrameUnion : textFrameUnion) {
       LCPHelpers::FinalizeLCPEntryForText(
           this, renderTime, textFrameUnion.GetKey(), textFrameUnion.GetData(),
           presContext);
     }
   }
-
-  ClearTextFrameUnions();
+  MOZ_ASSERT(GetTextFrameUnions().IsEmpty());
 }
 
 void PerformanceMainThread::StoreImageLCPEntry(
@@ -686,10 +715,11 @@ PerformanceMainThread::GetImageLCPEntry(Element* aElement,
   Document* doc = aElement->GetComposedDoc();
   MOZ_ASSERT(doc, "Element should be connected when it's painted");
 
-  const Maybe<const LCPImageEntryKey>& contentIdentifier =
+  Maybe<LCPImageEntryKey>& contentIdentifier =
       entry.value()->GetLCPImageEntryKey();
   if (contentIdentifier.isSome()) {
     doc->ContentIdentifiersForLCP().EnsureRemoved(contentIdentifier.value());
+    contentIdentifier.reset();
   }
 
   return entry.value().forget();
@@ -710,14 +740,21 @@ void PerformanceMainThread::SetHasDispatchedScrollEvent() {
 
 void PerformanceMainThread::SetHasDispatchedInputEvent() {
   mHasDispatchedInputEvent = true;
-  mImageLCPEntryMap.Clear();
   ClearGeneratedTempDataForLCP();
 }
 
-void PerformanceMainThread::ClearTextFrameUnions() { mTextFrameUnions.Clear(); }
-
 void PerformanceMainThread::ClearGeneratedTempDataForLCP() {
-  ClearTextFrameUnions();
+  mTextFrameUnions.Clear();
   mImageLCPEntryMap.Clear();
+  mImagesPendingRendering.Clear();
+
+  nsIGlobalObject* ownerGlobal = GetOwnerGlobal();
+  if (!ownerGlobal) {
+    return;
+  }
+
+  if (Document* document = ownerGlobal->GetAsInnerWindow()->GetExtantDoc()) {
+    document->ContentIdentifiersForLCP().Clear();
+  }
 }
 }  // namespace mozilla::dom

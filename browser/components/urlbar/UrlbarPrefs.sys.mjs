@@ -323,6 +323,22 @@ const PREF_URLBAR_DEFAULTS = new Map([
   // The user's response to the Firefox Suggest online opt-in dialog.
   ["quicksuggest.onboardingDialogChoice", ""],
 
+  // Whether the Firefox Suggest data collection opt-in result is enabled. If
+  // true, this implicitly disables shouldShowOnboardingDialog.
+  ["quicksuggest.contextualOptIn", false],
+
+  // Controls which variant of the copy is used for the Firefox Suggest
+  // contextual opt-in result.
+  ["quicksuggest.contextualOptIn.sayHello", false],
+
+  // Controls whether the Firefox Suggest contextual opt-in result appears at
+  // the top of results or at the bottom, after one-off buttons.
+  ["quicksuggest.contextualOptIn.topPosition", true],
+
+  // The last time (as ISO string) the user dismissed the Firefox Suggest
+  // contextual opt-in result.
+  ["quicksuggest.contextualOptIn.lastDismissed", ""],
+
   // If the user has gone through a quick suggest prefs migration, then this
   // pref will have a user-branch value that records the latest prefs version.
   // Version changelog:
@@ -448,7 +464,7 @@ const PREF_URLBAR_DEFAULTS = new Map([
   ["richSuggestions.featureGate", false],
 
   // Feature gate pref for clipboard suggestions in the urlbar.
-  ["clipboard.featureGate", false],
+  ["clipboard.featureGate", true],
 
   // Feature gate pref for recent searches being shown in the urlbar.
   ["recentsearches.featureGate", false],

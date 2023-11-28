@@ -4,7 +4,6 @@
 "use strict";
 
 ChromeUtils.defineESModuleGetters(this, {
-  SearchEngineSelector: "resource://gre/modules/SearchEngineSelector.sys.mjs",
   SearchService: "resource://gre/modules/SearchService.sys.mjs",
 });
 
@@ -395,18 +394,21 @@ function hasEnginesFirst(engines, expectedEngines) {
   }
 }
 
-engineSelector = new SearchEngineSelector();
-
-AddonTestUtils.init(GLOBAL_SCOPE);
-AddonTestUtils.createAppInfo(
-  "xpcshell@tests.mozilla.org",
-  "XPCShell",
-  "42",
-  "42"
-);
+engineSelector = SearchUtils.newSearchConfigEnabled
+  ? new SearchEngineSelector()
+  : new SearchEngineSelectorOld();
 
 add_setup(async function () {
-  await AddonTestUtils.promiseStartupManager();
+  if (!SearchUtils.newSearchConfigEnabled) {
+    AddonTestUtils.init(GLOBAL_SCOPE);
+    AddonTestUtils.createAppInfo(
+      "xpcshell@tests.mozilla.org",
+      "XPCShell",
+      "42",
+      "42"
+    );
+    await AddonTestUtils.promiseStartupManager();
+  }
 
   await maybeSetupConfig();
 });

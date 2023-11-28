@@ -83,6 +83,11 @@ NS_IMPL_ISUPPORTS(nsFilePicker, nsIFilePicker)
 NS_IMETHODIMP nsFilePicker::Init(mozIDOMWindowProxy* aParent,
                                  const nsAString& aTitle,
                                  nsIFilePicker::Mode aMode) {
+  // Don't attempt to open a real file-picker in headless mode.
+  if (gfxPlatform::IsHeadless()) {
+    return nsresult::NS_ERROR_NOT_AVAILABLE;
+  }
+
   nsCOMPtr<nsPIDOMWindowOuter> window = do_QueryInterface(aParent);
   nsIDocShell* docShell = window ? window->GetDocShell() : nullptr;
   mLoadContext = do_QueryInterface(docShell);
@@ -210,12 +215,13 @@ static auto ShowRemote(HWND parent, ActionType&& action)
         return fail();
       });
 }
-}  // namespace
-}  // namespace mozilla::detail
 
-Result<Maybe<filedialog::Results>, HRESULT> nsFilePicker::ShowFilePickerImpl(
-    HWND parent, filedialog::FileDialogType type,
-    nsTArray<filedialog::Command> const& commands) {
+template <typename Fn1, typename Fn2, typename... Args>
+auto ShowLocalAndOrRemote(Fn1 local, Fn2 remote, Args const&... args)
+    -> std::invoke_result_t<Fn1, Args...> {
+  static_assert(std::is_same_v<std::invoke_result_t<Fn1, Args...>,
+                               std::invoke_result_t<Fn2, Args...>>);
+
   int32_t const pref =
       mozilla::StaticPrefs::widget_windows_utility_process_file_picker();
 
@@ -224,37 +230,31 @@ Result<Maybe<filedialog::Results>, HRESULT> nsFilePicker::ShowFilePickerImpl(
     default:  // remain local-only on release and beta, for now
 #endif
     case -1:
-      return ShowFilePickerLocal(parent, type, commands);
+      return local(args...);
     case 2:
-      return ShowFilePickerRemote(parent, type, commands);
+      return remote(args...);
 #ifdef NIGHTLY_BUILD
     default:  // fall back to local on failure on Nightly builds
 #endif
     case 1:
-      return ShowFilePickerRemote(parent, type, commands)
-          .orElse([&](HRESULT err) {
-            return ShowFilePickerLocal(parent, type, commands);
-          });
+      return remote(args...).orElse([&](auto err) { return local(args...); });
   }
+}
+
+}  // namespace
+}  // namespace mozilla::detail
+
+Result<Maybe<filedialog::Results>, HRESULT> nsFilePicker::ShowFilePickerImpl(
+    HWND parent, filedialog::FileDialogType type,
+    nsTArray<filedialog::Command> const& commands) {
+  return mozilla::detail::ShowLocalAndOrRemote(
+      &ShowFilePickerLocal, &ShowFilePickerRemote, parent, type, commands);
 }
 
 Result<Maybe<nsString>, HRESULT> nsFilePicker::ShowFolderPickerImpl(
     HWND parent, nsTArray<filedialog::Command> const& commands) {
-  int32_t const pref =
-      mozilla::StaticPrefs::widget_windows_utility_process_file_picker();
-
-  switch (pref) {
-    case -1:
-      return ShowFolderPickerLocal(parent, commands);
-    case 2:
-      return ShowFolderPickerRemote(parent, commands);
-    default:
-    case 1:
-    case 0:
-      return ShowFolderPickerRemote(parent, commands).orElse([&](HRESULT err) {
-        return ShowFolderPickerLocal(parent, commands);
-      });
-  }
+  return mozilla::detail::ShowLocalAndOrRemote(
+      &ShowFolderPickerLocal, &ShowFolderPickerRemote, parent, commands);
 }
 
 /* static */
@@ -538,6 +538,11 @@ bool nsFilePicker::ShowFilePicker(const nsString& aInitialDir) {
 // nsIFilePicker impl.
 
 nsresult nsFilePicker::ShowW(nsIFilePicker::ResultCode* aReturnVal) {
+  // Don't attempt to open a real file-picker in headless mode.
+  if (gfxPlatform::IsHeadless()) {
+    return nsresult::NS_ERROR_NOT_AVAILABLE;
+  }
+
   NS_ENSURE_ARG_POINTER(aReturnVal);
 
   *aReturnVal = returnCancel;

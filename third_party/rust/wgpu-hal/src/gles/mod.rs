@@ -95,7 +95,7 @@ use glow::HasContext;
 
 use naga::FastHashMap;
 use parking_lot::Mutex;
-use std::sync::atomic::AtomicU32;
+use std::sync::atomic::{AtomicU32, AtomicU8};
 use std::{fmt, ops::Range, sync::Arc};
 
 #[derive(Clone, Debug)]
@@ -108,6 +108,8 @@ const MAX_SAMPLERS: usize = 16;
 const MAX_VERTEX_ATTRIBUTES: usize = 16;
 const ZERO_BUFFER_SIZE: usize = 256 << 10;
 const MAX_PUSH_CONSTANTS: usize = 64;
+// We have to account for each push constant may need to be set for every shader.
+const MAX_PUSH_CONSTANT_COMMANDS: usize = MAX_PUSH_CONSTANTS * crate::MAX_CONCURRENT_SHADER_STAGES;
 
 impl crate::Api for Api {
     type Instance = Instance;
@@ -163,6 +165,12 @@ bitflags::bitflags! {
         const TEXTURE_FLOAT_LINEAR = 1 << 10;
         /// Supports query buffer objects.
         const QUERY_BUFFERS = 1 << 11;
+        /// Supports `glTexStorage2D`, etc.
+        const TEXTURE_STORAGE = 1 << 12;
+        /// Supports `push_debug_group`, `pop_debug_group` and `debug_message_insert`.
+        const DEBUG_FNS = 1 << 13;
+        /// Supports framebuffer invalidation.
+        const INVALIDATE_FRAMEBUFFER = 1 << 14;
     }
 }
 
@@ -240,9 +248,9 @@ pub struct Queue {
     /// Keep a reasonably large buffer filled with zeroes, so that we can implement `ClearBuffer` of
     /// zeroes by copying from it.
     zero_buffer: glow::Buffer,
-    temp_query_results: Vec<u64>,
-    draw_buffer_count: u8,
-    current_index_buffer: Option<glow::Buffer>,
+    temp_query_results: Mutex<Vec<u64>>,
+    draw_buffer_count: AtomicU8,
+    current_index_buffer: Mutex<Option<glow::Buffer>>,
 }
 
 #[derive(Clone, Debug)]
@@ -379,6 +387,7 @@ pub struct BindGroupLayout {
     entries: Arc<[wgt::BindGroupLayoutEntry]>,
 }
 
+#[derive(Debug)]
 struct BindGroupLayoutInfo {
     entries: Arc<[wgt::BindGroupLayoutEntry]>,
     /// Mapping of resources, indexed by `binding`, into the whole layout space.
@@ -389,6 +398,7 @@ struct BindGroupLayoutInfo {
     binding_to_slot: Box<[u8]>,
 }
 
+#[derive(Debug)]
 pub struct PipelineLayout {
     group_infos: Box<[BindGroupLayoutInfo]>,
     naga_options: naga::back::glsl::Options,
@@ -420,7 +430,8 @@ enum RawBinding {
         raw: glow::Texture,
         target: BindTarget,
         aspects: crate::FormatAspects,
-        //TODO: mip levels, array layers
+        mip_levels: Range<u32>,
+        //TODO: array layers
     },
     Image(ImageBinding),
     Sampler(glow::Sampler),
@@ -476,11 +487,12 @@ struct VertexBufferDesc {
     stride: u32,
 }
 
-#[derive(Clone, Debug, Default)]
-struct UniformDesc {
-    location: Option<glow::UniformLocation>,
-    size: u32,
-    utype: u32,
+#[derive(Clone, Debug)]
+struct PushConstantDesc {
+    location: glow::UniformLocation,
+    ty: naga::TypeInner,
+    offset: u32,
+    size_bytes: u32,
 }
 
 #[cfg(all(
@@ -488,22 +500,23 @@ struct UniformDesc {
     feature = "fragile-send-sync-non-atomic-wasm",
     not(target_feature = "atomics")
 ))]
-unsafe impl Sync for UniformDesc {}
+unsafe impl Sync for PushConstantDesc {}
 #[cfg(all(
     target_arch = "wasm32",
     feature = "fragile-send-sync-non-atomic-wasm",
     not(target_feature = "atomics")
 ))]
-unsafe impl Send for UniformDesc {}
+unsafe impl Send for PushConstantDesc {}
 
 /// For each texture in the pipeline layout, store the index of the only
 /// sampler (in this layout) that the texture is used with.
 type SamplerBindMap = [Option<u8>; MAX_TEXTURE_SLOTS];
 
+#[derive(Debug)]
 struct PipelineInner {
     program: glow::Program,
     sampler_map: SamplerBindMap,
-    uniforms: [UniformDesc; MAX_PUSH_CONSTANTS],
+    push_constant_descs: ArrayVec<PushConstantDesc, MAX_PUSH_CONSTANT_COMMANDS>,
 }
 
 #[derive(Clone, Debug)]
@@ -546,6 +559,7 @@ struct ProgramCacheKey {
 
 type ProgramCache = FastHashMap<ProgramCacheKey, Result<Arc<PipelineInner>, crate::PipelineError>>;
 
+#[derive(Debug)]
 pub struct RenderPipeline {
     inner: Arc<PipelineInner>,
     primitive: wgt::PrimitiveState,
@@ -571,6 +585,7 @@ unsafe impl Sync for RenderPipeline {}
 ))]
 unsafe impl Send for RenderPipeline {}
 
+#[derive(Debug)]
 pub struct ComputePipeline {
     inner: Arc<PipelineInner>,
 }
@@ -681,7 +696,7 @@ impl Default for StencilSide {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Debug, Clone, Default)]
 struct StencilState {
     front: StencilSide,
     back: StencilSide,
@@ -865,6 +880,7 @@ enum Command {
         texture: glow::Texture,
         target: BindTarget,
         aspects: crate::FormatAspects,
+        mip_levels: Range<u32>,
     },
     BindImage {
         slot: u32,
@@ -874,7 +890,7 @@ enum Command {
     PushDebugGroup(Range<u32>),
     PopDebugGroup,
     SetPushConstants {
-        uniform: UniformDesc,
+        uniform: PushConstantDesc,
         /// Offset from the start of the `data_bytes`
         offset: u32,
     },

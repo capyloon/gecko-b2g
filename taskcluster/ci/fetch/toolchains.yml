@@ -167,9 +167,6 @@ zlib-1.3:
         url: https://zlib.net/fossils/zlib-1.3.tar.gz
         sha256: ff0ba4c292013dbc27530b3a81e1f9a813cd39de01ca5e0f8bf355702efa593e
         size: 1495873
-        gpg-signature:
-            sig-url: "{url}.asc"
-            key-path: build/unix/build-gcc/5ED46A6721D365587791E2AA783FCD8E58BCAFBA.key
 
 nsis-3.07:
     description: nsis 3.07 source code
@@ -373,13 +370,13 @@ clang-trunk:
 # We build stable rust from source so the resulting compiler acts as a nightly
 # rust compiler, allowing to use unstable features like -Zbuild-std and
 # sanitizers.
-rust-1.73.0:
-    description: Rust 1.73.0 source code
+rust-1.74.0:
+    description: Rust 1.74.0 source code
     fetch:
         type: git
         include-dot-git: true
         repo: https://github.com/rust-lang/rust/
-        revision: cc66ad468955717ab92600c770da8c1601a4ff33
+        revision: 79e9716c980570bfd1f666e3b16ac583f0168962
 
 wasi-sdk-11:
     description: wasi-sdk-11 source code

@@ -129,6 +129,7 @@ using namespace mozilla::dom;
 nsIFrame* NS_NewHTMLCanvasFrame(PresShell* aPresShell, ComputedStyle* aStyle);
 
 nsIFrame* NS_NewHTMLVideoFrame(PresShell* aPresShell, ComputedStyle* aStyle);
+nsIFrame* NS_NewHTMLAudioFrame(PresShell* aPresShell, ComputedStyle* aStyle);
 
 nsContainerFrame* NS_NewSVGOuterSVGFrame(PresShell* aPresShell,
                                          ComputedStyle* aStyle);
@@ -265,7 +266,7 @@ static void AssertAnonymousFlexOrGridItemParent(const nsIFrame* aChild,
  * needs to terminate it).
  */
 static bool IsInlineFrame(const nsIFrame* aFrame) {
-  return aFrame->IsFrameOfType(nsIFrame::eLineParticipant);
+  return aFrame->IsLineParticipant();
 }
 
 /**
@@ -284,7 +285,7 @@ static inline bool IsDisplayContents(const nsIContent* aContent) {
  * frame being used for SVG text.
  */
 static bool IsFrameForSVG(const nsIFrame* aFrame) {
-  return aFrame->IsFrameOfType(nsIFrame::eSVG) || aFrame->IsInSVGTextSubtree();
+  return aFrame->IsSVGFrame() || aFrame->IsInSVGTextSubtree();
 }
 
 static bool IsLastContinuationForColumnContent(const nsIFrame* aFrame) {
@@ -300,8 +301,7 @@ static bool IsLastContinuationForColumnContent(const nsIFrame* aFrame) {
  * lower-level descendents inside them, of course).
  */
 static bool ShouldSuppressFloatingOfDescendants(nsIFrame* aFrame) {
-  return aFrame->IsFlexOrGridContainer() ||
-         aFrame->IsFrameOfType(nsIFrame::eMathML);
+  return aFrame->IsFlexOrGridContainer() || aFrame->IsMathMLFrame();
 }
 
 // Return true if column-span descendants should be suppressed under aFrame's
@@ -582,18 +582,16 @@ class MOZ_STACK_CLASS nsFrameConstructorSaveState {
   // Pointer to struct whose data we save/restore.
   AbsoluteFrameList* mList = nullptr;
 
+  // The saved pointer to the fixed list.
+  AbsoluteFrameList* mSavedFixedList = nullptr;
+
   // Copy of original frame list. This can be the original absolute list or a
-  // float list. If we're saving the abs-pos state for a transformed element,
-  // i.e. when mSavedFixedPosIsAbsPos is true, this is the original fixed list.
+  // float list.
   AbsoluteFrameList mSavedList;
 
   // The name of the child list in which our frames would belong.
   mozilla::FrameChildListID mChildListID = FrameChildListID::Principal;
   nsFrameConstructorState* mState = nullptr;
-
-  // Only used when saving an absolute list. See the description of
-  // nsFrameConstructorState::mFixedPosIsAbsPos for its meaning.
-  bool mSavedFixedPosIsAbsPos = false;
 
   friend class nsFrameConstructorState;
 };
@@ -607,35 +605,54 @@ class MOZ_STACK_CLASS nsFrameConstructorState {
   nsCSSFrameConstructor* mFrameConstructor;
 
   // Containing block information for out-of-flow frames.
-  AbsoluteFrameList mFixedList;
-  AbsoluteFrameList mAbsoluteList;
+  //
+  // Floats are easy. Whatever is our float CB.
+  //
+  // Regular abspos elements are easy too. Its containing block can be the
+  // nearest abspos element, or the ICB (the canvas frame).
+  //
+  // Top layer abspos elements are always children of the ICB, but we can get
+  // away with having two different lists (mAbsoluteList and
+  // mTopLayerAbsoluteList), because because top layer frames cause
+  // non-top-layer frames to be contained inside (so any descendants of a top
+  // layer abspos can never share containing block with it, unless they're also
+  // in the top layer).
+  //
+  // Regular fixed elements however are trickier. Fixed elements can be
+  // contained in one of three lists:
+  //
+  //  * mAbsoluteList, if our abspos cb is also a fixpos cb (e.g., is
+  //                   transformed or has a filter).
+  //
+  //  * mAncestorFixedList, if the fixpos cb is an ancestor element other than
+  //                        the viewport frame, (so, a transformed / filtered
+  //                        ancestor).
+  //
+  //  * mRealFixedList, which is also the fixed list used for the top layer
+  //                    fixed items, which is the fixed list of the viewport
+  //                    frame.
+  //
+  // It is important that mRealFixedList is shared between regular and top layer
+  // fixpos elements, since no-top-layer descendants of top layer fixed elements
+  // could share ICB and vice versa, so without that there would be no guarantee
+  // of layout ordering between them.
   AbsoluteFrameList mFloatedList;
-  // The containing block of a frame in the top layer is defined by the
-  // spec: fixed-positioned frames are children of the viewport frame,
-  // and absolutely-positioned frames are children of the initial
-  // containing block. They would not be caught by any other containing
-  // block, e.g. frames with transform or filter.
-  AbsoluteFrameList mTopLayerFixedList;
+  AbsoluteFrameList mAbsoluteList;
   AbsoluteFrameList mTopLayerAbsoluteList;
+  AbsoluteFrameList mAncestorFixedList;
+  AbsoluteFrameList mRealFixedList;
+
+  // Never null, always pointing to one of the lists documented above.
+  AbsoluteFrameList* mFixedList;
 
   // What `page: auto` resolves to. This is the used page-name of the parent
   // frame. Updated by AutoFrameConstructionPageName.
-  const nsAtom* mAutoPageNameValue;
+  const nsAtom* mAutoPageNameValue = nullptr;
 
   nsCOMPtr<nsILayoutHistoryState> mFrameState;
   // These bits will be added to the state bits of any frame we construct
   // using this state.
-  nsFrameState mAdditionalStateBits;
-
-  // When working with transform / filter properties, we want to hook the
-  // abs-pos and fixed-pos lists together, since such elements are fixed-pos
-  // containing blocks.
-  //
-  // Similarly when restricting absolute positioning (for e.g. mathml).
-  //
-  // This flag determines whether or not we want to wire the fixed-pos and
-  // abs-pos lists together.
-  bool mFixedPosIsAbsPos;
+  nsFrameState mAdditionalStateBits{0};
 
   // If false (which is the default) then call SetPrimaryFrame() as needed
   // during frame construction.  If true, don't make any SetPrimaryFrame()
@@ -753,12 +770,8 @@ class MOZ_STACK_CLASS nsFrameConstructorState {
    * we'll hand back the abs-pos list.  Callers should use this function if they
    * want to get the list acting as the fixed-pos item parent.
    */
-  AbsoluteFrameList& GetFixedList() {
-    return mFixedPosIsAbsPos ? mAbsoluteList : mFixedList;
-  }
-  const AbsoluteFrameList& GetFixedList() const {
-    return mFixedPosIsAbsPos ? mAbsoluteList : mFixedList;
-  }
+  AbsoluteFrameList& GetFixedList() { return *mFixedList; }
+  const AbsoluteFrameList& GetFixedList() const { return *mFixedList; }
 
  protected:
   friend class nsFrameConstructorSaveState;
@@ -794,24 +807,26 @@ nsFrameConstructorState::nsFrameConstructorState(
     : mPresContext(aPresShell->GetPresContext()),
       mPresShell(aPresShell),
       mFrameConstructor(aPresShell->FrameConstructor()),
-      mFixedList(aFixedContainingBlock),
-      mAbsoluteList(aAbsoluteContainingBlock),
       mFloatedList(aFloatContainingBlock),
-      mTopLayerFixedList(
-          static_cast<nsContainerFrame*>(mFrameConstructor->GetRootFrame())),
+      mAbsoluteList(aAbsoluteContainingBlock),
       mTopLayerAbsoluteList(mFrameConstructor->GetCanvasFrame()),
-      // Will be set by AutoFrameConstructionPageName
-      mAutoPageNameValue(nullptr),
+      mAncestorFixedList(aFixedContainingBlock),
+      mRealFixedList(
+          static_cast<nsContainerFrame*>(mFrameConstructor->GetRootFrame())),
       // See PushAbsoluteContaningBlock below
       mFrameState(aHistoryState),
-      mAdditionalStateBits(nsFrameState(0)),
-      // If the fixed-pos containing block is equal to the abs-pos containing
-      // block, use the abs-pos containing block's abs-pos list for fixed-pos
-      // frames.
-      mFixedPosIsAbsPos(aFixedContainingBlock == aAbsoluteContainingBlock),
       mCreatingExtraFrames(false),
       mHasRenderedLegend(false) {
   MOZ_COUNT_CTOR(nsFrameConstructorState);
+  mFixedList = [&] {
+    if (aFixedContainingBlock == aAbsoluteContainingBlock) {
+      return &mAbsoluteList;
+    }
+    if (aAbsoluteContainingBlock == mRealFixedList.mContainingBlock) {
+      return &mRealFixedList;
+    }
+    return &mAncestorFixedList;
+  }();
 }
 
 nsFrameConstructorState::nsFrameConstructorState(
@@ -832,11 +847,11 @@ nsFrameConstructorState::~nsFrameConstructorState() {
 }
 
 void nsFrameConstructorState::ProcessFrameInsertionsForAllLists() {
-  ProcessFrameInsertions(mTopLayerFixedList, FrameChildListID::Fixed);
-  ProcessFrameInsertions(mTopLayerAbsoluteList, FrameChildListID::Absolute);
   ProcessFrameInsertions(mFloatedList, FrameChildListID::Float);
   ProcessFrameInsertions(mAbsoluteList, FrameChildListID::Absolute);
-  ProcessFrameInsertions(mFixedList, FrameChildListID::Fixed);
+  ProcessFrameInsertions(mTopLayerAbsoluteList, FrameChildListID::Absolute);
+  ProcessFrameInsertions(*mFixedList, FrameChildListID::Fixed);
+  ProcessFrameInsertions(mRealFixedList, FrameChildListID::Fixed);
 }
 
 void nsFrameConstructorState::PushAbsoluteContainingBlock(
@@ -847,26 +862,29 @@ void nsFrameConstructorState::PushAbsoluteContainingBlock(
   aSaveState.mList = &mAbsoluteList;
   aSaveState.mChildListID = FrameChildListID::Absolute;
   aSaveState.mState = this;
-  aSaveState.mSavedFixedPosIsAbsPos = mFixedPosIsAbsPos;
-
-  if (mFixedPosIsAbsPos) {
-    // Since we're going to replace mAbsoluteList, we need to save it into
-    // mFixedList now (and save the current value of mFixedList).
-    aSaveState.mSavedList = std::move(mFixedList);
-    mFixedList = std::move(mAbsoluteList);
-  } else {
-    // Otherwise, we just save mAbsoluteList.
-    aSaveState.mSavedList = std::move(mAbsoluteList);
-  }
-
+  aSaveState.mSavedList = std::move(mAbsoluteList);
+  aSaveState.mSavedFixedList = mFixedList;
   mAbsoluteList = AbsoluteFrameList(aNewAbsoluteContainingBlock);
-
-  /* See if we're wiring the fixed-pos and abs-pos lists together.  This happens
-   * if we're a transformed/filtered/etc element, or if we force a null abspos
-   * containing block (for mathml for example).
-   */
-  mFixedPosIsAbsPos =
-      !aPositionedFrame || aPositionedFrame->IsFixedPosContainingBlock();
+  mFixedList = [&] {
+    if (!aPositionedFrame || aPositionedFrame->IsFixedPosContainingBlock()) {
+      // See if we need to treat abspos and fixedpos the same. This happens if
+      // we're a transformed/filtered/etc element, or if we force a null abspos
+      // containing block (for mathml for example).
+      return &mAbsoluteList;
+    }
+    if (aPositionedFrame->StyleDisplay()->mTopLayer == StyleTopLayer::Top) {
+      // If our new CB is in the top layer, and isn't a fixed CB itself, we also
+      // escape the usual containment.
+      return &mRealFixedList;
+    }
+    if (mFixedList == &mAbsoluteList) {
+      // If we were pointing to our old absolute list, keep pointing to it.
+      return &aSaveState.mSavedList;
+    }
+    // Otherwise keep pointing to the current thing (another ancestor's
+    // absolute list, or the real fixed list, doesn't matter).
+    return mFixedList;
+  }();
 
   if (aNewAbsoluteContainingBlock) {
     aNewAbsoluteContainingBlock->MarkAsAbsoluteContainingBlock();
@@ -947,8 +965,8 @@ nsContainerFrame* nsFrameConstructorState::GetGeometricParent(
     MOZ_ASSERT(aStyleDisplay.IsAbsolutelyPositionedStyle(),
                "Top layer items should always be absolutely positioned");
     if (aStyleDisplay.mPosition == StylePositionProperty::Fixed) {
-      MOZ_ASSERT(mTopLayerFixedList.mContainingBlock, "No root frame?");
-      return mTopLayerFixedList.mContainingBlock;
+      MOZ_ASSERT(mRealFixedList.mContainingBlock, "No root frame?");
+      return mRealFixedList.mContainingBlock;
     }
     MOZ_ASSERT(aStyleDisplay.mPosition == StylePositionProperty::Absolute);
     MOZ_ASSERT(mTopLayerAbsoluteList.mContainingBlock);
@@ -961,8 +979,8 @@ nsContainerFrame* nsFrameConstructorState::GetGeometricParent(
   }
 
   if (aStyleDisplay.mPosition == StylePositionProperty::Fixed &&
-      GetFixedList().mContainingBlock) {
-    return GetFixedList().mContainingBlock;
+      mFixedList->mContainingBlock) {
+    return mFixedList->mContainingBlock;
   }
 
   return aContentParentFrame;
@@ -1047,7 +1065,7 @@ AbsoluteFrameList* nsFrameConstructorState::GetOutOfFlowFrameList(
       *aPlaceholderType = PLACEHOLDER_FOR_TOPLAYER;
       if (disp->mPosition == StylePositionProperty::Fixed) {
         *aPlaceholderType |= PLACEHOLDER_FOR_FIXEDPOS;
-        return &mTopLayerFixedList;
+        return &mRealFixedList;
       }
       *aPlaceholderType |= PLACEHOLDER_FOR_ABSPOS;
       return &mTopLayerAbsoluteList;
@@ -1058,7 +1076,7 @@ AbsoluteFrameList* nsFrameConstructorState::GetOutOfFlowFrameList(
     }
     if (disp->mPosition == StylePositionProperty::Fixed) {
       *aPlaceholderType = PLACEHOLDER_FOR_FIXEDPOS;
-      return &GetFixedList();
+      return mFixedList;
     }
   }
   return nullptr;
@@ -1157,15 +1175,23 @@ void nsFrameConstructorState::AddChild(
 // function's `AutoTArray`s into its callers' stack frames, so disable inlining.
 MOZ_NEVER_INLINE void nsFrameConstructorState::ProcessFrameInsertions(
     AbsoluteFrameList& aFrameList, FrameChildListID aChildListID) {
-#define NS_NONXUL_LIST_TEST                                                    \
-  (&aFrameList == &mFloatedList && aChildListID == FrameChildListID::Float) || \
-      ((&aFrameList == &mAbsoluteList ||                                       \
-        &aFrameList == &mTopLayerAbsoluteList) &&                              \
-       aChildListID == FrameChildListID::Absolute) ||                          \
-      ((&aFrameList == &mFixedList || &aFrameList == &mTopLayerFixedList) &&   \
-       aChildListID == FrameChildListID::Fixed)
-  MOZ_ASSERT(NS_NONXUL_LIST_TEST,
-             "Unexpected aFrameList/aChildListID combination");
+  MOZ_ASSERT(&aFrameList == &mFloatedList || &aFrameList == &mAbsoluteList ||
+             &aFrameList == &mTopLayerAbsoluteList ||
+             &aFrameList == &mAncestorFixedList || &aFrameList == mFixedList ||
+             &aFrameList == &mRealFixedList);
+  MOZ_ASSERT_IF(&aFrameList == &mFloatedList,
+                aChildListID == FrameChildListID::Float);
+  MOZ_ASSERT_IF(&aFrameList == &mAbsoluteList || &aFrameList == mFixedList,
+                aChildListID == FrameChildListID::Absolute ||
+                    aChildListID == FrameChildListID::Fixed);
+  MOZ_ASSERT_IF(&aFrameList == &mTopLayerAbsoluteList,
+                aChildListID == FrameChildListID::Absolute);
+  MOZ_ASSERT_IF(&aFrameList == mFixedList && &aFrameList != &mAbsoluteList,
+                aChildListID == FrameChildListID::Fixed);
+  MOZ_ASSERT_IF(&aFrameList == &mAncestorFixedList,
+                aChildListID == FrameChildListID::Fixed);
+  MOZ_ASSERT_IF(&aFrameList == &mRealFixedList,
+                aChildListID == FrameChildListID::Fixed);
 
   if (aFrameList.IsEmpty()) {
     return;
@@ -1290,15 +1316,8 @@ nsFrameConstructorSaveState::~nsFrameConstructorSaveState() {
     mState->ProcessFrameInsertions(*mList, mChildListID);
 
     if (mList == &mState->mAbsoluteList) {
-      mState->mFixedPosIsAbsPos = mSavedFixedPosIsAbsPos;
-      // mAbsoluteList was moved to mFixedList, so move mFixedList back
-      // and repair the old mFixedList now.
-      if (mSavedFixedPosIsAbsPos) {
-        mState->mAbsoluteList = std::move(mState->mFixedList);
-        mState->mFixedList = std::move(mSavedList);
-      } else {
-        mState->mAbsoluteList = std::move(mSavedList);
-      }
+      mState->mAbsoluteList = std::move(mSavedList);
+      mState->mFixedList = mSavedFixedList;
     } else {
       mState->mFloatedList = std::move(mSavedList);
     }
@@ -1532,8 +1551,12 @@ void nsCSSFrameConstructor::CreateGeneratedContent(
     }
 
     case Type::String: {
-      RefPtr text = CreateGenConTextNode(
-          aState, NS_ConvertUTF8toUTF16(item.AsString().AsString()), nullptr);
+      const auto string = item.AsString().AsString();
+      if (string.IsEmpty()) {
+        return;
+      }
+      RefPtr text =
+          CreateGenConTextNode(aState, NS_ConvertUTF8toUTF16(string), nullptr);
       aAddChild(text);
       return;
     }
@@ -2306,7 +2329,7 @@ static inline bool NeedFrameFor(const nsFrameConstructorState& aState,
   // white-space, where we know we'll be dropping them all anyway, and involve
   // an extra walk down the frame construction item list.
   auto excludesIgnorableWhitespace = [](nsIFrame* aParentFrame) {
-    return aParentFrame->IsFrameOfType(nsIFrame::eMathML);
+    return aParentFrame->IsMathMLFrame();
   };
   if (!aParentFrame || !excludesIgnorableWhitespace(aParentFrame) ||
       aParentFrame->IsGeneratedContentFrame() || !aChildContent->IsText()) {
@@ -2562,9 +2585,9 @@ nsIFrame* nsCSSFrameConstructor::ConstructDocElementFrame(
     // Still need to process the child content
     nsFrameList childList;
 
-    NS_ASSERTION(!contentFrame->IsBlockFrameOrSubclass() &&
-                     !contentFrame->IsFrameOfType(nsIFrame::eSVG),
-                 "Only XUL frames should reach here");
+    NS_ASSERTION(
+        !contentFrame->IsBlockFrameOrSubclass() && !contentFrame->IsSVGFrame(),
+        "Only XUL frames should reach here");
 
     nsFrameConstructorSaveState floatSaveState;
     state.MaybePushFloatContainingBlock(contentFrame, floatSaveState);
@@ -3492,7 +3515,7 @@ nsCSSFrameConstructor::FindHTMLData(const Element& aElement,
         PseudoStyleType::buttonContent}},
       SIMPLE_TAG_CHAIN(canvas, nsCSSFrameConstructor::FindCanvasData),
       SIMPLE_TAG_CREATE(video, NS_NewHTMLVideoFrame),
-      SIMPLE_TAG_CREATE(audio, NS_NewHTMLVideoFrame),
+      SIMPLE_TAG_CREATE(audio, NS_NewHTMLAudioFrame),
       SIMPLE_TAG_CREATE(progress, NS_NewProgressFrame),
       SIMPLE_TAG_CREATE(meter, NS_NewMeterFrame),
       SIMPLE_TAG_CHAIN(details, nsCSSFrameConstructor::FindDetailsData),
@@ -3949,7 +3972,7 @@ void nsCSSFrameConstructor::ConstructFrameFromItemInternal(
     }
   }
 
-  NS_ASSERTION(newFrame->IsFrameOfType(nsIFrame::eLineParticipant) ==
+  NS_ASSERTION(newFrame->IsLineParticipant() ==
                    ((bits & FCDATA_IS_LINE_PARTICIPANT) != 0),
                "Incorrectly set FCDATA_IS_LINE_PARTICIPANT bits");
 
@@ -5556,7 +5579,7 @@ nsContainerFrame* nsCSSFrameConstructor::GetAbsoluteContainingBlock(
   // Starting with aFrame, look for a frame that is absolutely positioned or
   // relatively positioned (and transformed, if aType is FIXED)
   for (nsIFrame* frame = aFrame; frame; frame = frame->GetParent()) {
-    if (frame->IsFrameOfType(nsIFrame::eMathML)) {
+    if (frame->IsMathMLFrame()) {
       // If it's mathml, bail out -- no absolute positioning out from inside
       // mathml frames.  Note that we don't make this part of the loop
       // condition because of the stuff at the end of this method...
@@ -5579,8 +5602,10 @@ nsContainerFrame* nsCSSFrameConstructor::GetAbsoluteContainingBlock(
     // the correct containing block (the scrolledframe) in that case.
     // If we're looking for a fixed-pos containing block and the frame is
     // not transformed, skip it.
-    if (!frame->IsAbsPosContainingBlock() ||
-        (aType == FIXED_POS && !frame->IsFixedPosContainingBlock())) {
+    if (!frame->IsAbsPosContainingBlock()) {
+      continue;
+    }
+    if (aType == FIXED_POS && !frame->IsFixedPosContainingBlock()) {
       continue;
     }
     nsIFrame* absPosCBCandidate = frame;
@@ -7448,7 +7473,7 @@ bool nsCSSFrameConstructor::ContentRemoved(nsIContent* aChild,
     nsIFrame* possibleMathMLAncestor = parentType == LayoutFrameType::Block
                                            ? parentFrame->GetParent()
                                            : parentFrame;
-    if (possibleMathMLAncestor->IsFrameOfType(nsIFrame::eMathML)) {
+    if (possibleMathMLAncestor->IsMathMLFrame()) {
       LAYOUT_PHASE_TEMP_EXIT();
       RecreateFramesForContent(parentFrame->GetContent(), InsertionKind::Async);
       LAYOUT_PHASE_TEMP_REENTER();
@@ -8411,14 +8436,13 @@ void nsCSSFrameConstructor::UpdateTableCellSpans(nsIContent* aContent) {
 static nsIContent* GetTopmostMathMLElement(nsIContent* aMathMLContent) {
   MOZ_ASSERT(aMathMLContent->IsMathMLElement());
   MOZ_ASSERT(aMathMLContent->GetPrimaryFrame());
-  MOZ_ASSERT(
-      aMathMLContent->GetPrimaryFrame()->IsFrameOfType(nsIFrame::eMathML));
+  MOZ_ASSERT(aMathMLContent->GetPrimaryFrame()->IsMathMLFrame());
   nsIContent* root = aMathMLContent;
 
   for (nsIContent* parent = aMathMLContent->GetFlattenedTreeParent(); parent;
        parent = parent->GetFlattenedTreeParent()) {
     nsIFrame* frame = parent->GetPrimaryFrame();
-    if (!frame || !frame->IsFrameOfType(nsIFrame::eMathML)) {
+    if (!frame || !frame->IsMathMLFrame()) {
       break;
     }
     root = parent;
@@ -8488,7 +8512,7 @@ void nsCSSFrameConstructor::RecreateFramesForContent(
   }
 
   nsIFrame* frame = aContent->GetPrimaryFrame();
-  if (frame && frame->IsFrameOfType(nsIFrame::eMathML)) {
+  if (frame && frame->IsMathMLFrame()) {
     // Reframe the topmost MathML element to prevent exponential blowup
     // (see bug 397518).
     aContent = GetTopmostMathMLElement(aContent);
@@ -9310,7 +9334,7 @@ static bool FrameWantsToBeInAnonymousItem(const nsIFrame* aContainerFrame,
 
   // Any line-participant frames (e.g. text) definitely want to be wrapped in
   // an anonymous flex/grid item.
-  if (aFrame->IsFrameOfType(nsIFrame::eLineParticipant)) {
+  if (aFrame->IsLineParticipant()) {
     return true;
   }
 
@@ -10009,7 +10033,7 @@ nsFirstLetterFrame* nsCSSFrameConstructor::CreateFloatingLetterFrame(
   MOZ_ASSERT(aParentStyle);
 
   nsFirstLetterFrame* letterFrame =
-      NS_NewFirstLetterFrame(mPresShell, aComputedStyle);
+      NS_NewFloatingFirstLetterFrame(mPresShell, aComputedStyle);
   // We don't want to use a text content for a non-text frame (because we want
   // its primary frame to be a text frame).
   nsIContent* letterContent = aParentFrame->GetContent();
@@ -11256,7 +11280,7 @@ bool nsCSSFrameConstructor::WipeInsertionParent(nsContainerFrame* aFrame) {
 
   // FIXME(emilio): This looks terribly inefficient if you insert elements deep
   // in a MathML subtree.
-  if (aFrame->IsFrameOfType(nsIFrame::eMathML)) {
+  if (aFrame->IsMathMLFrame()) {
     TRACE("MathML");
     RecreateFramesForContent(aFrame->GetContent(), InsertionKind::Async);
     return true;

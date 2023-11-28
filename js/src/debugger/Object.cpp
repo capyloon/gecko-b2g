@@ -26,7 +26,7 @@
 #include "debugger/Script.h"     // for DebuggerScript
 #include "debugger/Source.h"     // for DebuggerSource
 #include "gc/Tracer.h"        // for TraceManuallyBarrieredCrossCompartmentEdge
-#include "js/ColumnNumber.h"  // JS::ColumnNumberZeroOrigin
+#include "js/ColumnNumber.h"  // JS::ColumnNumberOneOrigin
 #include "js/CompilationAndEvaluation.h"  //  for Compile
 #include "js/Conversions.h"               // for ToObject
 #include "js/experimental/JitInfo.h"      // for JSJitInfo
@@ -1246,6 +1246,9 @@ bool DebuggerObject::CallData::createSource() {
   if (!ToUint32(cx, v, &startColumn)) {
     return false;
   }
+  if (startColumn == 0) {
+    startColumn = 1;
+  }
 
   if (!JS_GetProperty(cx, options, "sourceMapURL", &v)) {
     return false;
@@ -1267,7 +1270,7 @@ bool DebuggerObject::CallData::createSource() {
 
   JS::CompileOptions compileOptions(cx);
   compileOptions.lineno = startLine;
-  compileOptions.column = JS::ColumnNumberZeroOrigin(startColumn);
+  compileOptions.column = JS::ColumnNumberOneOrigin(startColumn);
 
   if (!JS::StringHasLatin1Chars(url)) {
     JS_ReportErrorASCII(cx, "URL must be a narrow string");

@@ -52,7 +52,7 @@ const TYPE_SCRIPT = "script"; // test contains individual test results
 const TYPE_PRINT = "print"; // test and reference will be printed to PDF's and
 // compared structurally
 
-// keep this in sync with globals.jsm
+// keep this in sync with globals.sys.mjs
 const URL_TARGET_TYPE_TEST = 0; // first url
 const URL_TARGET_TYPE_REFERENCE = 1; // second url, if any
 
@@ -233,7 +233,7 @@ function setupPrintMode(contentRootElement) {
   ps.printBGColors = printBackgrounds;
   ps.printBGImages = printBackgrounds;
 
-  docShell.contentViewer.setPageModeForTesting(/* aPageMode */ true, ps);
+  docShell.docViewer.setPageModeForTesting(/* aPageMode */ true, ps);
 }
 
 // Message the parent process to ask it to print the current page to a PDF file.
@@ -825,13 +825,19 @@ function WaitForTestEnd(
           var notification = content.document.createEvent("Events");
           notification.initEvent("MozReftestInvalidate", true, false);
           contentRootElement.dispatchEvent(notification);
+        } else {
+          LogInfo(
+            "MakeProgress: couldn't send MozReftestInvalidate event because content root element does not exist"
+          );
         }
 
+        CheckForLivenessOfContentRootElement();
         if (!inPrintMode && doPrintMode(contentRootElement)) {
           LogInfo("MakeProgress: setting up print mode");
           setupPrintMode(contentRootElement);
         }
 
+        CheckForLivenessOfContentRootElement();
         if (
           hasReftestWait &&
           !shouldWaitForReftestWaitRemoval(contentRootElement)
