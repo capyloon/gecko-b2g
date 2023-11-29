@@ -57,6 +57,9 @@ compile_commands\.json
 # Ignore newtab component build assets
 ^browser/components/newtab/logs/
 
+# Ignore about:welcome build assets
+^browser/components/aboutwelcome/logs/
+
 # Ignore ASRouter generated test files
 ^browser/components/newtab/content-src/asrouter/schemas/corpus/CFRMessageProvider.messages.json
 ^browser/components/newtab/content-src/asrouter/schemas/corpus/OnboardingMessageProvider.messages.json
@@ -65,6 +68,9 @@ compile_commands\.json
 
 # Ignore Pocket component build and dev assets
 browser/components/pocket/content/panels/css/main.compiled.css.map
+
+# Ignore downloaded thirdparty build artifacts.
+toolkit/components/translations/bergamot-translator/thirdparty
 
 # Build directories for js shell
 _DBG\.OBJ/
@@ -193,6 +199,7 @@ _OPT\.OBJ/
 ^tools/browsertime/node_modules/
 ^tools/lint/eslint/eslint-plugin-mozilla/node_modules/
 ^browser/components/newtab/node_modules/
+^browser/components/aboutwelcome/node_modules/
 ^tools/esmify/node_modules/
 
 # Ignore talos virtualenv and tp5n files.

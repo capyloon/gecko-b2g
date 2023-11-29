@@ -89,12 +89,13 @@ class ProviderQuickSuggestContextualOptIn extends UrlbarProvider {
     return UrlbarUtils.PROVIDER_TYPE.HEURISTIC;
   }
 
-  shouldDisplayContextualOptIn(queryContext) {
+  _shouldDisplayContextualOptIn(queryContext = null) {
     if (
-      queryContext.isPrivate ||
-      queryContext.restrictSource ||
-      queryContext.searchString ||
-      queryContext.searchMode
+      queryContext &&
+      (queryContext.isPrivate ||
+        queryContext.restrictSource ||
+        queryContext.searchString ||
+        queryContext.searchMode)
     ) {
       return false;
     }
@@ -124,7 +125,7 @@ class ProviderQuickSuggestContextualOptIn extends UrlbarProvider {
 
   isActive(queryContext) {
     return (
-      this.shouldDisplayContextualOptIn(queryContext) &&
+      this._shouldDisplayContextualOptIn(queryContext) &&
       lazy.UrlbarPrefs.get("quicksuggest.contextualOptIn.topPosition")
     );
   }
@@ -171,15 +172,36 @@ class ProviderQuickSuggestContextualOptIn extends UrlbarProvider {
     };
   }
 
+  onBeforeSelection(result, element) {
+    if (element.getAttribute("name") == "learn_more") {
+      this.#a11yAlertRow(element.closest(".urlbarView-row"));
+    }
+  }
+
+  #a11yAlertRow(row) {
+    let alertText = row.querySelector(
+      ".urlbarView-dynamic-quickSuggestContextualOptIn-title"
+    ).textContent;
+    let decription = row
+      .querySelector(
+        ".urlbarView-dynamic-quickSuggestContextualOptIn-description"
+      )
+      .cloneNode(true);
+    // Remove the "Learn More" link.
+    decription.firstElementChild?.remove();
+    alertText += ". " + decription.textContent;
+    row.ownerGlobal.A11yUtils.announce({ raw: alertText });
+  }
+
   onEngagement(state, queryContext, details, controller) {
     let { result } = details;
     if (result?.providerName != this.name) {
       return;
     }
-    this._handleCommand(details.element, queryContext, controller, result);
+    this._handleCommand(details.element, controller, result);
   }
 
-  _handleCommand(element, queryContext, controller, result, container) {
+  _handleCommand(element, controller, result, container) {
     let commandName = element?.getAttribute("name");
     switch (commandName) {
       case "learn_more":
@@ -202,7 +224,7 @@ class ProviderQuickSuggestContextualOptIn extends UrlbarProvider {
 
     // Remove the result if it shouldn't be active anymore due to above
     // actions.
-    if (!this.isActive(queryContext)) {
+    if (!this._shouldDisplayContextualOptIn()) {
       if (result) {
         controller.removeResult(result);
       } else {

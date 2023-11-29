@@ -3604,19 +3604,6 @@ int32_t ContentParent::Pid() const {
   return ReleaseAssertedCast<int32_t>(pid);
 }
 
-mozilla::ipc::IPCResult ContentParent::RecvGetGfxVars(
-    nsTArray<GfxVarUpdate>* aVars) {
-  // Ensure gfxVars is initialized (for xpcshell tests).
-  gfxVars::Initialize();
-
-  *aVars = gfxVars::FetchNonDefaultVars();
-
-  // Now that content has initialized gfxVars, we can start listening for
-  // updates.
-  gfxVars::AddReceiver(this);
-  return IPC_OK();
-}
-
 void ContentParent::OnCompositorUnexpectedShutdown() {
   GPUProcessManager* gpm = GPUProcessManager::Get();
 
@@ -3854,7 +3841,28 @@ NS_IMPL_ISUPPORTS(ClipboardGetCallback, nsIAsyncClipboardGetCallback)
 
 mozilla::ipc::IPCResult ContentParent::RecvGetClipboardAsync(
     nsTArray<nsCString>&& aTypes, const int32_t& aWhichClipboard,
+    const MaybeDiscarded<WindowContext>& aRequestingWindowContext,
+    mozilla::NotNull<nsIPrincipal*> aRequestingPrincipal,
     GetClipboardAsyncResolver&& aResolver) {
+  if (!ValidatePrincipal(aRequestingPrincipal,
+                         {ValidatePrincipalOptions::AllowSystem,
+                          ValidatePrincipalOptions::AllowExpanded})) {
+    LogAndAssertFailedPrincipalValidationInfo(aRequestingPrincipal, __func__);
+  }
+
+  // If the requesting context has been discarded, cancel the paste.
+  if (aRequestingWindowContext.IsDiscarded()) {
+    aResolver(NS_ERROR_NOT_AVAILABLE);
+    return IPC_OK();
+  }
+
+  RefPtr<WindowGlobalParent> requestingWindow =
+      aRequestingWindowContext.get_canonical();
+  if (requestingWindow && requestingWindow->GetContentParent() != this) {
+    return IPC_FAIL(
+        this, "attempt to paste into WindowContext loaded in another process");
+  }
+
   nsresult rv;
   // Retrieve clipboard
   nsCOMPtr<nsIClipboard> clipboard(do_GetService(kCClipboardCID, &rv));
@@ -3864,7 +3872,8 @@ mozilla::ipc::IPCResult ContentParent::RecvGetClipboardAsync(
   }
 
   auto callback = MakeRefPtr<ClipboardGetCallback>(this, std::move(aResolver));
-  rv = clipboard->AsyncGetData(aTypes, aWhichClipboard, callback);
+  rv = clipboard->AsyncGetData(aTypes, aWhichClipboard, requestingWindow,
+                               aRequestingPrincipal, callback);
   if (NS_FAILED(rv)) {
     callback->OnError(rv);
     return IPC_OK();
@@ -6589,19 +6598,6 @@ mozilla::ipc::IPCResult ContentParent::RecvShutdownProfile(
 mozilla::ipc::IPCResult ContentParent::RecvShutdownPerfStats(
     const nsACString& aPerfStats) {
   PerfStats::StorePerfStats(this, aPerfStats);
-  return IPC_OK();
-}
-
-mozilla::ipc::IPCResult ContentParent::RecvGetGraphicsDeviceInitData(
-    ContentDeviceData* aOut) {
-  gfxPlatform::GetPlatform()->BuildContentDeviceData(aOut);
-  return IPC_OK();
-}
-
-mozilla::ipc::IPCResult ContentParent::RecvGetOutputColorProfileData(
-    nsTArray<uint8_t>* aOutputColorProfileData) {
-  (*aOutputColorProfileData) =
-      gfxPlatform::GetPlatform()->GetPlatformCMSOutputProfileData();
   return IPC_OK();
 }
 

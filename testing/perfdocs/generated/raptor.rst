@@ -3792,6 +3792,11 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - ❌
         - ❌
         - ❌
+      * - **browsertime-benchmark-custom-car-speedometer**
+        - ❌
+        - ❌
+        - ❌
+        - ❌
       * - **browsertime-benchmark-firefox-speedometer**
         - ✅
         - ✅
@@ -4134,6 +4139,11 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - ❌
         - ❌
         - ❌
+      * - **browsertime-benchmark-custom-car-speedometer**
+        - ❌
+        - ❌
+        - ❌
+        - ❌
       * - **browsertime-benchmark-firefox-speedometer**
         - ✅
         - ✅
@@ -4267,7 +4277,7 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
    * **page cycles**: 5
    * **page timeout**: 600000
    * **repository**: https://github.com/WebKit/Speedometer
-   * **repository revision**: 36712deb57d45879f56dd2136f8a6ed8a22d964b
+   * **repository revision**: abea7b89b97028d61e8f0536cd92bba4fe5fc17a
    * **submetric summary method**: mean
    * **subtest lower is better**: true
    * **subtest name filters**: tests/,s3/
@@ -4482,6 +4492,16 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
+      * - **browsertime-benchmark-chrome-speedometer3**
+        - ❌
+        - ❌
+        - ❌
+        - ❌
+      * - **browsertime-benchmark-custom-car-speedometer3**
+        - ❌
+        - ❌
+        - ❌
+        - ❌
       * - **browsertime-benchmark-firefox-speedometer3**
         - ✅
         - ✅
@@ -4610,7 +4630,7 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
    * **page cycles**: 5
    * **page timeout**: 420000
    * **repository**: https://github.com/WebKit/Speedometer
-   * **repository revision**: 36712deb57d45879f56dd2136f8a6ed8a22d964b
+   * **repository revision**: abea7b89b97028d61e8f0536cd92bba4fe5fc17a
    * **submetric summary method**: mean
    * **subtest lower is better**: true
    * **subtest name filters**: tests/,s3/
@@ -4825,6 +4845,16 @@ Standard benchmarks are third-party tests (i.e. Speedometer) that we have integr
         - autoland
         - mozilla-release
         - mozilla-beta
+      * - **browsertime-benchmark-chrome-speedometer3**
+        - ❌
+        - ❌
+        - ❌
+        - ❌
+      * - **browsertime-benchmark-custom-car-speedometer3**
+        - ❌
+        - ❌
+        - ❌
+        - ❌
       * - **browsertime-benchmark-firefox-speedometer3**
         - ✅
         - ✅

@@ -297,10 +297,15 @@ def setup_browsertime(config, tasks):
             "by-test-platform": {
                 "android.*": ["browsertime", "linux64-geckodriver", "linux64-node-16"],
                 "linux.*": ["browsertime", "linux64-geckodriver", "linux64-node-16"],
-                "macosx.*": [
+                "macosx1015.*": [
                     "browsertime",
                     "macosx64-geckodriver",
                     "macosx64-node-16",
+                ],
+                "macosx1300.*": [
+                    "browsertime",
+                    "macosx64-aarch64-geckodriver",
+                    "macosx64-aarch64-node-16"
                 ],
                 "windows.*aarch64.*": [
                     "browsertime",
@@ -320,7 +325,8 @@ def setup_browsertime(config, tasks):
             "by-test-platform": {
                 "android.*": ["linux64-ffmpeg-4.4.1"],
                 "linux.*": ["linux64-ffmpeg-4.4.1"],
-                "macosx.*": ["mac64-ffmpeg-4.4.1"],
+                "macosx1015.*": ["mac64-ffmpeg-4.4.1"],
+                "macosx1300.*": ["mac64-ffmpeg-4.4.1"],
                 "windows.*aarch64.*": ["win64-ffmpeg-4.4.1"],
                 "windows.*-32.*": ["win64-ffmpeg-4.4.1"],
                 "windows.*-64.*": ["win64-ffmpeg-4.4.1"],
@@ -338,13 +344,15 @@ def setup_browsertime(config, tasks):
                 "linux64-chromedriver-118",
                 "linux64-chromedriver-119",
             ],
-            "macosx.*": [
-                "mac-arm-chromedriver-117",
-                "mac-arm-chromedriver-118",
-                "mac-arm-chromedriver-119",
+            "macosx1015.*": [
                 "mac64-chromedriver-117",
                 "mac64-chromedriver-118",
                 "mac64-chromedriver-119",
+            ],
+            "macosx1300.*": [
+                "mac-arm-chromedriver-117",
+                "mac-arm-chromedriver-118",
+                "mac-arm-chromedriver-119",
             ],
             "windows.*aarch64.*": [
                 "win32-chromedriver-117",
@@ -365,7 +373,8 @@ def setup_browsertime(config, tasks):
 
         chromium_fetches = {
             "linux.*": ["linux64-chromium"],
-            "macosx.*": ["mac-chromium"],
+            "macosx1015.*": ["mac-chromium"],
+            "macosx1300.*": ["mac-chromium-arm"],
             "windows.*aarch64.*": ["win32-chromium"],
             "windows.*-32.*": ["win32-chromium"],
             "windows.*-64.*": ["win64-chromium"],

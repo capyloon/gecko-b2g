@@ -576,7 +576,7 @@ export class TranslationsParent extends JSWindowActorParent {
    * use the feature. This function also respects mocks and simulating unsupported
    * engines.
    *
-   * @type {Promise<boolean>}
+   * @type {boolean}
    */
   static getIsTranslationsEngineSupported() {
     if (lazy.simulateUnsupportedEnginePref) {
@@ -588,43 +588,19 @@ export class TranslationsParent extends JSWindowActorParent {
       );
 
       // The user is manually testing unsupported engines.
-      return Promise.resolve(false);
+      return false;
     }
 
     if (TranslationsParent.#isTranslationsEngineMocked) {
       // A mocked translations engine is always supported.
-      return Promise.resolve(true);
+      return true;
     }
 
     if (TranslationsParent.#isTranslationsEngineSupported === null) {
       TranslationsParent.#isTranslationsEngineSupported = detectSimdSupport();
-
-      TranslationsParent.#isTranslationsEngineSupported.then(
-        isSupported => () => {
-          // Use the non-lazy console.log so that the user is always informed as to why
-          // the translations engine is not working.
-          if (!isSupported) {
-            console.log(
-              "Translations: The translations engine is not supported on your device as " +
-                "it does not support Wasm SIMD operations."
-            );
-          }
-        }
-      );
     }
 
     return TranslationsParent.#isTranslationsEngineSupported;
-  }
-
-  /**
-   * Invokes the provided callback after retrieving whether the translations engine is supported.
-   * @param {function(boolean)} callback - The callback which takes a boolean argument that will
-   *                                       be true if the engine is supported and false otherwise.
-   */
-  static onIsTranslationsEngineSupported(callback) {
-    TranslationsParent.getIsTranslationsEngineSupported().then(isSupported =>
-      callback(isSupported)
-    );
   }
 
   /**
@@ -1428,6 +1404,38 @@ export class TranslationsParent extends JSWindowActorParent {
   /** @type {Promise<WasmRecord> | null} */
   static #bergamotWasmRecord = null;
 
+  /** @type {boolean} */
+  static #lookForLocalWasmBuild = true;
+
+  /**
+   * This is used to load a local copy of the Bergamot translations engine, if it exists.
+   * From a local build of Firefox:
+   *
+   * 1. Run the python script:
+   *   ./toolkit/components/translations/bergamot-translator/build-bergamot.py --debug
+   *
+   * 2. Uncomment the .wasm file in: toolkit/components/translations/jar.mn
+   * 3. Run: ./mach build
+   * 4. Run: ./mach run
+   */
+  static async #maybeFetchLocalBergamotWasmArrayBuffer() {
+    if (TranslationsParent.#lookForLocalWasmBuild) {
+      // Attempt to get a local copy of the translator. Most likely this will be a 404.
+      try {
+        const response = await fetch(
+          "chrome://global/content/translations/bergamot-translator-worker.wasm"
+        );
+        const arrayBuffer = response.arrayBuffer();
+        lazy.console.log(`Using a local copy of Bergamot.`);
+        return arrayBuffer;
+      } catch {
+        // Only attempt to fetch once, if it fails don't try again.
+        TranslationsParent.#lookForLocalWasmBuild = false;
+      }
+    }
+    return null;
+  }
+
   /**
    * Bergamot is the translation engine that has been compiled to wasm. It is shipped
    * to the user via Remote Settings.
@@ -1440,6 +1448,13 @@ export class TranslationsParent extends JSWindowActorParent {
   static async #getBergamotWasmArrayBuffer() {
     const start = Date.now();
     const client = TranslationsParent.#getTranslationsWasmRemoteClient();
+
+    const localCopy =
+      await TranslationsParent.#maybeFetchLocalBergamotWasmArrayBuffer();
+    if (localCopy) {
+      return localCopy;
+    }
+
     if (!TranslationsParent.#bergamotWasmRecord) {
       // Place the records into a promise to prevent any races.
       TranslationsParent.#bergamotWasmRecord = (async () => {
@@ -2442,24 +2457,32 @@ export class TranslationsParent extends JSWindowActorParent {
 }
 
 /**
- * WebAssembly modules must be instantiated from a Worker, since it's considered
- * unsafe eval.
+ * Validate some simple Wasm that uses a SIMD operation.
  */
 function detectSimdSupport() {
-  return new Promise(resolve => {
-    lazy.console.log("Loading wasm simd detector worker.");
+  return WebAssembly.validate(
+    new Uint8Array(
+      // ```
+      // ;; Detect SIMD support.
+      // ;; Compile by running: wat2wasm --enable-all simd-detect.wat
+      //
+      // (module
+      //   (func (result v128)
+      //     i32.const 0
+      //     i8x16.splat
+      //     i8x16.popcnt
+      //   )
+      // )
+      // ```
 
-    const worker = new Worker(
-      "chrome://global/content/translations/simd-detect-worker.js"
-    );
-
-    // This should pretty much immediately resolve, so it does not need Firefox shutdown
-    // detection.
-    worker.addEventListener("message", ({ data }) => {
-      resolve(data.isSimdSupported);
-      worker.terminate();
-    });
-  });
+      // prettier-ignore
+      [
+        0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x05, 0x01, 0x60, 0x00,
+        0x01, 0x7b, 0x03, 0x02, 0x01, 0x00, 0x0a, 0x0a, 0x01, 0x08, 0x00, 0x41, 0x00,
+        0xfd, 0x0f, 0xfd, 0x62, 0x0b
+      ]
+    )
+  );
 }
 
 /**
@@ -2517,10 +2540,7 @@ class TranslationsLanguageState {
       new CustomEvent("TranslationsParent:LanguageState", {
         bubbles: true,
         detail: {
-          detectedLanguages: this.#detectedLanguages,
-          requestedTranslationPair: this.#requestedTranslationPair,
-          error: this.#error,
-          isEngineReady: this.#isEngineReady,
+          actor: this.#actor,
         },
       })
     );

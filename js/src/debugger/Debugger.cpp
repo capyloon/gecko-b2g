@@ -2552,15 +2552,8 @@ bool DebugAPI::onTrap(JSContext* cx) {
         continue;
       }
 
-      // There are two reasons we have to check whether dbg is debugging
-      // global.
-      //
-      // One is just that one breakpoint handler can disable other Debuggers
-      // or remove debuggees.
-      //
-      // The other has to do with non-compile-and-go scripts, which have no
-      // specific global--until they are executed. Only now do we know which
-      // global the script is running against.
+      // We have to check whether dbg is debugging this global here: a
+      // breakpoint handler can disable other Debuggers or remove debuggees.
       Debugger* dbg = bp->debugger;
       if (dbg->debuggees.has(global)) {
         EnterDebuggeeNoExecute nx(cx, *dbg, adjqi);
@@ -4200,6 +4193,15 @@ bool Debugger::setHookImpl(JSContext* cx, const CallArgs& args, Debugger& dbg,
                               JSMSG_NOT_CALLABLE_OR_UNDEFINED);
     return false;
   }
+
+  // Disallow simultaneous activation of OnEnterFrame and code coverage support;
+  // as they both use the execution observer flag. See Bug 1608891.
+  if (dbg.collectCoverageInfo && which == Hook::OnEnterFrame) {
+    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                              JSMSG_DEBUG_EXCLUSIVE_FRAME_COVERAGE);
+    return false;
+  }
+
   uint32_t slot = JSSLOT_DEBUG_HOOK_START + std::underlying_type_t<Hook>(which);
   RootedValue oldHook(cx, dbg.object->getReservedSlot(slot));
   dbg.object->setReservedSlot(slot, args[0]);
@@ -4407,6 +4409,17 @@ bool Debugger::CallData::setCollectCoverageInfo() {
   if (!args.requireAtLeast(cx, "Debugger.set collectCoverageInfo", 1)) {
     return false;
   }
+
+  // Disallow simultaneous activation of OnEnterFrame and code coverage support;
+  // as they both use the execution observer flag. See Bug 1608891.
+  uint32_t slot = JSSLOT_DEBUG_HOOK_START +
+                  std::underlying_type_t<Hook>(Hook::OnEnterFrame);
+  if (!dbg->object->getReservedSlot(slot).isUndefined()) {
+    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                              JSMSG_DEBUG_EXCLUSIVE_FRAME_COVERAGE);
+    return false;
+  }
+
   dbg->collectCoverageInfo = ToBoolean(args[0]);
 
   IsObserving observing = dbg->collectCoverageInfo ? Observing : NotObserving;

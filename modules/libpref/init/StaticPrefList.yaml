@@ -2438,7 +2438,7 @@
 # see https://html.spec.whatwg.org/#the-popover-attribute
 - name: dom.element.popover.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
   rust: true
 
@@ -2494,7 +2494,7 @@
 # Whether the LargestContentfulPaint API will be gathered and returned by performance observer*
 - name: dom.enable_largest_contentful_paint
   type: RelaxedAtomicBool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
 
 # Whether performance.GetEntries* will contain an entry for the active document
@@ -3895,7 +3895,7 @@
 # with a fallback
 - name: dom.security.https_first_schemeless
   type: RelaxedAtomicBool
-  value: false
+  value: @IS_EARLY_BETA_OR_EARLIER@
   mirror: always
 
 - name: dom.security.unexpected_system_load_telemetry_enabled

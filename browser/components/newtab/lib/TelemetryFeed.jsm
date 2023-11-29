@@ -14,8 +14,8 @@ const { MESSAGE_TYPE_HASH: msg } = ChromeUtils.importESModule(
 const { actionTypes: at, actionUtils: au } = ChromeUtils.importESModule(
   "resource://activity-stream/common/Actions.sys.mjs"
 );
-const { Prefs } = ChromeUtils.import(
-  "resource://activity-stream/lib/ActivityStreamPrefs.jsm"
+const { Prefs } = ChromeUtils.importESModule(
+  "resource://activity-stream/lib/ActivityStreamPrefs.sys.mjs"
 );
 const { classifySite } = ChromeUtils.import(
   "resource://activity-stream/lib/SiteClassifier.jsm"
@@ -47,6 +47,14 @@ XPCOMUtils.defineLazyGetter(
   lazy,
   "Telemetry",
   () => new lazy.AboutWelcomeTelemetry()
+);
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "handoffToAwesomebarPrefValue",
+  "browser.newtabpage.activity-stream.improvesearch.handoffToAwesomebar",
+  false,
+  (preference, previousValue, new_value) =>
+    Glean.newtabHandoffPreference.enabled.set(new_value)
 );
 
 const ACTIVITY_STREAM_ID = "activity-stream";
@@ -168,6 +176,9 @@ class TelemetryFeed {
     );
     Services.telemetry.scalarSet("deletion.request.context_id", lazy.contextId);
     Glean.newtab.locale.set(Services.locale.appLocaleAsBCP47);
+    Glean.newtabHandoffPreference.enabled.set(
+      lazy.handoffToAwesomebarPrefValue
+    );
   }
 
   handleEvent(event) {
