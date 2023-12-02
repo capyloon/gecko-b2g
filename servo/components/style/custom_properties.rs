@@ -83,7 +83,7 @@ enum ThemeColor {
 }
 
 impl ThemeColor {
-    fn variable_value(&self) -> VariableValue {
+    fn variable_value(&self, url_data: &UrlExtraData) -> VariableValue {
         let css = match self {
             ThemeColor::WallpaperAccent => static_prefs::pref!("theme.wallpaper.accent"),
             ThemeColor::WallpaperVibrant => static_prefs::pref!("theme.wallpaper.vibrant"),
@@ -94,38 +94,38 @@ impl ThemeColor {
             ThemeColor::WallpaperMutedDark => static_prefs::pref!("theme.wallpaper.muted-dark"),
         };
 
-        let mut value = VariableValue::empty(&UrlExtraData::new(std::ptr::null_mut()));
+        let mut value = VariableValue::empty(url_data);
         value.css = css.to_string();
         value
     }
 }
 
-fn get_theme_wallpaper_vibrant(_device: &Device, _url_data: &UrlExtraData) -> VariableValue {
-    ThemeColor::WallpaperVibrant.variable_value()
+fn get_theme_wallpaper_vibrant(_device: &Device, url_data: &UrlExtraData) -> VariableValue {
+    ThemeColor::WallpaperVibrant.variable_value(url_data)
 }
 
-fn get_theme_wallpaper_vibrant_dark(_device: &Device, _url_data: &UrlExtraData) -> VariableValue {
-    ThemeColor::WallpaperVibrantDark.variable_value()
+fn get_theme_wallpaper_vibrant_dark(_device: &Device, url_data: &UrlExtraData) -> VariableValue {
+    ThemeColor::WallpaperVibrantDark.variable_value(url_data)
 }
 
-fn get_theme_wallpaper_vibrant_light(_device: &Device, _url_data: &UrlExtraData) -> VariableValue {
-    ThemeColor::WallpaperVibrantLight.variable_value()
+fn get_theme_wallpaper_vibrant_light(_device: &Device, url_data: &UrlExtraData) -> VariableValue {
+    ThemeColor::WallpaperVibrantLight.variable_value(url_data)
 }
 
-fn get_theme_wallpaper_muted(_device: &Device, _url_data: &UrlExtraData) -> VariableValue {
-    ThemeColor::WallpaperMuted.variable_value()
+fn get_theme_wallpaper_muted(_device: &Device, url_data: &UrlExtraData) -> VariableValue {
+    ThemeColor::WallpaperMuted.variable_value(url_data)
 }
 
-fn get_theme_wallpaper_muted_dark(_device: &Device, _url_data: &UrlExtraData) -> VariableValue {
-    ThemeColor::WallpaperMutedDark.variable_value()
+fn get_theme_wallpaper_muted_dark(_device: &Device, url_data: &UrlExtraData) -> VariableValue {
+    ThemeColor::WallpaperMutedDark.variable_value(url_data)
 }
 
-fn get_theme_wallpaper_muted_light(_device: &Device, _url_data: &UrlExtraData) -> VariableValue {
-    ThemeColor::WallpaperMutedLight.variable_value()
+fn get_theme_wallpaper_muted_light(_device: &Device, url_data: &UrlExtraData) -> VariableValue {
+    ThemeColor::WallpaperMutedLight.variable_value(url_data)
 }
 
-fn get_theme_wallpaper_accent(_device: &Device, _url_data: &UrlExtraData) -> VariableValue {
-    ThemeColor::WallpaperAccent.variable_value()
+fn get_theme_wallpaper_accent(_device: &Device, url_data: &UrlExtraData) -> VariableValue {
+    ThemeColor::WallpaperAccent.variable_value(url_data)
 }
 
 fn get_content_preferred_color_scheme(device: &Device, url_data: &UrlExtraData) -> VariableValue {

@@ -875,6 +875,9 @@ struct BaseCompiler final {
   void shuffleStackResultsBeforeBranch(StackHeight srcHeight,
                                        StackHeight destHeight, ResultType type);
 
+  // If in debug mode, adds LeaveFrame breakpoint.
+  bool insertLeaveFrame();
+
   //////////////////////////////////////////////////////////////////////
   //
   // Stack maps
@@ -1776,7 +1779,7 @@ struct BaseCompiler final {
   [[nodiscard]] bool emitVectorShiftRightI64x2();
 #  endif
 #endif
-  [[nodiscard]] bool emitIntrinsic();
+  [[nodiscard]] bool emitCallBuiltinModuleFunc();
 };
 
 }  // namespace wasm

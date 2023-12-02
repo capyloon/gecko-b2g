@@ -211,11 +211,6 @@
 @RESPATH@/components/Push.manifest
 @RESPATH@/components/l10n-registry.manifest
 
-#ifdef MOZ_DEBUG
-@RESPATH@/components/TestInterfaceJS.js
-@RESPATH@/components/TestInterfaceJS.manifest
-#endif
-
 ; Modules
 @RESPATH@/modules/*
 @RESPATH@/actors/*

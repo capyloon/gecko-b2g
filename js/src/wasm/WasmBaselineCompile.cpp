@@ -1316,6 +1316,15 @@ void BaseCompiler::shuffleStackResultsBeforeBranch(StackHeight srcHeight,
   fr.popStackBeforeBranch(destHeight, stackResultBytes);
 }
 
+bool BaseCompiler::insertLeaveFrame() {
+  if (!compilerEnv_.debugEnabled()) {
+    return true;
+  }
+  insertBreakablePoint(CallSiteDesc::LeaveFrame);
+  return createStackMap("debug: leave-frame breakpoint",
+                        HasDebugFrameWithLiveRefs::Maybe);
+}
+
 //////////////////////////////////////////////////////////////////////////////
 //
 // Function calls.
@@ -4849,6 +4858,9 @@ bool BaseCompiler::emitReturnCall() {
   }
 
   sync();
+  if (!insertLeaveFrame()) {
+    return false;
+  }
 
   const FuncType& funcType = *moduleEnv_.funcs[funcIndex].type;
   bool import = moduleEnv_.funcIsImport(funcIndex);
@@ -4966,6 +4978,9 @@ bool BaseCompiler::emitReturnCallIndirect() {
   }
 
   sync();
+  if (!insertLeaveFrame()) {
+    return false;
+  }
 
   const FuncType& funcType = (*moduleEnv_.types)[funcTypeIndex].funcType();
 
@@ -5072,6 +5087,9 @@ bool BaseCompiler::emitReturnCallRef() {
   }
 
   sync();
+  if (!insertLeaveFrame()) {
+    return false;
+  }
 
   // Stack: ... arg1 .. argn callee
 
@@ -9401,13 +9419,13 @@ bool BaseCompiler::emitVectorLaneSelect() {
 
 //////////////////////////////////////////////////////////////////////////////
 //
-// "Intrinsics" - magically imported functions for internal use.
+// "Builtin module funcs" - magically imported functions for internal use.
 
-bool BaseCompiler::emitIntrinsic() {
-  const Intrinsic* intrinsic;
+bool BaseCompiler::emitCallBuiltinModuleFunc() {
+  const BuiltinModuleFunc* builtinModuleFunc;
 
   BaseNothingVector params;
-  if (!iter_.readIntrinsic(&intrinsic, &params)) {
+  if (!iter_.readCallBuiltinModuleFunc(&builtinModuleFunc, &params)) {
     return false;
   }
 
@@ -9415,11 +9433,13 @@ bool BaseCompiler::emitIntrinsic() {
     return true;
   }
 
-  // The final parameter of an intrinsic is implicitly the heap base
-  pushHeapBase(0);
+  if (builtinModuleFunc->usesMemory) {
+    // The final parameter of an builtinModuleFunc is implicitly the heap base
+    pushHeapBase(0);
+  }
 
-  // Call the intrinsic
-  return emitInstanceCall(intrinsic->signature);
+  // Call the builtinModuleFunc
+  return emitInstanceCall(builtinModuleFunc->signature);
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -11257,12 +11277,12 @@ bool BaseCompiler::emitBody() {
 
       // asm.js and other private operations
       case uint16_t(Op::MozPrefix): {
-        if (op.b1 != uint32_t(MozOp::Intrinsic) ||
-            !moduleEnv_.intrinsicsEnabled()) {
+        if (op.b1 != uint32_t(MozOp::CallBuiltinModuleFunc) ||
+            !moduleEnv_.isBuiltinModule()) {
           return iter_.unrecognizedOpcode(&op);
         }
-        // private intrinsic operations
-        CHECK_NEXT(emitIntrinsic());
+        // Call a private builtin module func
+        CHECK_NEXT(emitCallBuiltinModuleFunc());
       }
 
       default:
