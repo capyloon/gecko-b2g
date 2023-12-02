@@ -47,7 +47,7 @@ version = "0.10"
 default-features = false
 
 [dependencies.nix]
-version = "0.26"
+version = "0.27"
 features = [
     "reboot",
     "time",
