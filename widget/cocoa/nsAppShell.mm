@@ -47,7 +47,7 @@
 #endif
 
 #include <IOKit/pwr_mgt/IOPMLib.h>
-#include "nsIDOMWakeLockListener.h"
+#include "nsIDOMMozWakeLockListener.h"
 #include "nsIPowerManagerService.h"
 
 #include "nsIObserverService.h"

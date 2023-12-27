@@ -20,7 +20,7 @@
 #include "mozilla/widget/AudioSession.h"
 #include "mozilla/BackgroundHangMonitor.h"
 #include "mozilla/Hal.h"
-#include "nsIDOMWakeLockListener.h"
+#include "nsIDOMMozWakeLockListener.h"
 #include "nsIPowerManagerService.h"
 #include "mozilla/ProfilerLabels.h"
 #include "mozilla/StaticPtr.h"

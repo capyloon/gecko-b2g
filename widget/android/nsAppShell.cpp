@@ -17,7 +17,7 @@
 #include "nsIObserverService.h"
 #include "nsIAppStartup.h"
 #include "nsIGeolocationProvider.h"
-#include "nsIDOMWakeLockListener.h"
+#include "nsIDOMMozWakeLockListener.h"
 #include "nsIPowerManagerService.h"
 #include "nsISpeculativeConnect.h"
 #include "nsIURIFixup.h"

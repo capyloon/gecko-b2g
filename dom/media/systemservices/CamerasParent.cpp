@@ -1273,11 +1273,8 @@ auto CamerasParent::RequestCameraAccess(bool aAllowPermissionRequest)
 // When running for B2G we don't want the UI from the portal to
 // show up, so we connect directly to the Pipewire socket.
 #if defined(WEBRTC_USE_PIPEWIRE) && defined(MOZ_B2G)
-  NS_DispatchToMainThread(NS_NewRunnableFunction(
-      "CamerasParent::RequestCameraAccess",
-      []() { ClearOnShutdown(&sVideoCaptureOptions); }));
   return CameraAccessRequestPromise::CreateAndResolve(
-      NS_OK,
+      CamerasAccessStatus::Granted,
       "CamerasParent::RequestCameraAccess options init "
       "resolve");
 
