@@ -441,6 +441,7 @@ impl<A: hal::Api> Example<A> {
                 buffers: &[global_buffer_binding],
                 samplers: &[&sampler],
                 textures: &[texture_binding],
+                acceleration_structures: &[],
                 entries: &[
                     hal::BindGroupEntry {
                         binding: 0,
@@ -474,6 +475,7 @@ impl<A: hal::Api> Example<A> {
                 buffers: &[local_buffer_binding],
                 samplers: &[],
                 textures: &[],
+                acceleration_structures: &[],
                 entries: &[hal::BindGroupEntry {
                     binding: 0,
                     resource_index: 0,

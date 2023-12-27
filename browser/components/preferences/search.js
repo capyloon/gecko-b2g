@@ -67,6 +67,7 @@ var gSearchPane = {
 
     let suggestsPref = Preferences.get("browser.search.suggest.enabled");
     let urlbarSuggestsPref = Preferences.get("browser.urlbar.suggest.searches");
+    let searchBarPref = Preferences.get("browser.search.widget.inNavBar");
     let privateSuggestsPref = Preferences.get(
       "browser.search.suggest.enabled.private"
     );
@@ -74,9 +75,16 @@ var gSearchPane = {
       this._updateSuggestionCheckboxes.bind(this);
     suggestsPref.on("change", updateSuggestionCheckboxes);
     urlbarSuggestsPref.on("change", updateSuggestionCheckboxes);
+    searchBarPref.on("change", updateSuggestionCheckboxes);
     let urlbarSuggests = document.getElementById("urlBarSuggestion");
     urlbarSuggests.addEventListener("command", () => {
       urlbarSuggestsPref.value = urlbarSuggests.checked;
+    });
+    let suggestionsInSearchFieldsCheckbox = document.getElementById(
+      "suggestionsInSearchFieldsCheckbox"
+    );
+    suggestionsInSearchFieldsCheckbox.addEventListener("command", () => {
+      urlbarSuggestsPref.value = suggestionsInSearchFieldsCheckbox.checked;
     });
     let privateWindowCheckbox = document.getElementById(
       "showSearchSuggestionsPrivateWindows"
@@ -182,14 +190,21 @@ var gSearchPane = {
       "browser.privatebrowsing.autostart"
     );
     let urlbarSuggests = document.getElementById("urlBarSuggestion");
+    let suggestionsInSearchFieldsCheckbox = document.getElementById(
+      "suggestionsInSearchFieldsCheckbox"
+    );
     let positionCheckbox = document.getElementById(
       "showSearchSuggestionsFirstCheckbox"
     );
     let privateWindowCheckbox = document.getElementById(
       "showSearchSuggestionsPrivateWindows"
     );
+    let urlbarSuggestsPref = Preferences.get("browser.urlbar.suggest.searches");
+    let searchBarPref = Preferences.get("browser.search.widget.inNavBar");
 
     urlbarSuggests.disabled = !suggestsPref.value || permanentPB;
+    urlbarSuggests.hidden = !searchBarPref.value;
+
     privateWindowCheckbox.disabled = !suggestsPref.value;
     privateWindowCheckbox.checked = Preferences.get(
       "browser.search.suggest.enabled.private"
@@ -198,12 +213,10 @@ var gSearchPane = {
       privateWindowCheckbox.checked = false;
     }
 
-    let urlbarSuggestsPref = Preferences.get("browser.urlbar.suggest.searches");
     urlbarSuggests.checked = urlbarSuggestsPref.value;
     if (urlbarSuggests.disabled) {
       urlbarSuggests.checked = false;
     }
-
     if (urlbarSuggests.checked) {
       positionCheckbox.disabled = false;
       // Update the checked state of the show-suggestions-first checkbox.  Note
@@ -214,6 +227,13 @@ var gSearchPane = {
     } else {
       positionCheckbox.disabled = true;
       positionCheckbox.checked = false;
+    }
+    if (
+      suggestionsInSearchFieldsCheckbox.checked &&
+      !searchBarPref.value &&
+      !urlbarSuggests.checked
+    ) {
+      urlbarSuggestsPref.value = true;
     }
 
     let permanentPBLabel = document.getElementById(
@@ -313,8 +333,8 @@ var gSearchPane = {
         "class",
         "menuitem-iconic searchengine-menuitem menuitem-with-favicon"
       );
-      if (e.iconURI) {
-        item.setAttribute("image", e.iconURI.spec);
+      if (e.iconURL) {
+        item.setAttribute("image", e.iconURL);
       }
       item.engine = e;
       if (e.name == currentEngine) {
@@ -695,8 +715,10 @@ EngineStore.prototype = {
   },
 
   _cloneEngine(aEngine) {
-    var clonedObj = {};
-    for (let i of ["id", "name", "alias", "iconURI", "hidden"]) {
+    var clonedObj = {
+      iconURL: aEngine.getIconURL(),
+    };
+    for (let i of ["id", "name", "alias", "hidden"]) {
       clonedObj[i] = aEngine[i];
     }
     clonedObj.originalEngine = aEngine;
@@ -815,12 +837,6 @@ EngineStore.prototype = {
 
     this._engines[index][aProp] = aNewValue;
     aEngine.originalEngine[aProp] = aNewValue;
-  },
-
-  reloadIcons() {
-    this._engines.forEach(function (e) {
-      e.iconURI = e.originalEngine.iconURI;
-    });
   },
 };
 
@@ -960,8 +976,8 @@ EngineView.prototype = {
         return shortcut.icon;
       }
 
-      if (this._engineStore.engines[index].iconURI) {
-        return this._engineStore.engines[index].iconURI.spec;
+      if (this._engineStore.engines[index].iconURL) {
+        return this._engineStore.engines[index].iconURL;
       }
 
       if (window.devicePixelRatio > 1) {

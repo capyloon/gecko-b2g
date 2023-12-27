@@ -13,17 +13,30 @@ exclude: true
 
 ⚠️  breaking change and deprecation notices
 
+## v123
+- For Translations, added [`checkPairDownloadSize`][123.1] and [`TranslationsException.ERROR_MODEL_LANGUAGE_REQUIRED`][123.2] as an error state.
+- ⚠️ Deprecated [`GeckoSession.requestAnalysisCreationStatus`][119.2] by 124, please use [`GeckoSession.requestCreateAnalysis`][122.2] instead.
+
+[123.1]: {{javadoc_uri}}/TranslationsController.RuntimeTranslation.html#checkPairDownloadSize(java.lang.String,java.lang.String)
+[123.2]: {{javadoc_uri}}/TranslationsController.TranslationsException.html#ERROR_MODEL_LANGUAGE_REQUIRED
+
 ## v122
 - ⚠️ Removed [`onGetNimbusFeature`][115.5], please use `ExperimentDelegate.onGetExperimentFeature` instead.
 - Added [`GeckoSession.reportBackInStock`][122.1] for reporting a Shopping product is back in stock.([bug 1858945]({{bugzilla}}1858945))
 - Added [`GeckoSession.requestCreateAnalysis`][122.2] to return a `AnalysisStatusResponse` that contains a status and a progress field. ([bug 1866112]({{bugzilla}}1866112))
 - Added support for controlling `privacy.globalprivacycontrol.enabled` and `privacy.globalprivacycontrol.pbmode.enabled` and `privacy.globalprivacycontrol.functionality.enabled` via [`GeckoRuntimeSettings.Builder.globalPrivacyControlEnabled`][122.3]
 - Added named translations exceptions via [`TranslationsException`][122.4].
+- Added [`ERROR_UNSUPPORTED_ADDON_TYPE`][122.5] to `WebExtension.InstallException.ErrorCodes`. ([bug 1867873]({{bugzilla}}1867873))
+- Added [`WebExtensionController.install`][122.6] requires `WebExtensionController.InstallationMethod`.
+- Added runtime options to set and get specific "never translate this site" preferences on [`RuntimeTranslation`][121.1].
+- Added APIs for toggling `privacy.trackingprotection.emailtracking.pbmode.enabled`. ([bug 1866927]({{bugzilla}}1866927).
 
 [122.1]: {{javadoc_uri}}/GeckoSession.html#reportBackInStock(String)
 [122.2]: {{javadoc_uri}}/GeckoSession.html#requestCreateAnalysis(String)
 [122.3]: {{javadoc_uri}}/GeckoRuntimeSettings.Builder.html#globalPrivacyControlEnabled(boolean)
 [122.4]: {{javadoc_uri}}/TranslationsController.TranslationsException.html
+[122.5]: {{javadoc_uri}}/WebExtension.InstallException.ErrorCodes.html#ERROR_UNSUPPORTED_ADDON_TYPE
+[122.6]: {{javadoc_uri}}/WebExtensionController.WebExtensionController.html#install(java.lang.String,java.lang.String,org.mozilla.geckoview.WebExtensionController.InstallationMethod)
 
 ## v121
 - Added runtime controller functions. [`RuntimeTranslation`][121.1] has options for retrieving translation languages and managing language models.
@@ -72,7 +85,7 @@ exclude: true
 ## v119
 - Added `remoteType` to GeckoView child crash intent. ([bug 1851518]({{bugzilla}}1851518))
 
-- [119.1]: {{javadoc_uri}}/GeckoSession.html#requestCreateAnalysis(String)
+[119.1]: {{javadoc_uri}}/GeckoSession.html#requestCreateAnalysis(String)
 [119.2]: {{javadoc_uri}}/GeckoSession.html#requestAnalysisCreationStatus(String)
 [119.3]: {{javadoc_uri}}/GeckoSession.html#pollForAnalysisCompleted(String)
 
@@ -1488,4 +1501,4 @@ to allow adding gecko profiler markers.
 [65.24]: {{javadoc_uri}}/CrashReporter.html#sendCrashReport(android.content.Context,android.os.Bundle,java.lang.String)
 [65.25]: {{javadoc_uri}}/GeckoResult.html
 
-[api-version]: 192f829a08200fcfecf23ea93606581b43929b1e
+[api-version]: 8af2bae39c9b5023991538f71f1f3da0ccfb78c7

@@ -1341,8 +1341,11 @@ void AssertValidStringPtr(JSContext* cx, JSString* str) {
 
   gc::AllocKind kind = str->getAllocKind();
   if (str->isFatInline()) {
-    MOZ_ASSERT(kind == gc::AllocKind::FAT_INLINE_STRING ||
-               kind == gc::AllocKind::FAT_INLINE_ATOM);
+    if (str->isAtom()) {
+      MOZ_ASSERT(kind == gc::AllocKind::FAT_INLINE_ATOM);
+    } else {
+      MOZ_ASSERT(kind == gc::AllocKind::FAT_INLINE_STRING);
+    }
   } else if (str->isExternal()) {
     MOZ_ASSERT(kind == gc::AllocKind::EXTERNAL_STRING);
   } else if (str->isAtom()) {
@@ -1395,6 +1398,22 @@ bool ObjectIsCallable(JSObject* obj) {
 bool ObjectIsConstructor(JSObject* obj) {
   AutoUnsafeCallWithABI unsafe;
   return obj->isConstructor();
+}
+
+JSObject* ObjectKeys(JSContext* cx, HandleObject obj) {
+  JS::RootedValueArray<3> argv(cx);
+  argv[0].setUndefined();   // rval
+  argv[1].setUndefined();   // this
+  argv[2].setObject(*obj);  // arg0
+  if (!js::obj_keys(cx, 1, argv.begin())) {
+    return nullptr;
+  }
+  return argv[0].toObjectOrNull();
+}
+
+bool ObjectKeysLength(JSContext* cx, HandleObject obj, int32_t* length) {
+  MOZ_ASSERT(!obj->is<ProxyObject>());
+  return js::obj_keys_length(cx, obj, *length);
 }
 
 void JitValuePreWriteBarrier(JSRuntime* rt, Value* vp) {
@@ -1781,30 +1800,6 @@ bool GetNativeDataPropertyByValuePure(JSContext* cx, JSObject* obj,
   return GetNativeDataPropertyPureImpl(cx, obj, id, entry, res);
 }
 
-bool SetNativeDataPropertyPure(JSContext* cx, JSObject* obj, PropertyKey id,
-                               Value* val) {
-  AutoUnsafeCallWithABI unsafe;
-
-  if (MOZ_UNLIKELY(!obj->is<NativeObject>())) {
-    return false;
-  }
-
-  NativeObject* nobj = &obj->as<NativeObject>();
-  uint32_t index;
-  PropMap* map = nobj->shape()->lookup(cx, id, &index);
-  if (!map) {
-    return false;
-  }
-
-  PropertyInfo prop = map->getPropertyInfo(index);
-  if (!prop.isDataProperty() || !prop.writable()) {
-    return false;
-  }
-
-  nobj->setSlot(prop.slot(), *val);
-  return true;
-}
-
 bool ObjectHasGetterSetterPure(JSContext* cx, JSObject* objArg, jsid id,
                                GetterSetter* getterSetter) {
   AutoUnsafeCallWithABI unsafe;
@@ -2027,6 +2022,9 @@ static bool TryAddOrSetPlainObjectProperty(JSContext* cx,
       return true;
     }
     obj->setSlot(prop.slot(), value);
+    if (!Watchtower::watchPropertyModification<AllowGC::NoGC>(cx, obj, key)) {
+      return false;
+    }
     *optimized = true;
 
     if constexpr (UseCache) {

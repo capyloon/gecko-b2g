@@ -32,6 +32,8 @@ namespace mozilla {
 
 using namespace dom;
 
+using EmptyCheckOption = HTMLEditUtils::EmptyCheckOption;
+
 /******************************************************************************
  * mozilla::AutoRangeArray
  *****************************************************************************/
@@ -533,7 +535,9 @@ void AutoRangeArray::
     return;
   }
 
-  if (HTMLEditUtils::IsEmptyNode(*maybeNonEditableBlockElement)) {
+  if (HTMLEditUtils::IsEmptyNode(
+          *maybeNonEditableBlockElement,
+          {EmptyCheckOption::TreatNonEditableContentAsInvisible})) {
     aStartPoint.Set(maybeNonEditableBlockElement, 0u);
     aEndPoint.SetToEndOf(maybeNonEditableBlockElement);
   }
@@ -909,8 +913,15 @@ nsresult AutoRangeArray::ExtendRangeToWrapStartAndEndLinesContainingBoundaries(
   }
 
   EditorDOMPoint startPoint(aRange.StartRef()), endPoint(aRange.EndRef());
-  AutoRangeArray::UpdatePointsToSelectAllChildrenIfCollapsedInEmptyBlockElement(
-      startPoint, endPoint, aEditingHost);
+
+  // If we're joining blocks, we call this for selecting a line to move.
+  // Therefore, we don't want to select the ancestor blocks in this case
+  // even if they are empty.
+  if (aEditSubAction != EditSubAction::eMergeBlockContents) {
+    AutoRangeArray::
+        UpdatePointsToSelectAllChildrenIfCollapsedInEmptyBlockElement(
+            startPoint, endPoint, aEditingHost);
+  }
 
   // Make a new adjusted range to represent the appropriate block content.
   // This is tricky.  The basic idea is to push out the range endpoints to

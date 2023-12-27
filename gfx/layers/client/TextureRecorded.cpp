@@ -23,13 +23,14 @@ RecordedTextureData::RecordedTextureData(
     already_AddRefed<CanvasChild> aCanvasChild, gfx::IntSize aSize,
     gfx::SurfaceFormat aFormat, TextureType aTextureType)
     : mCanvasChild(aCanvasChild), mSize(aSize), mFormat(aFormat) {
-  mCanvasChild->EnsureRecorder(aTextureType);
+  mCanvasChild->EnsureRecorder(aSize, aFormat, aTextureType);
 }
 
 RecordedTextureData::~RecordedTextureData() {
   // We need the translator to drop its reference for the DrawTarget first,
   // because the TextureData might need to destroy its DrawTarget within a lock.
   mDT = nullptr;
+  mCanvasChild->CleanupTexture(mTextureId);
   mCanvasChild->RecordEvent(RecordedTextureDestruction(mTextureId));
 }
 
@@ -40,29 +41,49 @@ void RecordedTextureData::FillInfo(TextureData::Info& aInfo) const {
   aInfo.hasSynchronization = true;
 }
 
+void RecordedTextureData::SetRemoteTextureOwnerId(
+    RemoteTextureOwnerId aRemoteTextureOwnerId) {
+  mRemoteTextureOwnerId = aRemoteTextureOwnerId;
+}
+
 bool RecordedTextureData::Lock(OpenMode aMode) {
   if (!mCanvasChild->EnsureBeginTransaction()) {
     return false;
   }
 
+  if (!mRemoteTextureOwnerId.IsValid()) {
+    MOZ_ASSERT(false);
+    return false;
+  }
+
+  // By the time we allocate a new remote texture id, the previous texture id
+  // should have been used. Since we're overwriting its id, if it hasn't been
+  // used yet, then it is safe to preemptively remove it since nothing can
+  // actually composite it. This prevents accumulation of a series of canvas
+  // frames that never get shown.
+  RemoteTextureId obsoleteRemoteTextureId;
+  if (!mUsedRemoteTexture) {
+    obsoleteRemoteTextureId = mLastRemoteTextureId;
+  }
+  mLastRemoteTextureId = RemoteTextureId::GetNext();
+  mUsedRemoteTexture = false;
+
   if (!mDT) {
     mTextureId = sNextRecordedTextureId++;
-    mCanvasChild->RecordEvent(RecordedNextTextureId(mTextureId));
-    mDT = mCanvasChild->CreateDrawTarget(mSize, mFormat);
+    mCanvasChild->RecordEvent(
+        RecordedNextTextureId(mTextureId, mRemoteTextureOwnerId));
+    mDT = mCanvasChild->CreateDrawTarget(mTextureId, mSize, mFormat);
     if (!mDT) {
       return false;
     }
 
     // We lock the TextureData when we create it to get the remote DrawTarget.
-    mCanvasChild->OnTextureWriteLock();
     mLockedMode = aMode;
     return true;
   }
 
-  mCanvasChild->RecordEvent(RecordedTextureLock(mTextureId, aMode));
-  if (aMode & OpenMode::OPEN_WRITE) {
-    mCanvasChild->OnTextureWriteLock();
-  }
+  mCanvasChild->RecordEvent(RecordedTextureLock(
+      mTextureId, aMode, mLastRemoteTextureId, obsoleteRemoteTextureId));
   mLockedMode = aMode;
   return true;
 }
@@ -75,12 +96,18 @@ void RecordedTextureData::Unlock() {
     mCanvasChild->RecordEvent(RecordedCacheDataSurface(mSnapshot.get()));
   }
 
-  mCanvasChild->RecordEvent(RecordedTextureUnlock(mTextureId));
+  mCanvasChild->RecordEvent(
+      RecordedTextureUnlock(mTextureId, mLastRemoteTextureId));
+
   mLockedMode = OpenMode::OPEN_NONE;
 }
 
 already_AddRefed<gfx::DrawTarget> RecordedTextureData::BorrowDrawTarget() {
   mSnapshot = nullptr;
+  if (RefPtr<gfx::SourceSurface> wrapper = do_AddRef(mSnapshotWrapper)) {
+    mCanvasChild->DetachSurface(wrapper);
+    mSnapshotWrapper = nullptr;
+  }
   return do_AddRef(mDT);
 }
 
@@ -95,34 +122,57 @@ void RecordedTextureData::EndDraw() {
 }
 
 already_AddRefed<gfx::SourceSurface> RecordedTextureData::BorrowSnapshot() {
+  if (RefPtr<gfx::SourceSurface> wrapper = do_AddRef(mSnapshotWrapper)) {
+    return wrapper.forget();
+  }
+
   // There are some failure scenarios where we have no DrawTarget and
   // BorrowSnapshot is called in an attempt to copy to a new texture.
   if (!mDT) {
     return nullptr;
   }
 
-  if (mSnapshot) {
-    return mCanvasChild->WrapSurface(mSnapshot);
-  }
+  RefPtr<gfx::SourceSurface> wrapper = mCanvasChild->WrapSurface(
+      mSnapshot ? mSnapshot : mDT->Snapshot(), mTextureId);
+  mSnapshotWrapper = wrapper;
+  return wrapper.forget();
+}
 
-  return mCanvasChild->WrapSurface(mDT->Snapshot());
+void RecordedTextureData::ReturnSnapshot(
+    already_AddRefed<gfx::SourceSurface> aSnapshot) {
+  RefPtr<gfx::SourceSurface> snapshot = aSnapshot;
+  if (RefPtr<gfx::SourceSurface> wrapper = do_AddRef(mSnapshotWrapper)) {
+    mCanvasChild->DetachSurface(wrapper);
+  }
 }
 
 void RecordedTextureData::Deallocate(LayersIPCChannel* aAllocator) {}
 
 bool RecordedTextureData::Serialize(SurfaceDescriptor& aDescriptor) {
-  aDescriptor = SurfaceDescriptorRecorded(mTextureId);
+  if (!mRemoteTextureOwnerId.IsValid() || !mLastRemoteTextureId.IsValid()) {
+    MOZ_ASSERT_UNREACHABLE("Missing remote texture ids!");
+    return false;
+  }
+  aDescriptor = SurfaceDescriptorRemoteTexture(mLastRemoteTextureId,
+                                               mRemoteTextureOwnerId);
+  // If something is querying the id, assume it is going to be composited.
+  mUsedRemoteTexture = true;
   return true;
 }
 
 void RecordedTextureData::OnForwardedToHost() {
-  mCanvasChild->OnTextureForwarded();
+  // Compositing with RecordedTextureData requires RemoteTextureMap.
+  MOZ_CRASH("OnForwardedToHost not supported!");
 }
 
 TextureFlags RecordedTextureData::GetTextureFlags() const {
   // With WebRender, resource open happens asynchronously on RenderThread.
   // Use WAIT_HOST_USAGE_END to keep TextureClient alive during host side usage.
   return TextureFlags::WAIT_HOST_USAGE_END;
+}
+
+bool RecordedTextureData::RequiresRefresh() const {
+  return mCanvasChild->RequiresRefresh(mTextureId);
 }
 
 }  // namespace layers

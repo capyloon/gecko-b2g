@@ -6,7 +6,6 @@
 
 #include "AudioOffloadPlayer.h"
 
-#include <binder/IPCThreadState.h>
 #include <media/AudioParameter.h>
 #include "AudioOutput.h"
 #include "DecoderTraits.h"
@@ -183,8 +182,7 @@ void AudioOffloadPlayer::OpenAudioSink() {
 #else
   AudioSystem::acquireAudioSessionId(mAudioSessionId, -1);
 #endif
-  mAudioSink = new AudioOutput(
-      mAudioSessionId, IPCThreadState::self()->getCallingUid(), streamType);
+  mAudioSink = new AudioOutput(mAudioSessionId, streamType);
 
   status_t err;
   if (mIsOffloaded) {
@@ -213,25 +211,27 @@ void AudioOffloadPlayer::OpenAudioSink() {
 
     LOG("AudioOffloadPlayer::OpenAudioSink, offload info: sample_rate=%u, "
         "channel_mask=0x%x, format=0x%x, stream_type=%d, bit_rate=%u, "
-        "duration_us=%lu, has_video=%d, is_streaming=%d, bit_width=%u, "
-        "offload_buffer_size=%u",
+        "duration_us=%" PRId64
+        ", has_video=%d, is_streaming=%d, bit_width=%u, offload_buffer_size=%u",
         offloadInfo.sample_rate, offloadInfo.channel_mask, offloadInfo.format,
         offloadInfo.stream_type, offloadInfo.bit_rate, offloadInfo.duration_us,
         offloadInfo.has_video, offloadInfo.is_streaming, offloadInfo.bit_width,
         offloadInfo.offload_buffer_size);
 
-    err = mAudioSink->Open(sampleRate, channels, static_cast<audio_channel_mask_t>(channelMask), audioFormat,
-                           &AudioOffloadPlayer::AudioSinkCallback, this,
-                           AUDIO_OUTPUT_FLAG_COMPRESS_OFFLOAD, &offloadInfo);
+    err = mAudioSink->Open(
+        sampleRate, channels, static_cast<audio_channel_mask_t>(channelMask),
+        audioFormat, &AudioOffloadPlayer::AudioSinkCallback, this,
+        AUDIO_OUTPUT_FLAG_COMPRESS_OFFLOAD, &offloadInfo);
     if (err == OK) {
-      SendMetaDataToHal(offloadInfo);
+      SendMetadataToHal(offloadInfo);
     }
   } else {
     auto audioFormat = AUDIO_FORMAT_PCM_FLOAT;
 
-    err = mAudioSink->Open(sampleRate, channels, static_cast<audio_channel_mask_t>(channelMask), audioFormat,
-                           &AudioOffloadPlayer::AudioSinkCallback, this,
-                           AUDIO_OUTPUT_FLAG_NONE, nullptr);
+    err = mAudioSink->Open(sampleRate, channels,
+                           static_cast<audio_channel_mask_t>(channelMask),
+                           audioFormat, &AudioOffloadPlayer::AudioSinkCallback,
+                           this, AUDIO_OUTPUT_FLAG_NONE, nullptr);
   }
 
   if (err == OK) {
@@ -259,7 +259,7 @@ void AudioOffloadPlayer::OpenAudioSink() {
   }
 }
 
-void AudioOffloadPlayer::SendMetaDataToHal(audio_offload_info_t& aOffloadInfo) {
+void AudioOffloadPlayer::SendMetadataToHal(audio_offload_info_t& aOffloadInfo) {
   // If the playback is offloaded to h/w we pass the HAL some metadata
   // information. We don't want to do this for PCM because it will be going
   // through the AudioFlinger mixer before reaching the hardware

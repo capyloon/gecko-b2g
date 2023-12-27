@@ -285,8 +285,8 @@ let JSWINDOWACTORS = {
         visibilitychange: {},
       },
     },
-    // The wildcard on about:newtab is for the ?endpoint query parameter
-    // that is used for snippets debugging. The wildcard for about:home
+    // The wildcard on about:newtab is for the # parameter
+    // that is used for the newtab devtools. The wildcard for about:home
     // is similar, and also allows for falling back to loading the
     // about:home document dynamically if an attempt is made to load
     // about:home?jscache from the AboutHomeStartupCache as a top-level
@@ -581,6 +581,7 @@ let JSWINDOWACTORS = {
     includeChrome: true,
     allFrames: true,
     matches: [
+      "about:asrouter",
       "about:home",
       "about:newtab",
       "about:welcome",
@@ -796,6 +797,7 @@ let JSWINDOWACTORS = {
       },
     },
     matches: [
+      "about:asrouter*",
       "about:home*",
       "about:newtab*",
       "about:welcome*",
@@ -1237,18 +1239,24 @@ BrowserGlue.prototype = {
         ].getService(Ci.nsIToolkitProfileService);
         if (
           AppConstants.platform == "win" &&
-          Services.prefs.getBoolPref(launchOnLoginPref) &&
           !profileSvc.startWithLastProfile
         ) {
           // If we don't start with last profile, the user
           // likely sees the profile selector on launch.
+          if (Services.prefs.getBoolPref(launchOnLoginPref)) {
+            Services.telemetry.setEventRecordingEnabled(
+              "launch_on_login",
+              true
+            );
+            Services.telemetry.recordEvent(
+              "launch_on_login",
+              "last_profile_disable",
+              "startup"
+            );
+          }
           Services.prefs.setBoolPref(launchOnLoginPref, false);
-          Services.telemetry.setEventRecordingEnabled("launch_on_login", true);
-          Services.telemetry.recordEvent(
-            "launch_on_login",
-            "last_profile_disable:",
-            "startup"
-          );
+          // Only remove registry key, not shortcut here as we can assume
+          // if a user manually created a shortcut they want this behavior.
           await lazy.WindowsLaunchOnLogin.removeLaunchOnLoginRegistryKey();
         }
         break;
@@ -5488,7 +5496,12 @@ export var DefaultBrowserCheck = {
     let buttonNumClicked = rv.get("buttonNumClicked");
     let checkboxState = rv.get("checked");
     if (buttonNumClicked == 0) {
-      shellService.setAsDefault();
+      try {
+        await shellService.setAsDefault();
+      } catch (e) {
+        this.log.error("Failed to set the default browser", e);
+      }
+
       shellService.pinToTaskbar();
     }
     if (checkboxState) {

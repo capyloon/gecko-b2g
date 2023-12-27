@@ -52,6 +52,8 @@
 #include "mozilla/ipc/UtilityProcessManager.h"
 #include "mozilla/ipc/UtilityProcessHost.h"
 #include "mozilla/net/UrlClassifierFeatureFactory.h"
+#include "mozilla/RemoteDecoderManagerChild.h"
+#include "mozilla/KeySystemConfig.h"
 #include "mozilla/WheelHandlingHelper.h"
 #include "IOActivityMonitor.h"
 #include "nsNativeTheme.h"
@@ -59,6 +61,7 @@
 #include "mozJSModuleLoader.h"
 #include "mozilla/ProfilerLabels.h"
 #include "mozilla/ProfilerMarkers.h"
+#include "nsDocShell.h"
 #include "nsIException.h"
 #include "VsyncSource.h"
 
@@ -72,6 +75,10 @@
 #  ifdef XP_LINUX
 #    include <sys/prctl.h>
 #  endif
+#endif
+
+#ifdef MOZ_WMF_CDM
+#  include "mozilla/MFCDMParent.h"
 #endif
 
 namespace mozilla::dom {
@@ -1891,13 +1898,28 @@ bool ChromeUtils::ShouldResistFingerprinting(
       MOZ_CRASH("Unhandled JSRFPTarget enum value");
   }
 
+  bool isPBM = false;
+  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(aGlobal.GetAsSupports());
+  if (global) {
+    nsPIDOMWindowInner* win = global->GetAsInnerWindow();
+    if (win) {
+      nsIDocShell* docshell = win->GetDocShell();
+      if (docshell) {
+        nsDocShell::Cast(docshell)->GetUsePrivateBrowsing(&isPBM);
+      }
+    }
+  }
+
   Maybe<RFPTarget> overriddenFingerprintingSettings;
   if (!aOverriddenFingerprintingSettings.IsNull()) {
     overriddenFingerprintingSettings.emplace(
         RFPTarget(aOverriddenFingerprintingSettings.Value()));
   }
 
-  return nsRFPService::IsRFPEnabledFor(target,
+  // This global object appears to be the global window, not for individual
+  // sites so to exempt individual sites (instead of just PBM/Not-PBM windows)
+  // more work would be needed to get the correct context.
+  return nsRFPService::IsRFPEnabledFor(isPBM, target,
                                        overriddenFingerprintingSettings);
 }
 
@@ -1922,6 +1944,35 @@ void ChromeUtils::NotifyDevToolsOpened(GlobalObject& aGlobal) {
 void ChromeUtils::NotifyDevToolsClosed(GlobalObject& aGlobal) {
   MOZ_ASSERT(ChromeUtils::sDevToolsOpenedCount >= 1);
   ChromeUtils::sDevToolsOpenedCount--;
+}
+
+#ifdef MOZ_WMF_CDM
+/* static */
+already_AddRefed<Promise> ChromeUtils::GetWMFContentDecryptionModuleInformation(
+    GlobalObject& aGlobal, ErrorResult& aRv) {
+  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(aGlobal.GetAsSupports());
+  MOZ_ASSERT(global);
+  RefPtr<Promise> domPromise = Promise::Create(global, aRv);
+  if (NS_WARN_IF(aRv.Failed())) {
+    return nullptr;
+  }
+  MOZ_ASSERT(domPromise);
+  MFCDMService::GetAllKeySystemsCapabilities(domPromise);
+  return domPromise.forget();
+}
+#endif
+
+already_AddRefed<Promise> ChromeUtils::GetGMPContentDecryptionModuleInformation(
+    GlobalObject& aGlobal, ErrorResult& aRv) {
+  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(aGlobal.GetAsSupports());
+  MOZ_ASSERT(global);
+  RefPtr<Promise> domPromise = Promise::Create(global, aRv);
+  if (NS_WARN_IF(aRv.Failed())) {
+    return nullptr;
+  }
+  MOZ_ASSERT(domPromise);
+  KeySystemConfig::GetGMPKeySystemConfigs(domPromise);
+  return domPromise.forget();
 }
 
 }  // namespace mozilla::dom

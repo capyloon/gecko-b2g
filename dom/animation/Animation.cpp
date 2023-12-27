@@ -868,10 +868,10 @@ void Animation::CommitStyles(ErrorResult& aRv) {
 
   // Set the animated styles
   bool changed = false;
-  nsCSSPropertyIDSet properties = keyframeEffect->GetPropertySet();
-  for (nsCSSPropertyID property : properties) {
+  const AnimatedPropertyIDSet& properties = keyframeEffect->GetPropertySet();
+  for (const AnimatedPropertyID& property : properties) {
     RefPtr<StyleAnimationValue> computedValue =
-        Servo_AnimationValueMap_GetValue(animationValues.get(), property)
+        Servo_AnimationValueMap_GetValue(animationValues.get(), &property)
             .Consume();
     if (computedValue) {
       changed |= Servo_DeclarationBlock_SetPropertyToAnimationValue(
@@ -1098,6 +1098,7 @@ void Animation::UpdateRelevance() {
   if (wasRelevant && !mIsRelevant) {
     MutationObservers::NotifyAnimationRemoved(this);
   } else if (!wasRelevant && mIsRelevant) {
+    UpdateHiddenByContentVisibility();
     MutationObservers::NotifyAnimationAdded(this);
   }
 }
@@ -1951,6 +1952,27 @@ void Animation::SetHiddenByContentVisibility(bool hidden) {
   }
 
   GetTimeline()->NotifyAnimationContentVisibilityChanged(this, !hidden);
+}
+
+void Animation::UpdateHiddenByContentVisibility() {
+  // To be consistent with nsIFrame::UpdateAnimationVisibility, here we only
+  // deal with CSSAnimation and CSSTransition.
+  if (!AsCSSAnimation() && !AsCSSTransition()) {
+    return;
+  }
+  NonOwningAnimationTarget target = GetTargetForAnimation();
+  if (!target) {
+    return;
+  }
+  // If a CSS animation or CSS transition is no longer associated with an owning
+  // element, it behaves like a programmatic web animation, c-v shouldn't hide
+  // it.
+  bool hasOwningElement = IsMarkupAnimation(AsCSSAnimation()) ||
+                          IsMarkupAnimation(AsCSSTransition());
+  if (auto* frame = target.mElement->GetPrimaryFrame()) {
+    SetHiddenByContentVisibility(
+        hasOwningElement && frame->IsHiddenByContentVisibilityOnAnyAncestor());
+  }
 }
 
 StickyTimeDuration Animation::IntervalStartTime(

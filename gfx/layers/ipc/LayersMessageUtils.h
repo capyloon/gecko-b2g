@@ -19,6 +19,7 @@
 #include "mozilla/ScrollSnapInfo.h"
 #include "mozilla/ServoBindings.h"
 #include "mozilla/ipc/ByteBuf.h"
+#include "mozilla/ipc/ProtocolMessageUtils.h"
 #include "mozilla/layers/APZInputBridge.h"
 #include "mozilla/layers/AsyncDragMetrics.h"
 #include "mozilla/layers/CompositorOptions.h"
@@ -1104,6 +1105,23 @@ struct ParamTraits<mozilla::layers::ZoomTarget> {
             ReadParam(aReader, &aResult->cantZoomOutBehavior) &&
             ReadParam(aReader, &aResult->elementBoundingRect) &&
             ReadParam(aReader, &aResult->documentRelativePointerPosition));
+  }
+};
+
+template <>
+struct ParamTraits<mozilla::layers::DoubleTapToZoomMetrics> {
+  typedef mozilla::layers::DoubleTapToZoomMetrics paramType;
+
+  static void Write(MessageWriter* aWriter, const paramType& aParam) {
+    WriteParam(aWriter, aParam.mVisualViewport);
+    WriteParam(aWriter, aParam.mRootScrollableRect);
+    WriteParam(aWriter, aParam.mTransformMatrix);
+  }
+
+  static bool Read(MessageReader* aReader, paramType* aResult) {
+    return (ReadParam(aReader, &aResult->mVisualViewport) &&
+            ReadParam(aReader, &aResult->mRootScrollableRect) &&
+            ReadParam(aReader, &aResult->mTransformMatrix));
   }
 };
 

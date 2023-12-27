@@ -80,19 +80,6 @@ const CHROME_FLAGS_MAP = [
   // Do not inherit remoteness and fissionness from the previous session.
   //[Ci.nsIWebBrowserChrome.CHROME_REMOTE_WINDOW, "remote", "non-remote"],
   //[Ci.nsIWebBrowserChrome.CHROME_FISSION_WINDOW, "fission", "non-fission"],
-  [Ci.nsIWebBrowserChrome.CHROME_WINDOW_POPUP, "popup"],
-  [
-    Ci.nsIWebBrowserChrome.CHROME_WINDOW_POPUP |
-      Ci.nsIWebBrowserChrome.CHROME_TITLEBAR,
-    "",
-    "titlebar=0",
-  ],
-  [
-    Ci.nsIWebBrowserChrome.CHROME_WINDOW_POPUP |
-      Ci.nsIWebBrowserChrome.CHROME_WINDOW_CLOSE,
-    "",
-    "close=0",
-  ],
   [Ci.nsIWebBrowserChrome.CHROME_WINDOW_LOWERED, "alwayslowered"],
   [Ci.nsIWebBrowserChrome.CHROME_WINDOW_RAISED, "alwaysraised"],
   // "chrome" and "suppressanimation" are always set.
@@ -6532,27 +6519,29 @@ var SessionStoreInternal = {
           activeIndex = Math.min(activeIndex, tabState.entries.length - 1);
           activeIndex = Math.max(activeIndex, 0);
 
-          let title =
-            tabState.entries[activeIndex].title ||
-            tabState.entries[activeIndex].url;
+          if (activeIndex in tabState.entries) {
+            let title =
+              tabState.entries[activeIndex].title ||
+              tabState.entries[activeIndex].url;
 
-          let tabData = {
-            state: tabState,
-            title,
-            image: tabState.image,
-            pos: tIndex,
-            closedAt: Date.now(),
-            closedInGroup: false,
-            removeAfterRestore: true,
-          };
+            let tabData = {
+              state: tabState,
+              title,
+              image: tabState.image,
+              pos: tIndex,
+              closedAt: Date.now(),
+              closedInGroup: false,
+              removeAfterRestore: true,
+            };
 
-          if (this._shouldSaveTabState(tabState)) {
-            this.saveClosedTabData(
-              window,
-              newWindowState._closedTabs,
-              tabData,
-              false
-            );
+            if (this._shouldSaveTabState(tabState)) {
+              this.saveClosedTabData(
+                window,
+                newWindowState._closedTabs,
+                tabData,
+                false
+              );
+            }
           }
         }
         tIndex++;
@@ -6560,20 +6549,16 @@ var SessionStoreInternal = {
 
       hasPinnedTabs ||= !!newWindowState.tabs.length;
 
-      // At this point the window in the state object has been modified (or not)
-      // We want to build the rest of this new window object if we have pinnedTabs.
-      if (
-        newWindowState.tabs.length ||
-        (PERSIST_SESSIONS && newWindowState._closedTabs.length)
-      ) {
-        // First get the other attributes off the window
+      // Only transfer over window attributes for pinned tabs, which has
+      // already been extracted into newWindowState.tabs.
+      if (newWindowState.tabs.length) {
         WINDOW_ATTRIBUTES.forEach(function (attr) {
           if (attr in window) {
             newWindowState[attr] = window[attr];
             delete window[attr];
           }
         });
-        // We're just copying position data into the pinned window.
+        // We're just copying position data into the window for pinned tabs.
         // Not copying over:
         // - extData
         // - isPopup
@@ -6583,8 +6568,14 @@ var SessionStoreInternal = {
         // remaining data
         window.__lastSessionWindowID = newWindowState.__lastSessionWindowID =
           "" + Date.now() + Math.random();
+      }
 
-        // Actually add this window to our defaultState
+      // If this newWindowState contains pinned tabs (stored in tabs) or
+      // closed tabs, add it to the defaultState so they're available immediately.
+      if (
+        newWindowState.tabs.length ||
+        (PERSIST_SESSIONS && newWindowState._closedTabs.length)
+      ) {
         defaultState.windows.push(newWindowState);
         // Remove the window from the state if it doesn't have any tabs
         if (!window.tabs.length) {

@@ -254,7 +254,8 @@ pub fn parse_name(s: &str) -> Result<&str, ()> {
 /// references to other custom property names.
 #[derive(Clone, Debug, MallocSizeOf, ToShmem)]
 pub struct VariableValue {
-    css: String,
+    /// The raw CSS string.
+    pub css: String,
 
     /// The url data of the stylesheet where this value came from.
     pub url_data: UrlExtraData,
@@ -274,6 +275,8 @@ impl PartialEq for VariableValue {
         self.css == other.css
     }
 }
+
+impl Eq for VariableValue {}
 
 impl ToCss for SpecifiedValue {
     fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
@@ -555,24 +558,23 @@ impl VariableValue {
     pub fn parse<'i, 't>(
         input: &mut Parser<'i, 't>,
         url_data: &UrlExtraData,
-    ) -> Result<Arc<Self>, ParseError<'i>> {
+    ) -> Result<Self, ParseError<'i>> {
         let mut references = VarOrEnvReferences::default();
-
         let (first_token_type, css, last_token_type) =
-            parse_self_contained_declaration_value(input, Some(&mut references))?;
+            parse_self_contained_declaration_value(input, &mut references)?;
 
         let mut css = css.into_owned();
         css.shrink_to_fit();
 
         references.custom_properties.shrink_to_fit();
 
-        Ok(Arc::new(VariableValue {
+        Ok(Self {
             css,
             url_data: url_data.clone(),
             first_token_type,
             last_token_type,
             references,
-        }))
+        })
     }
 
     /// Create VariableValue from an int.
@@ -660,17 +662,9 @@ impl VariableValue {
     }
 }
 
-/// Parse the value of a non-custom property that contains `var()` references.
-pub fn parse_non_custom_with_var<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<(TokenSerializationType, Cow<'i, str>), ParseError<'i>> {
-    let (first_token_type, css, _) = parse_self_contained_declaration_value(input, None)?;
-    Ok((first_token_type, css))
-}
-
 fn parse_self_contained_declaration_value<'i, 't>(
     input: &mut Parser<'i, 't>,
-    references: Option<&mut VarOrEnvReferences>,
+    references: &mut VarOrEnvReferences,
 ) -> Result<(TokenSerializationType, Cow<'i, str>, TokenSerializationType), ParseError<'i>> {
     let start_position = input.position();
     let mut missing_closing_characters = String::new();
@@ -690,7 +684,7 @@ fn parse_self_contained_declaration_value<'i, 't>(
 /// <https://drafts.csswg.org/css-syntax-3/#typedef-declaration-value>
 fn parse_declaration_value<'i, 't>(
     input: &mut Parser<'i, 't>,
-    references: Option<&mut VarOrEnvReferences>,
+    references: &mut VarOrEnvReferences,
     missing_closing_characters: &mut String,
 ) -> Result<(TokenSerializationType, TokenSerializationType), ParseError<'i>> {
     input.parse_until_before(Delimiter::Bang | Delimiter::Semicolon, |input| {
@@ -702,7 +696,7 @@ fn parse_declaration_value<'i, 't>(
 /// invalid at the top level
 fn parse_declaration_value_block<'i, 't>(
     input: &mut Parser<'i, 't>,
-    mut references: Option<&mut VarOrEnvReferences>,
+    references: &mut VarOrEnvReferences,
     missing_closing_characters: &mut String,
 ) -> Result<(TokenSerializationType, TokenSerializationType), ParseError<'i>> {
     input.skip_whitespace();
@@ -720,7 +714,7 @@ fn parse_declaration_value_block<'i, 't>(
                 input.parse_nested_block(|input| {
                     parse_declaration_value_block(
                         input,
-                        references.as_mut().map(|r| &mut **r),
+                        references,
                         missing_closing_characters,
                     )
                 })?
@@ -770,13 +764,13 @@ fn parse_declaration_value_block<'i, 't>(
                 if name.eq_ignore_ascii_case("var") {
                     let args_start = input.state();
                     input.parse_nested_block(|input| {
-                        parse_var_function(input, references.as_mut().map(|r| &mut **r))
+                        parse_var_function(input, references)
                     })?;
                     input.reset(&args_start);
                 } else if name.eq_ignore_ascii_case("env") {
                     let args_start = input.state();
                     input.parse_nested_block(|input| {
-                        parse_env_function(input, references.as_mut().map(|r| &mut **r))
+                        parse_env_function(input, references)
                     })?;
                     input.reset(&args_start);
                 }
@@ -884,7 +878,7 @@ fn parse_and_substitute_fallback<'i>(
 // If the var function is valid, return Ok((custom_property_name, fallback))
 fn parse_var_function<'i, 't>(
     input: &mut Parser<'i, 't>,
-    references: Option<&mut VarOrEnvReferences>,
+    references: &mut VarOrEnvReferences,
 ) -> Result<(), ParseError<'i>> {
     let name = input.expect_ident_cloned()?;
     let name = parse_name(&name).map_err(|()| {
@@ -893,15 +887,13 @@ fn parse_var_function<'i, 't>(
     if input.try_parse(|input| input.expect_comma()).is_ok() {
         parse_fallback(input)?;
     }
-    if let Some(refs) = references {
-        refs.custom_properties.insert(Atom::from(name));
-    }
+    references.custom_properties.insert(Atom::from(name));
     Ok(())
 }
 
 fn parse_env_function<'i, 't>(
     input: &mut Parser<'i, 't>,
-    references: Option<&mut VarOrEnvReferences>,
+    references: &mut VarOrEnvReferences,
 ) -> Result<(), ParseError<'i>> {
     // TODO(emilio): This should be <custom-ident> per spec, but no other
     // browser does that, see https://github.com/w3c/csswg-drafts/issues/3262.
@@ -909,9 +901,7 @@ fn parse_env_function<'i, 't>(
     if input.try_parse(|input| input.expect_comma()).is_ok() {
         parse_fallback(input)?;
     }
-    if let Some(references) = references {
-        references.environment = true;
-    }
+    references.environment = true;
     Ok(())
 }
 
@@ -928,34 +918,39 @@ pub struct CustomPropertiesBuilder<'a, 'b: 'a> {
 
 impl<'a, 'b: 'a> CustomPropertiesBuilder<'a, 'b> {
     /// Create a new builder, inheriting from a given custom properties map.
-    pub fn new(stylist: &'a Stylist, computed_context: &'a computed::Context<'b>) -> Self {
-        let is_root_element = computed_context.is_root_element();
-
-        let inherited = computed_context.inherited_custom_properties();
-        let initial_values = stylist.get_custom_property_initial_values();
-
-        // Reuse flags from computing registered custom properties initial values, such as whether
-        // they depend on viewport units.
-        computed_context
-            .style()
-            .add_flags(stylist.get_custom_property_initial_values_flags());
-
+    ///
+    /// We expose this publicly mostly for @keyframe blocks.
+    pub fn new_with_properties(stylist: &'a Stylist, custom_properties: ComputedCustomProperties, computed_context: &'a computed::Context<'b>) -> Self {
         Self {
             seen: PrecomputedHashSet::default(),
             reverted: Default::default(),
             may_have_cycles: false,
-            custom_properties: ComputedCustomProperties {
-                inherited: if is_root_element {
-                    debug_assert!(inherited.is_empty());
-                    initial_values.inherited.clone()
-                } else {
-                    inherited.inherited.clone()
-                },
-                non_inherited: initial_values.non_inherited.clone(),
-            },
+            custom_properties,
             stylist,
             computed_context,
         }
+    }
+
+    /// Create a new builder, inheriting from the right style given context.
+    pub fn new(stylist: &'a Stylist, context: &'a computed::Context<'b>) -> Self {
+        let is_root_element = context.is_root_element();
+
+        let inherited = context.inherited_custom_properties();
+        let initial_values = stylist.get_custom_property_initial_values();
+        let properties = ComputedCustomProperties {
+            inherited: if is_root_element {
+                debug_assert!(inherited.is_empty());
+                initial_values.inherited.clone()
+            } else {
+                inherited.inherited.clone()
+            },
+            non_inherited: initial_values.non_inherited.clone(),
+        };
+
+        // Reuse flags from computing registered custom properties initial values, such as
+        // whether they depend on viewport units.
+        context.style().add_flags(stylist.get_custom_property_initial_values_flags());
+        Self::new_with_properties(stylist, properties, context)
     }
 
     /// Cascade a given custom property declaration.
@@ -1381,19 +1376,25 @@ fn substitute_all(
                 break;
             }
             // Anything here is in a loop which can traverse to the
-            // variable we are handling, so remove it from the map, it's invalid
-            // at computed-value time.
-            context.map.remove(
-                context.stylist.get_custom_property_registration(&var_name),
+            // variable we are handling, so it's invalid at
+            // computed-value time.
+            handle_invalid_at_computed_value_time(
                 &var_name,
+                context.map,
+                context.computed_context.inherited_custom_properties(),
+                context.stylist,
+                context.computed_context.is_root_element()
             );
             in_loop = true;
         }
         if in_loop {
             // This variable is in loop. Resolve to invalid.
-            context.map.remove(
-                context.stylist.get_custom_property_registration(&name),
+            handle_invalid_at_computed_value_time(
                 &name,
+                context.map,
+                context.computed_context.inherited_custom_properties(),
+                context.stylist,
+                context.computed_context.is_root_element()
             );
             return None;
         }
@@ -1782,17 +1783,15 @@ fn substitute_block<'i>(
 ///
 /// Return `Err(())` for invalid at computed time.
 pub fn substitute<'i>(
-    input: &'i str,
-    first_token_type: TokenSerializationType,
+    variable_value: &'i VariableValue,
     custom_properties: &ComputedCustomProperties,
-    url_data: &UrlExtraData,
     stylist: &Stylist,
     computed_context: &computed::Context,
 ) -> Result<String, ParseError<'i>> {
-    let mut substituted = ComputedValue::empty(url_data);
-    let mut input = ParserInput::new(input);
+    let mut substituted = ComputedValue::empty(&variable_value.url_data);
+    let mut input = ParserInput::new(&variable_value.css);
     let mut input = Parser::new(&mut input);
-    let mut position = (input.position(), first_token_type);
+    let mut position = (input.position(), variable_value.first_token_type);
     let last_token_type = substitute_block(
         &mut input,
         &mut position,

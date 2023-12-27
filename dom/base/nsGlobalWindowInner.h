@@ -13,6 +13,7 @@
 
 // Local Includes
 // Helper Classes
+#include "mozilla/WeakPtr.h"
 #include "nsCOMPtr.h"
 #include "nsWeakReference.h"
 #include "nsTHashMap.h"
@@ -1098,6 +1099,10 @@ class nsGlobalWindowInner final : public mozilla::dom::EventTarget,
   // available.
   nsIPrincipal* GetClientPrincipal();
 
+  // Whether the chrome window is currently in a full screen transition. This
+  // flag is updated from FullscreenTransitionTask.
+  bool IsInFullScreenTransition();
+
   // This method is called if this window loads a 3rd party tracking resource
   // and the storage is just been changed. The window can reset the partitioned
   // storage objects and switch to the first party cookie jar.
@@ -1442,7 +1447,7 @@ class nsGlobalWindowInner final : public mozilla::dom::EventTarget,
 
   nsTArray<uint32_t> mScrollMarks;
 
-  nsTArray<nsWeakPtr> mDataDocumentsForMemoryReporting;
+  nsTArray<mozilla::WeakPtr<Document>> mDataDocumentsForMemoryReporting;
 
   static InnerWindowByIdTable* sInnerWindowsById;
 

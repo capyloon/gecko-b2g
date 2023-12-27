@@ -661,8 +661,7 @@ class nsIFrame : public nsQueryFrame {
         mHasPaddingChange(false),
         mInScrollAnchorChain(false),
         mHasColumnSpanSiblings(false),
-        mDescendantMayDependOnItsStaticPosition(false),
-        mShouldGenerateComputedInfo(false) {
+        mDescendantMayDependOnItsStaticPosition(false) {
     MOZ_ASSERT(mComputedStyle);
     MOZ_ASSERT(mPresContext);
     mozilla::PodZero(&mOverflow);
@@ -3303,8 +3302,10 @@ class nsIFrame : public nsQueryFrame {
    * Update the whether or not this frame is considered relevant content for the
    * purposes of `content-visibility: auto` according to the rules specified in
    * https://drafts.csswg.org/css-contain-2/#relevant-to-the-user.
+   * Returns true if the over-all relevancy changed.
    */
-  void UpdateIsRelevantContent(const ContentRelevancy& aRelevancyToUpdate);
+  [[nodiscard]] bool UpdateIsRelevantContent(
+      const ContentRelevancy& aRelevancyToUpdate);
 
   /**
    * Get the "type" of the frame.
@@ -4314,17 +4315,6 @@ class nsIFrame : public nsQueryFrame {
                                     const nsStyleEffects* aEffects,
                                     const nsSize& aSize) const;
 
-  struct Focusable {
-    bool mFocusable = false;
-    // The computed tab index:
-    //         < 0 if not tabbable
-    //         == 0 if in normal tab order
-    //         > 0 can be tabbed to in the order specified by this value
-    int32_t mTabIndex = -1;
-
-    explicit operator bool() const { return mFocusable; }
-  };
-
   /**
    * Check if this frame is focusable and in the current tab order.
    * Tabbable is indicated by a nonnegative tabindex & is a subset of focusable.
@@ -4924,13 +4914,6 @@ class nsIFrame : public nsQueryFrame {
     mDescendantMayDependOnItsStaticPosition = aValue;
   }
 
-  bool ShouldGenerateComputedInfo() const {
-    return mShouldGenerateComputedInfo;
-  }
-  void SetShouldGenerateComputedInfo(bool aValue) {
-    mShouldGenerateComputedInfo = aValue;
-  }
-
   /**
    * Returns the hit test area of the frame.
    */
@@ -5208,13 +5191,6 @@ class nsIFrame : public nsQueryFrame {
    * move).
    */
   bool mDescendantMayDependOnItsStaticPosition : 1;
-
-  /**
-   * True if the next reflow of this frame should generate computed info
-   * metrics. These are used by devtools to reveal details of the layout
-   * process.
-   */
-  bool mShouldGenerateComputedInfo : 1;
 
  protected:
   // Helpers

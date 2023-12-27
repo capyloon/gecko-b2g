@@ -191,6 +191,13 @@ pref("pdfjs.enableXfa", true);
 // Enable adding an image in a pdf.
 pref("pdfjs.enableStampEditor", true);
 
+// Enable adding an image in a pdf.
+#if defined(EARLY_BETA_OR_EARLIER)
+  pref("pdfjs.enableHighlightEditor", true);
+#else
+  pref("pdfjs.enableHighlightEditor", false);
+#endif
+
 // Disable support for MathML
 pref("mathml.disabled",    false);
 
@@ -270,7 +277,7 @@ pref("media.videocontrols.keyboard-tab-to-all-controls", true);
     pref("media.peerconnection.sdp.parser", "sipcc");
     pref("media.peerconnection.sdp.alternate_parse_mode", "never");
     pref("media.peerconnection.sdp.strict_success", false);
-    pref("media.navigator.video.red_ulpfec_enabled", false);
+    pref("media.navigator.video.red_ulpfec_enabled", true);
   #endif
 
   pref("media.peerconnection.sdp.disable_stereo_fmtp", false);
@@ -285,14 +292,7 @@ pref("media.videocontrols.keyboard-tab-to-all-controls", true);
   pref("media.navigator.video.h264.max_mbps", 0);
   pref("media.peerconnection.video.vp9_enabled", true);
   pref("media.peerconnection.video.vp9_preferred", false);
-  #if defined(XP_MACOSX) && defined(NIGHTLY_BUILD)
-  // XXX: It would be great to have a way to ensure this doesn't ride the
-  //      trains, but that causes nightlyasrelease bustage. No shiny things for
-  //      us.
-  pref("media.getusermedia.channels", 1);
-  #else
   pref("media.getusermedia.channels", 0);
-  #endif
   #if defined(ANDROID)
     pref("media.getusermedia.camera.off_while_disabled.enabled", false);
     pref("media.getusermedia.microphone.off_while_disabled.enabled", false);
@@ -960,13 +960,13 @@ pref("javascript.options.mem.gc_parallel_marking", false);
 // JSGC_PARALLEL_MARKING_THRESHOLD_MB
 // Minimum heap size at which to use parallel marking, if enabled.
 #if defined(XP_WIN)
-pref("javascript.options.mem.gc_parallel_marking_threshold_mb", 20);
+pref("javascript.options.mem.gc_parallel_marking_threshold_mb", 8);
 #elif defined(XP_MACOSX)
 pref("javascript.options.mem.gc_parallel_marking_threshold_mb", 4);
 #elif defined(ANDROID)
-pref("javascript.options.mem.gc_parallel_marking_threshold_mb", 200);
+pref("javascript.options.mem.gc_parallel_marking_threshold_mb", 16);
 #elif defined(XP_UNIX)
-pref("javascript.options.mem.gc_parallel_marking_threshold_mb", 200);
+pref("javascript.options.mem.gc_parallel_marking_threshold_mb", 16);
 #endif
 
 // JSGC_HIGH_FREQUENCY_TIME_LIMIT
@@ -1884,6 +1884,10 @@ pref("extensions.eventPages.enabled", true);
 pref("extensions.manifestV2.actionsPopupURLRestricted", false);
 // Whether "manifest_version: 3" extensions should be allowed to install successfully.
 pref("extensions.manifestV3.enabled", true);
+#ifndef MOZ_WEBEXT_WEBIDL_ENABLED
+  // Defined in StaticPrefList.yaml but overridden here to lock it.
+  pref("extensions.backgroundServiceWorker.enabled", false, locked);
+#endif
 // Whether to enable the updated openPopup API.
 #ifdef NIGHTLY_BUILD
   pref("extensions.openPopupWithoutUserGesture.enabled", true);
@@ -3623,6 +3627,10 @@ pref("browser.sanitizer.loglevel", "Warn");
 // engine https://browser.mt/. See Bug 971044. Note that this pref can be turned
 // on in different apps like Firefox Desktop, even if it's disabled by default here.
 pref("browser.translations.enable", false);
+// Enable Firefox Select translations powered by the Bergamot translations
+// engine https://browser.mt/. Note that this pref can be turned on in different apps
+// like Firefox Desktop, even if it's disabled by default here.
+pref("browser.translations.select.enable", false);
 // Set to "All" to see all logs, which are useful for debugging. Set to "Info" to see
 // the application logic logs, and not all of the translated messages, which can be
 // slow and overwhelming.
@@ -3992,6 +4000,10 @@ pref("extensions.formautofill.creditCards.heuristics.fathom.highConfidenceThresh
 pref("extensions.formautofill.creditCards.heuristics.fathom.testConfidence", "0");
 
 pref("extensions.formautofill.loglevel", "Warn");
+
+// Temporary prefs that we will be removed when enabling capture on form removal and on page navigation in Fx123.
+pref("extensions.formautofill.heuristics.captureOnFormRemoval", false);
+pref("extensions.formautofill.heuristics.captureOnPageNavigation", false);
 // The interactivityCheckMode pref is only temporary.
 // It will be removed when we decide to only support the `focusability` mode
 pref("extensions.formautofill.heuristics.interactivityCheckMode", "focusability");

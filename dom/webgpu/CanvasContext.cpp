@@ -16,6 +16,7 @@
 #include "mozilla/layers/RenderRootStateManager.h"
 #include "mozilla/layers/WebRenderCanvasRenderer.h"
 #include "mozilla/StaticPrefs_privacy.h"
+#include "mozilla/SVGObserverUtils.h"
 #include "ipc/WebGPUChild.h"
 
 namespace mozilla {
@@ -133,6 +134,9 @@ void CanvasContext::Configure(const dom::GPUCanvasConfiguration& aConfig) {
 
   mTexture->mTargetContext = this;
   mBridge = aConfig.mDevice->GetBridge();
+  if (mCanvasElement) {
+    mWaitingCanvasRendererInitialized = true;
+  }
 
   ForceNewFrame();
 }
@@ -188,16 +192,19 @@ void CanvasContext::MaybeQueueSwapChainPresent() {
   }
 
   mPendingSwapChainPresent = true;
-  MOZ_ALWAYS_SUCCEEDS(NS_DispatchToCurrentThread(
-      NewCancelableRunnableMethod("CanvasContext::SwapChainPresent", this,
-                                  &CanvasContext::SwapChainPresent)));
+
+  if (mWaitingCanvasRendererInitialized) {
+    return;
+  }
+
+  InvalidateCanvasContent();
 }
 
-void CanvasContext::SwapChainPresent() {
+Maybe<layers::SurfaceDescriptor> CanvasContext::SwapChainPresent() {
   mPendingSwapChainPresent = false;
   if (!mBridge || !mBridge->IsOpen() || mRemoteTextureOwnerId.isNothing() ||
       !mTexture) {
-    return;
+    return Nothing();
   }
   mLastRemoteTextureId = Some(layers::RemoteTextureId::GetNext());
   mBridge->SwapChainPresent(mTexture->mId, *mLastRemoteTextureId,
@@ -206,6 +213,8 @@ void CanvasContext::SwapChainPresent() {
     mTexture->Destroy();
     mNewTextureRequested = true;
   }
+  return Some(layers::SurfaceDescriptorRemoteTexture(*mLastRemoteTextureId,
+                                                     *mRemoteTextureOwnerId));
 }
 
 bool CanvasContext::UpdateWebRenderCanvasData(
@@ -241,6 +250,12 @@ bool CanvasContext::InitializeCanvasRenderer(
 
   aRenderer->Initialize(data);
   aRenderer->SetDirty();
+
+  if (mWaitingCanvasRendererInitialized) {
+    InvalidateCanvasContent();
+  }
+  mWaitingCanvasRendererInitialized = false;
+
   return true;
 }
 
@@ -310,6 +325,20 @@ already_AddRefed<mozilla::gfx::SourceSurface> CanvasContext::GetSurfaceSnapshot(
                          /* aYFlip */ false);
 }
 
+Maybe<layers::SurfaceDescriptor> CanvasContext::GetFrontBuffer(
+    WebGLFramebufferJS*, const bool) {
+  // With canvas element, remote texture push callback pushes remote texture
+  // from RemoteTextureMap to WebRenderImageHost. With offscreen canvas, the
+  // push callback is not used. remote texture is notified from
+  // ShareableCanvasRenderer to WebRenderImageHost.
+  if (mPendingSwapChainPresent) {
+    auto desc = SwapChainPresent();
+    MOZ_ASSERT(!mPendingSwapChainPresent);
+    return desc;
+  }
+  return Nothing();
+}
+
 void CanvasContext::ForceNewFrame() {
   if (!mCanvasElement && !mOffscreenCanvas) {
     return;
@@ -326,6 +355,20 @@ void CanvasContext::ForceNewFrame() {
     data.mIsOpaque = false;
     data.mOwnerId = mRemoteTextureOwnerId;
     mOffscreenCanvas->UpdateDisplayData(data);
+  }
+}
+
+void CanvasContext::InvalidateCanvasContent() {
+  if (!mCanvasElement && !mOffscreenCanvas) {
+    MOZ_ASSERT_UNREACHABLE("unexpected to be called");
+    return;
+  }
+
+  if (mCanvasElement) {
+    SVGObserverUtils::InvalidateDirectRenderingObservers(mCanvasElement);
+    mCanvasElement->InvalidateCanvasContent(nullptr);
+  } else if (mOffscreenCanvas) {
+    mOffscreenCanvas->QueueCommitToCompositor();
   }
 }
 

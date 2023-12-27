@@ -138,7 +138,7 @@ GeneratedFile(
 )
 
 PYTHON_UNITTEST_MANIFESTS += [
-    "test/python.ini",
+    "test/python.toml",
 ]
 
 XPCOM_MANIFESTS += [
@@ -159,6 +159,9 @@ if CONFIG["MOZ_SERVICES_SYNC"]:
 
 if CONFIG["MOZ_BUILD_APP"] == "browser":
     DEFINES["MOZ_BUILD_APP_IS_BROWSER"] = True
+
+if CONFIG["MOZ_WEBEXT_WEBIDL_ENABLED"]:
+    DEFINES["MOZ_WEBEXT_WEBIDL_ENABLED"] = True
 
 if CONFIG["MOZ_WIDGET_TOOLKIT"] == "android":
     if not CONFIG["MOZ_ANDROID_FAT_AAR_ARCHITECTURES"]:

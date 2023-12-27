@@ -423,7 +423,15 @@ var gMainPane = {
       NimbusFeatures.windowsLaunchOnLogin.recordExposureEvent({
         once: true,
       });
-      if (NimbusFeatures.windowsLaunchOnLogin.getVariable("enabled")) {
+      // We do a check here for startWithLastProfile as we could
+      // have disabled the pref for the user before they're ever
+      // exposed to the experiment on a new profile.
+      if (
+        NimbusFeatures.windowsLaunchOnLogin.getVariable("enabled") &&
+        Cc["@mozilla.org/toolkit/profile-service;1"].getService(
+          Ci.nsIToolkitProfileService
+        ).startWithLastProfile
+      ) {
         document.getElementById("windowsLaunchOnLoginBox").hidden = false;
       }
     }
@@ -659,17 +667,8 @@ var gMainPane = {
         let launchOnLoginCheckbox = document.getElementById(
           "windowsLaunchOnLogin"
         );
-        let registryName = WindowsLaunchOnLogin.getLaunchOnLoginRegistryName();
-        WindowsLaunchOnLogin.withLaunchOnLoginRegistryKey(async wrk => {
-          try {
-            // Reflect registry key value in about:preferences
-            launchOnLoginCheckbox.checked = wrk.hasValue(registryName);
-          } catch (e) {
-            // We should only end up here if we fail to open the registry
-            console.error("Failed to open Windows registry", e);
-          }
-        });
-
+        launchOnLoginCheckbox.checked =
+          WindowsLaunchOnLogin.getLaunchOnLoginEnabled();
         let approvedByWindows = WindowsLaunchOnLogin.getLaunchOnLoginApproved();
         launchOnLoginCheckbox.disabled = !approvedByWindows;
         document.getElementById("windowsLaunchOnLoginDisabledBox").hidden =
@@ -747,13 +746,15 @@ var gMainPane = {
       this._sortColumn = document.getElementById("typeColumn");
     }
 
-    let browserBundle = document.getElementById("browserBundle");
-    appendSearchKeywords("browserContainersSettings", [
-      browserBundle.getString("userContextPersonal.label"),
-      browserBundle.getString("userContextWork.label"),
-      browserBundle.getString("userContextBanking.label"),
-      browserBundle.getString("userContextShopping.label"),
-    ]);
+    appendSearchKeywords(
+      "browserContainersSettings",
+      [
+        "user-context-personal",
+        "user-context-work",
+        "user-context-banking",
+        "user-context-shopping",
+      ].map(ContextualIdentityService.formatContextLabel)
+    );
 
     AppearanceChooser.init();
 
@@ -1633,7 +1634,7 @@ var gMainPane = {
     startupPref.value = newValue;
   },
 
-  onWindowsLaunchOnLoginChange(event) {
+  async onWindowsLaunchOnLoginChange(event) {
     if (AppConstants.platform !== "win") {
       return;
     }
@@ -1645,8 +1646,9 @@ var gMainPane = {
         true
       );
     } else {
-      // windowsLaunchOnLogin has been unchecked: delete registry key
+      // windowsLaunchOnLogin has been unchecked: delete registry key and shortcut
       WindowsLaunchOnLogin.removeLaunchOnLoginRegistryKey();
+      await WindowsLaunchOnLogin.removeLaunchOnLoginShortcuts();
     }
   },
 
@@ -1734,7 +1736,7 @@ var gMainPane = {
   /**
    * Set browser as the operating system default browser.
    */
-  setDefaultBrowser() {
+  async setDefaultBrowser() {
     if (AppConstants.HAVE_SHELL_SERVICE) {
       let alwaysCheckPref = Preferences.get(
         "browser.shell.checkDefaultBrowser"
@@ -1748,11 +1750,20 @@ var gMainPane = {
       if (!shellSvc) {
         return;
       }
+
+      // Disable the set default button, so that the user doesn't try to hit it again
+      // while awaiting on setDefaultBrowser
+      let setDefaultButton = document.getElementById("setDefaultButton");
+      setDefaultButton.disabled = true;
+
       try {
-        shellSvc.setDefaultBrowser(false);
+        await shellSvc.setDefaultBrowser(false);
       } catch (ex) {
         console.error(ex);
         return;
+      } finally {
+        // Make sure to re-enable the default button when we're finished, regardless of the outcome
+        setDefaultButton.disabled = false;
       }
 
       let isDefault = shellSvc.isDefaultBrowser(false, true);
@@ -4164,22 +4175,10 @@ const AppearanceChooser = {
       });
     }
 
-    // Forward the click to the "colors" button.
-    document
-      .getElementById("web-appearance-manage-colors-link")
-      .addEventListener("click", function (e) {
-        document.getElementById("colors").click();
-        e.preventDefault();
-      });
-
-    document
-      .getElementById("web-appearance-manage-themes-link")
-      .addEventListener("click", function (e) {
-        window.browsingContext.topChromeWindow.BrowserOpenAddonsMgr(
-          "addons://list/theme"
-        );
-        e.preventDefault();
-      });
+    let webAppearanceSettings = document.getElementById(
+      "webAppearanceSettings"
+    );
+    webAppearanceSettings.addEventListener("click", this);
 
     this.warning = document.getElementById("web-appearance-override-warning");
 
@@ -4195,6 +4194,23 @@ const AppearanceChooser = {
   },
 
   handleEvent(e) {
+    if (e.type == "click") {
+      switch (e.target.id) {
+        // Forward the click to the "colors" button.
+        case "web-appearance-manage-colors-link":
+          document.getElementById("colors").click();
+          e.preventDefault();
+          break;
+        case "web-appearance-manage-themes-link":
+          window.browsingContext.topChromeWindow.BrowserOpenAddonsMgr(
+            "addons://list/theme"
+          );
+          e.preventDefault();
+          break;
+        default:
+          break;
+      }
+    }
     this._update();
   },
 

@@ -4167,6 +4167,10 @@ static bool CanAttachNativeSetSlot(JSOp op, JSObject* obj, PropertyKey id,
     return false;
   }
 
+  if (Watchtower::watchesPropertyModification(&obj->as<NativeObject>())) {
+    return false;
+  }
+
   *prop = LookupShapeForSetSlot(op, &obj->as<NativeObject>(), id);
   return prop->isSome();
 }
@@ -9131,6 +9135,53 @@ AttachDecision InlinableNativeIRGenerator::tryAttachObjectIsPrototypeOf() {
   return AttachDecision::Attach;
 }
 
+AttachDecision InlinableNativeIRGenerator::tryAttachObjectKeys() {
+  // Only handle argc <= 1.
+  if (argc_ != 1) {
+    return AttachDecision::NoAction;
+  }
+
+  // Do not attach any IC if the argument is not an object.
+  if (!args_[0].isObject()) {
+    return AttachDecision::NoAction;
+  }
+  // Do not attach any IC if the argument is a Proxy. While implementation could
+  // work with proxies the goal of this implementation is to provide an
+  // optimization for calls of `Object.keys(obj)` where there is no side-effect,
+  // and where the computation of the array of property name can be moved.
+  const JSClass* clasp = args_[0].toObject().getClass();
+  if (clasp->isProxyObject()) {
+    return AttachDecision::NoAction;
+  }
+
+  // Generate cache IR code to attach a new inline cache which will delegate the
+  // call to Object.keys to the native function.
+  initializeInputOperand();
+
+  // Guard callee is the 'keys' native function.
+  emitNativeCalleeGuard();
+
+  // Implicit: Note `Object.keys` is a property of the `Object` global. The fact
+  // that we are in this function implies that we already identify the function
+  // as being the proper one. Thus there should not be any need to validate that
+  // this is the proper function. (test: ion/object-keys-05)
+
+  // Guard `arg0` is an object.
+  ValOperandId argId = writer.loadArgumentFixedSlot(ArgumentKind::Arg0, argc_);
+  ObjOperandId argObjId = writer.guardToObject(argId);
+
+  // Guard against proxies.
+  writer.guardIsNotProxy(argObjId);
+
+  // Compute the keys array.
+  writer.objectKeysResult(argObjId);
+
+  writer.returnFromIC();
+
+  trackAttached("ObjectKeys");
+  return AttachDecision::Attach;
+}
+
 AttachDecision InlinableNativeIRGenerator::tryAttachObjectToString() {
   // Expecting no arguments.
   if (argc_ != 0) {
@@ -10850,6 +10901,9 @@ AttachDecision InlinableNativeIRGenerator::tryAttachStub() {
     case InlinableNative::IntlGuardToNumberFormat:
     case InlinableNative::IntlGuardToPluralRules:
     case InlinableNative::IntlGuardToRelativeTimeFormat:
+    case InlinableNative::IntlGuardToSegmenter:
+    case InlinableNative::IntlGuardToSegments:
+    case InlinableNative::IntlGuardToSegmentIterator:
       return tryAttachGuardToClass(native);
 
     // Slot intrinsics.
@@ -11055,6 +11109,8 @@ AttachDecision InlinableNativeIRGenerator::tryAttachStub() {
       return tryAttachObjectIs();
     case InlinableNative::ObjectIsPrototypeOf:
       return tryAttachObjectIsPrototypeOf();
+    case InlinableNative::ObjectKeys:
+      return tryAttachObjectKeys();
     case InlinableNative::ObjectToString:
       return tryAttachObjectToString();
 
@@ -13211,21 +13267,23 @@ void NewArrayIRGenerator::trackAttached(const char* name) {
 }
 
 // Allocation sites are usually created during baseline compilation, but we also
-// need to created them when an IC stub is added to a baseline compiled script
+// need to create them when an IC stub is added to a baseline compiled script
 // and when trial inlining.
 static gc::AllocSite* MaybeCreateAllocSite(jsbytecode* pc,
                                            BaselineFrame* frame) {
   MOZ_ASSERT(BytecodeOpCanHaveAllocSite(JSOp(*pc)));
 
   JSScript* outerScript = frame->outerScript();
-  bool inInterpreter = frame->runningInInterpreter();
+  bool hasBaselineScript = outerScript->hasBaselineScript();
   bool isInlined = frame->icScript()->isInlined();
 
-  if (inInterpreter && !isInlined) {
+  if (!hasBaselineScript && !isInlined) {
+    MOZ_ASSERT(frame->runningInInterpreter());
     return outerScript->zone()->unknownAllocSite(JS::TraceKind::Object);
   }
 
-  return outerScript->createAllocSite();
+  uint32_t pcOffset = frame->script()->pcToOffset(pc);
+  return frame->icScript()->getOrCreateAllocSite(outerScript, pcOffset);
 }
 
 AttachDecision NewArrayIRGenerator::tryAttachArrayObject() {
@@ -13502,20 +13560,30 @@ AttachDecision OptimizeGetIteratorIRGenerator::tryAttachArray() {
   writer.guardShape(objId, obj->shape());
   writer.guardArrayIsPacked(objId);
 
-  // Guard on Array.prototype[@@iterator].
-  ObjOperandId arrProtoId = writer.loadObject(arrProto);
-  ObjOperandId iterId = writer.loadObject(iterFun);
-  writer.guardShape(arrProtoId, arrProto->shape());
-  writer.guardDynamicSlotIsSpecificObject(arrProtoId, iterId, arrProtoIterSlot);
+  MOZ_ASSERT(obj->nonCCWRealm()->realmFuses.optimizeGetIteratorFuse.intact());
 
-  // Guard on %ArrayIteratorPrototype%.next.
-  ObjOperandId iterProtoId = writer.loadObject(arrayIteratorProto);
-  ObjOperandId nextId = writer.loadObject(nextFun);
-  writer.guardShape(iterProtoId, arrayIteratorProto->shape());
-  writer.guardDynamicSlotIsSpecificObject(iterProtoId, nextId, slot);
+  if (!cx_->options().enableDestructuringFuse()) {
+    // Guard on Array.prototype[@@iterator].
+    ObjOperandId arrProtoId = writer.loadObject(arrProto);
+    ObjOperandId iterId = writer.loadObject(iterFun);
+    writer.guardShape(arrProtoId, arrProto->shape());
+    writer.guardDynamicSlotIsSpecificObject(arrProtoId, iterId,
+                                            arrProtoIterSlot);
 
-  // Guard on the prototype chain to ensure no "return" method is present.
-  ShapeGuardProtoChain(writer, arrayIteratorProto, iterProtoId);
+    // Guard on %ArrayIteratorPrototype%.next.
+    ObjOperandId iterProtoId = writer.loadObject(arrayIteratorProto);
+    ObjOperandId nextId = writer.loadObject(nextFun);
+    writer.guardShape(iterProtoId, arrayIteratorProto->shape());
+    writer.guardDynamicSlotIsSpecificObject(iterProtoId, nextId, slot);
+
+    // Guard on the prototype chain to ensure no "return" method is present.
+    ShapeGuardProtoChain(writer, arrayIteratorProto, iterProtoId);
+  } else {
+    // Guard on Array.prototype[@@iterator] and %ArrayIteratorPrototype%.next.
+    // This fuse also ensures the prototype chain for Array Iterator is
+    // maintained and that no return method is added.
+    writer.guardFuse(RealmFuses::FuseIndex::OptimizeGetIteratorFuse);
+  }
 
   writer.loadBooleanResult(true);
   writer.returnFromIC();

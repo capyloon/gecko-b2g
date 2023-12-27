@@ -211,6 +211,8 @@ support-files = [
   "dynamicResult1.css",
 ]
 
+["browser_editAndEnterWithSlowQuery.js"]
+
 ["browser_edit_invalid_url.js"]
 
 ["browser_engagement.js"]
@@ -281,9 +283,6 @@ support-files = [
 
 ["browser_locationBarCommand.js"]
 https_first_disabled = true
-skip-if = [
-  "os == 'linux' && bits == 64 && !debug", # Bug 1787020
-]
 
 ["browser_locationBarExternalLoad.js"]
 
@@ -347,7 +346,6 @@ support-files = [
   "searchSuggestionEngine2.xml",
   "searchSuggestionEngine.sjs",
 ]
-fail-if = ["a11y_checks"] # Bug 1854660 clicked element may not be focusable and/or labeled
 
 ["browser_populateAfterPushState.js"]
 
@@ -381,7 +379,6 @@ https_first_disabled = true
 ["browser_removeUnsafeProtocolsFromURLBarPaste.js"]
 
 ["browser_remove_match.js"]
-fail-if = ["a11y_checks"] # Bug 1854660 clicked element may not be focusable and/or labeled
 
 ["browser_restoreEmptyInput.js"]
 
@@ -408,7 +405,6 @@ support-files = [
   "searchSuggestionEngine.xml",
   "searchSuggestionEngine.sjs",
 ]
-fail-if = ["a11y_checks"] # Bug 1854660 clicked element may not be focusable and/or labeled
 
 ["browser_searchMode_autofill.js"]
 
@@ -429,10 +425,9 @@ support-files = [
   "searchSuggestionEngine.xml",
   "searchSuggestionEngine.sjs",
 ]
-fail-if = ["a11y_checks"] # Bug 1854660 clicked element may not be focusable and/or labeled
 
 ["browser_searchMode_indicator_clickthrough.js"]
-fail-if = ["a11y_checks"] # Bug 1854660 clicked element may not be focusable and/or labeled
+fail-if = ["a11y_checks"] # Bug 1854660 clicked "urlbar-input-container" may not be focusable
 
 ["browser_searchMode_localOneOffs_actionText.js"]
 support-files = [
@@ -468,10 +463,8 @@ support-files = [
   "searchSuggestionEngine.sjs",
   "searchSuggestionEngineMany.xml",
 ]
-fail-if = ["a11y_checks"] # Bug 1854660 clicked element may not be focusable and/or labeled
 
 ["browser_searchMode_switchTabs.js"]
-fail-if = ["a11y_checks"] # Bug 1854660 clicked element may not be focusable and/or labeled
 
 ["browser_searchSettings.js"]
 
@@ -672,6 +665,8 @@ support-files = ["file_userTypedValue.html"]
 
 ["browser_view_emptyResultSet.js"]
 
+["browser_view_removedSelectedElement.js"]
+
 ["browser_view_resultDisplay.js"]
 
 ["browser_view_resultTypes_display.js"]
@@ -682,7 +677,10 @@ support-files = [
 ]
 
 ["browser_view_selectionByMouse.js"]
-skip-if = ["os == 'linux' && asan"] # Bug 1789051
+skip-if = [
+  "os == 'linux' && asan", # Bug 1789051
+  "a11y_checks", # Bug 1789051,1867430
+]
 
 ["browser_waitForLoadStartOrTimeout.js"]
 https_first_disabled = true

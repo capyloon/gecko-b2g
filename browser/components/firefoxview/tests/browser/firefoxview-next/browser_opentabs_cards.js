@@ -426,8 +426,87 @@ add_task(async function search_open_tabs() {
       () => openTabs.viewCards[1].tabList.rowEls.length === newWinTabs.length,
       "The new window's list is restored."
     );
+
+    info("Input a search query.");
+    EventUtils.synthesizeMouseAtCenter(openTabs.searchTextbox, {}, content);
+    EventUtils.sendString(TEST_URL, content);
+    await TestUtils.waitForCondition(
+      () => openTabs.viewCards[0].tabList.rowEls.length === 0,
+      "There are no matching search results in the original window."
+    );
+    await TestUtils.waitForCondition(
+      () => openTabs.viewCards[1].tabList.rowEls.length === 1,
+      "There is one matching search result in the new window."
+    );
+
+    info("Clear the search query with keyboard.");
+    is(
+      openTabs.shadowRoot.activeElement,
+      openTabs.searchTextbox,
+      "Search input is focused"
+    );
+    EventUtils.synthesizeKey("KEY_Tab", {}, content);
+    ok(
+      openTabs.searchTextbox.clearButton.matches(":focus-visible"),
+      "Clear Search button is focused"
+    );
+    EventUtils.synthesizeKey("KEY_Enter", {}, content);
+    await TestUtils.waitForCondition(
+      () => openTabs.viewCards[0].tabList.rowEls.length === winTabs.length,
+      "The original window's list is restored."
+    );
+    await TestUtils.waitForCondition(
+      () => openTabs.viewCards[1].tabList.rowEls.length === newWinTabs.length,
+      "The new window's list is restored."
+    );
   });
 
+  await SpecialPowers.popPrefEnv();
+  await cleanup();
+});
+
+add_task(async function search_open_tabs_recent_browsing() {
+  const NUMBER_OF_TABS = 6;
+  const win = await BrowserTestUtils.openNewBrowserWindow();
+  for (let i = 0; i < NUMBER_OF_TABS; i++) {
+    await BrowserTestUtils.openNewForegroundTab(win.gBrowser, TEST_URL);
+  }
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.firefox-view.search.enabled", true]],
+  });
+  await openFirefoxViewTab(window).then(async viewTab => {
+    const browser = viewTab.linkedBrowser;
+    await navigateToCategoryAndWait(browser.contentDocument, "recentbrowsing");
+    const recentBrowsing = browser.contentDocument.querySelector(
+      "view-recentbrowsing"
+    );
+
+    info("Input a search query.");
+    EventUtils.synthesizeMouseAtCenter(
+      recentBrowsing.searchTextbox,
+      {},
+      content
+    );
+    EventUtils.sendString(TEST_URL, content);
+    const slot = recentBrowsing.querySelector("[slot='opentabs']");
+    await TestUtils.waitForCondition(
+      () => slot.viewCards[0].tabList.rowEls.length === 5,
+      "Not all search results are shown yet."
+    );
+
+    info("Click the Show All link.");
+    const showAllLink = await TestUtils.waitForCondition(() => {
+      const elt = slot.viewCards[0].shadowRoot.querySelector(
+        "[data-l10n-id='firefoxview-show-all']"
+      );
+      EventUtils.synthesizeMouseAtCenter(elt, {}, content);
+      if (slot.viewCards[0].tabList.rowEls.length === NUMBER_OF_TABS) {
+        return elt;
+      }
+      return false;
+    }, "All search results are shown.");
+    ok(BrowserTestUtils.is_hidden(showAllLink), "The show all link is hidden.");
+  });
   await SpecialPowers.popPrefEnv();
   await cleanup();
 });

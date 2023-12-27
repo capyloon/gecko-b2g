@@ -5,6 +5,14 @@
 import { html, ifDefined } from "chrome://global/content/vendor/lit.all.mjs";
 import { MozLitElement } from "chrome://global/content/lit-utils.mjs";
 
+const lazy = {};
+ChromeUtils.defineESModuleGetters(lazy, {
+  DeferredTask: "resource://gre/modules/DeferredTask.sys.mjs",
+});
+
+const SEARCH_DEBOUNCE_RATE_MS = 500;
+const SEARCH_DEBOUNCE_TIMEOUT_MS = 1000;
+
 /**
  * A search box that displays a search icon and is clearable. Updates to the
  * search query trigger a `fxview-search-textbox-query` event with the current
@@ -32,18 +40,41 @@ export default class FxviewSearchTextbox extends MozLitElement {
   constructor() {
     super();
     this.query = "";
+    this.searchTask = new lazy.DeferredTask(
+      () => this.#dispatchQueryEvent(),
+      SEARCH_DEBOUNCE_RATE_MS,
+      SEARCH_DEBOUNCE_TIMEOUT_MS
+    );
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    if (!this.searchTask?.isFinalized) {
+      this.searchTask?.finalize();
+    }
   }
 
   onInput(event) {
     this.query = event.target.value.trim();
     event.preventDefault();
-    this.#dispatchQueryEvent();
+    this.onSearch();
+  }
+
+  onSearch() {
+    // Make the search and then immediately finalize
+    this.searchTask?.arm();
   }
 
   clear(event) {
-    this.query = "";
-    event.preventDefault();
-    this.#dispatchQueryEvent();
+    if (
+      event.type == "click" ||
+      (event.type == "keydown" && event.code == "Enter") ||
+      (event.type == "keydown" && event.code == "Space")
+    ) {
+      this.query = "";
+      event.preventDefault();
+      this.onSearch();
+    }
   }
 
   #dispatchQueryEvent() {
@@ -69,8 +100,11 @@ export default class FxviewSearchTextbox extends MozLitElement {
       ></input>
       <div
         class="clear-icon"
+        role="button"
+        tabindex="0"
         ?hidden=${!this.query}
         @click=${this.clear}
+        @keydown=${this.clear}
         data-l10n-id="firefoxview-search-text-box-clear-button"
       ></div>
     </div>`;

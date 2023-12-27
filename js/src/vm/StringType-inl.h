@@ -40,10 +40,11 @@ template <typename CharT>
 static MOZ_ALWAYS_INLINE JSAtom* AllocateInlineAtom(JSContext* cx, size_t len,
                                                     CharT** chars,
                                                     js::HashNumber hash) {
-  MOZ_ASSERT(JSInlineString::lengthFits<CharT>(len));
-
-  if (JSThinInlineString::lengthFits<CharT>(len)) {
-    return cx->newCell<js::NormalAtom, js::NoGC>(len, chars, hash);
+  MOZ_ASSERT(JSAtom::lengthFitsInline<CharT>(len));
+  if constexpr (js::ThinInlineAtom::EverInstantiated) {
+    if (js::ThinInlineAtom::lengthFits<CharT>(len)) {
+      return cx->newCell<js::ThinInlineAtom, js::NoGC>(len, chars, hash);
+    }
   }
   return cx->newCell<js::FatInlineAtom, js::NoGC>(len, chars, hash);
 }
@@ -185,7 +186,7 @@ JSString::OwnedChars<CharT>::OwnedChars(CharT* chars, size_t length,
 template <typename CharT>
 JSString::OwnedChars<CharT>::OwnedChars(JSString::OwnedChars<CharT>&& other)
     : OwnedChars(other.chars_.Length() ? other.chars_.data() : nullptr,
-                 other.chars_.Length(), other.needsFree_, other.isMalloced_) {
+                 other.chars_.Length(), other.isMalloced_, other.needsFree_) {
   // Span returns an invalid but nonzero pointer when constructed with
   // nullptr, so test the length and normalize to nullptr, above. That means
   // this class cannot store a zero-length non-null pointer. Assert in the
@@ -589,17 +590,29 @@ inline JSExternalString::JSExternalString(
   d.s.u3.externalCallbacks = callbacks;
 }
 
-MOZ_ALWAYS_INLINE JSExternalString* JSExternalString::new_(
-    JSContext* cx, const char16_t* chars, size_t length,
+inline JSExternalString::JSExternalString(
+    const JS::Latin1Char* chars, size_t length,
+    const JSExternalStringCallbacks* callbacks) {
+  MOZ_ASSERT(callbacks);
+  setLengthAndFlags(length, EXTERNAL_FLAGS | LATIN1_CHARS_BIT);
+  d.s.u2.nonInlineCharsLatin1 = chars;
+  d.s.u3.externalCallbacks = callbacks;
+}
+
+template <typename CharT>
+/* static */
+MOZ_ALWAYS_INLINE JSExternalString* JSExternalString::newImpl(
+    JSContext* cx, const CharT* chars, size_t length,
     const JSExternalStringCallbacks* callbacks) {
   if (MOZ_UNLIKELY(!validateLength(cx, length))) {
     return nullptr;
   }
   auto* str = cx->newCell<JSExternalString>(chars, length, callbacks);
+
   if (!str) {
     return nullptr;
   }
-  size_t nbytes = length * sizeof(char16_t);
+  size_t nbytes = length * sizeof(CharT);
 
   MOZ_ASSERT(str->isTenured());
   js::AddCellMemory(str, nbytes, js::MemoryUse::StringContents);
@@ -607,21 +620,18 @@ MOZ_ALWAYS_INLINE JSExternalString* JSExternalString::new_(
   return str;
 }
 
-inline js::NormalAtom::NormalAtom(size_t length, JS::Latin1Char** chars,
-                                  js::HashNumber hash)
-    : hash_(hash) {
-  MOZ_ASSERT(JSInlineString::lengthFits<JS::Latin1Char>(length));
-  setLengthAndFlags(length,
-                    INIT_THIN_INLINE_FLAGS | LATIN1_CHARS_BIT | ATOM_BIT);
-  *chars = d.inlineStorageLatin1;
+/* static */
+MOZ_ALWAYS_INLINE JSExternalString* JSExternalString::new_(
+    JSContext* cx, const JS::Latin1Char* chars, size_t length,
+    const JSExternalStringCallbacks* callbacks) {
+  return newImpl(cx, chars, length, callbacks);
 }
 
-inline js::NormalAtom::NormalAtom(size_t length, char16_t** chars,
-                                  js::HashNumber hash)
-    : hash_(hash) {
-  MOZ_ASSERT(JSInlineString::lengthFits<char16_t>(length));
-  setLengthAndFlags(length, INIT_THIN_INLINE_FLAGS | ATOM_BIT);
-  *chars = d.inlineStorageTwoByte;
+/* static */
+MOZ_ALWAYS_INLINE JSExternalString* JSExternalString::new_(
+    JSContext* cx, const char16_t* chars, size_t length,
+    const JSExternalStringCallbacks* callbacks) {
+  return newImpl(cx, chars, length, callbacks);
 }
 
 inline js::NormalAtom::NormalAtom(const char16_t* chars, size_t length,
@@ -642,10 +652,27 @@ inline js::NormalAtom::NormalAtom(const JS::Latin1Char* chars, size_t length,
   d.s.u2.nonInlineCharsLatin1 = chars;
 }
 
+#ifndef JS_64BIT
+inline js::ThinInlineAtom::ThinInlineAtom(size_t length, JS::Latin1Char** chars,
+                                          js::HashNumber hash)
+    : NormalAtom(hash) {
+  setLengthAndFlags(length,
+                    INIT_THIN_INLINE_FLAGS | LATIN1_CHARS_BIT | ATOM_BIT);
+  *chars = d.inlineStorageLatin1;
+}
+
+inline js::ThinInlineAtom::ThinInlineAtom(size_t length, char16_t** chars,
+                                          js::HashNumber hash)
+    : NormalAtom(hash) {
+  setLengthAndFlags(length, INIT_THIN_INLINE_FLAGS | ATOM_BIT);
+  *chars = d.inlineStorageTwoByte;
+}
+#endif
+
 inline js::FatInlineAtom::FatInlineAtom(size_t length, JS::Latin1Char** chars,
                                         js::HashNumber hash)
     : hash_(hash) {
-  MOZ_ASSERT(JSFatInlineString::lengthFits<JS::Latin1Char>(length));
+  MOZ_ASSERT(lengthFits<JS::Latin1Char>(length));
   setLengthAndFlags(length,
                     INIT_FAT_INLINE_FLAGS | LATIN1_CHARS_BIT | ATOM_BIT);
   *chars = d.inlineStorageLatin1;
@@ -654,7 +681,7 @@ inline js::FatInlineAtom::FatInlineAtom(size_t length, JS::Latin1Char** chars,
 inline js::FatInlineAtom::FatInlineAtom(size_t length, char16_t** chars,
                                         js::HashNumber hash)
     : hash_(hash) {
-  MOZ_ASSERT(JSFatInlineString::lengthFits<char16_t>(length));
+  MOZ_ASSERT(lengthFits<char16_t>(length));
   setLengthAndFlags(length, INIT_FAT_INLINE_FLAGS | ATOM_BIT);
   *chars = d.inlineStorageTwoByte;
 }
@@ -725,10 +752,17 @@ inline void js::FatInlineAtom::finalize(JS::GCContext* gcx) {
 inline void JSExternalString::finalize(JS::GCContext* gcx) {
   MOZ_ASSERT(JSString::isExternal());
 
-  size_t nbytes = length() * sizeof(char16_t);
-  gcx->removeCellMemory(this, nbytes, js::MemoryUse::StringContents);
+  if (hasLatin1Chars()) {
+    size_t nbytes = length() * sizeof(JS::Latin1Char);
+    gcx->removeCellMemory(this, nbytes, js::MemoryUse::StringContents);
 
-  callbacks()->finalize(const_cast<char16_t*>(rawTwoByteChars()));
+    callbacks()->finalize(const_cast<JS::Latin1Char*>(rawLatin1Chars()));
+  } else {
+    size_t nbytes = length() * sizeof(char16_t);
+    gcx->removeCellMemory(this, nbytes, js::MemoryUse::StringContents);
+
+    callbacks()->finalize(const_cast<char16_t*>(rawTwoByteChars()));
+  }
 }
 
 #endif /* vm_StringType_inl_h */

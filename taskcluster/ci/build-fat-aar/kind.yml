@@ -37,6 +37,9 @@ job-defaults:
             - name: public/build/maven
               path: /builds/worker/workspace/obj-build/gradle/maven/
               type: directory
+            - name: public/build/target.maven.tar.xz
+              path: /builds/worker/workspace/obj-build/gradle/target.maven.tar.xz
+              type: file
             - name: public/build
               path: /builds/worker/artifacts/
               type: directory
@@ -63,20 +66,20 @@ job-defaults:
         tooltool-downloads: internal
         # Note: These settings are only honored by nightly (i.e. shipping) builds
         update-channel:
-            by-project:
-                try: nightly-try
-                default:
-                    by-release-type:
-                        nightly: nightly
-                        nightly-oak: nightly-oak
-                        nightly-pine: nightly-pine
-                        beta:
-                            by-shipping-product:
-                                devedition: aurora
-                                default: beta
-                        release.*: release
-                        esr.*: esr
-                        default: null
+            by-release-type:
+                nightly:
+                    by-project:
+                        try: nightly-try
+                        default: nightly
+                nightly-oak: nightly-oak
+                nightly-pine: nightly-pine
+                beta:
+                    by-shipping-product:
+                        devedition: aurora
+                        default: beta
+                release.*: release
+                esr.*: esr
+                default: null
     fetches:
         toolchain:
             - android-ndk-linux

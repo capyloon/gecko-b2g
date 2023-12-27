@@ -19,7 +19,7 @@ class ViewState {
   currentTabWebcompatDetailsPromise;
   isURLValid = false;
   isDescriptionValid = false;
-  isReasonValid = false;
+  #isReasonValid = false;
 
   constructor(doc) {
     this.#doc = doc;
@@ -37,6 +37,14 @@ class ViewState {
   static #cache = new WeakMap();
   static get(doc) {
     return ViewState.#cache.get(doc) ?? new ViewState(doc);
+  }
+
+  get mainPanelview() {
+    return this.#mainView;
+  }
+
+  get reportSentPanelview() {
+    return this.#reportSentView;
   }
 
   get urlInput() {
@@ -78,6 +86,12 @@ class ViewState {
     return this.#mainView.querySelector("#report-broken-site-popup-reason");
   }
 
+  get reasonInputValidationHelper() {
+    return this.#mainView.querySelector(
+      "#report-broken-site-popup-missing-reason-validation-helper"
+    );
+  }
+
   get reason() {
     const reason = this.reasonInput.selectedItem.id.replace(
       ViewState.REASON_CHOICES_ID_PREFIX,
@@ -107,21 +121,52 @@ class ViewState {
     this.isDescriptionValid = false;
 
     this.reason = "choose";
-    this.isReasonValid = false;
+    this.#isReasonValid = false;
+    this.toggleReasonValidationMessage(false);
   }
 
-  enableOrDisableSendButton(
-    isReasonEnabled,
-    isReasonOptional,
-    isDescriptionOptional
-  ) {
-    const isReasonOkay =
-      !isReasonEnabled || isReasonOptional || this.isReasonValid;
+  get isReasonValid() {
+    return this.#isReasonValid;
+  }
 
-    const isDescriptionOkay = isDescriptionOptional || this.isDescriptionValid;
+  set isReasonValid(isValid) {
+    this.#isReasonValid = isValid;
+    this.toggleReasonValidationMessage(!isValid);
+  }
 
-    this.sendButton.disabled =
-      !this.isURLValid || !isReasonOkay || !isDescriptionOkay;
+  toggleReasonValidationMessage(show) {
+    const validation = this.reasonInputValidationHelper;
+    validation.setCustomValidity(show ? "required" : "");
+    validation.reportValidity();
+  }
+
+  get isReasonOkay() {
+    const { reasonEnabled, reasonIsOptional } =
+      this.#doc.ownerGlobal.ReportBrokenSite;
+    return !reasonEnabled || reasonIsOptional || this.isReasonValid;
+  }
+
+  get isDescriptionOkay() {
+    const { descriptionIsOptional } = this.#doc.ownerGlobal.ReportBrokenSite;
+    return descriptionIsOptional || this.isDescriptionValid;
+  }
+
+  checkAndShowInputValidity() {
+    // This function focuses on the first invalid input (if any), updates the validity of
+    // the helper input for the reason drop-down (so CSS :invalid state is updated),
+    // and returns true if the form has an invalid input (false otherwise).
+    const { isURLValid, isReasonOkay, isDescriptionOkay } = this;
+    const validation = this.reasonInputValidationHelper;
+    validation.setCustomValidity(isReasonOkay ? "" : "missing");
+    validation.reportValidity();
+    if (!isURLValid) {
+      this.urlInput.focus();
+    } else if (!isReasonOkay) {
+      this.reasonInput.openMenu(true);
+    } else if (!isDescriptionOkay) {
+      this.descriptionInput.focus();
+    }
+    return !(isURLValid && isReasonOkay && isDescriptionOkay);
   }
 
   get sendMoreInfoLink() {
@@ -221,6 +266,18 @@ export var ReportBrokenSite = new (class ReportBrokenSite {
   #descriptionIsOptional = true;
   #sendMoreInfoEnabled = true;
 
+  get reasonEnabled() {
+    return this.#reasonEnabled;
+  }
+
+  get reasonIsOptional() {
+    return this.#reasonIsOptional;
+  }
+
+  get descriptionIsOptional() {
+    return this.#descriptionIsOptional;
+  }
+
   constructor() {
     for (const [name, [pref, dflt]] of Object.entries({
       dataReportingPref: [ReportBrokenSite.DATAREPORTING_PREF, false],
@@ -289,10 +346,7 @@ export var ReportBrokenSite = new (class ReportBrokenSite {
         .addEventListener("popupshown", this.updateParentMenu.bind(this));
     }
 
-    ownerGlobal.PanelMultiView.getViewNode(
-      document,
-      ReportBrokenSite.MAIN_PANELVIEW_ID
-    ).addEventListener("ViewShowing", ({ target }) => {
+    state.mainPanelview.addEventListener("ViewShowing", ({ target }) => {
       const { selectedBrowser } = target.ownerGlobal.gBrowser;
       let source = "helpMenu";
       switch (target.closest("panelmultiview")?.id) {
@@ -304,6 +358,22 @@ export var ReportBrokenSite = new (class ReportBrokenSite {
           break;
       }
       this.#onMainViewShown(source, selectedBrowser);
+    });
+
+    // Make sure the URL input is focused when the main view pops up.
+    state.mainPanelview.addEventListener("ViewShown", () => {
+      const panelview = ownerGlobal.PanelView.forNode(state.mainPanelview);
+      panelview.selectedElement = state.urlInput;
+      panelview.focusSelectedElement();
+    });
+
+    // Make sure the Okay button is focused when the report sent view pops up.
+    state.reportSentPanelview.addEventListener("ViewShown", () => {
+      const panelview = ownerGlobal.PanelView.forNode(
+        state.reportSentPanelview
+      );
+      panelview.selectedElement = state.okayButton;
+      panelview.focusSelectedElement();
     });
   }
 
@@ -345,6 +415,15 @@ export var ReportBrokenSite = new (class ReportBrokenSite {
       reportSiteIssue.hidden = this.enabled || !this.reportSiteIssueEnabledPref;
       reportSiteIssue.disabled = !canReportUrl;
     }
+
+    // "Site not working?" on the protections panel should be hidden when
+    // Report Broken Site is visible (bug 1868527).
+    const siteNotWorking = document.getElementById(
+      "protections-popup-tp-switch-section-footer"
+    );
+    if (siteNotWorking) {
+      siteNotWorking.hidden = this.enabled;
+    }
   }
 
   #checkPrefs(whichChanged) {
@@ -368,10 +447,12 @@ export var ReportBrokenSite = new (class ReportBrokenSite {
 
   #initMainView(state) {
     state.sendButton.addEventListener("command", async ({ target }) => {
+      if (state.checkAndShowInputValidity()) {
+        return;
+      }
       const multiview = target.closest("panelmultiview");
       this.#recordGleanEvent("send");
       await this.#sendReportAsGleanPing(state);
-      state.reportSentView.hidden = false;
       multiview.showSubView("report-broken-site-popup-reportSentView");
       state.reset();
     });
@@ -394,11 +475,6 @@ export var ReportBrokenSite = new (class ReportBrokenSite {
       const newUrlValid = target.value && target.checkValidity();
       if (state.isURLValid != newUrlValid) {
         state.isURLValid = newUrlValid;
-        state.enableOrDisableSendButton(
-          this.#reasonEnabled,
-          this.#reasonIsOptional,
-          this.#descriptionIsOptional
-        );
       }
     });
 
@@ -406,11 +482,6 @@ export var ReportBrokenSite = new (class ReportBrokenSite {
       const newDescValid = gDescriptionCheckRE.test(target.value);
       if (state.isDescriptionValid != newDescValid) {
         state.isDescriptionValid = newDescValid;
-        state.enableOrDisableSendButton(
-          this.#reasonEnabled,
-          this.#reasonIsOptional,
-          this.#descriptionIsOptional
-        );
       }
     });
 
@@ -420,11 +491,6 @@ export var ReportBrokenSite = new (class ReportBrokenSite {
       const newValidity = choiceId !== ViewState.CHOOSE_A_REASON_OPT_ID;
       if (state.isReasonValid != newValidity) {
         state.isReasonValid = newValidity;
-        state.enableOrDisableSendButton(
-          this.#reasonEnabled,
-          this.#reasonIsOptional,
-          this.#descriptionIsOptional
-        );
       }
     });
 
@@ -460,8 +526,6 @@ export var ReportBrokenSite = new (class ReportBrokenSite {
       state.resetURLToCurrentTab();
     }
 
-    state.mainView.hidden = false;
-
     const { sendMoreInfoLink } = state;
     const { sendMoreInfoEndpoint } = this;
     if (sendMoreInfoLink.href !== sendMoreInfoEndpoint) {
@@ -478,12 +542,6 @@ export var ReportBrokenSite = new (class ReportBrokenSite {
 
     state.descriptionLabelRequired.hidden = this.#descriptionIsOptional;
     state.descriptionLabelOptional.hidden = !this.#descriptionIsOptional;
-
-    state.enableOrDisableSendButton(
-      this.#reasonEnabled,
-      this.#reasonIsOptional,
-      this.#descriptionIsOptional
-    );
 
     this.#recordGleanEvent("opened", { source });
 
@@ -669,11 +727,9 @@ export var ReportBrokenSite = new (class ReportBrokenSite {
         const appMenuPopup = document.getElementById("appMenu-popup");
         appMenuPopup?.hidePopup();
 
-        // See bug 1864957; we should be able to use showSubView here
-        ownerGlobal.PanelMultiView.openPopup(
-          document.getElementById("report-broken-main-menu-panel"),
-          document.getElementById("PanelUI-menu-button"),
-          { position: "bottomright topright" }
+        ownerGlobal.PanelUI.showSubView(
+          ReportBrokenSite.MAIN_PANELVIEW_ID,
+          ownerGlobal.PanelUI.menuButton
         );
         break;
     }

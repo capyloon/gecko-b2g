@@ -173,12 +173,15 @@ enum class GLRenderer {
   GalliumLlvmpipe,
   IntelHD3000,
   MicrosoftBasicRenderDriver,
+  SamsungXclipse920,
   Other
 };
 
 class GLContext : public GenericAtomicRefCounted, public SupportsWeakPtr {
  public:
   static MOZ_THREAD_LOCAL(const GLContext*) sCurrentContext;
+
+  static void InvalidateCurrentContext();
 
   const GLContextDesc mDesc;
 
@@ -190,9 +193,12 @@ class GLContext : public GenericAtomicRefCounted, public SupportsWeakPtr {
     const bool mWasTlsOk;
 
    public:
-    explicit TlsScope(GLContext* const gl)
+    explicit TlsScope(GLContext* const gl, bool invalidate = false)
         : mGL(gl), mWasTlsOk(gl && gl->mUseTLSIsCurrent) {
       if (mGL) {
+        if (invalidate) {
+          InvalidateCurrentContext();
+        }
         mGL->mUseTLSIsCurrent = true;
       }
     }

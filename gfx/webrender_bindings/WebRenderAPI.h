@@ -226,6 +226,9 @@ class TransactionWrapper final {
       const layers::ScrollableLayerGuid::ViewID& aScrollId,
       const nsTArray<wr::SampledScrollOffset>& aSampledOffsets);
   void UpdateIsTransformAsyncZooming(uint64_t aAnimationId, bool aIsZooming);
+  void AddMinimapData(const wr::WrPipelineId& aPipelineId,
+                      const layers::ScrollableLayerGuid::ViewID& aScrollId,
+                      const MinimapData& aMinimapData);
 
  private:
   Transaction* mTxn;
@@ -310,13 +313,17 @@ class WebRenderAPI final {
   void FlushPendingWrTransactionEventsWithoutWait();
   void FlushPendingWrTransactionEventsWithWait();
 
+  wr::WebRenderAPI* GetRootAPI();
+
  protected:
   WebRenderAPI(wr::DocumentHandle* aHandle, wr::WindowId aId,
                layers::WebRenderBackend aBackend,
                layers::WebRenderCompositor aCompositor,
                uint32_t aMaxTextureSize, bool aUseANGLE, bool aUseDComp,
                bool aUseTripleBuffering, bool aSupportsExternalBufferTextures,
-               layers::SyncHandle aSyncHandle);
+               layers::SyncHandle aSyncHandle,
+               wr::WebRenderAPI* aRootApi = nullptr,
+               wr::WebRenderAPI* aRootDocumentApi = nullptr);
 
   ~WebRenderAPI();
   // Should be used only for shutdown handling
@@ -442,8 +449,8 @@ class WebRenderAPI final {
   // objects in the same window use the same channel, and some api objects write
   // to the same document (but there is only one owner for each channel and for
   // each document).
-  RefPtr<wr::WebRenderAPI> mRootApi;
-  RefPtr<wr::WebRenderAPI> mRootDocumentApi;
+  const RefPtr<wr::WebRenderAPI> mRootApi;
+  const RefPtr<wr::WebRenderAPI> mRootDocumentApi;
 
   friend class DisplayListBuilder;
   friend class layers::WebRenderBridgeParent;

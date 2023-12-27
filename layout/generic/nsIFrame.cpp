@@ -170,6 +170,15 @@ nsIFrame* nsILineIterator::LineInfo::GetLastFrameOnLine() const {
   return maybeLastFrame;
 }
 
+#ifdef HAVE_64BIT_BUILD
+static_assert(sizeof(nsIFrame) == 120, "nsIFrame should remain small");
+#else
+static_assert(sizeof(void*) == 4, "Odd build config?");
+// FIXME(emilio): Investigate why win32 and android-arm32 have bigger sizes (80)
+// than Linux32 (76).
+static_assert(sizeof(nsIFrame) <= 80, "nsIFrame should remain small");
+#endif
+
 const mozilla::LayoutFrameType nsIFrame::sLayoutFrameTypes[kFrameClassCount] = {
 #define FRAME_ID(class_, type_, ...) mozilla::LayoutFrameType::type_,
 #define ABSTRACT_FRAME_ID(...)
@@ -731,6 +740,12 @@ void nsIFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
   // prev-in-flow, and the animation code cares only primary frames.
   if (!IsPlaceholderFrame() && !aPrevInFlow) {
     UpdateVisibleDescendantsState();
+  }
+
+  if (!aPrevInFlow && HasAnyStateBits(NS_FRAME_IS_NONDISPLAY)) {
+    // We aren't going to get a reflow, so nothing else will call
+    // InvalidateRenderingObservers, we have to do it here.
+    SVGObserverUtils::InvalidateRenderingObservers(this);
   }
 }
 
@@ -4519,8 +4534,8 @@ nsresult nsIFrame::GetDataForTableSelection(
 }
 
 static bool IsEditingHost(const nsIFrame* aFrame) {
-  auto* element = nsGenericHTMLElement::FromNodeOrNull(aFrame->GetContent());
-  return element && element->IsEditableRoot();
+  nsIContent* content = aFrame->GetContent();
+  return content && content->IsEditingHost();
 }
 
 static StyleUserSelect UsedUserSelect(const nsIFrame* aFrame) {
@@ -5873,7 +5888,6 @@ void nsIFrame::MarkSubtreeDirty() {
   // Mark all descendants dirty, unless:
   // - Already dirty.
   // - TableColGroup
-  // - XULBox
   AutoTArray<nsIFrame*, 32> stack;
   for (const auto& childLists : ChildLists()) {
     for (nsIFrame* kid : childLists.mList) {
@@ -6279,6 +6293,7 @@ nsIFrame::SizeComputationResult nsIFrame::ComputeSize(
   auto parentFrame = GetParent();
   auto alignCB = parentFrame;
   bool isGridItem = IsGridItem();
+  const bool isSubgrid = IsSubgrid();
   if (parentFrame && parentFrame->IsTableWrapperFrame() && IsTableFrame()) {
     // An inner table frame is sized as a grid item if its table wrapper is,
     // because they actually have the same CB (the wrapper's CB).
@@ -6311,8 +6326,16 @@ nsIFrame::SizeComputationResult nsIFrame::ComputeSize(
   const bool isAutoISize = styleISize.IsAuto();
   const bool isAutoBSize =
       nsLayoutUtils::IsAutoBSize(styleBSize, aCBSize.BSize(aWM));
+
   // Compute inline-axis size
-  if (!isAutoISize) {
+  const bool isSubgriddedInInlineAxis =
+      isSubgrid && static_cast<nsGridContainerFrame*>(this)->IsColSubgrid();
+
+  // Per https://drafts.csswg.org/css-grid/#subgrid-box-alignment, if we are
+  // subgridded in the inline-axis, ignore our style inline-size, and stretch to
+  // fill the CB.
+  const bool shouldComputeISize = !isAutoISize && !isSubgriddedInInlineAxis;
+  if (shouldComputeISize) {
     auto iSizeResult = ComputeISizeValue(
         aRenderingContext, aWM, aCBSize, boxSizingAdjust,
         boxSizingToMarginEdgeISize, styleISize, aSizeOverrides, aFlags);
@@ -6423,9 +6446,13 @@ nsIFrame::SizeComputationResult nsIFrame::ComputeSize(
   // the flexbox algorithm.)
   const bool isFlexItemInlineAxisMainAxis =
       isFlexItem && flexMainAxis == eLogicalAxisInline;
+  // Grid items that are subgridded in inline-axis also ignore their min & max
+  // sizing properties in that axis.
+  const bool shouldIgnoreMinMaxISize =
+      isFlexItemInlineAxisMainAxis || isSubgriddedInInlineAxis;
   const auto& maxISizeCoord = stylePos->MaxISize(aWM);
   nscoord maxISize = NS_UNCONSTRAINEDSIZE;
-  if (!maxISizeCoord.IsNone() && !isFlexItemInlineAxisMainAxis) {
+  if (!maxISizeCoord.IsNone() && !shouldIgnoreMinMaxISize) {
     maxISize = ComputeISizeValue(aRenderingContext, aWM, aCBSize,
                                  boxSizingAdjust, boxSizingToMarginEdgeISize,
                                  maxISizeCoord, aSizeOverrides, aFlags)
@@ -6435,7 +6462,7 @@ nsIFrame::SizeComputationResult nsIFrame::ComputeSize(
 
   const auto& minISizeCoord = stylePos->MinISize(aWM);
   nscoord minISize;
-  if (!minISizeCoord.IsAuto() && !isFlexItemInlineAxisMainAxis) {
+  if (!minISizeCoord.IsAuto() && !shouldIgnoreMinMaxISize) {
     minISize = ComputeISizeValue(aRenderingContext, aWM, aCBSize,
                                  boxSizingAdjust, boxSizingToMarginEdgeISize,
                                  minISizeCoord, aSizeOverrides, aFlags)
@@ -6483,7 +6510,14 @@ nsIFrame::SizeComputationResult nsIFrame::ComputeSize(
   // that we already calculated in the initial ComputeAutoSize() call. However,
   // if we have a valid preferred aspect ratio, we still have to compute the
   // block size because aspect ratio affects the intrinsic content size.)
-  if (!isAutoBSize) {
+  const bool isSubgriddedInBlockAxis =
+      isSubgrid && static_cast<nsGridContainerFrame*>(this)->IsRowSubgrid();
+
+  // Per https://drafts.csswg.org/css-grid/#subgrid-box-alignment, if we are
+  // subgridded in the block-axis, ignore our style block-size, and stretch to
+  // fill the CB.
+  const bool shouldComputeBSize = !isAutoBSize && !isSubgriddedInBlockAxis;
+  if (shouldComputeBSize) {
     result.BSize(aWM) = nsLayoutUtils::ComputeBSizeValue(
         aCBSize.BSize(aWM), boxSizingAdjust.BSize(aWM),
         styleBSize.AsLengthPercentage());
@@ -6546,16 +6580,23 @@ nsIFrame::SizeComputationResult nsIFrame::ComputeSize(
   }
 
   if (result.BSize(aWM) != NS_UNCONSTRAINEDSIZE) {
+    // Flex items ignore their min & max sizing properties in their flex
+    // container's main-axis. (Those properties get applied later in the flexbox
+    // algorithm.)
     const bool isFlexItemBlockAxisMainAxis =
         isFlexItem && flexMainAxis == eLogicalAxisBlock;
-    if (!isAutoMaxBSize && !isFlexItemBlockAxisMainAxis) {
+    // Grid items that are subgridded in block-axis also ignore their min & max
+    // sizing properties in that axis.
+    const bool shouldIgnoreMinMaxBSize =
+        isFlexItemBlockAxisMainAxis || isSubgriddedInBlockAxis;
+    if (!isAutoMaxBSize && !shouldIgnoreMinMaxBSize) {
       nscoord maxBSize = nsLayoutUtils::ComputeBSizeValue(
           aCBSize.BSize(aWM), boxSizingAdjust.BSize(aWM),
           maxBSizeCoord.AsLengthPercentage());
       result.BSize(aWM) = std::min(maxBSize, result.BSize(aWM));
     }
 
-    if (!isAutoMinBSize && !isFlexItemBlockAxisMainAxis) {
+    if (!isAutoMinBSize && !shouldIgnoreMinMaxBSize) {
       nscoord minBSize = nsLayoutUtils::ComputeBSizeValue(
           aCBSize.BSize(aWM), boxSizingAdjust.BSize(aWM),
           minBSizeCoord.AsLengthPercentage());
@@ -6997,7 +7038,7 @@ bool nsIFrame::IsDescendantOfTopLayerElement() const {
   return false;
 }
 
-void nsIFrame::UpdateIsRelevantContent(
+bool nsIFrame::UpdateIsRelevantContent(
     const ContentRelevancy& aRelevancyToUpdate) {
   MOZ_ASSERT(StyleDisplay()->ContentVisibility(*this) ==
              StyleContentVisibility::Auto);
@@ -7047,7 +7088,7 @@ void nsIFrame::UpdateIsRelevantContent(
   }
 
   if (!overallRelevancyChanged) {
-    return;
+    return false;
   }
 
   HandleLastRememberedSize();
@@ -7069,6 +7110,7 @@ void nsIFrame::UpdateIsRelevantContent(
       new AsyncEventDispatcher(element, event.forget());
   DebugOnly<nsresult> rv = asyncDispatcher->PostDOMEvent();
   NS_ASSERTION(NS_SUCCEEDED(rv), "AsyncEventDispatcher failed to dispatch");
+  return true;
 }
 
 nsresult nsIFrame::CharacterDataChanged(const CharacterDataChangeInfo&) {
@@ -8558,7 +8600,6 @@ static nsresult GetNextPrevLineFromBlockFrame(PeekOffsetStruct* aPos,
   bool isBeforeFirstFrame, isAfterLastFrame;
   bool found = false;
 
-  nsresult result = NS_OK;
   while (!found) {
     if (aPos->mDirection == eDirPrevious)
       searchingLine--;
@@ -8597,9 +8638,9 @@ static nsresult GetNextPrevLineFromBlockFrame(PeekOffsetStruct* aPos,
     nsPoint newDesiredPos =
         aPos->mDesiredCaretPos -
         offset;  // get desired position into blockframe coords
-    result = it->FindFrameAt(searchingLine, newDesiredPos, &resultFrame,
-                             &isBeforeFirstFrame, &isAfterLastFrame);
-    if (NS_FAILED(result)) {
+    nsresult rv = it->FindFrameAt(searchingLine, newDesiredPos, &resultFrame,
+                                  &isBeforeFirstFrame, &isAfterLastFrame);
+    if (NS_FAILED(rv)) {
       continue;
     }
 
@@ -8611,19 +8652,14 @@ static nsresult GetNextPrevLineFromBlockFrame(PeekOffsetStruct* aPos,
         return NS_OK;
       }
       // resultFrame is not a block frame
-      result = NS_ERROR_FAILURE;
-
-      nsCOMPtr<nsIFrameEnumerator> frameTraversal;
-      result = NS_NewFrameTraversal(
-          getter_AddRefs(frameTraversal), pc, resultFrame, ePostOrder,
+      Maybe<nsFrameIterator> frameIterator;
+      frameIterator.emplace(
+          pc, resultFrame, nsFrameIterator::Type::PostOrder,
           false,  // aVisual
           aPos->mOptions.contains(PeekOffsetOption::StopAtScroller),
           false,  // aFollowOOFs
           false   // aSkipPopupChecks
       );
-      if (NS_FAILED(result)) {
-        return result;
-      }
 
       auto FoundValidFrame = [aPos](const nsIFrame::ContentOffsets& aOffsets,
                                     const nsIFrame* aFrame) {
@@ -8681,7 +8717,7 @@ static nsresult GetNextPrevLineFromBlockFrame(PeekOffsetStruct* aPos,
           break;
         }
         // always try previous on THAT line if that fails go the other way
-        resultFrame = frameTraversal->Traverse(/* aForward = */ false);
+        resultFrame = frameIterator->Traverse(/* aForward = */ false);
         if (!resultFrame) {
           return NS_ERROR_FAILURE;
         }
@@ -8689,14 +8725,15 @@ static nsresult GetNextPrevLineFromBlockFrame(PeekOffsetStruct* aPos,
 
       if (!found) {
         resultFrame = storeOldResultFrame;
-
-        result = NS_NewFrameTraversal(
-            getter_AddRefs(frameTraversal), pc, resultFrame, eLeaf,
+        frameIterator.reset();
+        frameIterator.emplace(
+            pc, resultFrame, nsFrameIterator::Type::Leaf,
             false,  // aVisual
             aPos->mOptions.contains(PeekOffsetOption::StopAtScroller),
             false,  // aFollowOOFs
             false   // aSkipPopupChecks
         );
+        MOZ_ASSERT(frameIterator);
       }
       while (!found) {
         nsPoint point = aPos->mDesiredCaretPos;
@@ -8722,7 +8759,7 @@ static nsresult GetNextPrevLineFromBlockFrame(PeekOffsetStruct* aPos,
         if (aPos->mDirection == eDirNext && (resultFrame == farStoppingFrame))
           break;
         // previous didnt work now we try "next"
-        nsIFrame* tempFrame = frameTraversal->Traverse(/* aForward = */ true);
+        nsIFrame* tempFrame = frameIterator->Traverse(/* aForward = */ true);
         if (!tempFrame) break;
         resultFrame = tempFrame;
       }
@@ -9581,13 +9618,11 @@ nsIFrame::SelectablePeekReport nsIFrame::GetFrameFromDirection(
       aOptions.contains(PeekOffsetOption::Visual) && presContext->BidiEnabled();
   const bool followOofs =
       !aOptions.contains(PeekOffsetOption::StopAtPlaceholder);
-  nsCOMPtr<nsIFrameEnumerator> frameTraversal;
-  MOZ_TRY(NS_NewFrameTraversal(
-      getter_AddRefs(frameTraversal), presContext, this, eLeaf,
-      needsVisualTraversal, aOptions.contains(PeekOffsetOption::StopAtScroller),
-      followOofs,
+  nsFrameIterator frameIterator(
+      presContext, this, nsFrameIterator::Type::Leaf, needsVisualTraversal,
+      aOptions.contains(PeekOffsetOption::StopAtScroller), followOofs,
       false  // aSkipPopupChecks
-      ));
+  );
 
   // Find the prev/next selectable frame
   bool selectable = false;
@@ -9627,7 +9662,7 @@ nsIFrame::SelectablePeekReport nsIFrame::GetFrameFromDirection(
       }
     }
 
-    traversedFrame = frameTraversal->Traverse(aDirection == eDirNext);
+    traversedFrame = frameIterator.Traverse(aDirection == eDirNext);
     if (!traversedFrame) {
       return result;
     }
@@ -10658,8 +10693,7 @@ bool nsIFrame::IsFocusableDueToScrollFrame() {
   return true;
 }
 
-nsIFrame::Focusable nsIFrame::IsFocusable(bool aWithMouse,
-                                          bool aCheckVisibility) {
+Focusable nsIFrame::IsFocusable(bool aWithMouse, bool aCheckVisibility) {
   // cannot focus content in print preview mode. Only the root can be focused,
   // but that's handled elsewhere.
   if (PresContext()->Type() == nsPresContext::eContext_PrintPreview) {
@@ -10674,26 +10708,34 @@ nsIFrame::Focusable nsIFrame::IsFocusable(bool aWithMouse,
     return {};
   }
 
-  const nsStyleUI& ui = *StyleUI();
-  if (ui.IsInert()) {
+  const StyleUserFocus uf = StyleUI()->UserFocus();
+  if (uf == StyleUserFocus::None) {
     return {};
   }
+  MOZ_ASSERT(!StyleUI()->IsInert(), "inert implies -moz-user-focus: none");
 
-  PseudoStyleType pseudo = Style()->GetPseudoType();
+  const PseudoStyleType pseudo = Style()->GetPseudoType();
   if (pseudo == PseudoStyleType::anonymousItem) {
     return {};
   }
 
-  int32_t tabIndex = -1;
-  if (ui.UserFocus() != StyleUserFocus::Ignore &&
-      ui.UserFocus() != StyleUserFocus::None) {
-    // Pass in default tabindex of -1 for nonfocusable and 0 for focusable
-    tabIndex = 0;
+  Focusable focusable;
+  if (auto* xul = nsXULElement::FromNode(mContent)) {
+    // As a legacy special-case, -moz-user-focus controls focusability and
+    // tabability of XUL elements in some circumstances (which default to
+    // -moz-user-focus: ignore).
+    auto focusability = xul->GetXULFocusability(aWithMouse);
+    focusable.mFocusable =
+        focusability.mForcedFocusable.valueOr(uf == StyleUserFocus::Normal);
+    if (focusable) {
+      focusable.mTabIndex = focusability.mForcedTabIndexIfFocusable.valueOr(0);
+    }
+  } else {
+    focusable = mContent->IsFocusableWithoutStyle(aWithMouse);
   }
 
-  if (mContent->IsFocusable(&tabIndex, aWithMouse)) {
-    // If the content is focusable, then we're done.
-    return {true, tabIndex};
+  if (focusable) {
+    return focusable;
   }
 
   // If we're focusing with the mouse we never focus scroll areas.
@@ -10701,7 +10743,10 @@ nsIFrame::Focusable nsIFrame::IsFocusable(bool aWithMouse,
     return {true, 0};
   }
 
-  return {false, tabIndex};
+  // FIXME(emilio): some callers rely on somewhat broken return values
+  // (focusable = false, but non-negative tab-index) from
+  // IsFocusableWithoutStyle (for image maps in particular).
+  return focusable;
 }
 
 /**

@@ -1289,13 +1289,6 @@ export var Policies = {
           param.Locked
         );
       }
-      if ("Snippets" in param) {
-        PoliciesUtils.setDefaultPref(
-          "browser.newtabpage.activity-stream.feeds.snippets",
-          param.Snippets,
-          param.Locked
-        );
-      }
     },
   },
 
@@ -1718,6 +1711,7 @@ export var Policies = {
     onBeforeAddons(manager, param) {
       let allowedPrefixes = [
         "accessibility.",
+        "alerts.",
         "app.update.",
         "browser.",
         "datareporting.policy.",
@@ -2334,6 +2328,11 @@ export var Policies = {
         PoliciesUtils.setDefaultPref(
           "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features",
           param.FeatureRecommendations,
+          param.Locked
+        );
+        PoliciesUtils.setDefaultPref(
+          "browser.translations.panelShown",
+          !param.FeatureRecommendations,
           param.Locked
         );
       }

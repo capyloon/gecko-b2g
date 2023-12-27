@@ -28,6 +28,7 @@
 #include "vm/JSObject.h"
 #include "vm/PlainObject.h"  // js::PlainObject
 #include "vm/StringType.h"
+#include "vm/Watchtower.h"
 
 #include "vm/Interpreter-inl.h"
 
@@ -1781,6 +1782,32 @@ bool RNewCallObject::recover(JSContext* cx, SnapshotIterator& iter) const {
   return true;
 }
 
+bool MObjectKeys::canRecoverOnBailout() const {
+  // Only claim that this operation can be recovered on bailout if some other
+  // optimization already marked it as such.
+  return isRecoveredOnBailout();
+}
+
+bool MObjectKeys::writeRecoverData(CompactBufferWriter& writer) const {
+  MOZ_ASSERT(canRecoverOnBailout());
+  writer.writeUnsigned(uint32_t(RInstruction::Recover_ObjectKeys));
+  return true;
+}
+
+RObjectKeys::RObjectKeys(CompactBufferReader& reader) {}
+
+bool RObjectKeys::recover(JSContext* cx, SnapshotIterator& iter) const {
+  Rooted<JSObject*> obj(cx, &iter.read().toObject());
+
+  JSObject* resultKeys = ObjectKeys(cx, obj);
+  if (!resultKeys) {
+    return false;
+  }
+
+  iter.storeInstructionResult(ObjectValue(*resultKeys));
+  return true;
+}
+
 bool MObjectState::writeRecoverData(CompactBufferWriter& writer) const {
   MOZ_ASSERT(canRecoverOnBailout());
   writer.writeUnsigned(uint32_t(RInstruction::Recover_ObjectState));
@@ -1795,6 +1822,7 @@ RObjectState::RObjectState(CompactBufferReader& reader) {
 bool RObjectState::recover(JSContext* cx, SnapshotIterator& iter) const {
   RootedObject object(cx, &iter.read().toObject());
   Handle<NativeObject*> nativeObject = object.as<NativeObject>();
+  MOZ_ASSERT(!Watchtower::watchesPropertyModification(nativeObject));
   MOZ_ASSERT(nativeObject->slotSpan() == numSlots());
 
   for (size_t i = 0; i < numSlots(); i++) {

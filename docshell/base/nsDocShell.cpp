@@ -2717,25 +2717,6 @@ nsDocShell::GetInProcessSameTypeParent(nsIDocShellTreeItem** aParent) {
 }
 
 NS_IMETHODIMP
-nsDocShell::GetSameTypeInProcessParentIgnoreBrowserBoundaries(
-    nsIDocShell** aParent) {
-  NS_ENSURE_ARG_POINTER(aParent);
-  *aParent = nullptr;
-
-  nsCOMPtr<nsIDocShellTreeItem> parent =
-      do_QueryInterface(GetAsSupports(mParent));
-  if (!parent) {
-    return NS_OK;
-  }
-
-  if (parent->ItemType() == mItemType) {
-    nsCOMPtr<nsIDocShell> parentDS = do_QueryInterface(parent);
-    parentDS.forget(aParent);
-  }
-  return NS_OK;
-}
-
-NS_IMETHODIMP
 nsDocShell::GetInProcessRootTreeItem(nsIDocShellTreeItem** aRootTreeItem) {
   NS_ENSURE_ARG_POINTER(aRootTreeItem);
 
@@ -8797,34 +8778,36 @@ nsresult nsDocShell::HandleSameDocumentNavigation(
             ("Upgraded URI to %s", newURI->GetSpecOrDefault().get()));
   }
 
-  // check if aLoadState->URI(), principalURI, mCurrentURI are same origin
-  // skip handling otherwise
-  nsCOMPtr<nsIPrincipal> origPrincipal = doc->NodePrincipal();
-  nsCOMPtr<nsIURI> principalURI = origPrincipal->GetURI();
-  if (origPrincipal->GetIsNullPrincipal()) {
-    nsCOMPtr<nsIPrincipal> precursor = origPrincipal->GetPrecursorPrincipal();
-    if (precursor) {
-      principalURI = precursor->GetURI();
+  if (StaticPrefs::dom_security_setdocumenturi()) {
+    // check if aLoadState->URI(), principalURI, mCurrentURI are same origin
+    // skip handling otherwise
+    nsCOMPtr<nsIPrincipal> origPrincipal = doc->NodePrincipal();
+    nsCOMPtr<nsIURI> principalURI = origPrincipal->GetURI();
+    if (origPrincipal->GetIsNullPrincipal()) {
+      nsCOMPtr<nsIPrincipal> precursor = origPrincipal->GetPrecursorPrincipal();
+      if (precursor) {
+        principalURI = precursor->GetURI();
+      }
     }
-  }
 
-  auto isLoadableViaInternet = [](nsIURI* uri) {
-    return (uri && (net::SchemeIsHTTP(uri) || net::SchemeIsHTTPS(uri)));
-  };
+    auto isLoadableViaInternet = [](nsIURI* uri) {
+      return (uri && (net::SchemeIsHTTP(uri) || net::SchemeIsHTTPS(uri)));
+    };
 
-  if (isLoadableViaInternet(principalURI) &&
-      isLoadableViaInternet(mCurrentURI) && isLoadableViaInternet(newURI)) {
-    nsIScriptSecurityManager* ssm = nsContentUtils::GetSecurityManager();
-    if (!NS_SUCCEEDED(
-            ssm->CheckSameOriginURI(newURI, principalURI, false, false)) ||
-        !NS_SUCCEEDED(
-            ssm->CheckSameOriginURI(mCurrentURI, principalURI, false, false))) {
-      MOZ_LOG(gSHLog, LogLevel::Debug,
-              ("nsDocShell[%p]: possible violation of the same origin policy "
-               "during same document navigation",
-               this));
-      aSameDocument = false;
-      return NS_OK;
+    if (isLoadableViaInternet(principalURI) &&
+        isLoadableViaInternet(mCurrentURI) && isLoadableViaInternet(newURI)) {
+      nsIScriptSecurityManager* ssm = nsContentUtils::GetSecurityManager();
+      if (!NS_SUCCEEDED(
+              ssm->CheckSameOriginURI(newURI, principalURI, false, false)) ||
+          !NS_SUCCEEDED(ssm->CheckSameOriginURI(mCurrentURI, principalURI,
+                                                false, false))) {
+        MOZ_LOG(gSHLog, LogLevel::Debug,
+                ("nsDocShell[%p]: possible violation of the same origin policy "
+                 "during same document navigation",
+                 this));
+        aSameDocument = false;
+        return NS_OK;
+      }
     }
   }
 
@@ -10579,22 +10562,23 @@ nsresult nsDocShell::DoURILoad(nsDocShellLoadState* aLoadState,
     uriModified = false;
   }
 
-  bool isXFOError = false;
+  bool isEmbeddingBlockedError = false;
   if (mFailedChannel) {
     nsresult status;
     mFailedChannel->GetStatus(&status);
-    isXFOError = status == NS_ERROR_XFO_VIOLATION;
+    isEmbeddingBlockedError = status == NS_ERROR_XFO_VIOLATION ||
+                              status == NS_ERROR_CSP_FRAME_ANCESTOR_VIOLATION;
   }
 
   nsLoadFlags loadFlags = aLoadState->CalculateChannelLoadFlags(
-      mBrowsingContext, Some(uriModified), Some(isXFOError));
+      mBrowsingContext, Some(uriModified), Some(isEmbeddingBlockedError));
 
   nsCOMPtr<nsIChannel> channel;
   if (DocumentChannel::CanUseDocumentChannel(aLoadState->URI()) &&
       !isAboutBlankLoadOntoInitialAboutBlank) {
-    channel = DocumentChannel::CreateForDocument(aLoadState, loadInfo,
-                                                 loadFlags, this, cacheKey,
-                                                 uriModified, isXFOError);
+    channel = DocumentChannel::CreateForDocument(
+        aLoadState, loadInfo, loadFlags, this, cacheKey, uriModified,
+        isEmbeddingBlockedError);
     MOZ_ASSERT(channel);
 
     // Disable keyword fixup when using DocumentChannel, since

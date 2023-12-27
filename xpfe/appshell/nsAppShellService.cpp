@@ -567,9 +567,6 @@ nsresult nsAppShellService::JustCreateTopWindow(
             ? widget::WindowType::Dialog
             : widget::WindowType::TopLevel;
 
-  if (aChromeMask & nsIWebBrowserChrome::CHROME_WINDOW_POPUP)
-    widgetInitData.mWindowType = widget::WindowType::Popup;
-
   if (aChromeMask & nsIWebBrowserChrome::CHROME_SUPPRESS_ANIMATION)
     widgetInitData.mIsAnimationSuppressed = true;
 
@@ -743,7 +740,6 @@ nsresult nsAppShellService::JustCreateTopWindow(
   }
 
   window.forget(aResult);
-  if (parent) parent->AddChildWindow(*aResult);
 
   if (center) rv = (*aResult)->Center(parent, parent ? false : true, false);
 

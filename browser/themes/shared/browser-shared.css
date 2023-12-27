@@ -29,6 +29,7 @@
 :root {
   user-select: none;
   color-scheme: light dark;
+  accent-color: var(--button-primary-bgcolor);
 
   --toolbox-non-lwt-bgcolor: -moz-headerbar;
   --toolbox-non-lwt-textcolor: -moz-headerbartext;
@@ -40,6 +41,7 @@
   --chrome-content-separator-color: ThreeDShadow;
 
   --tabs-navbar-shadow-size: 1px;
+  --tabs-navbar-shadow-color: ThreeDShadow;
 
   --panelui-subview-transition-duration: 150ms;
 
@@ -59,15 +61,6 @@
   --buttons-destructive-hover-bgcolor: #c50042;
   --buttons-destructive-active-bgcolor: #810220;
   --buttons-destructive-color: #fbfbfe;
-
-  --checkbox-unchecked-bgcolor: var(--button-bgcolor);
-  --checkbox-unchecked-hover-bgcolor: var(--button-hover-bgcolor);
-  --checkbox-unchecked-active-bgcolor: var(--button-active-bgcolor);
-  --checkbox-checked-border-color: transparent;
-  --checkbox-checked-bgcolor: var(--button-primary-bgcolor);
-  --checkbox-checked-color: var(--button-primary-color);
-  --checkbox-checked-hover-bgcolor: var(--button-primary-hover-bgcolor);
-  --checkbox-checked-active-bgcolor: var(--button-primary-active-bgcolor);
 
   --identity-box-margin-inline: 4px;
   --urlbar-box-bgcolor: var(--button-bgcolor);
@@ -90,6 +83,19 @@
   --lwt-background-tiling: no-repeat;
 
   --ext-theme-background-transition: background-color 0.1s cubic-bezier(.17,.67,.83,.67);
+  --inactive-window-transition: 0.2s ease;
+  --inactive-titlebar-opacity: .6;
+  /**
+   * On macOS and Linux, fading the whole titlebar is the native behavior.
+   *
+   * On Windows there's no particular standard, but the default .6 opacity
+   * feels like too much, specially because Windows "fades" the titlebar of
+   * unresponsive applications. Fade substantially less the titlebar on windows
+   * to account for this platform difference.
+   */
+  @media (-moz-platform: windows) {
+    --inactive-titlebar-opacity: .75;
+  }
 
   &:where([tabsintitlebar]) {
     --toolbox-non-lwt-bgcolor: ActiveCaption;
@@ -101,9 +107,9 @@
   &:-moz-lwtheme {
     color: var(--lwt-text-color);
 
-    --checkbox-border-color: color-mix(in srgb, currentColor 41%, transparent);
     --link-color: light-dark(rgb(0, 97, 224), rgb(0, 221, 255));
     --chrome-content-separator-color: rgba(0,0,0,.3);
+    --tabs-navbar-shadow-color: light-dark(rgba(0,0,0,.1), rgba(0,0,0,.3));
 
     @media not (prefers-contrast) {
       --focus-outline-color: light-dark(#0061E0, #00DDFF);
@@ -112,7 +118,6 @@
 
   @media (prefers-contrast) {
     --urlbar-icon-fill-opacity: 1;
-    --checkbox-checked-border-color: var(--checkbox-checked-bgcolor);
   }
 
   &[uidensity=compact] {
@@ -129,6 +134,10 @@
     --urlbar-box-bgcolor: color-mix(in srgb, currentColor 16%, transparent);
     --urlbar-box-focus-bgcolor: color-mix(in srgb, currentColor 16%, transparent);
     --urlbar-box-hover-bgcolor: color-mix(in srgb, currentColor 22%, transparent);
+  }
+
+  @media (prefers-reduced-motion) {
+    --inactive-window-transition: 0s;
   }
 
   @media (min-resolution: 1.5dppx) {
@@ -149,6 +158,9 @@
   background-color: var(--toolbox-non-lwt-bgcolor);
   color: var(--toolbox-non-lwt-textcolor);
 
+  will-change: background-color;
+  transition: background-color var(--inactive-window-transition);
+
   &:-moz-window-inactive {
     background-color: var(--toolbox-non-lwt-bgcolor-inactive);
     color: var(--toolbox-non-lwt-textcolor-inactive);
@@ -167,9 +179,6 @@
 
     &:-moz-window-inactive {
       background-color: var(--lwt-accent-color-inactive, var(--lwt-accent-color));
-      :root[tabsintitlebar] & {
-        color: color-mix(in srgb, currentColor 60%, transparent);
-      }
     }
   }
 
@@ -182,6 +191,27 @@
   }
 }
 
+.browser-toolbar {
+  appearance: none;
+  /* Reset linux padding */
+  padding: 0;
+
+  &:not(.titlebar-color) {
+    background-color: var(--toolbar-bgcolor);
+    color: var(--toolbar-color);
+    border-style: none;
+  }
+}
+
+:root[tabsintitlebar] #titlebar {
+  will-change: opacity;
+  transition: opacity var(--inactive-window-transition);
+
+  &:-moz-window-inactive {
+    opacity: var(--inactive-titlebar-opacity);
+  }
+}
+
 /* Add space to beginning of toolbar and make that space click the first <toolbarbutton> */
 #nav-bar-customization-target > :is(toolbarbutton, toolbaritem):first-child,
 #nav-bar-customization-target > toolbarpaletteitem:first-child > :is(toolbarbutton, toolbaritem) {
@@ -190,6 +220,13 @@
 
 :root[sessionrestored] #nav-bar:-moz-lwtheme {
   transition: var(--ext-theme-background-transition);
+}
+
+#nav-bar:not([tabs-hidden="true"]) {
+  /* The toolbar buttons that animate are only visible when the #TabsToolbar is not collapsed.
+     The animations use position:absolute and require a positioned #nav-bar. */
+  position: relative;
+  box-shadow: 0 calc(-1 * var(--tabs-navbar-shadow-size)) 0 var(--tabs-navbar-shadow-color);
 }
 
 /* Bookmarks toolbar */
@@ -1166,5 +1203,6 @@ shopping-sidebar {
   border-inline-start: 1px solid var(--chrome-content-separator-color);
   min-width: 16.92em;
   max-width: 32.31em;
-  width: 26.67em;
+  width: 320px;
+  box-sizing: content-box;
 }

@@ -5,10 +5,10 @@ const { AboutWelcomeParent } = ChromeUtils.importESModule(
 );
 
 const { AboutWelcomeTelemetry } = ChromeUtils.import(
-  "resource://activity-stream/aboutwelcome/lib/AboutWelcomeTelemetry.jsm"
+  "resource:///modules/aboutwelcome/AboutWelcomeTelemetry.jsm"
 );
 const { AWScreenUtils } = ChromeUtils.import(
-  "resource://activity-stream/aboutwelcome/lib/AWScreenUtils.jsm"
+  "resource:///modules/aboutwelcome/AWScreenUtils.jsm"
 );
 const { InternalTestingProfileMigrator } = ChromeUtils.importESModule(
   "resource:///modules/InternalTestingProfileMigrator.sys.mjs"
@@ -43,14 +43,6 @@ add_setup(async function () {
     ],
   });
 });
-
-function initSandbox({ pin = true, isDefault = false } = {}) {
-  const sandbox = sinon.createSandbox();
-  sandbox.stub(AboutWelcomeParent, "doesAppNeedPin").returns(pin);
-  sandbox.stub(AboutWelcomeParent, "isDefaultBrowser").returns(isDefault);
-
-  return sandbox;
-}
 
 add_task(async function test_aboutwelcome_addonspicker() {
   const TEST_ADDON_CONTENT = [

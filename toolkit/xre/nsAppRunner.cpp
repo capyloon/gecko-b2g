@@ -266,6 +266,10 @@
 #  include "mozilla/GfxInfo.h"
 #endif
 
+#ifdef MOZ_WIDGET_GTK
+#  include "nsAppShell.h"
+#endif
+
 extern uint32_t gRestartMode;
 extern void InstallSignalHandlers(const char* ProgramName);
 
@@ -4887,6 +4891,35 @@ int XREMain::XRE_mainStartup(bool* aExitFlag) {
 #endif
 
 #if defined(MOZ_UPDATER) && !defined(MOZ_WIDGET_ANDROID)
+#  ifdef XP_WIN
+  {
+    // When automatically restarting for a staged background update
+    // we want the child process to wait here so that the updater
+    // does not register two instances running and use that as a
+    // reason to not process updates. This function requires having
+    // -restart-pid <param> in the command line to function properly.
+    // Ensure we keep -restart-pid if we are running tests
+    if (ARG_FOUND == CheckArgExists("restart-pid") &&
+        !CheckArg("test-only-automatic-restart-no-wait")) {
+      // We're not testing and can safely remove it now and read the pid.
+      const char* restartPidString = nullptr;
+      CheckArg("restart-pid", &restartPidString, CheckArgFlag::RemoveArg);
+      // pid should be first parameter following -restart-pid.
+      uint32_t pid = nsDependentCString(restartPidString).ToInteger(&rv, 10U);
+      if (NS_SUCCEEDED(rv) && pid > 0) {
+        printf_stderr(
+            "*** MaybeWaitForProcessExit: launched pidDWORD = %u ***\n", pid);
+        RefPtr<nsUpdateProcessor> updater = new nsUpdateProcessor();
+        if (NS_FAILED(
+                updater->WaitForProcessExit(pid, MAYBE_WAIT_TIMEOUT_MS))) {
+          NS_WARNING("Failed to MaybeWaitForProcessExit.");
+        }
+      } else {
+        NS_WARNING("Failed to parse pid from -restart-pid.");
+      }
+    }
+  }
+#  endif
   Maybe<ShouldNotProcessUpdatesReason> shouldNotProcessUpdatesReason =
       ShouldNotProcessUpdates(mDirProvider);
   if (shouldNotProcessUpdatesReason.isNothing()) {
@@ -5159,6 +5192,9 @@ int XREMain::XRE_mainStartup(bool* aExitFlag) {
     if (IsWaylandEnabled()) {
       MOZ_UNUSED(WaylandDisplayGet());
     }
+#endif
+#ifdef MOZ_WIDGET_GTK
+    nsAppShell::InstallTermSignalHandler();
 #endif
   }
 

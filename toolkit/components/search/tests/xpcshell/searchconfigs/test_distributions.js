@@ -9,27 +9,6 @@ ChromeUtils.defineESModuleGetters(this, {
 
 const tests = [];
 
-// Bing should be default everywhere for Acer
-for (let [locale, region] of [
-  ["en-US", "US"],
-  ["pl", "PL"],
-  ["be", "BY"],
-  ["ru", "RU"],
-  ["zh-CN", "CN"],
-]) {
-  for (let distribution of ["acer-003", "acer-004"]) {
-    tests.push({
-      distribution,
-      locale,
-      region,
-      test: engines =>
-        hasParams(engines, "Bing", "searchbar", "pc=MOZX") &&
-        hasDefault(engines, "Bing") &&
-        hasEnginesFirst(engines, ["Bing"]),
-    });
-  }
-}
-
 for (let canonicalId of ["canonical", "canonical-001"]) {
   tests.push({
     locale: "en-US",
@@ -112,77 +91,6 @@ tests.push({
     hasParams(engines, "Qwant Junior", "searchbar", "client=firefoxqwant"),
 });
 
-tests.push({
-  locale: "cs",
-  distribution: "seznam",
-  test: engines =>
-    hasParams(engines, "Seznam", "searchbar", "sourceid=FF_3") &&
-    hasDefault(engines, "Seznam") &&
-    hasEnginesFirst(engines, ["Seznam"]),
-});
-
-for (const locale of ["en-US", "en-GB", "fr", "de"]) {
-  tests.push({
-    locale,
-    distribution: "sweetlabs-b-oem1",
-    test: engines =>
-      hasParams(engines, "Bing", "searchbar", "pc=MZSL01") &&
-      hasParams(engines, "Bing", "searchbar", "ptag=MOZZ0000000020") &&
-      hasDefault(engines, "Bing") &&
-      hasEnginesFirst(engines, ["Bing"]),
-  });
-
-  tests.push({
-    locale,
-    distribution: "sweetlabs-b-r-oem1",
-    test: engines =>
-      hasParams(engines, "Bing", "searchbar", "pc=MZSL01") &&
-      hasParams(engines, "Bing", "searchbar", "ptag=MOZZ0000000020") &&
-      hasDefault(engines, "Bing") &&
-      hasEnginesFirst(engines, ["Bing"]),
-  });
-
-  tests.push({
-    locale,
-    distribution: "sweetlabs-b-oem2",
-    test: engines =>
-      hasParams(engines, "Bing", "searchbar", "pc=MZSL02") &&
-      hasParams(engines, "Bing", "searchbar", "ptag=MOZZ0000000020") &&
-      hasDefault(engines, "Bing") &&
-      hasEnginesFirst(engines, ["Bing"]),
-  });
-
-  tests.push({
-    locale,
-    distribution: "sweetlabs-b-r-oem2",
-    test: engines =>
-      hasParams(engines, "Bing", "searchbar", "pc=MZSL02") &&
-      hasParams(engines, "Bing", "searchbar", "ptag=MOZZ0000000020") &&
-      hasDefault(engines, "Bing") &&
-      hasEnginesFirst(engines, ["Bing"]),
-  });
-
-  tests.push({
-    locale,
-    distribution: "sweetlabs-b-oem3",
-    test: engines =>
-      hasParams(engines, "Bing", "searchbar", "pc=MZSL03") &&
-      hasParams(engines, "Bing", "searchbar", "ptag=MOZZ0000000020") &&
-      hasDefault(engines, "Bing") &&
-      hasEnginesFirst(engines, ["Bing"]),
-  });
-
-  tests.push({
-    locale,
-    distribution: "sweetlabs-b-r-oem3",
-    test: engines =>
-      hasParams(engines, "Bing", "searchbar", "pc=MZSL03") &&
-      hasParams(engines, "Bing", "searchbar", "ptag=MOZZ0000000020") &&
-      hasDefault(engines, "Bing") &&
-      hasEnginesFirst(engines, ["Bing"]),
-  });
-}
-
 for (const locale of ["en-US", "de"]) {
   tests.push({
     locale,
@@ -243,7 +151,9 @@ tests.push({
       engines,
       "GMX Search",
       "https://go.gmx.co.uk/br/moz_search_web/?enc=UTF-8&q=test",
-      "https://suggestplugin.gmx.co.uk/s?q=test&brand=gmxcouk&origin=moz_splugin_ff&enc=UTF-8"
+      SearchUtils.newSearchConfigEnabled
+        ? "https://suggestplugin.gmx.co.uk/s?brand=gmxcouk&origin=moz_splugin_ff&enc=UTF-8&q=test"
+        : "https://suggestplugin.gmx.co.uk/s?q=test&brand=gmxcouk&origin=moz_splugin_ff&enc=UTF-8"
     ) &&
     hasDefault(engines, "GMX Search") &&
     hasEnginesFirst(engines, ["GMX Search"]),
@@ -264,7 +174,9 @@ tests.push({
       engines,
       "GMX - Búsqueda web",
       "https://go.gmx.es/br/moz_search_web/?enc=UTF-8&q=test",
-      "https://suggestplugin.gmx.es/s?q=test&brand=gmxes&origin=moz_splugin_ff&enc=UTF-8"
+      SearchUtils.newSearchConfigEnabled
+        ? "https://suggestplugin.gmx.es/s?brand=gmxes&origin=moz_splugin_ff&enc=UTF-8&q=test"
+        : "https://suggestplugin.gmx.es/s?q=test&brand=gmxes&origin=moz_splugin_ff&enc=UTF-8"
     ) &&
     hasDefault(engines, "GMX Search") &&
     hasEnginesFirst(engines, ["GMX Search"]),
@@ -285,7 +197,9 @@ tests.push({
       engines,
       "GMX - Recherche web",
       "https://go.gmx.fr/br/moz_search_web/?enc=UTF-8&q=test",
-      "https://suggestplugin.gmx.fr/s?q=test&brand=gmxfr&origin=moz_splugin_ff&enc=UTF-8"
+      SearchUtils.newSearchConfigEnabled
+        ? "https://suggestplugin.gmx.fr/s?brand=gmxfr&origin=moz_splugin_ff&enc=UTF-8&q=test"
+        : "https://suggestplugin.gmx.fr/s?q=test&brand=gmxfr&origin=moz_splugin_ff&enc=UTF-8"
     ) &&
     hasDefault(engines, "GMX Search") &&
     hasEnginesFirst(engines, ["GMX Search"]),
@@ -423,11 +337,18 @@ add_task(async function test_expected_distribution_engines() {
     });
     let engines = await SearchTestUtils.searchConfigToEngines(config.engines);
     searchService._engines = engines;
-    searchService._searchDefault = {
-      id: config.engines[0].webExtension.id,
-      locale:
-        config.engines[0]?.webExtension?.locale ?? SearchUtils.DEFAULT_TAG,
-    };
+    if (SearchUtils.newSearchConfigEnabled) {
+      searchService._searchDefault = {
+        id: config.engines[0].identifier,
+        locale: "default",
+      };
+    } else {
+      searchService._searchDefault = {
+        id: config.engines[0].webExtension.id,
+        locale:
+          config.engines[0]?.webExtension?.locale ?? SearchUtils.DEFAULT_TAG,
+      };
+    }
     engines = searchService._sortEnginesByDefaults(engines);
     test(engines);
   }

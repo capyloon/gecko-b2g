@@ -655,6 +655,7 @@ skip-if = [
   "os == 'android'",
   "socketprocess_networking",
   "os == 'win' && msix", # https://bugzilla.mozilla.org/show_bug.cgi?id=1808049
+  "apple_silicon", # https://bugzilla.mozilla.org/show_bug.cgi?id=1866067
 ]
 run-sequentially = "node server exceptions dont replay well"
 
@@ -972,6 +973,9 @@ skip-if = [
 ["test_psl.js"]
 
 ["test_race_cache_with_network.js"]
+skip-if = [
+  "os == 'win' && !debug", # Bug 1866777
+]
 
 ["test_range_requests.js"]
 

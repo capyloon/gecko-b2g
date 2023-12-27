@@ -1616,9 +1616,6 @@ pub enum Appearance {
     /// The dropdown portion of a toolbar button
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
     ToolbarbuttonDropdown,
-    /// The gripper for a toolbar.
-    #[parse(condition = "ParserContext::chrome_rules_enabled")]
-    Toolbargripper,
     /// The toolbox that contains the toolbars.
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
     Toolbox,
@@ -1631,9 +1628,6 @@ pub enum Appearance {
     /// An individual header cell
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
     Treeheadercell,
-    /// The sort arrow for a header.
-    #[parse(condition = "ParserContext::chrome_rules_enabled")]
-    Treeheadersortarrow,
     /// A tree item.
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
     Treeitem,
@@ -1649,12 +1643,16 @@ pub enum Appearance {
     /// A tree widget.
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
     Treeview,
-    #[parse(condition = "ParserContext::chrome_rules_enabled")]
-    Dialog,
 
     /// Mac help button.
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
     MozMacHelpButton,
+
+    /// An appearance value for the root, so that we can get unified toolbar looks (which require a
+    /// transparent gecko background) without really using the whole transparency set-up which
+    /// otherwise loses window borders, see bug 1870481.
+    #[parse(condition = "ParserContext::chrome_rules_enabled")]
+    MozMacUnifiedToolbarWindow,
 
     /// Windows themed window frame elements.
     #[parse(condition = "ParserContext::chrome_rules_enabled")]

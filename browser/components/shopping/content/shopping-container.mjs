@@ -55,6 +55,7 @@ export class ShoppingContainer extends MozLitElement {
       shoppingMessageBarEl: "shopping-message-bar",
       recommendedAdEl: "recommended-ad",
       loadingEl: "#loading-wrapper",
+      closeButtonEl: "#close-button",
     };
   }
 
@@ -82,6 +83,12 @@ export class ShoppingContainer extends MozLitElement {
     );
   }
 
+  updated() {
+    if (this.focusCloseButton) {
+      this.closeButtonEl.focus();
+    }
+  }
+
   async _update({
     data,
     showOnboarding,
@@ -91,6 +98,7 @@ export class ShoppingContainer extends MozLitElement {
     adsEnabledByUser,
     isAnalysisInProgress,
     analysisProgress,
+    focusCloseButton,
   }) {
     // If we're not opted in or there's no shopping URL in the main browser,
     // the actor will pass `null`, which means this will clear out any existing
@@ -104,6 +112,7 @@ export class ShoppingContainer extends MozLitElement {
     this.adsEnabled = adsEnabled;
     this.adsEnabledByUser = adsEnabledByUser;
     this.analysisProgress = analysisProgress;
+    this.focusCloseButton = focusCloseButton;
   }
 
   _updateRecommendations({ recommendationData }) {
@@ -160,11 +169,36 @@ export class ShoppingContainer extends MozLitElement {
   }
 
   getAnalysisDetailsTemplate() {
+    /* At present, en is supported as the default language for reviews. As we support more sites,
+     * update `lang` accordingly if highlights need to be displayed in other languages. */
+    let lang;
+    let hostname;
+    try {
+      hostname = new URL(this.productUrl)?.hostname;
+    } catch (e) {
+      console.error(
+        `Unknown product url ${this.productUrl} for review highlights. Defaulting to en.`
+      );
+    }
+
+    switch (hostname) {
+      case "www.amazon.fr":
+        lang = "fr";
+        break;
+      case "www.amazon.de":
+        lang = "de";
+        break;
+      default:
+        lang = "en";
+    }
     return html`
       <review-reliability letter=${this.data.grade}></review-reliability>
-      <adjusted-rating rating=${this.data.adjusted_rating}></adjusted-rating>
+      <adjusted-rating
+        rating=${ifDefined(this.data.adjusted_rating)}
+      ></adjusted-rating>
       <review-highlights
         .highlights=${this.data.highlights}
+        lang=${lang}
       ></review-highlights>
     `;
   }
@@ -214,7 +248,7 @@ export class ShoppingContainer extends MozLitElement {
     }
 
     if (this.data.needs_analysis) {
-      if (!this.data.product_id) {
+      if (!this.data.product_id || typeof this.data.grade != "string") {
         // Product is new to us.
         return html`<unanalyzed-product-card
           productUrl=${ifDefined(this.productUrl)}
@@ -308,12 +342,12 @@ export class ShoppingContainer extends MozLitElement {
           </header>
           <button
             id="close-button"
-            class="ghost-button"
+            class="ghost-button shopping-button"
             data-l10n-id="shopping-close-button"
             @click=${this.handleClick}
           ></button>
         </div>
-        <div id="content" aria-busy=${!this.data}>
+        <div id="content" aria-live="polite" aria-busy=${!this.data}>
           <slot name="multi-stage-message-slot"></slot>
           ${sidebarContent} ${!hideFooter ? this.getFooterTemplate() : null}
         </div>

@@ -2432,17 +2432,26 @@ PresShell::CompleteMove(bool aForward, bool aExtend) {
 // end implementations nsISelectionController
 
 nsIFrame* PresShell::GetRootScrollFrame() const {
+  if (!mFrameConstructor) {
+    return nullptr;
+  }
   nsIFrame* rootFrame = mFrameConstructor->GetRootFrame();
   // Ensure root frame is a viewport frame
-  if (!rootFrame || !rootFrame->IsViewportFrame()) return nullptr;
+  if (!rootFrame || !rootFrame->IsViewportFrame()) {
+    return nullptr;
+  }
   nsIFrame* theFrame = rootFrame->PrincipalChildList().FirstChild();
-  if (!theFrame || !theFrame->IsScrollFrame()) return nullptr;
+  if (!theFrame || !theFrame->IsScrollFrame()) {
+    return nullptr;
+  }
   return theFrame;
 }
 
 nsIScrollableFrame* PresShell::GetRootScrollFrameAsScrollable() const {
   nsIFrame* frame = GetRootScrollFrame();
-  if (!frame) return nullptr;
+  if (!frame) {
+    return nullptr;
+  }
   nsIScrollableFrame* scrollableFrame = do_QueryFrame(frame);
   NS_ASSERTION(scrollableFrame,
                "All scroll frames must implement nsIScrollableFrame");
@@ -5844,6 +5853,16 @@ void PresShell::ProcessSynthMouseMoveEvent(bool aFromScroll) {
   NS_ASSERTION(view->GetWidget(), "view should have a widget here");
   WidgetMouseEvent event(true, eMouseMove, view->GetWidget(),
                          WidgetMouseEvent::eSynthesized);
+
+  // If the last cursor location was set by a synthesized mouse event for tests,
+  // running test should expect a restyle or a DOM mutation under the cursor may
+  // cause mouse boundary events in a remote process if the cursor is over a
+  // remote content.  Therefore, the events should not be ignored by
+  // PresShell::HandleEvent in the remote process.  So we need to mark the
+  // synthesized eMouseMove as "synthesized for tests".
+  event.mFlags.mIsSynthesizedForTests =
+      mMouseLocationWasSetBySynthesizedMouseEventForTests;
+
   event.mRefPoint =
       LayoutDeviceIntPoint::FromAppUnitsToNearest(refpoint, viewAPD);
   event.mButtons = PresShell::sMouseButtons;
@@ -6929,16 +6948,35 @@ nsresult PresShell::HandleEvent(nsIFrame* aFrameForPresShell,
                                 bool aDontRetargetEvents,
                                 nsEventStatus* aEventStatus) {
   MOZ_ASSERT(aGUIEvent);
-  // If it's synthesized in the parent process and our mouse location was set
-  // by a mouse event which was synthesized for tests because the test does not
-  // want to change `:hover` state with the synthesized mouse event for native
-  // mouse cursor position.
-  if (aGUIEvent->mMessage == eMouseMove &&
-      aGUIEvent->CameFromAnotherProcess() && XRE_IsContentProcess() &&
+  // Running tests must not expect that some mouse boundary events are fired
+  // when something occurs in the parent process, e.g., when a popup is
+  // opened/closed at the last mouse cursor position in the parent process (the
+  // position may be different from the position which stored in this process).
+  // Therefore, let's ignore synthesized mouse events coming form another
+  // process if and only if they are not caused by the API.
+  if (aGUIEvent->CameFromAnotherProcess() && XRE_IsContentProcess() &&
       !aGUIEvent->mFlags.mIsSynthesizedForTests &&
-      MouseLocationWasSetBySynthesizedMouseEventForTests() &&
-      aGUIEvent->AsMouseEvent()->mReason == WidgetMouseEvent::eSynthesized) {
-    return NS_OK;
+      MouseLocationWasSetBySynthesizedMouseEventForTests()) {
+    switch (aGUIEvent->mMessage) {
+      // Synthesized eMouseMove will case mouse boundary events like mouseover,
+      // mouseout, and :hover state is changed at dispatching the events.
+      case eMouseMove:
+      // eMouseExitFromWidget comes from the parent process if the cursor
+      // crosses a puppet widget boundary.  Then, the event will be handled as a
+      // synthesized eMouseMove in this process and may cause unexpected
+      // `mouseout` and `mouseleave`.
+      case eMouseExitFromWidget:
+      // eMouseEnterIntoWidget causes updating the hover state under the event
+      // position which may be different from the last cursor position
+      // synthesized in this process.
+      case eMouseEnterIntoWidget:
+        if (!aGUIEvent->AsMouseEvent()->IsReal()) {
+          return NS_OK;
+        }
+        break;
+      default:
+        break;
+    }
   }
 
   if (WidgetKeyboardEvent* keyEvent = aGUIEvent->AsKeyboardEvent()) {
@@ -12013,8 +12051,15 @@ void PresShell::UpdateRelevancyOfContentVisibilityAutoFrames() {
     return;
   }
 
+  bool isRelevantContentChanged = false;
   for (nsIFrame* frame : mContentVisibilityAutoFrames) {
-    frame->UpdateIsRelevantContent(mContentVisibilityRelevancyToUpdate);
+    isRelevantContentChanged |=
+        frame->UpdateIsRelevantContent(mContentVisibilityRelevancyToUpdate);
+  }
+  if (isRelevantContentChanged) {
+    if (nsPresContext* presContext = GetPresContext()) {
+      presContext->UpdateHiddenByContentVisibilityForAnimations();
+    }
   }
 
   mContentVisibilityRelevancyToUpdate.clear();
@@ -12048,6 +12093,7 @@ PresShell::ProximityToViewportResult PresShell::DetermineProximityToViewport() {
   auto input = DOMIntersectionObserver::ComputeInput(
       *mDocument, /* aRoot = */ nullptr, &rootMargin);
 
+  bool isRelevantContentChanged = false;
   for (nsIFrame* frame : mContentVisibilityAutoFrames) {
     auto* element = frame->GetContent()->AsElement();
     result.mAnyScrollIntoViewFlag |=
@@ -12068,12 +12114,18 @@ PresShell::ProximityToViewportResult PresShell::DetermineProximityToViewport() {
             .Intersects();
     element->SetVisibleForContentVisibility(intersects);
     if (oldVisibility.isNothing() || *oldVisibility != intersects) {
-      frame->UpdateIsRelevantContent(ContentRelevancyReason::Visible);
+      isRelevantContentChanged |=
+          frame->UpdateIsRelevantContent(ContentRelevancyReason::Visible);
     }
 
     // 14.2.3.3
     if (checkForInitialDetermination && intersects) {
       result.mHadInitialDetermination = true;
+    }
+  }
+  if (isRelevantContentChanged) {
+    if (nsPresContext* presContext = GetPresContext()) {
+      presContext->UpdateHiddenByContentVisibilityForAnimations();
     }
   }
 

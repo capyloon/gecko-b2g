@@ -145,11 +145,6 @@ enum class StyleUserFocus : uint8_t {
   None,
   Ignore,
   Normal,
-  SelectAll,
-  SelectBefore,
-  SelectAfter,
-  SelectSame,
-  SelectMenu,
 };
 
 // user-input
@@ -185,16 +180,6 @@ enum class StyleOrient : uint8_t {
   Horizontal,
   Vertical,
 };
-
-// See AnimationEffect.webidl
-// and mozilla/dom/AnimationEffectBinding.h
-namespace dom {
-enum class PlaybackDirection : uint8_t;
-enum class FillMode : uint8_t;
-}  // namespace dom
-
-// Animation play state
-enum class StyleAnimationPlayState : uint8_t { Running, Paused };
 
 // See nsStyleImageLayers
 enum class StyleImageLayerAttachment : uint8_t { Scroll, Fixed, Local };

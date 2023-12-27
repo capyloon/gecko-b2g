@@ -242,6 +242,24 @@ add_setup(async () => {
 });
 
 /**
+ * Asserts that we get the expected initial recently-closed tab list item
+ */
+add_task(async function test_initial_closed_tab() {
+  await withFirefoxView({}, async browser => {
+    const { document } = browser.contentWindow;
+    is(document.location.href, getFirefoxViewURL());
+    await navigateToCategoryAndWait(document, "recentlyclosed");
+    let { cleanup } = await prepareSingleClosedTab();
+    await switchToFxViewTab(window);
+    let [listItems] = await waitForRecentlyClosedTabsList(document);
+
+    ok(listItems.rowEls.length === 1, "Initial list item is rendered.");
+
+    await cleanup();
+  });
+});
+
+/**
  * Asserts that we get the expected order recently-closed tab list items given a known
  * sequence of tab closures
  */
@@ -572,6 +590,60 @@ add_task(async function test_search() {
       () => tabList.shadowRoot.querySelector("fxview-empty-state"),
       "There are no matching search results."
     );
+
+    info("Clear the search query with keyboard.");
+    EventUtils.synthesizeMouseAtCenter(searchTextbox.clearButton, {}, content);
+
+    is(
+      recentlyClosedComponent.shadowRoot.activeElement,
+      searchTextbox,
+      "Search input is focused"
+    );
+    EventUtils.synthesizeKey("KEY_Tab", {}, content);
+    EventUtils.synthesizeKey("KEY_Enter", {}, content);
+    await TestUtils.waitForCondition(
+      () => listElem.rowEls.length === expectedURLs.length,
+      "The original list is restored."
+    );
   });
   await cleanup();
+});
+
+add_task(async function test_search_recent_browsing() {
+  const NUMBER_OF_TABS = 6;
+  clearHistory();
+  for (let i = 0; i < NUMBER_OF_TABS; i++) {
+    await open_then_close(URLs[1]);
+  }
+  await withFirefoxView({}, async function (browser) {
+    const { document } = browser.contentWindow;
+
+    info("Input a search query.");
+    await navigateToCategoryAndWait(document, "recentbrowsing");
+    const recentBrowsing = document.querySelector("view-recentbrowsing");
+    EventUtils.synthesizeMouseAtCenter(
+      recentBrowsing.searchTextbox,
+      {},
+      content
+    );
+    EventUtils.sendString("example.com", content);
+    const slot = recentBrowsing.querySelector("[slot='recentlyclosed']");
+    await TestUtils.waitForCondition(
+      () =>
+        slot.tabList.rowEls.length === 5 &&
+        slot.shadowRoot.querySelector("[data-l10n-id='firefoxview-show-all']"),
+      "Not all search results are shown yet."
+    );
+
+    info("Click the Show All link.");
+    const showAllLink = slot.shadowRoot.querySelector(
+      "[data-l10n-id='firefoxview-show-all']"
+    );
+    EventUtils.synthesizeMouseAtCenter(showAllLink, {}, content);
+    await TestUtils.waitForCondition(
+      () => slot.tabList.rowEls.length === NUMBER_OF_TABS,
+      "All search results are shown."
+    );
+    ok(BrowserTestUtils.is_hidden(showAllLink), "The show all link is hidden.");
+  });
 });

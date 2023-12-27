@@ -37,6 +37,9 @@ support-files = [
 
 ["browser_search_telemetry_content.js"]
 
+["browser_search_telemetry_domain_categorization_ad_values.js"]
+support-files = ["searchTelemetryDomainCategorizationReporting.html"]
+
 ["browser_search_telemetry_domain_categorization_extraction.js"]
 support-files = ["searchTelemetryDomainExtraction.html"]
 
@@ -113,6 +116,9 @@ support-files = [
   "searchTelemetryAd_searchbox.html^headers^",
   "serp.css",
 ]
+
+["browser_search_telemetry_new_window.js"]
+support-files = ["searchTelemetry.html", "searchTelemetryAd.html"]
 
 ["browser_search_telemetry_private.js"]
 support-files = ["searchTelemetry.html", "searchTelemetryAd.html", "serp.css"]

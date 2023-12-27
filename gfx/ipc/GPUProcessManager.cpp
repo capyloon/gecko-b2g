@@ -24,6 +24,7 @@
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/gfx/gfxVars.h"
 #include "mozilla/gfx/GPUChild.h"
+#include "mozilla/glean/GleanMetrics.h"
 #include "mozilla/ipc/Endpoint.h"
 #include "mozilla/ipc/ProcessChild.h"
 #include "mozilla/layers/APZCTreeManagerChild.h"
@@ -74,12 +75,6 @@ namespace mozilla {
 namespace gfx {
 
 using namespace mozilla::layers;
-
-enum class FallbackType : uint32_t {
-  NONE = 0,
-  DECODINGDISABLED,
-  DISABLED,
-};
 
 static StaticAutoPtr<GPUProcessManager> sSingleton;
 
@@ -228,10 +223,23 @@ bool GPUProcessManager::LaunchGPUProcess() {
   auto newTime = TimeStamp::Now();
   if (!IsProcessStable(newTime)) {
     mUnstableProcessAttempts++;
+    mozilla::glean::gpu_process::unstable_launch_attempts.Set(
+        mUnstableProcessAttempts);
   }
   mTotalProcessAttempts++;
+  mozilla::glean::gpu_process::total_launch_attempts.Set(mTotalProcessAttempts);
   mProcessAttemptLastTime = newTime;
   mProcessStable = false;
+
+  // If the process is launched whilst we're in the background it may never get
+  // a chance to be declared stable before it is killed again. We don't want
+  // this happening repeatedly to result in the GPU process being disabled, so
+  // we assume that processes launched whilst in the background are stable.
+  if (!mAppInForeground) {
+    gfxCriticalNote
+        << "GPU process is being launched whilst app is in background";
+    mProcessStable = true;
+  }
 
   std::vector<std::string> extraArgs;
   ipc::ProcessChild::AddPlatformBuildID(extraArgs);
@@ -291,8 +299,11 @@ bool GPUProcessManager::MaybeDisableGPUProcess(const char* aMessage,
 
   gfxPlatform::DisableGPUProcess();
 
-  Telemetry::Accumulate(Telemetry::GPU_PROCESS_CRASH_FALLBACKS,
-                        uint32_t(FallbackType::DISABLED));
+  mozilla::glean::gpu_process::feature_status.Set(
+      gfxConfig::GetFeature(Feature::GPU_PROCESS)
+          .GetStatusAndFailureIdString());
+
+  mozilla::glean::gpu_process::crash_fallbacks.Get("disabled"_ns).Add(1);
 
   DestroyProcess();
   ShutdownVsyncIOThread();
@@ -403,8 +414,9 @@ bool GPUProcessManager::EnsureCompositorManagerChild() {
     return true;
   }
 
-  mGPUChild->SendInitCompositorManager(std::move(parentPipe));
-  CompositorManagerChild::Init(std::move(childPipe), AllocateNamespace(),
+  uint32_t cmNamespace = AllocateNamespace();
+  mGPUChild->SendInitCompositorManager(std::move(parentPipe), cmNamespace);
+  CompositorManagerChild::Init(std::move(childPipe), cmNamespace,
                                mProcessToken);
   return true;
 }
@@ -820,12 +832,11 @@ void GPUProcessManager::OnProcessUnexpectedShutdown(GPUProcessHost* aHost) {
                               layers_gpu_process_max_restarts_with_decoder()) &&
              mDecodeVideoOnGpuProcess) {
     mDecodeVideoOnGpuProcess = false;
-    Telemetry::Accumulate(Telemetry::GPU_PROCESS_CRASH_FALLBACKS,
-                          uint32_t(FallbackType::DECODINGDISABLED));
+    mozilla::glean::gpu_process::crash_fallbacks.Get("decoding_disabled"_ns)
+        .Add(1);
     HandleProcessLost();
   } else {
-    Telemetry::Accumulate(Telemetry::GPU_PROCESS_CRASH_FALLBACKS,
-                          uint32_t(FallbackType::NONE));
+    mozilla::glean::gpu_process::crash_fallbacks.Get("none"_ns).Add(1);
     HandleProcessLost();
   }
 }
@@ -1171,18 +1182,20 @@ bool GPUProcessManager::CreateContentBridges(
     ipc::Endpoint<PImageBridgeChild>* aOutImageBridge,
     ipc::Endpoint<PVRManagerChild>* aOutVRBridge,
     ipc::Endpoint<PRemoteDecoderManagerChild>* aOutVideoManager,
-    nsTArray<uint32_t>* aNamespaces) {
-  if (!CreateContentCompositorManager(aOtherProcess, aOutCompositor) ||
-      !CreateContentImageBridge(aOtherProcess, aOutImageBridge) ||
-      !CreateContentVRManager(aOtherProcess, aOutVRBridge)) {
+    dom::ContentParentId aChildId, nsTArray<uint32_t>* aNamespaces) {
+  const uint32_t cmNamespace = AllocateNamespace();
+  if (!CreateContentCompositorManager(aOtherProcess, aChildId, cmNamespace,
+                                      aOutCompositor) ||
+      !CreateContentImageBridge(aOtherProcess, aChildId, aOutImageBridge) ||
+      !CreateContentVRManager(aOtherProcess, aChildId, aOutVRBridge)) {
     return false;
   }
   // VideoDeocderManager is only supported in the GPU process, so we allow this
   // to be fallible.
-  CreateContentRemoteDecoderManager(aOtherProcess, aOutVideoManager);
+  CreateContentRemoteDecoderManager(aOtherProcess, aChildId, aOutVideoManager);
   // Allocates 3 namespaces(for CompositorManagerChild, CompositorBridgeChild
   // and ImageBridgeChild)
-  aNamespaces->AppendElement(AllocateNamespace());
+  aNamespaces->AppendElement(cmNamespace);
   aNamespaces->AppendElement(AllocateNamespace());
   aNamespaces->AppendElement(AllocateNamespace());
   return true;
@@ -1200,8 +1213,8 @@ bool GPUProcessManager::CreateBufferManager(
 #endif
 
 bool GPUProcessManager::CreateContentCompositorManager(
-    base::ProcessId aOtherProcess,
-    ipc::Endpoint<PCompositorManagerChild>* aOutEndpoint) {
+    base::ProcessId aOtherProcess, dom::ContentParentId aChildId,
+    uint32_t aNamespace, ipc::Endpoint<PCompositorManagerChild>* aOutEndpoint) {
   ipc::Endpoint<PCompositorManagerParent> parentPipe;
   ipc::Endpoint<PCompositorManagerChild> childPipe;
 
@@ -1222,8 +1235,10 @@ bool GPUProcessManager::CreateContentCompositorManager(
   }
 
   if (mGPUChild) {
-    mGPUChild->SendNewContentCompositorManager(std::move(parentPipe));
-  } else if (!CompositorManagerParent::Create(std::move(parentPipe),
+    mGPUChild->SendNewContentCompositorManager(std::move(parentPipe), aChildId,
+                                               aNamespace);
+  } else if (!CompositorManagerParent::Create(std::move(parentPipe), aChildId,
+                                              aNamespace,
                                               /* aIsRoot */ false)) {
     return false;
   }
@@ -1233,7 +1248,7 @@ bool GPUProcessManager::CreateContentCompositorManager(
 }
 
 bool GPUProcessManager::CreateContentImageBridge(
-    base::ProcessId aOtherProcess,
+    base::ProcessId aOtherProcess, dom::ContentParentId aChildId,
     ipc::Endpoint<PImageBridgeChild>* aOutEndpoint) {
   if (!EnsureImageBridgeChild()) {
     return false;
@@ -1258,9 +1273,9 @@ bool GPUProcessManager::CreateContentImageBridge(
   }
 
   if (mGPUChild) {
-    mGPUChild->SendNewContentImageBridge(std::move(parentPipe));
+    mGPUChild->SendNewContentImageBridge(std::move(parentPipe), aChildId);
   } else {
-    if (!ImageBridgeParent::CreateForContent(std::move(parentPipe))) {
+    if (!ImageBridgeParent::CreateForContent(std::move(parentPipe), aChildId)) {
       return false;
     }
   }
@@ -1310,7 +1325,7 @@ base::ProcessId GPUProcessManager::GPUProcessPid() {
 }
 
 bool GPUProcessManager::CreateContentVRManager(
-    base::ProcessId aOtherProcess,
+    base::ProcessId aOtherProcess, dom::ContentParentId aChildId,
     ipc::Endpoint<PVRManagerChild>* aOutEndpoint) {
   if (NS_WARN_IF(!EnsureVRManager())) {
     return false;
@@ -1335,9 +1350,9 @@ bool GPUProcessManager::CreateContentVRManager(
   }
 
   if (mGPUChild) {
-    mGPUChild->SendNewContentVRManager(std::move(parentPipe));
+    mGPUChild->SendNewContentVRManager(std::move(parentPipe), aChildId);
   } else {
-    if (!VRManagerParent::CreateForContent(std::move(parentPipe))) {
+    if (!VRManagerParent::CreateForContent(std::move(parentPipe), aChildId)) {
       return false;
     }
   }
@@ -1347,7 +1362,7 @@ bool GPUProcessManager::CreateContentVRManager(
 }
 
 void GPUProcessManager::CreateContentRemoteDecoderManager(
-    base::ProcessId aOtherProcess,
+    base::ProcessId aOtherProcess, dom::ContentParentId aChildId,
     ipc::Endpoint<PRemoteDecoderManagerChild>* aOutEndpoint) {
   nsresult rv = EnsureGPUReady();
   if (NS_WARN_IF(rv == NS_ERROR_ILLEGAL_DURING_SHUTDOWN)) {
@@ -1370,7 +1385,8 @@ void GPUProcessManager::CreateContentRemoteDecoderManager(
     return;
   }
 
-  mGPUChild->SendNewContentRemoteDecoderManager(std::move(parentPipe));
+  mGPUChild->SendNewContentRemoteDecoderManager(std::move(parentPipe),
+                                                aChildId);
 
   *aOutEndpoint = std::move(childPipe);
 }
@@ -1408,7 +1424,9 @@ void GPUProcessManager::MapLayerTreeId(LayersId aLayersId,
 
 void GPUProcessManager::UnmapLayerTreeId(LayersId aLayersId,
                                          base::ProcessId aOwningId) {
-  nsresult rv = EnsureGPUReady();
+  // Only call EnsureGPUReady() if we have already launched the process, to
+  // avoid launching a new process unnecesarily. (eg if we are backgrounded)
+  nsresult rv = mProcess ? EnsureGPUReady() : NS_ERROR_NOT_AVAILABLE;
   if (NS_WARN_IF(rv == NS_ERROR_ILLEGAL_DURING_SHUTDOWN)) {
     return;
   }
@@ -1416,7 +1434,7 @@ void GPUProcessManager::UnmapLayerTreeId(LayersId aLayersId,
   if (NS_SUCCEEDED(rv)) {
     mGPUChild->SendRemoveLayerTreeIdMapping(
         LayerTreeIdMapping(aLayersId, aOwningId));
-  } else {
+  } else if (!mProcess) {
     CompositorBridgeParent::DeallocateLayerTreeId(aLayersId);
   }
 

@@ -256,11 +256,11 @@ static inline gfx::BackendType BackendTypeForBackendSelector(
   }
 };
 
-static TextureType GetTextureType(gfx::SurfaceFormat aFormat,
-                                  gfx::IntSize aSize,
-                                  KnowsCompositor* aKnowsCompositor,
-                                  BackendSelector aSelector,
-                                  TextureAllocationFlags aAllocFlags) {
+static TextureType ChooseTextureType(gfx::SurfaceFormat aFormat,
+                                     gfx::IntSize aSize,
+                                     KnowsCompositor* aKnowsCompositor,
+                                     BackendSelector aSelector,
+                                     TextureAllocationFlags aAllocFlags) {
   LayersBackend layersBackend = aKnowsCompositor->GetCompositorBackendType();
   gfx::BackendType moz2DBackend =
       BackendTypeForBackendSelector(layersBackend, aSelector);
@@ -309,22 +309,38 @@ static TextureType GetTextureType(gfx::SurfaceFormat aFormat,
 }
 
 TextureType PreferredCanvasTextureType(KnowsCompositor* aKnowsCompositor) {
-  return GetTextureType(gfx::SurfaceFormat::R8G8B8A8, {1, 1}, aKnowsCompositor,
-                        BackendSelector::Canvas,
-                        TextureAllocationFlags::ALLOC_DEFAULT);
+  return ChooseTextureType(gfx::SurfaceFormat::R8G8B8A8, {1, 1},
+                           aKnowsCompositor, BackendSelector::Canvas,
+                           TextureAllocationFlags::ALLOC_DEFAULT);
 }
 
-static bool ShouldRemoteTextureType(TextureType aTextureType,
-                                    BackendSelector aSelector) {
-  if (aSelector != BackendSelector::Canvas || !gfxPlatform::UseRemoteCanvas()) {
-    return false;
-  }
-
+/* static */
+TextureData* TextureData::Create(TextureType aTextureType,
+                                 gfx::SurfaceFormat aFormat,
+                                 const gfx::IntSize& aSize,
+                                 TextureAllocationFlags aAllocFlags,
+                                 gfx::BackendType aBackendType) {
   switch (aTextureType) {
+#ifdef XP_WIN
     case TextureType::D3D11:
-      return true;
+      return D3D11TextureData::Create(aSize, aFormat, aAllocFlags);
+#endif
+
+#ifdef MOZ_WIDGET_GTK
+    case TextureType::DMABUF:
+      return DMABUFTextureData::Create(aSize, aFormat, aBackendType);
+#endif
+
+#ifdef XP_MACOSX
+    case TextureType::MacIOSurface:
+      return MacIOSurfaceTextureData::Create(aSize, aFormat, aBackendType);
+#endif
+#ifdef MOZ_WIDGET_ANDROID
+    case TextureType::AndroidNativeWindow:
+      return AndroidNativeWindowTextureData::Create(aSize, aFormat);
+#endif
     default:
-      return false;
+      return nullptr;
   }
 }
 
@@ -335,75 +351,64 @@ TextureData* TextureData::Create(TextureForwarder* aAllocator,
                                  BackendSelector aSelector,
                                  TextureFlags aTextureFlags,
                                  TextureAllocationFlags aAllocFlags) {
-  TextureType textureType =
-      GetTextureType(aFormat, aSize, aKnowsCompositor, aSelector, aAllocFlags);
+  TextureType textureType = ChooseTextureType(aFormat, aSize, aKnowsCompositor,
+                                              aSelector, aAllocFlags);
 
-  if (ShouldRemoteTextureType(textureType, aSelector)) {
+  if (aAllocFlags & ALLOC_FORCE_REMOTE) {
     RefPtr<CanvasChild> canvasChild = aAllocator->GetCanvasChild();
     if (canvasChild) {
       return new RecordedTextureData(canvasChild.forget(), aSize, aFormat,
                                      textureType);
     }
-
-    // We don't have a CanvasChild, but are supposed to be remote.
-    // Fall back to software.
-    textureType = TextureType::Unknown;
+    // If we must be remote, but there is no canvas child, then falling back
+    // is not possible.
+    return nullptr;
   }
+
+  gfx::BackendType moz2DBackend = gfx::BackendType::NONE;
 
 #if defined(XP_MACOSX) || defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_GONK)
-  gfx::BackendType moz2DBackend = BackendTypeForBackendSelector(
+  moz2DBackend = BackendTypeForBackendSelector(
       aKnowsCompositor->GetCompositorBackendType(), aSelector);
 #endif
-
-  switch (textureType) {
-#ifdef XP_WIN
-    case TextureType::D3D11:
-      return D3D11TextureData::Create(aSize, aFormat, aAllocFlags);
-#endif
-
-#ifdef MOZ_WIDGET_GTK
-    case TextureType::DMABUF:
-      return DMABUFTextureData::Create(aSize, aFormat, moz2DBackend);
-#endif
-
-#ifdef XP_MACOSX
-    case TextureType::MacIOSurface:
-      return MacIOSurfaceTextureData::Create(aSize, aFormat, moz2DBackend);
-#endif
-#ifdef MOZ_WIDGET_ANDROID
-    case TextureType::AndroidNativeWindow:
-      return AndroidNativeWindowTextureData::Create(aSize, aFormat);
-#endif
-
 #ifdef MOZ_WIDGET_GONK
-    case TextureType::GrallocBuffer:
-      {
-        if (!gfxPlatform::WebRenderPrefEnabled()) {
-          return nullptr;
-        }
-        TextureAllocationFlags allocFlags = aAllocFlags;
-        if (aFormat == SurfaceFormat::R8G8B8X8 || aFormat == SurfaceFormat::B8G8R8X8) {
-          // Skia doesn't support BGRX | RGBX, so ensure we clear the buffer for the proper
-          // alpha values.
-          allocFlags = TextureAllocationFlags(aAllocFlags | ALLOC_CLEAR_BUFFER);
-        }
-        return GrallocTextureData::CreateForDrawing(aSize, aFormat, moz2DBackend, aAllocator, allocFlags);
-      }
-#endif
-
-    default:
+  if (textureType == TextureType::GrallocBuffer) {
+    if (!gfxPlatform::WebRenderPrefEnabled()) {
       return nullptr;
+    }
+    TextureAllocationFlags allocFlags = aAllocFlags;
+    if (aFormat == SurfaceFormat::R8G8B8X8 ||
+        aFormat == SurfaceFormat::B8G8R8X8) {
+      // Skia doesn't support BGRX | RGBX, so ensure we clear the buffer for the
+      // proper alpha values.
+      allocFlags = TextureAllocationFlags(aAllocFlags | ALLOC_CLEAR_BUFFER);
+    }
+    return GrallocTextureData::CreateForDrawing(aSize, aFormat, moz2DBackend,
+                                                aAllocator, allocFlags);
   }
+#endif
+  return TextureData::Create(textureType, aFormat, aSize, aAllocFlags,
+                             moz2DBackend);
 }
 
 /* static */
 bool TextureData::IsRemote(KnowsCompositor* aKnowsCompositor,
-                           BackendSelector aSelector) {
-  TextureType textureType = GetTextureType(
-      gfx::SurfaceFormat::UNKNOWN, gfx::IntSize(1, 1), aKnowsCompositor,
-      aSelector, TextureAllocationFlags::ALLOC_DEFAULT);
+                           BackendSelector aSelector,
+                           gfx::SurfaceFormat aFormat, gfx::IntSize aSize) {
+  if (aSelector != BackendSelector::Canvas || !gfxPlatform::UseRemoteCanvas()) {
+    return false;
+  }
 
-  return ShouldRemoteTextureType(textureType, aSelector);
+  TextureType textureType =
+      ChooseTextureType(aFormat, aSize, aKnowsCompositor, aSelector,
+                        TextureAllocationFlags::ALLOC_DEFAULT);
+
+  switch (textureType) {
+    case TextureType::D3D11:
+      return true;
+    default:
+      return false;
+  }
 }
 
 static void DestroyTextureData(TextureData* aTextureData,
@@ -542,6 +547,7 @@ void TextureClient::Destroy() {
   }
 
   mBorrowedDrawTarget = nullptr;
+  mBorrowedSnapshot = false;
   mReadLock = nullptr;
 
   RefPtr<TextureChild> actor = mActor;
@@ -697,6 +703,7 @@ void TextureClient::Unlock() {
 
     mBorrowedDrawTarget = nullptr;
   }
+  mBorrowedSnapshot = false;
 
   if (mOpenMode & OpenMode::OPEN_WRITE) {
     mUpdated = true;
@@ -833,6 +840,7 @@ void TextureClient::EndDraw() {
   MOZ_ASSERT(mBorrowedDrawTarget->refCount() <= mExpectedDtRefs);
 
   mBorrowedDrawTarget = nullptr;
+  mBorrowedSnapshot = false;
   mData->EndDraw();
 }
 
@@ -840,7 +848,9 @@ already_AddRefed<gfx::SourceSurface> TextureClient::BorrowSnapshot() {
   MOZ_ASSERT(mIsLocked);
 
   RefPtr<gfx::SourceSurface> surface = mData->BorrowSnapshot();
-  if (!surface) {
+  if (surface) {
+    mBorrowedSnapshot = true;
+  } else {
     RefPtr<gfx::DrawTarget> drawTarget = BorrowDrawTarget();
     if (!drawTarget) {
       return nullptr;
@@ -849,6 +859,15 @@ already_AddRefed<gfx::SourceSurface> TextureClient::BorrowSnapshot() {
   }
 
   return surface.forget();
+}
+
+void TextureClient::ReturnSnapshot(
+    already_AddRefed<gfx::SourceSurface> aSnapshot) {
+  RefPtr<gfx::SourceSurface> snapshot = aSnapshot;
+  if (mBorrowedSnapshot) {
+    mData->ReturnSnapshot(snapshot.forget());
+    mBorrowedSnapshot = false;
+  }
 }
 
 bool TextureClient::BorrowMappedData(MappedTextureData& aMap) {
@@ -1056,8 +1075,8 @@ bool TextureClient::InitIPDLActor(CompositableForwarder* aForwarder) {
 
   PTextureChild* actor = aForwarder->GetTextureForwarder()->CreateTexture(
       desc, std::move(readLockDescriptor),
-      aForwarder->GetCompositorBackendType(), GetFlags(), mSerial,
-      mExternalImageId);
+      aForwarder->GetCompositorBackendType(), GetFlags(),
+      dom::ContentParentId(), mSerial, mExternalImageId);
 
   if (!actor) {
     gfxCriticalNote << static_cast<int32_t>(desc.type()) << ", "
@@ -1082,7 +1101,8 @@ bool TextureClient::InitIPDLActor(CompositableForwarder* aForwarder) {
   return mActor->IPCOpen();
 }
 
-bool TextureClient::InitIPDLActor(KnowsCompositor* aKnowsCompositor) {
+bool TextureClient::InitIPDLActor(KnowsCompositor* aKnowsCompositor,
+                                  const dom::ContentParentId& aContentId) {
   MOZ_ASSERT(aKnowsCompositor &&
              aKnowsCompositor->GetTextureForwarder()->GetThread() ==
                  mAllocator->GetThread());
@@ -1125,7 +1145,7 @@ bool TextureClient::InitIPDLActor(KnowsCompositor* aKnowsCompositor) {
   PTextureChild* actor =
       fwd->CreateTexture(desc, std::move(readLockDescriptor),
                          aKnowsCompositor->GetCompositorBackendType(),
-                         GetFlags(), mSerial, mExternalImageId);
+                         GetFlags(), aContentId, mSerial, mExternalImageId);
   if (!actor) {
     gfxCriticalNote << static_cast<int32_t>(desc.type()) << ", "
                     << static_cast<int32_t>(
@@ -1185,6 +1205,10 @@ already_AddRefed<TextureClient> TextureClient::CreateForDrawing(
 
   if (data) {
     return MakeAndAddRef<TextureClient>(data, aTextureFlags, aAllocator);
+  }
+  if (aAllocFlags & ALLOC_FORCE_REMOTE) {
+    // If we must be remote, but allocation failed, then don't fall back.
+    return nullptr;
   }
 
   // Can't do any better than a buffer texture client.

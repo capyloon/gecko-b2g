@@ -176,6 +176,7 @@ class DOMArena;
 class Element;
 class Event;
 class EventTarget;
+class FragmentOrElement;
 class HTMLElement;
 class HTMLInputElement;
 class IPCTransferable;
@@ -187,6 +188,7 @@ class MessageBroadcaster;
 class NodeInfo;
 class OwningFileOrUSVStringOrFormData;
 class Selection;
+enum class ShadowRootMode : uint8_t;
 struct StructuredSerializeOptions;
 class WorkerPrivate;
 enum class ElementCallbackType;
@@ -348,7 +350,8 @@ class nsContentUtils {
 
   // Check whether we should avoid leaking distinguishing information to JS/CSS.
   // This function can be called both in the main thread and worker threads.
-  static bool ShouldResistFingerprinting(RFPTarget aTarget);
+  static bool ShouldResistFingerprinting(bool aIsPrivateMode,
+                                         RFPTarget aTarget);
   static bool ShouldResistFingerprinting(nsIGlobalObject* aGlobalObject,
                                          RFPTarget aTarget);
   // Similar to the function above, but always allows CallerType::System
@@ -1088,7 +1091,7 @@ class nsContentUtils {
   /**
    * Returns true if this document is in a Private Browsing window.
    */
-  static bool IsInPrivateBrowsing(Document* aDoc);
+  static bool IsInPrivateBrowsing(const Document* aDoc);
 
   /**
    * Returns true if this loadGroup uses Private Browsing.
@@ -1804,6 +1807,9 @@ class nsContentUtils {
                            bool aPreventScriptExecution,
                            mozilla::ErrorResult& aRv);
 
+  MOZ_CAN_RUN_SCRIPT
+  static void SetHTMLUnsafe(mozilla::dom::FragmentOrElement* aTarget,
+                            Element* aContext, const nsAString& aSource);
   /**
    * Invoke the fragment parsing algorithm (innerHTML) using the HTML parser.
    *
@@ -2903,12 +2909,6 @@ class nsContentUtils {
       bool aAddDataFlavor, nsITransferable* aTransferable,
       const bool aFilterUnknownFlavors);
 
-  static nsresult IPCTransferableDataToTransferable(
-      const mozilla::dom::IPCTransferableData& aTransferableData,
-      const bool& aIsPrivateData, nsIPrincipal* aRequestingPrincipal,
-      const nsContentPolicyType& aContentPolicyType, bool aAddDataFlavor,
-      nsITransferable* aTransferable, const bool aFilterUnknownFlavors);
-
   static nsresult IPCTransferableToTransferable(
       const mozilla::dom::IPCTransferable& aIPCTransferable,
       bool aAddDataFlavor, nsITransferable* aTransferable,
@@ -3467,6 +3467,11 @@ class nsContentUtils {
   static int32_t CompareTreePosition(nsIContent* aContent1,
                                      nsIContent* aContent2,
                                      const nsIContent* aCommonAncestor);
+
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
+  static nsIContent* AttachDeclarativeShadowRoot(
+      nsIContent* aHost, mozilla::dom::ShadowRootMode aMode,
+      bool aDelegatesFocus);
 
  private:
   static bool InitializeEventTable();

@@ -48,8 +48,13 @@ function clickDoorhangerButton(aButtonIndex, browser) {
  * @return {Promise} resolving when the task function is done and the tab
  *                   closes.
  */
-function tabWithRequest(task, permission, browser = window.gBrowser) {
-  PermissionTestUtils.remove(ORIGIN_URI, PERMISSION_NAME);
+function tabWithRequest(
+  task,
+  permission,
+  browser = window.gBrowser,
+  privateWindow = false
+) {
+  clearPermission(ORIGIN_URI, PERMISSION_NAME, privateWindow);
 
   return BrowserTestUtils.withNewTab(
     {
@@ -89,6 +94,14 @@ function tabWithRequest(task, permission, browser = window.gBrowser) {
   );
 }
 
+function clearPermission(origin, permissionName, isPrivate) {
+  let principal = Services.scriptSecurityManager.createContentPrincipal(
+    origin,
+    isPrivate ? { privateBrowsingId: 1 } : {} /* attrs */
+  );
+  PermissionTestUtils.remove(principal, permissionName);
+}
+
 add_setup(async function () {
   Services.prefs.setBoolPref(
     "dom.webnotifications.requireuserinteraction",
@@ -103,7 +116,9 @@ add_setup(async function () {
     Services.prefs.clearUserPref(
       "permissions.desktop-notification.notNow.enabled"
     );
-    PermissionTestUtils.remove(ORIGIN_URI, PERMISSION_NAME);
+
+    clearPermission(ORIGIN_URI, PERMISSION_NAME, false /* private origin */);
+    clearPermission(ORIGIN_URI, PERMISSION_NAME, true /* private origin */);
   });
 });
 
@@ -191,7 +206,7 @@ add_task(async function test_requestPermission_privateNotifications() {
       },
       perm == Services.perms.ALLOW_ACTION ? "granted" : "denied",
       privateWindow.gBrowser,
-      privateWindow.PopupNotifications.panel
+      true /* privateWindow */
     );
 
     ok(
@@ -202,15 +217,6 @@ add_task(async function test_requestPermission_privateNotifications() {
       "doorhanger should have been removed in all cases by now"
     );
 
-    let attrs = { privateBrowsingId: 1 };
-    let privatePrincipal =
-      Services.scriptSecurityManager.createContentPrincipal(ORIGIN_URI, attrs);
-
-    is(
-      PermissionTestUtils.testPermission(privatePrincipal, PERMISSION_NAME),
-      perm,
-      "Permission from permission manager should be as expected"
-    );
     await BrowserTestUtils.closeWindow(privateWindow);
   }
 

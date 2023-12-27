@@ -625,14 +625,15 @@ def vc_compiler_paths_for_version(host, env, vc_path, winsysroot):
         }
 
 
-@depends(target, vc_compiler_paths_for_version, when=is_windows)
-def vc_compiler_path(target, paths):
+@depends(target, host, vc_compiler_paths_for_version, when=is_windows)
+def vc_compiler_path(target, host, paths):
+    cpu = target.cpu if target.os == "WINNT" else host.cpu
     vc_target = {
         "x86": "x86",
         "x86_64": "x64",
         "arm": "arm",
         "aarch64": "arm64",
-    }.get(target.cpu)
+    }.get(cpu)
     if not paths:
         return
     return paths.get(vc_target)
@@ -722,9 +723,13 @@ def rust_search_path(rust_path, search_order, original_path):
 # Prepend the mozilla-build msys2 path, since otherwise we can get mismatched
 # cygwin dll errors during configure if we get called from another msys2
 # environment, see bug 1801826.
-@depends(mozillabuild_bin_paths, clang_search_path, rust_search_path, target, original_path)
+@depends(
+    mozillabuild_bin_paths, clang_search_path, rust_search_path, target, original_path
+)
 @imports("os")
-def altered_path(mozillabuild_bin_paths, clang_search_path, rust_search_path, target, original_path):
+def altered_path(
+    mozillabuild_bin_paths, clang_search_path, rust_search_path, target, original_path
+):
     altered_path = mozillabuild_bin_paths
     if target.kernel == "Darwin":
         # The rust compiler wants to execute dsymutil, but it does so in a
@@ -3249,3 +3254,8 @@ set_config("SSSE3_FLAGS", ["-mssse3"])
 set_config("SSE4_2_FLAGS", ["-msse4.2"])
 set_config("FMA_FLAGS", ["-mfma"])
 set_config("AVX2_FLAGS", ["-mavx2"])
+set_config(
+    "AVXVNNI_FLAGS",
+    ["-mavxvnni"],
+    try_compile(check_msg="for -mavxvnni support", flags=["-mavxvnni"]),
+)

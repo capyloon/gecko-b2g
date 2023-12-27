@@ -421,11 +421,11 @@ dump-syms:
         revision: b1951e4ccec48a2e97460a7ec40be35aa79e0037
 
 rust-minidump:
-    description: rust-minidump 0.15.2 source code (for minidump-stackwalk)
+    description: rust-minidump 0.19.1 source code (for minidump-stackwalk)
     fetch:
         type: git
         repo: https://github.com/rust-minidump/rust-minidump/
-        revision: 0d782e53650f4059ede143e10686c6ce9947dbc4
+        revision: c3de84b061339c686a572fb9f059e7ba3fad38d6
 
 fix-stacks:
     description: fix-stacks source code
@@ -610,14 +610,14 @@ cargo-vet:
     fetch:
         type: git
         repo: https://github.com/mozilla/cargo-vet
-        revision: 8c8b6d7a5237544c613de616a031586587f49a42
+        revision: 67e92b6d03f48802907b2c80119ed328289a114d
 
 symbol-scrapers:
     description: Linux distribution symbol scraper source
     fetch:
         type: git
         repo: http://github.com/mozilla/symbol-scrapers
-        revision: 89b56f618a91db023acc202c25ff87cf0a0c4ee9
+        revision: d6b42d6475aa9b9a24e2c0a72a5b15afd48b72df
 
 xz-5.4.4:
     description: xz 5.4.4 source code

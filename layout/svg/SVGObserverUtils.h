@@ -8,6 +8,7 @@
 #define LAYOUT_SVG_SVGOBSERVERUTILS_H_
 
 #include "mozilla/Attributes.h"
+#include "mozilla/SVGIntegrationUtils.h"
 #include "mozilla/dom/IDTracker.h"
 #include "FrameProperties.h"
 #include "nsID.h"
@@ -99,15 +100,14 @@ class SVGRenderingObserver : public nsStubMutationObserver {
   virtual ~SVGRenderingObserver() = default;
 
  public:
-  enum Flags : uint32_t {
-    OBSERVE_ATTRIBUTE_CHANGES = 0x01,
-    OBSERVE_CONTENT_CHANGES = 0x02
-  };
   using Element = dom::Element;
 
-  SVGRenderingObserver(uint32_t aFlags = OBSERVE_ATTRIBUTE_CHANGES |
-                                         OBSERVE_CONTENT_CHANGES)
-      : mInObserverSet(false), mFlags(aFlags) {}
+  SVGRenderingObserver(uint32_t aCallbacks = kAttributeChanged |
+                                             kContentAppended |
+                                             kContentInserted |
+                                             kContentRemoved) {
+    SetEnabledCallbacks(aCallbacks);
+  }
 
   // nsIMutationObserver
   NS_DECL_NSIMUTATIONOBSERVER_ATTRIBUTECHANGED
@@ -167,10 +167,7 @@ class SVGRenderingObserver : public nsStubMutationObserver {
 #endif
 
   // Whether we're in our observed element's observer set at this time.
-  bool mInObserverSet;
-
-  // Flags to control what changes we notify about.
-  uint32_t mFlags;
+  bool mInObserverSet = false;
 };
 
 class SVGObserverUtils {
@@ -275,6 +272,8 @@ class SVGObserverUtils {
    * NOTE! A return value of eHasNoRefs does NOT mean that there are no filters
    * to be applied, only that there are no references to SVG filter elements.
    *
+   * @param aIsBackdrop whether we're observing a backdrop-filter or a filter.
+   *
    * XXX Callers other than ComputePostEffectsInkOverflowRect and
    * SVGUtils::GetPostFilterInkOverflowRect should not need to initiate
    * observing.  If we have a bug that causes invalidation (which would remove
@@ -284,8 +283,13 @@ class SVGObserverUtils {
    * that behavior just yet due to the regression potential.
    */
   static ReferenceState GetAndObserveFilters(
-      nsIFrame* aFilteredFrame, nsTArray<SVGFilterFrame*>* aFilterFrames);
+      nsIFrame* aFilteredFrame, nsTArray<SVGFilterFrame*>* aFilterFrames,
+      StyleFilterType aStyleFilterType = StyleFilterType::Filter);
 
+  /*
+   * NOTE! canvas doesn't have backdrop-filters so there's no StyleFilterType
+   * parameter.
+   */
   static ReferenceState GetAndObserveFilters(
       nsISupports* aObserverList, nsTArray<SVGFilterFrame*>* aFilterFrames);
 
@@ -428,24 +432,6 @@ class SVGObserverUtils {
    * invalidation changes for background-clip:text.
    */
   static Element* GetAndObserveBackgroundClip(nsIFrame* aFrame);
-
-  /**
-   * A helper function to resolve filter URL.
-   */
-  static already_AddRefed<URLAndReferrerInfo> GetFilterURI(
-      nsIFrame* aFrame, const StyleFilter& aFilter);
-
-  /**
-   * Return a baseURL for resolving a local-ref URL.
-   *
-   * @param aContent an element which uses a local-ref property. Here are some
-   *                 examples:
-   *                   <rect fill=url(#foo)>
-   *                   <circle clip-path=url(#foo)>
-   *                   <use xlink:href="#foo">
-   */
-  static already_AddRefed<nsIURI> GetBaseURLForLocalRef(nsIContent* aContent,
-                                                        nsIURI* aDocURI);
 };
 
 }  // namespace mozilla

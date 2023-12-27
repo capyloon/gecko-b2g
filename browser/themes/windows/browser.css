@@ -6,10 +6,6 @@
 @import url("chrome://browser/skin/contextmenu.css");
 @import url("chrome://browser/skin/browser-custom-colors.css");
 
-:root {
-  --sidebar-border-color: ThreeDLightShadow;
-}
-
 #menubar-items {
   flex-direction: column; /* for flex hack */
   justify-content: normal; /* align the menubar to the top also in customize mode */
@@ -59,42 +55,10 @@
   }
 }
 
-@media not (prefers-contrast) {
-  /* Use a different color in inactive windows. */
-  #toolbar-menubar:not(:-moz-lwtheme):-moz-window-inactive {
-    color: ThreeDShadow;
-  }
-}
-
 /* When temporarily showing the menu bar, make it at least as tall as the
  * tab bar such that the window controls don't appear to move up. */
 :root[tabsintitlebar] #toolbar-menubar[autohide="true"] {
   height: calc(var(--tab-min-height) - var(--tabs-navbar-shadow-size));
-}
-
-.browser-toolbar {
-  appearance: none;
-}
-
-.browser-toolbar:not(.titlebar-color) {
-  background-color: var(--toolbar-bgcolor);
-  background-clip: padding-box;
-  color: var(--toolbar-color);
-}
-
-#nav-bar:not([tabs-hidden="true"]) {
-  /* This is needed for some toolbar button animations. Gross :( */
-  position: relative;
-}
-
-@media (prefers-contrast) {
-  #nav-bar:not(:-moz-lwtheme) {
-    box-shadow: 0 calc(-1 * var(--tabs-navbar-shadow-size)) 0 ThreeDShadow;
-  }
-}
-
-#nav-bar:-moz-lwtheme {
-  box-shadow: 0 calc(-1 * var(--tabs-navbar-shadow-size)) 0 var(--lwt-tabs-border-color, rgba(0,0,0,.3));
 }
 
 #print-preview-toolbar:not(:-moz-lwtheme) {
@@ -211,10 +175,6 @@
     &:active {
       background-color: hsl(355,82%,69%);
     }
-  }
-
-  .titlebar-button:not(:hover) > .toolbarbutton-icon:-moz-window-inactive {
-    opacity: 0.5;
   }
 }
 

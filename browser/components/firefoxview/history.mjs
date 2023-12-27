@@ -5,6 +5,7 @@
 import {
   html,
   ifDefined,
+  repeat,
   when,
 } from "chrome://global/content/vendor/lit.all.mjs";
 import { escapeHtmlEntities, isSearchEnabled } from "./helpers.mjs";
@@ -16,7 +17,6 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   BrowserUtils: "resource://gre/modules/BrowserUtils.sys.mjs",
-  DeferredTask: "resource://gre/modules/DeferredTask.sys.mjs",
   FirefoxViewPlacesQuery:
     "resource:///modules/firefox-view-places-query.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
@@ -39,8 +39,7 @@ const HAS_IMPORTED_HISTORY_PREF = "browser.migrate.interactions.history";
 const IMPORT_HISTORY_DISMISSED_PREF =
   "browser.tabs.firefox-view.importHistory.dismissed";
 
-const SEARCH_DEBOUNCE_RATE_MS = 500;
-const SEARCH_DEBOUNCE_TIMEOUT_MS = 1000;
+const SEARCH_RESULTS_LIMIT = 300;
 
 class HistoryInView extends ViewPage {
   constructor() {
@@ -68,11 +67,7 @@ class HistoryInView extends ViewPage {
     this.#updateAllHistoryItems();
     this.placesQuery.observeHistory(data => this.#updateAllHistoryItems(data));
 
-    this.searchTask = new lazy.DeferredTask(
-      () => this.#updateSearchResults(),
-      SEARCH_DEBOUNCE_RATE_MS,
-      SEARCH_DEBOUNCE_TIMEOUT_MS
-    );
+    this.toggleVisibilityInCardContainer();
   }
 
   async connectedCallback() {
@@ -112,9 +107,8 @@ class HistoryInView extends ViewPage {
     }
     this._started = false;
     this.placesQuery.close();
-    if (!this.searchTask.isFinalized) {
-      this.searchTask.finalize();
-    }
+
+    this.toggleVisibilityInCardContainer();
   }
 
   disconnectedCallback() {
@@ -142,7 +136,7 @@ class HistoryInView extends ViewPage {
       try {
         this.searchResults = await this.placesQuery.searchHistory(
           this.searchQuery,
-          lazy.maxRowsPref
+          SEARCH_RESULTS_LIMIT
         );
       } catch (e) {
         // Connection interrupted, ignore.
@@ -355,6 +349,9 @@ class HistoryInView extends ViewPage {
 
   updated() {
     this.fullyUpdated = true;
+    if (this.lists?.length) {
+      this.toggleVisibilityInCardContainer();
+    }
   }
 
   panelListTemplate() {
@@ -393,64 +390,66 @@ class HistoryInView extends ViewPage {
     if (this.searchResults) {
       return this.#searchResultsTemplate();
     } else if (this.allHistoryItems.size) {
-      return this.#historyCardsTemplate();
+      return html`${repeat(
+        this.sortOption === "date"
+          ? this.historyMapByDate
+          : this.historyMapBySite,
+        item => item,
+        item => this.#historyCardTemplate(item)
+      )} `;
     }
     return this.#emptyMessageTemplate();
   }
 
-  #historyCardsTemplate() {
-    let cardsTemplate = [];
+  #historyCardTemplate(cardItem) {
+    let cardTemplate = [];
     if (this.sortOption === "date" && this.historyMapByDate.length) {
-      this.historyMapByDate.forEach(historyItem => {
-        if (historyItem.items.length) {
-          let dateArg = JSON.stringify({ date: historyItem.items[0].time });
-          cardsTemplate.push(html`<card-container>
-            <h3
-              slot="header"
-              data-l10n-id=${historyItem.l10nId}
-              data-l10n-args=${dateArg}
-            ></h3>
-            <fxview-tab-list
-              slot="main"
-              class="with-context-menu"
-              dateTimeFormat=${historyItem.l10nId.includes("prev-month")
-                ? "dateTime"
-                : "time"}
-              hasPopup="menu"
-              maxTabsLength=${this.maxTabsLength}
-              .tabItems=${historyItem.items}
-              @fxview-tab-list-primary-action=${this.onPrimaryAction}
-              @fxview-tab-list-secondary-action=${this.onSecondaryAction}
-            >
-              ${this.panelListTemplate()}
-            </fxview-tab-list>
-          </card-container>`);
-        }
-      });
+      if (cardItem.items.length) {
+        let dateArg = JSON.stringify({ date: cardItem.items[0].time });
+        cardTemplate = html`<card-container>
+          <h2
+            slot="header"
+            data-l10n-id=${cardItem.l10nId}
+            data-l10n-args=${dateArg}
+          ></h2>
+          <fxview-tab-list
+            slot="main"
+            class="with-context-menu"
+            dateTimeFormat=${cardItem.l10nId.includes("prev-month")
+              ? "dateTime"
+              : "time"}
+            hasPopup="menu"
+            maxTabsLength=${this.maxTabsLength}
+            .tabItems=${cardItem.items}
+            @fxview-tab-list-primary-action=${this.onPrimaryAction}
+            @fxview-tab-list-secondary-action=${this.onSecondaryAction}
+          >
+            ${this.panelListTemplate()}
+          </fxview-tab-list>
+        </card-container>`;
+      }
     } else if (this.historyMapBySite.length) {
-      this.historyMapBySite.forEach(historyItem => {
-        if (historyItem.items.length) {
-          cardsTemplate.push(html`<card-container>
-            <h3 slot="header" data-l10n-id="${ifDefined(historyItem.l10nId)}">
-              ${historyItem.domain}
-            </h3>
-            <fxview-tab-list
-              slot="main"
-              class="with-context-menu"
-              dateTimeFormat="dateTime"
-              hasPopup="menu"
-              maxTabsLength=${this.maxTabsLength}
-              .tabItems=${historyItem.items}
-              @fxview-tab-list-primary-action=${this.onPrimaryAction}
-              @fxview-tab-list-secondary-action=${this.onSecondaryAction}
-            >
-              ${this.panelListTemplate()}
-            </fxview-tab-list>
-          </card-container>`);
-        }
-      });
+      if (cardItem.items.length) {
+        cardTemplate = html`<card-container>
+          <h3 slot="header" data-l10n-id="${ifDefined(cardItem.l10nId)}">
+            ${cardItem.domain}
+          </h3>
+          <fxview-tab-list
+            slot="main"
+            class="with-context-menu"
+            dateTimeFormat="dateTime"
+            hasPopup="menu"
+            maxTabsLength=${this.maxTabsLength}
+            .tabItems=${cardItem.items}
+            @fxview-tab-list-primary-action=${this.onPrimaryAction}
+            @fxview-tab-list-secondary-action=${this.onSecondaryAction}
+          >
+            ${this.panelListTemplate()}
+          </fxview-tab-list>
+        </card-container>`;
+      }
     }
-    return cardsTemplate;
+    return cardTemplate;
   }
 
   #emptyMessageTemplate() {
@@ -634,7 +633,7 @@ class HistoryInView extends ViewPage {
 
   async onSearchQuery(e) {
     this.searchQuery = e.detail.query;
-    this.searchTask.arm();
+    this.#updateSearchResults();
   }
 
   willUpdate(changedProperties) {

@@ -131,8 +131,7 @@ where
             1 => Backend::Vulkan,
             2 => Backend::Metal,
             3 => Backend::Dx12,
-            4 => Backend::Dx11,
-            5 => Backend::Gl,
+            4 => Backend::Gl,
             _ => unreachable!(),
         }
     }
@@ -155,12 +154,16 @@ where
 {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let (index, epoch, backend) = self.unzip();
-        formatter
-            .debug_struct("Id")
-            .field("index", &index)
-            .field("epoch", &epoch)
-            .field("backend", &backend)
-            .finish()
+        let backend = match backend {
+            Backend::Empty => "_",
+            Backend::Vulkan => "vk",
+            Backend::Metal => "mtl",
+            Backend::Dx12 => "d3d12",
+            Backend::Gl => "gl",
+            Backend::BrowserWebGpu => "webgpu",
+        };
+        write!(formatter, "Id({index},{epoch},{backend})")?;
+        Ok(())
     }
 }
 
@@ -275,7 +278,6 @@ fn test_id_backend() {
         Backend::Vulkan,
         Backend::Metal,
         Backend::Dx12,
-        Backend::Dx11,
         Backend::Gl,
     ] {
         let id: Id<()> = Id::zip(1, 0, b);
@@ -295,7 +297,6 @@ fn test_id() {
         Backend::Vulkan,
         Backend::Metal,
         Backend::Dx12,
-        Backend::Dx11,
         Backend::Gl,
     ];
     for &i in &indexes {

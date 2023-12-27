@@ -213,7 +213,8 @@ static gboolean key_release_event_cb(GtkWidget* widget, GdkEventKey* event);
 static gboolean property_notify_event_cb(GtkWidget* widget,
                                          GdkEventProperty* event);
 static gboolean scroll_event_cb(GtkWidget* widget, GdkEventScroll* event);
-
+static gboolean visibility_notify_event_cb(GtkWidget* widget,
+                                           GdkEventVisibility* event);
 static void hierarchy_changed_cb(GtkWidget* widget,
                                  GtkWidget* previous_toplevel);
 static gboolean window_state_event_cb(GtkWidget* widget,
@@ -407,7 +408,6 @@ nsWindow::nsWindow()
       mRetryPointerGrab(false),
       mPanInProgress(false),
       mTitlebarBackdropState(false),
-      mIsWaylandPanelWindow(false),
       mIsChildWindow(false),
       mAlwaysOnTop(false),
       mNoAutoHide(false),
@@ -475,9 +475,6 @@ void nsWindow::ReleaseGlobals() {
 }
 
 void nsWindow::DispatchActivateEvent(void) {
-  NS_ASSERTION(mContainer || mIsDestroyed,
-               "DispatchActivateEvent only intended for container windows");
-
 #ifdef ACCESSIBILITY
   DispatchActivateEventAccessible();
 #endif  // ACCESSIBILITY
@@ -890,14 +887,9 @@ bool nsWindow::DrawsToCSDTitlebar() const {
 }
 
 void nsWindow::AddCSDDecorationSize(int* aWidth, int* aHeight) {
-  if (mUndecorated || mSizeMode != nsSizeMode_Normal ||
-      mGtkWindowDecoration != GTK_DECORATION_CLIENT) {
-    return;
-  }
-
-  // We add decoration borders if titlebar is off or on Wayland
-  // where CSD is always used.
-  if (!mDrawInTitlebar && !GdkIsWaylandDisplay()) {
+  if (mSizeMode != nsSizeMode_Normal || mUndecorated ||
+      mGtkWindowDecoration != GTK_DECORATION_CLIENT || !GdkIsWaylandDisplay() ||
+      !IsGnomeDesktopEnvironment()) {
     return;
   }
 
@@ -2755,8 +2747,6 @@ void nsWindow::SetZIndex(int32_t aZIndex) {
     return;
   }
 
-  NS_ASSERTION(!mContainer, "Expected Mozilla child widget");
-
   // We skip the nsWindows that don't have mGdkWindows.
   // These are probably in the process of being destroyed.
   if (!mGdkWindow) {
@@ -3330,15 +3320,6 @@ static GdkCursor* GetCursorForImage(const nsIWidget::Cursor& aCursor,
 }
 
 void nsWindow::SetCursor(const Cursor& aCursor) {
-  // if we're not the toplevel window pass up the cursor request to
-  // the toplevel window to handle it.
-  if (!mContainer && mGdkWindow) {
-    if (nsWindow* window = GetContainerWindow()) {
-      window->SetCursor(aCursor);
-    }
-    return;
-  }
-
   if (mWidgetCursorLocked) {
     return;
   }
@@ -3350,10 +3331,6 @@ void nsWindow::SetCursor(const Cursor& aCursor) {
 
   mUpdateCursor = false;
   mCursor = aCursor;
-
-  if (!mContainer) {
-    return;
-  }
 
   // Try to set the cursor image first, and fall back to the numeric cursor.
   GdkCursor* imageCursor = GetCursorForImage(aCursor, GdkCeiledScaleFactor());
@@ -4790,7 +4767,7 @@ void nsWindow::OnButtonPressEvent(GdkEventButton* aEvent) {
 
   nsIWidget::ContentAndAPZEventStatus eventStatus = DispatchInputEvent(&event);
 
-  if ((mIsWaylandPanelWindow || mDraggableRegion.Contains(refPoint)) &&
+  if (mDraggableRegion.Contains(refPoint) &&
       domButton == MouseButton::ePrimary &&
       eventStatus.mContentStatus != nsEventStatus_eConsumeNoDefault) {
     mWindowShouldStartDragging = true;
@@ -5226,6 +5203,14 @@ void nsWindow::DispatchPanGesture(PanGestureInput& aPanInput) {
   }
 
   ProcessUntransformedAPZEvent(&event, result);
+}
+
+void nsWindow::OnVisibilityNotifyEvent(GdkVisibilityState aState) {
+  LOG("nsWindow::OnVisibilityNotifyEvent [%p] state 0x%x\n", this, aState);
+  auto state = aState == GDK_VISIBILITY_FULLY_OBSCURED
+                   ? OcclusionState::OCCLUDED
+                   : OcclusionState::UNKNOWN;
+  NotifyOcclusionState(state);
 }
 
 void nsWindow::OnWindowStateEvent(GtkWidget* aWidget,
@@ -5989,16 +5974,7 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
     LOG("  child widget, switch to popup. parent nsWindow %p", parentnsWindow);
   }
 
-  if (mWindowType == WindowType::Popup && !parentnsWindow) {
-    LOG("  popup window without parent!");
-    if (GdkIsWaylandDisplay()) {
-      LOG("  switch to toplevel on Wayland.");
-      // Wayland does not allow to create popup without parent so switch to
-      // toplevel and mark as wayland panel.
-      mIsWaylandPanelWindow = true;
-      mWindowType = WindowType::TopLevel;
-    }
-  }
+  MOZ_ASSERT_IF(mWindowType == WindowType::Popup, parentnsWindow);
 
   if (mWindowType != WindowType::Dialog && mWindowType != WindowType::Popup &&
       mWindowType != WindowType::TopLevel &&
@@ -6310,6 +6286,8 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
                    nullptr);
   g_signal_connect(mShell, "window_state_event",
                    G_CALLBACK(window_state_event_cb), nullptr);
+  g_signal_connect(mShell, "visibility-notify-event",
+                   G_CALLBACK(visibility_notify_event_cb), nullptr);
   g_signal_connect(mShell, "check-resize", G_CALLBACK(check_resize_cb),
                    nullptr);
   g_signal_connect(mShell, "composited-changed",
@@ -8396,6 +8374,16 @@ static gboolean scroll_event_cb(GtkWidget* widget, GdkEventScroll* event) {
   return TRUE;
 }
 
+static gboolean visibility_notify_event_cb(GtkWidget* widget,
+                                           GdkEventVisibility* event) {
+  RefPtr<nsWindow> window = get_window_for_gdk_window(event->window);
+  if (!window) {
+    return FALSE;
+  }
+  window->OnVisibilityNotifyEvent(event->state);
+  return TRUE;
+}
+
 static void hierarchy_changed_cb(GtkWidget* widget,
                                  GtkWidget* previous_toplevel) {
   GtkWidget* toplevel = gtk_widget_get_toplevel(widget);
@@ -8922,7 +8910,7 @@ nsresult nsWindow::SetNonClientMargins(const LayoutDeviceIntMargin& aMargins) {
 }
 
 bool nsWindow::IsAlwaysUndecoratedWindow() const {
-  if (mIsPIPWindow || mIsWaylandPanelWindow || gKioskMode) {
+  if (mIsPIPWindow || gKioskMode) {
     return true;
   }
   if (mWindowType == WindowType::Dialog &&
@@ -9846,7 +9834,7 @@ bool nsWindow::SetEGLNativeWindowSize(
 
   // See NS_NATIVE_EGL_WINDOW why we can't block here.
   if (mDestroyMutex.TryLock()) {
-    if (!mIsDestroyed && mContainer) {
+    if (!mIsDestroyed) {
       gint scale = GdkCeiledScaleFactor();
       LOG("nsWindow::SetEGLNativeWindowSize() %d x %d scale %d (unscaled %d x "
           "%d)",
@@ -9913,12 +9901,12 @@ bool nsWindow::ApplyEnterLeaveMutterWorkaround() {
   return false;
 }
 
-void nsWindow::NotifyOcclusionState(mozilla::widget::OcclusionState aState) {
+void nsWindow::NotifyOcclusionState(OcclusionState aState) {
   if (!IsTopLevelWindowType()) {
     return;
   }
 
-  bool isFullyOccluded = aState == mozilla::widget::OcclusionState::OCCLUDED;
+  bool isFullyOccluded = aState == OcclusionState::OCCLUDED;
   if (mIsFullyOccluded == isFullyOccluded) {
     return;
   }
