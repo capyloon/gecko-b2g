@@ -22,7 +22,6 @@
 #include "nsCaret.h"
 #include "nsContentUtils.h"
 #include "nsGkAtoms.h"
-#include "nsQuickSort.h"
 #include "SVGPaintServerFrame.h"
 #include "nsTArray.h"
 #include "nsTextFrame.h"
@@ -3761,9 +3760,7 @@ already_AddRefed<DOMSVGPoint> SVGTextFrame::GetStartPositionOfChar(
   // We need to return the start position of the whole glyph.
   uint32_t startIndex = it.GlyphStartTextElementCharIndex();
 
-  RefPtr<DOMSVGPoint> point =
-      new DOMSVGPoint(ToPoint(mPositions[startIndex].mPosition));
-  return point.forget();
+  return do_AddRef(new DOMSVGPoint(ToPoint(mPositions[startIndex].mPosition)));
 }
 
 /**
@@ -3859,8 +3856,7 @@ already_AddRefed<DOMSVGPoint> SVGTextFrame::GetEndPositionOfChar(
              Matrix::Translation(ToPoint(mPositions[startIndex].mPosition));
   Point p = m.TransformPoint(Point(advance / mFontSizeScaleFactor, 0));
 
-  RefPtr<DOMSVGPoint> point = new DOMSVGPoint(p);
-  return point.forget();
+  return do_AddRef(new DOMSVGPoint(p));
 }
 
 /**
@@ -3928,8 +3924,7 @@ already_AddRefed<SVGRect> SVGTextFrame::GetExtentOfChar(nsIContent* aContent,
   // Transform the glyph's rect into user space.
   gfxRect r = m.TransformBounds(glyphRect);
 
-  RefPtr<SVGRect> rect = new SVGRect(aContent, ToRect(r));
-  return rect.forget();
+  return do_AddRef(new SVGRect(aContent, ToRect(r)));
 }
 
 /**

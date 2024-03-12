@@ -110,7 +110,7 @@ void SharedSurface_EGLImage::ProducerReleaseImpl() {
   gl->fFinish();
 }
 
-void SharedSurface_EGLImage::ProducerReadAcquireImpl() {
+bool SharedSurface_EGLImage::ProducerReadAcquireImpl() {
   const auto& gle = GLContextEGL::Cast(mDesc.gl);
   const auto& egl = gle->mEgl;
   // Wait on the fence, because presumably we're going to want to read this
@@ -118,6 +118,7 @@ void SharedSurface_EGLImage::ProducerReadAcquireImpl() {
   if (mSync) {
     egl->fClientWaitSync(mSync, 0, LOCAL_EGL_FOREVER);
   }
+  return true;
 }
 
 Maybe<layers::SurfaceDescriptor> SharedSurface_EGLImage::ToSurfaceDescriptor() {
@@ -254,7 +255,8 @@ Maybe<layers::SurfaceDescriptor>
 SharedSurface_SurfaceTexture::ToSurfaceDescriptor() {
   return Some(layers::SurfaceTextureDescriptor(
       mSurface->GetHandle(), mDesc.size, gfx::SurfaceFormat::R8G8B8A8,
-      false /* NOT continuous */, Nothing() /* Do not override transform */));
+      false /* Do NOT override colorspace */, false /* NOT continuous */,
+      Nothing() /* Do not override transform */));
 }
 
 SurfaceFactory_SurfaceTexture::SurfaceFactory_SurfaceTexture(GLContext& gl)

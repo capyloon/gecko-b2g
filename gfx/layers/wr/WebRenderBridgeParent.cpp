@@ -1430,8 +1430,8 @@ bool WebRenderBridgeParent::ProcessWebRenderParentCommands(
     wr::TransactionBuilder& aTxn) {
   // Transaction for async image pipeline that uses ImageBridge always need to
   // be non low priority.
-  wr::TransactionBuilder txnForImageBridge(mApi);
-  wr::AutoTransactionSender sender(mApi, &txnForImageBridge);
+  wr::TransactionBuilder txnForImageBridge(mApi->GetRootAPI());
+  wr::AutoTransactionSender sender(mApi->GetRootAPI(), &txnForImageBridge);
 
   bool success = true;
   for (nsTArray<WebRenderParentCommand>::index_type i = 0;
@@ -2753,6 +2753,11 @@ void WebRenderBridgeParent::NotifyNotUsed(PTextureParent* aTexture,
 
 base::ProcessId WebRenderBridgeParent::GetChildProcessId() {
   return OtherPid();
+}
+
+dom::ContentParentId WebRenderBridgeParent::GetContentId() {
+  MOZ_ASSERT(mCompositorBridge);
+  return mCompositorBridge->GetContentId();
 }
 
 bool WebRenderBridgeParent::IsSameProcess() const {

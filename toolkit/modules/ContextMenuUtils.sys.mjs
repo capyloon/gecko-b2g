@@ -53,8 +53,8 @@ export var ContextMenuUtils = {
 
     // Set the event target as the copy image command needs it to
     // determine what was context-clicked on.
-    global.docShell.contentViewer
-      .QueryInterface(Ci.nsIContentViewerEdit)
+    global.docShell.docViewer
+      .QueryInterface(Ci.nsIDocumentViewerEdit)
       .setCommandNode(elem);
 
     while (elem && elem.parentNode) {

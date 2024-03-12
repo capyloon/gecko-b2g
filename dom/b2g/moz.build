@@ -17,6 +17,7 @@ DIRS += [
     "alarm",
     "devicestorage",
     "externalapi",
+    "flashlightmanager",
     "flipmanager",
     "downloads",
     "inputmethod",

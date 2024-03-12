@@ -13,7 +13,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
 
 XPCOMUtils.defineLazyModuleGetters(lazy, {
   AboutWelcomeDefaults:
-    "resource://activity-stream/aboutwelcome/lib/AboutWelcomeDefaults.jsm",
+    "resource:///modules/aboutwelcome/AboutWelcomeDefaults.jsm",
 });
 
 XPCOMUtils.defineLazyGetter(lazy, "log", () => {
@@ -366,14 +366,13 @@ const OPTIN_DEFAULT = {
             url: "chrome://browser/content/shopping/assets/optInLight.avif",
             darkModeImageURL:
               "chrome://browser/content/shopping/assets/optInDark.avif",
-            height: "172px",
             marginInline: "24px",
           },
           {
             type: "text",
             text: {
               string_id:
-                "shopping-onboarding-opt-in-privacy-policy-and-terms-of-use2",
+                "shopping-onboarding-opt-in-privacy-policy-and-terms-of-use3",
             },
             link_keys: ["privacy_policy", "terms_of_use"],
             font_styles: "legal",
@@ -392,7 +391,7 @@ const OPTIN_DEFAULT = {
           action: {
             type: "OPEN_URL",
             data: {
-              args: "https://www.fakespot.com/privacy-policy?utm_source=review-checker&utm_campaign=privacy-policy&utm_medium=in-product",
+              args: "https://www.mozilla.org/privacy/firefox?utm_source=review-checker&utm_campaign=privacy-policy&utm_medium=in-product&utm_term=opt-in-screen",
               where: "tab",
             },
           },
@@ -839,6 +838,14 @@ export class AboutWelcomeShoppingChild extends AboutWelcomeChild {
       switch (
         productUrl // Insert the productUrl into content
       ) {
+        case "www.amazon.fr":
+        case "www.amazon.de":
+          optInScreen.content.subtitle.string_id =
+            "shopping-onboarding-single-subtitle";
+          optInScreen.content.subtitle.args = {
+            currentSite: "Amazon",
+          };
+          break;
         case "www.amazon.com":
           optInScreen.content.subtitle.args = {
             currentSite: "Amazon",

@@ -25,6 +25,7 @@ use crate::{
         self, Buffer, QuerySet, Resource, ResourceType, Sampler, Texture, TextureView,
         TextureViewNotRenderableReason,
     },
+    resource_log,
     storage::Storage,
     track::{BindGroupStates, TextureSelector, Tracker},
     validation::{self, check_buffer_usage, check_texture_usage},
@@ -52,8 +53,8 @@ use std::{
 use super::{
     life::{self, ResourceMaps},
     queue::{self},
-    DeviceDescriptor, DeviceError, ImplicitPipelineContext, UserClosures, EP_FAILURE,
-    IMPLICIT_FAILURE, ZERO_BUFFER_SIZE,
+    DeviceDescriptor, DeviceError, ImplicitPipelineContext, UserClosures, ENTRYPOINT_FAILURE_ERROR,
+    IMPLICIT_BIND_GROUP_LAYOUT_ERROR_LABEL, ZERO_BUFFER_SIZE,
 };
 
 /// Structure describing a logical device. Some members are internally mutable,
@@ -140,7 +141,7 @@ impl<A: HalApi> std::fmt::Debug for Device<A> {
 
 impl<A: HalApi> Drop for Device<A> {
     fn drop(&mut self) {
-        log::info!("Destroying Device {:?}", self.info.label());
+        resource_log!("Destroy raw Device {}", self.info.label());
         let raw = self.raw.take().unwrap();
         let pending_writes = self.pending_writes.lock().take().unwrap();
         pending_writes.dispose(&raw);
@@ -191,8 +192,6 @@ impl<A: HalApi> Device<A> {
         raw_device: A::Device,
         raw_queue: &A::Queue,
         adapter: &Arc<Adapter<A>>,
-        alignments: hal::Alignments,
-        downlevel: wgt::DownlevelCapabilities,
         desc: &DeviceDescriptor,
         trace_path: Option<&std::path::Path>,
         instance_flags: wgt::InstanceFlags,
@@ -242,6 +241,9 @@ impl<A: HalApi> Device<A> {
                 }));
         }
 
+        let alignments = adapter.raw.capabilities.alignments.clone();
+        let downlevel = adapter.raw.capabilities.downlevel.clone();
+
         Ok(Self {
             raw: Some(raw_device),
             adapter: adapter.clone(),
@@ -266,13 +268,13 @@ impl<A: HalApi> Device<A> {
                     Some(trace)
                 }
                 Err(e) => {
-                    log::error!("Unable to start a trace in '{:?}': {:?}", path, e);
+                    log::error!("Unable to start a trace in '{path:?}': {e}");
                     None
                 }
             })),
             alignments,
-            limits: desc.limits.clone(),
-            features: desc.features,
+            limits: desc.required_limits.clone(),
+            features: desc.required_features,
             downlevel,
             instance_flags,
             pending_writes: Mutex::new(Some(pending_writes)),
@@ -306,7 +308,6 @@ impl<A: HalApi> Device<A> {
     ///   return it to our callers.)
     pub(crate) fn maintain<'this>(
         &'this self,
-        hub: &Hub<A>,
         fence: &A::Fence,
         maintain: wgt::Maintain<queue::WrappedSubmissionIndex>,
     ) -> Result<(UserClosures, bool), WaitIdleError> {
@@ -327,7 +328,6 @@ impl<A: HalApi> Device<A> {
             life_tracker.suspected_resources.extend(temp_suspected);
 
             life_tracker.triage_suspected(
-                hub,
                 &self.trackers,
                 #[cfg(feature = "trace")]
                 self.trace.lock().as_mut(),
@@ -367,7 +367,7 @@ impl<A: HalApi> Device<A> {
             last_done_index,
             self.command_allocator.lock().as_mut().unwrap(),
         );
-        let mapping_closures = life_tracker.handle_mapping(hub, self.raw(), &self.trackers);
+        let mapping_closures = life_tracker.handle_mapping(self.raw(), &self.trackers);
 
         //Cleaning up resources and released all unused suspected ones
         life_tracker.cleanup();
@@ -666,6 +666,30 @@ impl<A: HalApi> Device<A> {
             }
         }
 
+        {
+            let (width_multiple, height_multiple) = desc.format.size_multiple_requirement();
+
+            if desc.size.width % width_multiple != 0 {
+                return Err(CreateTextureError::InvalidDimension(
+                    TextureDimensionError::WidthNotMultipleOf {
+                        width: desc.size.width,
+                        multiple: width_multiple,
+                        format: desc.format,
+                    },
+                ));
+            }
+
+            if desc.size.height % height_multiple != 0 {
+                return Err(CreateTextureError::InvalidDimension(
+                    TextureDimensionError::HeightNotMultipleOf {
+                        height: desc.size.height,
+                        multiple: height_multiple,
+                        format: desc.format,
+                    },
+                ));
+            }
+        }
+
         let format_features = self
             .describe_format_features(adapter, desc.format)
             .map_err(|error| CreateTextureError::MissingFeatures(desc.format, error))?;
@@ -804,23 +828,37 @@ impl<A: HalApi> Device<A> {
             let mut clear_views = SmallVec::new();
             for mip_level in 0..desc.mip_level_count {
                 for array_layer in 0..desc.size.depth_or_array_layers {
-                    let desc = hal::TextureViewDescriptor {
-                        label: clear_label,
-                        format: desc.format,
-                        dimension,
-                        usage,
-                        range: wgt::ImageSubresourceRange {
-                            aspect: wgt::TextureAspect::All,
-                            base_mip_level: mip_level,
-                            mip_level_count: Some(1),
-                            base_array_layer: array_layer,
-                            array_layer_count: Some(1),
-                        },
-                    };
-                    clear_views.push(Some(
-                        unsafe { self.raw().create_texture_view(&raw_texture, &desc) }
-                            .map_err(DeviceError::from)?,
-                    ));
+                    macro_rules! push_clear_view {
+                        ($format:expr, $aspect:expr) => {
+                            let desc = hal::TextureViewDescriptor {
+                                label: clear_label,
+                                format: $format,
+                                dimension,
+                                usage,
+                                range: wgt::ImageSubresourceRange {
+                                    aspect: $aspect,
+                                    base_mip_level: mip_level,
+                                    mip_level_count: Some(1),
+                                    base_array_layer: array_layer,
+                                    array_layer_count: Some(1),
+                                },
+                            };
+                            clear_views.push(Some(
+                                unsafe { self.raw().create_texture_view(&raw_texture, &desc) }
+                                    .map_err(DeviceError::from)?,
+                            ));
+                        };
+                    }
+
+                    if let Some(planes) = desc.format.planes() {
+                        for plane in 0..planes {
+                            let aspect = wgt::TextureAspect::from_plane(plane).unwrap();
+                            let format = desc.format.aspect_specific_format(aspect).unwrap();
+                            push_clear_view!(format, aspect);
+                        }
+                    } else {
+                        push_clear_view!(desc.format, wgt::TextureAspect::All);
+                    }
                 }
             }
             resource::TextureClearMode::RenderPass {
@@ -1126,6 +1164,7 @@ impl<A: HalApi> Device<A> {
             parent: RwLock::new(Some(texture.clone())),
             device: self.clone(),
             desc: resource::HalTextureViewDescriptor {
+                texture_format: texture.desc.format,
                 format: resolved_format,
                 dimension: resolved_dimension,
                 range: resolved_range,
@@ -1406,7 +1445,6 @@ impl<A: HalApi> Device<A> {
             device: self.clone(),
             interface: Some(interface),
             info: ResourceInfo::new(desc.label.borrow_or_default()),
-            #[cfg(debug_assertions)]
             label: desc.label.borrow_or_default().to_string(),
         })
     }
@@ -1448,7 +1486,6 @@ impl<A: HalApi> Device<A> {
             device: self.clone(),
             interface: None,
             info: ResourceInfo::new(desc.label.borrow_or_default()),
-            #[cfg(debug_assertions)]
             label: desc.label.borrow_or_default().to_string(),
         })
     }
@@ -1626,6 +1663,7 @@ impl<A: HalApi> Device<A> {
                         },
                     )
                 }
+                Bt::AccelerationStructure => todo!(),
             };
 
             // Validate the count parameter
@@ -1707,14 +1745,13 @@ impl<A: HalApi> Device<A> {
         Ok(BindGroupLayout {
             raw: Some(raw),
             device: self.clone(),
-            info: ResourceInfo::new(label.unwrap_or("<BindGroupLayoyt>")),
+            info: ResourceInfo::new(label.unwrap_or("<BindGroupLayout>")),
             dynamic_count: entry_map
                 .values()
                 .filter(|b| b.ty.has_dynamic_offset())
                 .count(),
             count_validator,
             entries: entry_map,
-            #[cfg(debug_assertions)]
             label: label.unwrap_or_default().to_string(),
         })
     }
@@ -2048,7 +2085,7 @@ impl<A: HalApi> Device<A> {
                         .views
                         .add_single(&*texture_view_guard, id)
                         .ok_or(Error::InvalidTextureView(id))?;
-                    let (pub_usage, internal_use) = Self::texture_use_parameters(
+                    let (pub_usage, internal_use) = self.texture_use_parameters(
                         binding,
                         decl,
                         view,
@@ -2079,7 +2116,7 @@ impl<A: HalApi> Device<A> {
                             .add_single(&*texture_view_guard, id)
                             .ok_or(Error::InvalidTextureView(id))?;
                         let (pub_usage, internal_use) =
-                            Self::texture_use_parameters(binding, decl, view,
+                            self.texture_use_parameters(binding, decl, view,
                                                          "SampledTextureArray, ReadonlyStorageTextureArray or WriteonlyStorageTextureArray")?;
                         Self::create_texture_binding(
                             view,
@@ -2120,6 +2157,7 @@ impl<A: HalApi> Device<A> {
             buffers: &hal_buffers,
             samplers: &hal_samplers,
             textures: &hal_textures,
+            acceleration_structures: &[],
         };
         let raw = unsafe {
             self.raw
@@ -2181,6 +2219,7 @@ impl<A: HalApi> Device<A> {
     }
 
     pub(crate) fn texture_use_parameters(
+        self: &Arc<Self>,
         binding: u32,
         decl: &wgt::BindGroupLayoutEntry,
         view: &TextureView<A>,
@@ -2211,7 +2250,7 @@ impl<A: HalApi> Device<A> {
                 let compat_sample_type = view
                     .desc
                     .format
-                    .sample_type(Some(view.desc.range.aspect))
+                    .sample_type(Some(view.desc.range.aspect), Some(self.features))
                     .unwrap();
                 match (sample_type, compat_sample_type) {
                     (Tst::Uint, Tst::Uint) |
@@ -2389,7 +2428,7 @@ impl<A: HalApi> Device<A> {
             .collect::<Vec<_>>();
         let hal_desc = hal::PipelineLayoutDescriptor {
             label: desc.label.to_hal(self.instance_flags),
-            flags: hal::PipelineLayoutFlags::BASE_VERTEX_INSTANCE,
+            flags: hal::PipelineLayoutFlags::FIRST_VERTEX_INSTANCE,
             bind_group_layouts: &bgl_vec,
             push_constant_ranges: desc.push_constant_ranges.as_ref(),
         };
@@ -2474,10 +2513,10 @@ impl<A: HalApi> Device<A> {
         // that are not even in the storage.
         if let Some(ref ids) = implicit_context {
             let mut pipeline_layout_guard = hub.pipeline_layouts.write();
-            pipeline_layout_guard.insert_error(ids.root_id, IMPLICIT_FAILURE);
+            pipeline_layout_guard.insert_error(ids.root_id, IMPLICIT_BIND_GROUP_LAYOUT_ERROR_LABEL);
             let mut bgl_guard = hub.bind_group_layouts.write();
             for &bgl_id in ids.group_ids.iter() {
-                bgl_guard.insert_error(bgl_id, IMPLICIT_FAILURE);
+                bgl_guard.insert_error(bgl_id, IMPLICIT_BIND_GROUP_LAYOUT_ERROR_LABEL);
             }
         }
 
@@ -2571,7 +2610,7 @@ impl<A: HalApi> Device<A> {
                 pipeline::CreateComputePipelineError::Internal(msg)
             }
             hal::PipelineError::EntryPoint(_stage) => {
-                pipeline::CreateComputePipelineError::Internal(EP_FAILURE.to_string())
+                pipeline::CreateComputePipelineError::Internal(ENTRYPOINT_FAILURE_ERROR.to_string())
             }
         })?;
 
@@ -2603,9 +2642,9 @@ impl<A: HalApi> Device<A> {
             //TODO: only lock mutable if the layout is derived
             let mut pipeline_layout_guard = hub.pipeline_layouts.write();
             let mut bgl_guard = hub.bind_group_layouts.write();
-            pipeline_layout_guard.insert_error(ids.root_id, IMPLICIT_FAILURE);
+            pipeline_layout_guard.insert_error(ids.root_id, IMPLICIT_BIND_GROUP_LAYOUT_ERROR_LABEL);
             for &bgl_id in ids.group_ids.iter() {
-                bgl_guard.insert_error(bgl_id, IMPLICIT_FAILURE);
+                bgl_guard.insert_error(bgl_id, IMPLICIT_BIND_GROUP_LAYOUT_ERROR_LABEL);
             }
         }
 
@@ -3129,7 +3168,7 @@ impl<A: HalApi> Device<A> {
             hal::PipelineError::EntryPoint(stage) => {
                 pipeline::CreateRenderPipelineError::Internal {
                     stage: hal::auxil::map_naga_stage(stage),
-                    error: EP_FAILURE.to_string(),
+                    error: ENTRYPOINT_FAILURE_ERROR.to_string(),
                 }
             }
         })?;
@@ -3182,6 +3221,24 @@ impl<A: HalApi> Device<A> {
         Ok(pipeline)
     }
 
+    pub(crate) fn get_texture_format_features(
+        &self,
+        adapter: &Adapter<A>,
+        format: TextureFormat,
+    ) -> wgt::TextureFormatFeatures {
+        // Variant of adapter.get_texture_format_features that takes device features into account
+        use wgt::TextureFormatFeatureFlags as tfsc;
+        let mut format_features = adapter.get_texture_format_features(format);
+        if (format == TextureFormat::R32Float
+            || format == TextureFormat::Rg32Float
+            || format == TextureFormat::Rgba32Float)
+            && !self.features.contains(wgt::Features::FLOAT32_FILTERABLE)
+        {
+            format_features.flags.set(tfsc::FILTERABLE, false);
+        }
+        format_features
+    }
+
     pub(crate) fn describe_format_features(
         &self,
         adapter: &Adapter<A>,
@@ -3197,7 +3254,7 @@ impl<A: HalApi> Device<A> {
         let downlevel = !self.downlevel.is_webgpu_compliant();
 
         if using_device_features || downlevel {
-            Ok(adapter.get_texture_format_features(format))
+            Ok(self.get_texture_format_features(adapter, format))
         } else {
             Ok(format.guaranteed_format_features(self.features))
         }
@@ -3323,7 +3380,7 @@ impl<A: HalApi> Device<A> {
                 .unwrap()
                 .wait(fence, current_index, CLEANUP_WAIT_MS)
         } {
-            log::error!("failed to wait for the device: {:?}", error);
+            log::error!("failed to wait for the device: {error}");
         }
         let mut life_tracker = self.lock_life();
         let _ = life_tracker.triage_submissions(

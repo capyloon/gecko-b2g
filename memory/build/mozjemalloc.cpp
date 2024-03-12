@@ -150,6 +150,7 @@
 #include "mozilla/DoublyLinkedList.h"
 #include "mozilla/HelperMacros.h"
 #include "mozilla/Likely.h"
+#include "mozilla/Literals.h"
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/RandomNum.h"
 // Note: MozTaggedAnonymousMmap() could call an LD_PRELOADed mmap
@@ -1626,7 +1627,8 @@ static inline StallSpecs GetStallSpecs() {
 // and retry rather than returning immediately, in hopes that the page file is
 // about to be expanded by Windows.
 //
-// Ref: https://docs.microsoft.com/en-us/troubleshoot/windows-client/performance/slow-page-file-growth-memory-allocation-errors
+// Ref:
+// https://docs.microsoft.com/en-us/troubleshoot/windows-client/performance/slow-page-file-growth-memory-allocation-errors
 [[nodiscard]] void* MozVirtualAlloc(LPVOID lpAddress, SIZE_T dwSize,
                                     DWORD flAllocationType, DWORD flProtect) {
   DWORD const lastError = ::GetLastError();

@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     any_surface::AnySurface,
+    api_log,
     device::{queue::Queue, resource::Device, DeviceDescriptor},
     global::Global,
     hal_api::HalApi,
@@ -9,7 +10,7 @@ use crate::{
     identity::{GlobalIdentityHandlerFactory, Input},
     present::Presentation,
     resource::{Resource, ResourceInfo, ResourceType},
-    LabelHelpers, DOWNLEVEL_WARNING_MESSAGE,
+    resource_log, LabelHelpers, DOWNLEVEL_WARNING_MESSAGE,
 };
 
 use parking_lot::Mutex;
@@ -67,8 +68,6 @@ pub struct Instance {
     pub metal: Option<HalInstance<hal::api::Metal>>,
     #[cfg(all(feature = "dx12", windows))]
     pub dx12: Option<HalInstance<hal::api::Dx12>>,
-    #[cfg(all(feature = "dx11", windows))]
-    pub dx11: Option<HalInstance<hal::api::Dx11>>,
     #[cfg(feature = "gles")]
     pub gl: Option<HalInstance<hal::api::Gles>>,
     pub flags: wgt::InstanceFlags,
@@ -112,8 +111,6 @@ impl Instance {
             metal: init(hal::api::Metal, &instance_desc),
             #[cfg(all(feature = "dx12", windows))]
             dx12: init(hal::api::Dx12, &instance_desc),
-            #[cfg(all(feature = "dx11", windows))]
-            dx11: init(hal::api::Dx11, &instance_desc),
             #[cfg(feature = "gles")]
             gl: init(hal::api::Gles, &instance_desc),
             flags: instance_desc.flags,
@@ -143,8 +140,6 @@ impl Instance {
             Backend::Metal => destroy(hal::api::Metal, &self.metal, surface.raw),
             #[cfg(all(feature = "dx12", windows))]
             Backend::Dx12 => destroy(hal::api::Dx12, &self.dx12, surface.raw),
-            #[cfg(all(feature = "dx11", windows))]
-            Backend::Dx11 => destroy(hal::api::Dx11, &self.dx11, surface.raw),
             #[cfg(feature = "gles")]
             Backend::Gl => destroy(hal::api::Gles, &self.gl, surface.raw),
             _ => unreachable!(),
@@ -306,15 +301,12 @@ impl<A: HalApi> Adapter<A> {
         instance_flags: wgt::InstanceFlags,
         trace_path: Option<&std::path::Path>,
     ) -> Result<(Device<A>, Queue<A>), RequestDeviceError> {
-        log::info!("Adapter::create_device");
+        api_log!("Adapter::create_device");
 
-        let caps = &self.raw.capabilities;
         if let Ok(device) = Device::new(
             hal_device.device,
             &hal_device.queue,
             self,
-            caps.alignments.clone(),
-            caps.downlevel.clone(),
             desc,
             trace_path,
             instance_flags,
@@ -336,9 +328,9 @@ impl<A: HalApi> Adapter<A> {
         trace_path: Option<&std::path::Path>,
     ) -> Result<(Device<A>, Queue<A>), RequestDeviceError> {
         // Verify all features were exposed by the adapter
-        if !self.raw.features.contains(desc.features) {
+        if !self.raw.features.contains(desc.required_features) {
             return Err(RequestDeviceError::UnsupportedFeature(
-                desc.features - self.raw.features,
+                desc.required_features - self.raw.features,
             ));
         }
 
@@ -357,7 +349,7 @@ impl<A: HalApi> Adapter<A> {
 
         // Verify feature preconditions
         if desc
-            .features
+            .required_features
             .contains(wgt::Features::MAPPABLE_PRIMARY_BUFFERS)
             && self.raw.info.device_type == wgt::DeviceType::DiscreteGpu
         {
@@ -371,17 +363,20 @@ impl<A: HalApi> Adapter<A> {
             //TODO
         }
 
-        if let Some(failed) = check_limits(&desc.limits, &caps.limits).pop() {
+        if let Some(failed) = check_limits(&desc.required_limits, &caps.limits).pop() {
             return Err(RequestDeviceError::LimitsExceeded(failed));
         }
 
-        let open = unsafe { self.raw.adapter.open(desc.features, &desc.limits) }.map_err(
-            |err| match err {
-                hal::DeviceError::Lost => RequestDeviceError::DeviceLost,
-                hal::DeviceError::OutOfMemory => RequestDeviceError::OutOfMemory,
-                hal::DeviceError::ResourceCreationFailed => RequestDeviceError::Internal,
-            },
-        )?;
+        let open = unsafe {
+            self.raw
+                .adapter
+                .open(desc.required_features, &desc.required_limits)
+        }
+        .map_err(|err| match err {
+            hal::DeviceError::Lost => RequestDeviceError::DeviceLost,
+            hal::DeviceError::OutOfMemory => RequestDeviceError::OutOfMemory,
+            hal::DeviceError::ResourceCreationFailed => RequestDeviceError::Internal,
+        })?;
 
         self.create_device_and_queue_from_hal(open, desc, instance_flags, trace_path)
     }
@@ -527,13 +522,6 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         init::<hal::api::Dx12>(
             &mut hal_surface,
             &self.instance.dx12,
-            display_handle,
-            window_handle,
-        );
-        #[cfg(all(feature = "dx11", windows))]
-        init::<hal::api::Dx11>(
-            &mut hal_surface,
-            &self.instance.dx11,
             display_handle,
             window_handle,
         );
@@ -762,7 +750,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
     pub fn surface_drop(&self, id: SurfaceId) {
         profiling::scope!("Surface::drop");
 
-        log::info!("Surface::drop {id:?}");
+        api_log!("Surface::drop {id:?}");
 
         fn unconfigure<G: GlobalIdentityHandlerFactory, A: HalApi>(
             global: &Global<G>,
@@ -786,8 +774,6 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                 unconfigure::<_, hal::api::Metal>(self, &surface.raw, &present);
                 #[cfg(all(feature = "dx12", windows))]
                 unconfigure::<_, hal::api::Dx12>(self, &surface.raw, &present);
-                #[cfg(all(feature = "dx11", windows))]
-                unconfigure::<_, hal::api::Dx11>(self, &surface.raw, &present);
                 #[cfg(feature = "gles")]
                 unconfigure::<_, hal::api::Gles>(self, &surface.raw, &present);
             }
@@ -828,7 +814,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
 
     pub fn enumerate_adapters(&self, inputs: AdapterInputs<Input<G, AdapterId>>) -> Vec<AdapterId> {
         profiling::scope!("Instance::enumerate_adapters");
-        log::trace!("Instance::enumerate_adapters");
+        api_log!("Instance::enumerate_adapters");
 
         let mut adapters = Vec::new();
 
@@ -848,8 +834,6 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         );
         #[cfg(all(feature = "dx12", windows))]
         self.enumerate(hal::api::Dx12, &self.instance.dx12, &inputs, &mut adapters);
-        #[cfg(all(feature = "dx11", windows))]
-        self.enumerate(hal::api::Dx11, &self.instance.dx11, &inputs, &mut adapters);
         #[cfg(feature = "gles")]
         self.enumerate(hal::api::Gles, &self.instance.gl, &inputs, &mut adapters);
 
@@ -884,8 +868,8 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         desc: &RequestAdapterOptions,
         inputs: AdapterInputs<Input<G, AdapterId>>,
     ) -> Result<AdapterId, RequestAdapterError> {
-        profiling::scope!("Instance::pick_adapter");
-        log::trace!("Instance::pick_adapter");
+        profiling::scope!("Instance::request_adapter");
+        api_log!("Instance::request_adapter");
 
         fn gather<A: HalApi, I: Copy>(
             _: A,
@@ -954,15 +938,6 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         let (id_dx12, adapters_dx12) = gather(
             hal::api::Dx12,
             self.instance.dx12.as_ref(),
-            &inputs,
-            compatible_surface,
-            desc.force_fallback_adapter,
-            &mut device_types,
-        );
-        #[cfg(all(feature = "dx11", windows))]
-        let (id_dx11, adapters_dx11) = gather(
-            hal::api::Dx11,
-            self.instance.dx11.as_ref(),
             &inputs,
             compatible_surface,
             desc.force_fallback_adapter,
@@ -1041,10 +1016,6 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         if let Some(id) = self.select(&mut selected, id_dx12, adapters_dx12) {
             return Ok(id);
         }
-        #[cfg(all(feature = "dx11", windows))]
-        if let Some(id) = self.select(&mut selected, id_dx11, adapters_dx11) {
-            return Ok(id);
-        }
         #[cfg(feature = "gles")]
         if let Some(id) = self.select(&mut selected, id_gl, adapters_gl) {
             return Ok(id);
@@ -1075,13 +1046,11 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                 Backend::Metal => fid.assign(Adapter::new(hal_adapter)),
                 #[cfg(all(feature = "dx12", windows))]
                 Backend::Dx12 => fid.assign(Adapter::new(hal_adapter)),
-                #[cfg(all(feature = "dx11", windows))]
-                Backend::Dx11 => fid.assign(Adapter::new(hal_adapter)),
                 #[cfg(feature = "gles")]
                 Backend::Gl => fid.assign(Adapter::new(hal_adapter)),
                 _ => unreachable!(),
             };
-        log::info!("Created Adapter {:?}", id);
+        resource_log!("Created Adapter {:?}", id);
         id
     }
 
@@ -1159,7 +1128,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
 
     pub fn adapter_drop<A: HalApi>(&self, adapter_id: AdapterId) {
         profiling::scope!("Adapter::drop");
-        log::trace!("Adapter::drop {adapter_id:?}");
+        api_log!("Adapter::drop {adapter_id:?}");
 
         let hub = A::hub(self);
         let mut adapters_locked = hub.adapters.write();
@@ -1185,7 +1154,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         queue_id_in: Input<G, QueueId>,
     ) -> (DeviceId, QueueId, Option<RequestDeviceError>) {
         profiling::scope!("Adapter::request_device");
-        log::trace!("Adapter::request_device");
+        api_log!("Adapter::request_device");
 
         let hub = A::hub(self);
         let device_fid = hub.devices.prepare::<G>(device_id_in);
@@ -1202,13 +1171,13 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                     Err(e) => break e,
                 };
             let (device_id, _) = device_fid.assign(device);
-            log::info!("Created Device {:?}", device_id);
+            resource_log!("Created Device {:?}", device_id);
 
             let device = hub.devices.get(device_id).unwrap();
             queue.device = Some(device.clone());
 
             let (queue_id, _) = queue_fid.assign(queue);
-            log::info!("Created Queue {:?}", queue_id);
+            resource_log!("Created Queue {:?}", queue_id);
 
             device.queue_id.write().replace(queue_id);
 
@@ -1254,13 +1223,13 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
                 Err(e) => break e,
             };
             let (device_id, _) = devices_fid.assign(device);
-            log::info!("Created Device {:?}", device_id);
+            resource_log!("Created Device {:?}", device_id);
 
             let device = hub.devices.get(device_id).unwrap();
             queue.device = Some(device.clone());
 
             let (queue_id, _) = queues_fid.assign(queue);
-            log::info!("Created Queue {:?}", queue_id);
+            resource_log!("Created Queue {:?}", queue_id);
 
             device.queue_id.write().replace(queue_id);
 
@@ -1282,7 +1251,6 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
 /// Names:
 /// - vulkan = "vulkan" or "vk"
 /// - dx12   = "dx12" or "d3d12"
-/// - dx11   = "dx11" or "d3d11"
 /// - metal  = "metal" or "mtl"
 /// - gles   = "opengl" or "gles" or "gl"
 /// - webgpu = "webgpu"
@@ -1292,7 +1260,6 @@ pub fn parse_backends_from_comma_list(string: &str) -> Backends {
         backends |= match backend.trim() {
             "vulkan" | "vk" => Backends::VULKAN,
             "dx12" | "d3d12" => Backends::DX12,
-            "dx11" | "d3d11" => Backends::DX11,
             "metal" | "mtl" => Backends::METAL,
             "opengl" | "gles" | "gl" => Backends::GL,
             "webgpu" => Backends::BROWSER_WEBGPU,

@@ -60,10 +60,10 @@ let searchConfigSchema;
 
 add_setup(async function () {
   searchConfigSchemaV1 = await IOUtils.readJSON(
-    PathUtils.join(do_get_cwd().path, "search-engine-config-schema.json")
+    PathUtils.join(do_get_cwd().path, "search-config-schema.json")
   );
   searchConfigSchema = await IOUtils.readJSON(
-    PathUtils.join(do_get_cwd().path, "search-engine-config-v2-schema.json")
+    PathUtils.join(do_get_cwd().path, "search-config-v2-schema.json")
   );
 });
 
@@ -103,15 +103,6 @@ async function checkSearchConfigValidates(schema, searchConfig) {
   }
 }
 
-async function checkUISchemaValid(configSchema, uiSchema) {
-  for (let key of Object.keys(configSchema.properties)) {
-    Assert.ok(
-      uiSchema["ui:order"].includes(key),
-      `Should have ${key} listed at the top-level of the ui schema`
-    );
-  }
-}
-
 add_task(async function test_search_config_validates_to_schema_v1() {
   let selector = new SearchEngineSelectorOld(() => {});
   let searchConfig = await selector.getEngineConfiguration();
@@ -121,26 +112,28 @@ add_task(async function test_search_config_validates_to_schema_v1() {
 
 add_task(async function test_ui_schema_valid_v1() {
   let uiSchema = await IOUtils.readJSON(
-    PathUtils.join(do_get_cwd().path, "search-engine-config-ui-schema.json")
+    PathUtils.join(do_get_cwd().path, "search-config-ui-schema.json")
   );
 
   await checkUISchemaValid(searchConfigSchemaV1, uiSchema);
 });
 
-add_task(async function test_search_config_validates_to_schema() {
-  delete SearchUtils.newSearchConfigEnabled;
-  SearchUtils.newSearchConfigEnabled = true;
+if (SearchUtils.newSearchConfigEnabled) {
+  add_task(async function test_search_config_validates_to_schema() {
+    delete SearchUtils.newSearchConfigEnabled;
+    SearchUtils.newSearchConfigEnabled = true;
 
-  let selector = new SearchEngineSelector(() => {});
-  let searchConfig = await selector.getEngineConfiguration();
+    let selector = new SearchEngineSelector(() => {});
+    let searchConfig = await selector.getEngineConfiguration();
 
-  await checkSearchConfigValidates(searchConfigSchema, searchConfig);
-});
+    await checkSearchConfigValidates(searchConfigSchema, searchConfig);
+  });
 
-add_task(async function test_ui_schema_valid() {
-  let uiSchema = await IOUtils.readJSON(
-    PathUtils.join(do_get_cwd().path, "search-engine-config-v2-ui-schema.json")
-  );
+  add_task(async function test_ui_schema_valid() {
+    let uiSchema = await IOUtils.readJSON(
+      PathUtils.join(do_get_cwd().path, "search-config-v2-ui-schema.json")
+    );
 
-  await checkUISchemaValid(searchConfigSchema, uiSchema);
-});
+    await checkUISchemaValid(searchConfigSchema, uiSchema);
+  });
+}

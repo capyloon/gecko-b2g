@@ -42,6 +42,10 @@
 #  include "mozilla/gfx/DeviceManagerDx.h"
 #endif
 
+#ifdef MOZ_WIDGET_GONK
+#  include "mozilla/layers/GrallocTextureClient.h"
+#endif
+
 namespace mozilla {
 namespace ipc {
 class Shmem;
@@ -784,6 +788,29 @@ mozilla::ipc::IPCResult ImageBridgeChild::RecvParentAsyncMessages(
         NotifyNotUsed(op.TextureId(), op.fwdTransactionId());
         break;
       }
+      case AsyncParentMessageData::TOpDeliverReleaseFence: {
+#ifdef MOZ_WIDGET_GONK
+        const OpDeliverReleaseFence& op = message.get_OpDeliverReleaseFence();
+        auto fenceFd = op.fenceFd().valueOr(ipc::FileDescriptor());
+        auto textureId = op.bufferId();
+        if (mTexturesWaitingNotifyNotUsed.count(textureId)) {
+          auto texture = mTexturesWaitingNotifyNotUsed[textureId];
+          if (op.fwdTransactionId() < texture->GetLastFwdTransactionId()) {
+            // Released on host side, but client already requested newer use
+            // texture.
+            break;
+          }
+          auto rawFD = fenceFd.TakePlatformHandle();
+          FenceHandle fence(new FenceHandle::FdObj(rawFD.release()));
+          texture->GetInternalData()
+              ->AsGrallocTextureData()
+              ->SetReleaseFenceHandle(fence);
+        }
+#else
+        MOZ_ASSERT_UNREACHABLE("unexpected to be called");
+#endif
+        break;
+      }
       default:
         NS_ERROR("unknown AsyncParentMessageData type");
         return IPC_FAIL_NO_REASON(this);
@@ -826,7 +853,8 @@ mozilla::ipc::IPCResult ImageBridgeChild::RecvReportFramesDropped(
 
 PTextureChild* ImageBridgeChild::CreateTexture(
     const SurfaceDescriptor& aSharedData, ReadLockDescriptor&& aReadLock,
-    LayersBackend aLayersBackend, TextureFlags aFlags, uint64_t aSerial,
+    LayersBackend aLayersBackend, TextureFlags aFlags,
+    const dom::ContentParentId& aContentId, uint64_t aSerial,
     wr::MaybeExternalImageId& aExternalImageId) {
   MOZ_ASSERT(CanSend());
   return SendPTextureConstructor(aSharedData, std::move(aReadLock),

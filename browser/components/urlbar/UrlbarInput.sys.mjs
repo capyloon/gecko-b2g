@@ -284,6 +284,10 @@ export class UrlbarInput {
 
     this.editor.newlineHandling =
       Ci.nsIEditor.eNewlinesStripSurroundingWhitespace;
+
+    ChromeUtils.defineLazyGetter(this, "logger", () =>
+      lazy.UrlbarUtils.getLogger({ prefix: "Input" })
+    );
   }
 
   /**
@@ -640,10 +644,20 @@ export class UrlbarInput {
       result.payload.inPrivateWindow;
     let selectedPrivateEngineResult =
       selectedPrivateResult && result.payload.isPrivateEngine;
+    // Whether the user has been editing the value in the URL bar after selecting
+    // the result. However, if the result type is tip, pick as it is. The result
+    // heuristic is also kept the behavior as is for safety.
+    let safeToPickResult =
+      result &&
+      (result.heuristic ||
+        !this.valueIsTyped ||
+        result.type == lazy.UrlbarUtils.RESULT_TYPE.TIP ||
+        this.value == this._getValueFromResult(result));
     if (
       !isComposing &&
       element &&
-      (!oneOffParams?.engine || selectedPrivateEngineResult)
+      (!oneOffParams?.engine || selectedPrivateEngineResult) &&
+      safeToPickResult
     ) {
       this.pickElement(element, event);
       return;
@@ -691,7 +705,7 @@ export class UrlbarInput {
         oneOffParams.engine,
         searchString
       );
-      this._recordSearch(oneOffParams.engine, event, { url });
+      this._recordSearch(oneOffParams.engine, event);
 
       lazy.UrlbarUtils.addToFormHistory(
         this,
@@ -881,6 +895,9 @@ export class UrlbarInput {
    */
   pickElement(element, event) {
     let result = this.view.getResultFromElement(element);
+    this.logger.debug(
+      `pickElement ${element} with event ${event?.type}, result: ${result}`
+    );
     if (!result) {
       return;
     }
@@ -1163,7 +1180,6 @@ export class UrlbarInput {
           isFormHistory:
             result.source == lazy.UrlbarUtils.RESULT_SOURCE.HISTORY,
           alias: result.payload.keyword,
-          url,
         };
         const engine = Services.search.getEngineByName(result.payload.engine);
         this._recordSearch(engine, event, actionDetails);
@@ -3284,6 +3300,7 @@ export class UrlbarInput {
   }
 
   _on_blur(event) {
+    this.logger.debug("Blur Event");
     // We cannot count every blur events after a missed engagement as abandoment
     // because the user may have clicked on some view element that executes
     // a command causing a focus change. For example opening preferences from
@@ -3399,6 +3416,7 @@ export class UrlbarInput {
   }
 
   _on_focus(event) {
+    this.logger.debug("Focus Event");
     if (!this._hideFocus) {
       this.setAttribute("focused", "true");
     }

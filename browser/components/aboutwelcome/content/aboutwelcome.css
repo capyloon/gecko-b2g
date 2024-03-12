@@ -483,11 +483,11 @@ div#feature-callout.hidden {
   color: var(--fc-primary-button-color-active);
   border: 1px solid var(--fc-primary-button-border-active);
 }
-panel#feature-callout:is([side=top], [side=bottom]):not(.hidden-arrow) {
+panel#feature-callout:is([side=top], [side=bottom]):not([hide-arrow=permanent]) {
   margin-inline: var(--panel-margin-offset);
 }
 
-panel#feature-callout:is([side=left], [side=right]):not(.hidden-arrow) {
+panel#feature-callout:is([side=left], [side=right]):not([hide-arrow=permanent]) {
   margin-block: var(--panel-margin-offset);
 }
 
@@ -501,7 +501,7 @@ panel#feature-callout::part(content) {
   transform: rotate(45deg);
   transform-style: preserve-3d;
 }
-#feature-callout:not([arrow-position]) .arrow-box, #feature-callout.hidden-arrow .arrow-box {
+#feature-callout:not([arrow-position]) .arrow-box, #feature-callout[hide-arrow] .arrow-box {
   display: none;
 }
 #feature-callout .arrow {
@@ -769,6 +769,12 @@ panel#feature-callout[arrow-position=inline-start-bottom] {
 .onboardingContainer.shopping .screen[pos=split] .section-main .main-content .legal-paragraph a {
   text-decoration: underline;
 }
+.onboardingContainer.shopping .screen[pos=split] .section-main .main-content .brand-logo {
+  width: 100%;
+  max-width: 294px;
+  max-height: 290px;
+  height: auto;
+}
 .onboardingContainer.shopping .screen[pos=split] .section-main .dismiss-button {
   top: 0;
   margin: 14px 10px;
@@ -828,6 +834,7 @@ panel#feature-callout[arrow-position=inline-start-bottom] {
   overflow: visible;
   font-size: 1em;
   gap: 12px;
+  width: 100%;
 }
 .onboardingContainer.shopping .screen[pos=split][layout=survey] .main-content .main-content-inner .multi-select-container .multi-select-item input {
   margin-block: 0;
@@ -987,7 +994,6 @@ html {
   --in-content-primary-button-background: rgb(0, 221, 255);
   --in-content-primary-button-background-hover: rgb(128, 235, 255);
   --in-content-primary-button-background-active: rgb(170, 242, 255);
-  --checkbox-checked-bgcolor: var(--in-content-primary-button-background);
   --in-content-button-text-color: var(--in-content-page-color);
 }
 .onboardingContainer .screen.dark-text {
@@ -999,7 +1005,6 @@ html {
   --in-content-primary-button-background-active: #053E94;
   --in-content-primary-button-border-color: transparent;
   --in-content-primary-button-border-hover: transparent;
-  --checkbox-checked-bgcolor: var(--in-content-primary-button-background);
   --in-content-button-text-color: var(--in-content-page-color);
 }
 .onboardingContainer .screen:dir(rtl) {
@@ -2116,7 +2121,7 @@ html {
 }
 .onboardingContainer .steps .indicator.current {
   opacity: 1;
-  border-color: var(--checkbox-checked-bgcolor);
+  border-color: var(--in-content-primary-button-background);
 }
 .onboardingContainer .steps .indicator.current:last-of-type:first-of-type {
   opacity: 0;
@@ -2134,7 +2139,7 @@ html {
   width: 100%;
   height: 100%;
   margin-inline: -1px;
-  background-color: var(--checkbox-checked-bgcolor);
+  background-color: var(--in-content-primary-button-background);
   border: 0;
   border-radius: 0;
   opacity: 1;

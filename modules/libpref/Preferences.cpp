@@ -74,7 +74,6 @@
 #include "nsIZipReader.h"
 #include "nsNetUtil.h"
 #include "nsPrintfCString.h"
-#include "nsQuickSort.h"
 #include "nsReadableUtils.h"
 #include "nsRefPtrHashtable.h"
 #include "nsRelativeFilePref.h"
@@ -3633,16 +3632,6 @@ void Preferences::SetupTelemetryPref() {
   Preferences::Lock(kTelemetryPref);
 }
 
-static void CheckTelemetryPref() {
-  MOZ_ASSERT(!XRE_IsParentProcess());
-
-  // Make sure the children got passed the right telemetry pref details.
-  DebugOnly<bool> value;
-  MOZ_ASSERT(NS_SUCCEEDED(Preferences::GetBool(kTelemetryPref, &value)) &&
-             value == TelemetryPrefValue());
-  MOZ_ASSERT(Preferences::IsLocked(kTelemetryPref));
-}
-
 #endif  // MOZ_WIDGET_ANDROID
 
 /* static */
@@ -3683,11 +3672,6 @@ already_AddRefed<Preferences> Preferences::GetInstanceForService() {
       Preferences::SetPreference(gChangedDomPrefs->ElementAt(i));
     }
     gChangedDomPrefs = nullptr;
-
-#ifndef MOZ_WIDGET_ANDROID
-    CheckTelemetryPref();
-#endif
-
   } else {
     // Check if there is a deployment configuration file. If so, set up the
     // pref config machinery, which will actually read the file.
@@ -4512,8 +4496,7 @@ static nsresult parsePrefData(const nsCString& aData, PrefValueKind aKind) {
   return NS_OK;
 }
 
-static int pref_CompareFileNames(nsIFile* aFile1, nsIFile* aFile2,
-                                 void* /* unused */) {
+static int pref_CompareFileNames(nsIFile* aFile1, nsIFile* aFile2) {
   nsAutoCString filename1, filename2;
   aFile1->GetNativeLeafName(filename1);
   aFile2->GetNativeLeafName(filename2);
@@ -4568,7 +4551,7 @@ static nsresult pref_LoadPrefsInDir(nsIFile* aDir) {
     return rv;
   }
 
-  prefFiles.Sort(pref_CompareFileNames, nullptr);
+  prefFiles.Sort(pref_CompareFileNames);
 
   uint32_t arrayCount = prefFiles.Count();
   uint32_t i;
@@ -5855,6 +5838,19 @@ static void InitStaticPrefsFromShared() {
   MOZ_DIAGNOSTIC_ASSERT(gSharedMap,
                         "Must be called once gSharedMap has been created");
 
+#ifdef DEBUG
+#  define ASSERT_PREF_NOT_SANITIZED(name, cpp_type)                          \
+    if (IsString<cpp_type>::value && IsPreferenceSanitized(name)) {          \
+      MOZ_CRASH("Unexpected sanitized string preference '" name              \
+                "'. "                                                        \
+                "Static Preferences cannot be sanitized currently, because " \
+                "they expect to be initialized from the Static Map, and "    \
+                "sanitized preferences are not present there.");             \
+    }
+#else
+#  define ASSERT_PREF_NOT_SANITIZED(name, cpp_type)
+#endif
+
   // For mirrored static prefs we generate some initialization code. Each
   // mirror variable is already initialized in the binary with the default
   // value. If the pref value hasn't changed from the default in the main
@@ -5879,18 +5875,7 @@ static void InitStaticPrefsFromShared() {
 #define ALWAYS_PREF(name, base_id, full_id, cpp_type, default_value)    \
   {                                                                     \
     StripAtomic<cpp_type> val;                                          \
-    if (IsString<cpp_type>::value && IsPreferenceSanitized(name)) {     \
-      if (!sPrefTelemetryEventEnabled.exchange(true)) {                 \
-        sPrefTelemetryEventEnabled = true;                              \
-        Telemetry::SetEventRecordingEnabled("security"_ns, true);       \
-      }                                                                 \
-      Telemetry::RecordEvent(                                           \
-          Telemetry::EventID::Security_Prefusage_Contentprocess,        \
-          mozilla::Some(name##_ns), mozilla::Nothing());                \
-      MOZ_DIAGNOSTIC_ASSERT(!sCrashOnBlocklistedPref,                   \
-                            "Should not access the preference '" name   \
-                            "' in Content Processes");                  \
-    }                                                                   \
+    ASSERT_PREF_NOT_SANITIZED(name, cpp_type);                          \
     DebugOnly<nsresult> rv = Internals::GetSharedPrefValue(name, &val); \
     MOZ_ASSERT(NS_SUCCEEDED(rv), "Failed accessing " name);             \
     StaticPrefs::sMirror_##full_id = val;                               \
@@ -5898,48 +5883,27 @@ static void InitStaticPrefsFromShared() {
 #define ALWAYS_DATAMUTEX_PREF(name, base_id, full_id, cpp_type, default_value) \
   {                                                                            \
     StripAtomic<cpp_type> val;                                                 \
-    if (IsString<cpp_type>::value && IsPreferenceSanitized(name)) {            \
-      if (!sPrefTelemetryEventEnabled.exchange(true)) {                        \
-        sPrefTelemetryEventEnabled = true;                                     \
-        Telemetry::SetEventRecordingEnabled("security"_ns, true);              \
-      }                                                                        \
-      Telemetry::RecordEvent(                                                  \
-          Telemetry::EventID::Security_Prefusage_Contentprocess,               \
-          mozilla::Some(name##_ns), mozilla::Nothing());                       \
-      MOZ_DIAGNOSTIC_ASSERT(!sCrashOnBlocklistedPref,                          \
-                            "Should not access the preference '" name          \
-                            "' in Content Processes");                         \
-    }                                                                          \
+    ASSERT_PREF_NOT_SANITIZED(name, cpp_type);                                 \
     DebugOnly<nsresult> rv = Internals::GetSharedPrefValue(name, &val);        \
     MOZ_ASSERT(NS_SUCCEEDED(rv), "Failed accessing " name);                    \
     Internals::AssignMirror(StaticPrefs::sMirror_##full_id,                    \
                             std::forward<StripAtomic<cpp_type>>(val));         \
   }
-#define ONCE_PREF(name, base_id, full_id, cpp_type, default_value)    \
-  {                                                                   \
-    cpp_type val;                                                     \
-    if (IsString<cpp_type>::value && IsPreferenceSanitized(name)) {   \
-      if (!sPrefTelemetryEventEnabled.exchange(true)) {               \
-        sPrefTelemetryEventEnabled = true;                            \
-        Telemetry::SetEventRecordingEnabled("security"_ns, true);     \
-      }                                                               \
-      Telemetry::RecordEvent(                                         \
-          Telemetry::EventID::Security_Prefusage_Contentprocess,      \
-          mozilla::Some(name##_ns), mozilla::Nothing());              \
-      MOZ_DIAGNOSTIC_ASSERT(!sCrashOnBlocklistedPref,                 \
-                            "Should not access the preference '" name \
-                            "' in Content Processes");                \
-    }                                                                 \
-    DebugOnly<nsresult> rv =                                          \
-        Internals::GetSharedPrefValue(ONCE_PREF_NAME(name), &val);    \
-    MOZ_ASSERT(NS_SUCCEEDED(rv), "Failed accessing " name);           \
-    StaticPrefs::sMirror_##full_id = val;                             \
+#define ONCE_PREF(name, base_id, full_id, cpp_type, default_value) \
+  {                                                                \
+    cpp_type val;                                                  \
+    ASSERT_PREF_NOT_SANITIZED(name, cpp_type);                     \
+    DebugOnly<nsresult> rv =                                       \
+        Internals::GetSharedPrefValue(ONCE_PREF_NAME(name), &val); \
+    MOZ_ASSERT(NS_SUCCEEDED(rv), "Failed accessing " name);        \
+    StaticPrefs::sMirror_##full_id = val;                          \
   }
 #include "mozilla/StaticPrefListAll.h"
 #undef NEVER_PREF
 #undef ALWAYS_PREF
 #undef ALWAYS_DATAMUTEX_PREF
 #undef ONCE_PREF
+#undef ASSERT_PREF_NOT_SANITIZED
 
   // `once`-mirrored prefs have been set to their value in the step above and
   // outside the parent process they are immutable. We set sOncePrefRead so

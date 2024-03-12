@@ -99,7 +99,7 @@ void GonkCameraSourceListener::notify(int32_t msgType, int32_t ext1,
 bool GonkCameraSourceListener::postData(int32_t msgType,
                                         const sp<IMemory>& dataPtr,
                                         camera_frame_metadata_t* metadata) {
-  CS_LOGV("postData(%d, ptr:%p, size:%zu)", msgType, dataPtr->MEM_POINTER,
+  CS_LOGV("postData(%d, ptr:%p, size:%zu)", msgType, IMEMORY_POINTER(dataPtr),
           dataPtr->size());
 
   sp<GonkCameraSource> source = mSource.promote();
@@ -812,7 +812,7 @@ void GonkCameraSource::releaseRecordingFrame(const sp<IMemory>& frame) {
     // Check if frame contains a VideoNativeHandleMetadata.
     if (frame->size() == sizeof(VideoNativeHandleMetadata)) {
       VideoNativeHandleMetadata* metadata =
-          (VideoNativeHandleMetadata*)(frame->MEM_POINTER);
+          (VideoNativeHandleMetadata*)(IMEMORY_POINTER(frame));
       if (metadata->eType == kMetadataBufferTypeNativeHandleSource) {
         handle = metadata->pHandle;
       }
@@ -863,7 +863,7 @@ void GonkCameraSource::signalBufferReturned(MediaBufferBase* buffer) {
   Mutex::Autolock autoLock(mLock);
   for (List<sp<IMemory> >::iterator it = mFramesBeingEncoded.begin();
        it != mFramesBeingEncoded.end(); ++it) {
-    if ((*it)->MEM_POINTER == buffer->data()) {
+    if (IMEMORY_POINTER(*it) == buffer->data()) {
       releaseOneRecordingFrame((*it));
       mFramesBeingEncoded.erase(it);
       ++mNumFramesEncoded;
@@ -920,7 +920,7 @@ status_t GonkCameraSource::read(MediaBufferBase** buffer,
     frameTime = *mFrameTimes.begin();
     mFrameTimes.erase(mFrameTimes.begin());
     mFramesBeingEncoded.push_back(frame);
-    *buffer = new GonkMediaBuffer(frame->MEM_POINTER, frame->size());
+    *buffer = new GonkMediaBuffer(IMEMORY_POINTER(frame), frame->size());
     (*buffer)->setObserver(this);
     (*buffer)->add_ref();
     (*buffer)->meta_data().setInt64(kKeyTime, frameTime);
@@ -1076,7 +1076,7 @@ void GonkCameraSource::recordingFrameHandleCallbackTimestamp(
 
   // Wrap native handle in sp<IMemory> so it can be pushed to mFramesReceived.
   VideoNativeHandleMetadata* metadata =
-      (VideoNativeHandleMetadata*)(data->MEM_POINTER);
+      (VideoNativeHandleMetadata*)(IMEMORY_POINTER(data));
   metadata->eType = kMetadataBufferTypeNativeHandleSource;
   metadata->pHandle = handle;
 

@@ -100,6 +100,7 @@ add_task(async function testAuthRequestWithoutListener() {
   assertEventOwner(events[0], {
     hasResponseStart: true,
     hasEventTimings: true,
+    hasServerTimings: true,
   });
 
   networkObserver.destroy();
@@ -150,6 +151,7 @@ add_task(async function testAuthRequestWithForwardingListener() {
     hasResponseStart: true,
     hasEventTimings: true,
     hasAuthPrompt: true,
+    hasServerTimings: true,
   });
 
   networkObserver.destroy();
@@ -182,7 +184,9 @@ add_task(async function testAuthRequestWithCancellingListener() {
   await BrowserTestUtils.waitForCondition(() => events.length >= 1);
   is(events.length, 1, "Received the expected number of network events");
 
-  await BrowserTestUtils.waitForCondition(() => events[0].hasResponseContent);
+  await BrowserTestUtils.waitForCondition(
+    () => events[0].hasResponseContent && events[0].hasSecurityInfo
+  );
 
   // The auth prompt should not be displayed since the authentication was
   // cancelled.
@@ -248,6 +252,7 @@ add_task(async function testAuthRequestWithWrongCredentialsListener() {
     hasAuthPrompt: true,
     hasResponseStart: true,
     hasEventTimings: true,
+    hasServerTimings: true,
   });
 
   networkObserver.destroy();
@@ -290,8 +295,10 @@ add_task(async function testAuthRequestWithCredentialsListener() {
   is(events.length, 2, "Received the expected number of network events");
 
   // Since the auth prompt was canceled we should also receive the security
-  // information for the channel, but we still don't get response content.
-  await BrowserTestUtils.waitForCondition(() => events[1].hasResponseContent);
+  // information and the response content.
+  await BrowserTestUtils.waitForCondition(
+    () => events[1].hasResponseContent && events[1].hasSecurityInfo
+  );
 
   // The auth prompt should not be displayed since the authentication was
   // fulfilled.

@@ -70,12 +70,14 @@
 #include "mozilla/layers/APZUtils.h"        // for AsyncTransform
 #include "mozilla/layers/CompositorController.h"  // for CompositorController
 #include "mozilla/layers/DirectionUtils.h"  // for GetAxis{Start,End,Length,Scale}
-#include "mozilla/layers/APZPublicUtils.h"  // for GetScrollMode
-#include "mozilla/mozalloc.h"               // for operator new, etc
-#include "mozilla/Unused.h"                 // for unused
-#include "nsAlgorithm.h"                    // for clamped
-#include "nsCOMPtr.h"                       // for already_AddRefed
-#include "nsDebug.h"                        // for NS_WARNING
+#include "mozilla/layers/APZPublicUtils.h"   // for GetScrollMode
+#include "mozilla/webrender/WebRenderAPI.h"  // for MinimapData
+#include "mozilla/mozalloc.h"                // for operator new, etc
+#include "mozilla/Unused.h"                  // for unused
+#include "mozilla/webrender/WebRenderTypes.h"
+#include "nsAlgorithm.h"  // for clamped
+#include "nsCOMPtr.h"     // for already_AddRefed
+#include "nsDebug.h"      // for NS_WARNING
 #include "nsLayoutUtils.h"
 #include "nsMathUtils.h"  // for NS_hypot
 #include "nsPoint.h"      // for nsIntPoint
@@ -1051,7 +1053,10 @@ nsEventStatus AsyncPanZoomController::HandleDragEvent(
   }
   APZC_LOG("%p set scroll offset to %s from scrollbar drag\n", this,
            ToString(scrollOffset).c_str());
-  SetVisualScrollOffset(scrollOffset);
+  // Since the scroll position was calculated based on the scrollable rect at
+  // the start of the drag, we need to clamp the scroll position in case the
+  // scrollable rect has since shrunk.
+  ClampAndSetVisualScrollOffset(scrollOffset);
   ScheduleCompositeAndMaybeRepaint();
 
   return nsEventStatus_eConsumeNoDefault;
@@ -1234,19 +1239,11 @@ nsEventStatus AsyncPanZoomController::HandleGestureEvent(
           rv = OnSingleTapConfirmed(tapGestureInput);
           break;
         case TapGestureInput::TAPGESTURE_DOUBLE:
-          // This means that double tapping on an oop iframe "works" in that we
-          // don't try (and fail) to zoom the oop iframe. But it also means it
-          // is impossible to zoom to some content inside that oop iframe.
-          // Instead the best we can do is zoom to the oop iframe itself. This
-          // is consistent with what Chrome and Safari currently do. Allowing
-          // zooming to content inside an oop iframe would be decently
-          // complicated and it doesn't seem worth it. Bug 1715179 is on file
-          // for this.
           if (!IsRootContent()) {
             if (APZCTreeManager* treeManagerLocal = GetApzcTreeManager()) {
-              if (RefPtr<AsyncPanZoomController> root =
-                      treeManagerLocal->FindZoomableApzc(this)) {
-                rv = root->OnDoubleTap(tapGestureInput);
+              if (AsyncPanZoomController* apzc =
+                      treeManagerLocal->FindRootApzcFor(GetLayersId())) {
+                rv = apzc->OnDoubleTap(tapGestureInput);
               }
             }
             break;
@@ -3069,7 +3066,7 @@ nsEventStatus AsyncPanZoomController::OnLongPress(
       }
       uint64_t blockId = GetInputQueue()->InjectNewTouchBlock(this);
       controller->HandleTap(TapType::eLongTap, *geckoScreenPoint,
-                            aEvent.modifiers, GetGuid(), blockId);
+                            aEvent.modifiers, GetGuid(), blockId, Nothing());
       return nsEventStatus_eConsumeNoDefault;
     }
   }
@@ -3115,10 +3112,12 @@ nsEventStatus AsyncPanZoomController::GenerateSingleTap(
       APZC_LOG("posting runnable for HandleTap from GenerateSingleTap");
       RefPtr<Runnable> runnable =
           NewRunnableMethod<TapType, LayoutDevicePoint, mozilla::Modifiers,
-                            ScrollableLayerGuid, uint64_t>(
+                            ScrollableLayerGuid, uint64_t,
+                            Maybe<DoubleTapToZoomMetrics>>(
               "layers::GeckoContentController::HandleTap", controller,
               &GeckoContentController::HandleTap, aType, *geckoScreenPoint,
-              aModifiers, GetGuid(), touch ? touch->GetBlockId() : 0);
+              aModifiers, GetGuid(), touch ? touch->GetBlockId() : 0,
+              Nothing());
 
       controller->PostDelayedTask(runnable.forget(), 0);
       return nsEventStatus_eConsumeNoDefault;
@@ -3164,16 +3163,48 @@ nsEventStatus AsyncPanZoomController::OnDoubleTap(
     const TapGestureInput& aEvent) {
   APZC_LOG_DETAIL("got a double-tap in state %s\n", this,
                   ToString(mState).c_str());
+
+  MOZ_ASSERT(IsRootForLayersId(),
+             "This function should be called for the root content APZC or "
+             "OOPIF root APZC");
+
+  CSSToCSSMatrix4x4 transformToRootContentApzc;
+  RefPtr<AsyncPanZoomController> rootContentApzc;
+  if (IsRootContent()) {
+    rootContentApzc = RefPtr{this};
+  } else {
+    if (APZCTreeManager* treeManagerLocal = GetApzcTreeManager()) {
+      rootContentApzc = treeManagerLocal->FindZoomableApzc(this);
+      if (rootContentApzc) {
+        MOZ_ASSERT(rootContentApzc->GetLayersId() != GetLayersId());
+        MOZ_ASSERT(this == treeManagerLocal->FindRootApzcFor(GetLayersId()));
+        transformToRootContentApzc =
+            treeManagerLocal->GetOopifToRootContentTransform(this);
+
+        CSSPoint rootScrollPosition = rootContentApzc->GetLayoutScrollOffset();
+        transformToRootContentApzc.PostTranslate(rootScrollPosition.x,
+                                                 rootScrollPosition.y, 0);
+      }
+    }
+  }
+
+  if (!rootContentApzc) {
+    return nsEventStatus_eIgnore;
+  }
+
   RefPtr<GeckoContentController> controller = GetGeckoContentController();
   if (controller) {
-    if (ZoomConstraintsAllowDoubleTapZoom() &&
+    if (rootContentApzc->ZoomConstraintsAllowDoubleTapZoom() &&
         (!GetCurrentTouchBlock() ||
          GetCurrentTouchBlock()->TouchActionAllowsDoubleTapZoom())) {
       if (Maybe<LayoutDevicePoint> geckoScreenPoint =
               ConvertToGecko(aEvent.mPoint)) {
         controller->HandleTap(
             TapType::eDoubleTap, *geckoScreenPoint, aEvent.modifiers, GetGuid(),
-            GetCurrentTouchBlock() ? GetCurrentTouchBlock()->GetBlockId() : 0);
+            GetCurrentTouchBlock() ? GetCurrentTouchBlock()->GetBlockId() : 0,
+            Some(DoubleTapToZoomMetrics{rootContentApzc->GetVisualViewport(),
+                                        rootContentApzc->GetScrollableRect(),
+                                        transformToRootContentApzc}));
       }
     }
     return nsEventStatus_eConsumeNoDefault;
@@ -5346,10 +5377,11 @@ void AsyncPanZoomController::NotifyLayersUpdated(
   // XXX Suspicious comparison between layout and visual scroll offsets.
   // This may not do the right thing when we're zoomed in.
   CSSPoint lastScrollOffset = mLastContentPaintMetrics.GetLayoutScrollOffset();
-  bool userScrolled = !FuzzyEqualsAdditive(Metrics().GetVisualScrollOffset().x,
-                                           lastScrollOffset.x) ||
-                      !FuzzyEqualsAdditive(Metrics().GetVisualScrollOffset().y,
-                                           lastScrollOffset.y);
+  bool userScrolled =
+      !FuzzyEqualsCoordinate(Metrics().GetVisualScrollOffset().x,
+                             lastScrollOffset.x) ||
+      !FuzzyEqualsCoordinate(Metrics().GetVisualScrollOffset().y,
+                             lastScrollOffset.y);
 
   if (aScrollMetadata.DidContentGetPainted()) {
     mLastContentPaintMetadata = aScrollMetadata;
@@ -5933,6 +5965,30 @@ GeckoViewMetrics AsyncPanZoomController::GetGeckoViewMetrics() const {
   RecursiveMutexAutoLock lock(mRecursiveMutex);
   return GeckoViewMetrics{GetEffectiveScrollOffset(eForCompositing, lock),
                           GetEffectiveZoom(eForCompositing, lock)};
+}
+
+wr::MinimapData AsyncPanZoomController::GetMinimapData() const {
+  RecursiveMutexAutoLock lock(mRecursiveMutex);
+  wr::MinimapData result;
+  result.is_root_content = IsRootContent();
+  // We want the minimap to reflect the scroll offset actually composited,
+  // which could be older than the latest one in Metrics() due to the frame
+  // delay.
+  CSSRect visualViewport = GetCurrentAsyncVisualViewport(eForCompositing);
+  result.visual_viewport = wr::ToLayoutRect(visualViewport.ToUnknownRect());
+  CSSRect layoutViewport = GetEffectiveLayoutViewport(eForCompositing, lock);
+  result.layout_viewport = wr::ToLayoutRect(layoutViewport.ToUnknownRect());
+  result.scrollable_rect =
+      wr::ToLayoutRect(Metrics().GetScrollableRect().ToUnknownRect());
+  // The display port is stored relative to the layout viewport origin.
+  // Translate it to be relative to the document origin, like the other rects.
+  CSSRect displayPort = mLastContentPaintMetrics.GetDisplayPort() +
+                        mLastContentPaintMetrics.GetLayoutScrollOffset();
+  result.displayport = wr::ToLayoutRect(displayPort.ToUnknownRect());
+  // Remaining fields (zoom_transform, root_content_scroll_id,
+  // root_content_pipeline_id) will be populated by the caller, since they
+  // require information from other APZCs to compute.
+  return result;
 }
 
 bool AsyncPanZoomController::UpdateRootFrameMetricsIfChanged(

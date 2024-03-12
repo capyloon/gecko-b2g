@@ -78,6 +78,13 @@ XPCOMUtils.defineLazyPreferenceGetter(
   false
 );
 
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
+  "useOldClearHistoryDialog",
+  "privacy.sanitize.useOldClearHistoryDialog",
+  false
+);
+
 ChromeUtils.defineESModuleGetters(this, {
   DoHConfigController: "resource:///modules/DoHConfig.sys.mjs",
 });
@@ -111,8 +118,6 @@ Preferences.addAll([
 
   // Button prefs
   { id: "pref.privacy.disable_button.cookie_exceptions", type: "bool" },
-  { id: "pref.privacy.disable_button.view_cookies", type: "bool" },
-  { id: "pref.privacy.disable_button.change_blocklist", type: "bool" },
   {
     id: "pref.privacy.disable_button.tracking_protection_exceptions",
     type: "bool",
@@ -886,6 +891,14 @@ var gPrivacyPane = {
     }
   },
 
+  initWebAuthn() {
+    document.getElementById("openWindowsPasskeySettings").hidden =
+      !Services.prefs.getBoolPref(
+        "security.webauthn.show_ms_settings_link",
+        true
+      );
+  },
+
   /**
    * Sets up the UI for the number of days of history to keep, and updates the
    * label of the "Clear Now..." button.
@@ -1195,6 +1208,8 @@ var gPrivacyPane = {
     this.initHttpsOnly();
 
     this.initDoH();
+
+    this.initWebAuthn();
 
     // Notify observers that the UI is now ready
     Services.obs.notifyObservers(window, "privacy-pane-loaded");
@@ -2042,7 +2057,12 @@ var gPrivacyPane = {
       ts.value = 0;
     }
 
-    gSubDialog.open("chrome://browser/content/sanitize.xhtml", {
+    // Bug 1856418 We intend to remove the old dialog box
+    let dialogFile = useOldClearHistoryDialog
+      ? "chrome://browser/content/sanitize.xhtml"
+      : "chrome://browser/content/sanitize_v2.xhtml";
+
+    gSubDialog.open(dialogFile, {
       features: "resizable=no",
       closingCallback: () => {
         // reset the timeSpan pref

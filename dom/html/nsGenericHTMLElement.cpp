@@ -93,6 +93,10 @@
 #include "mozilla/dom/ElementBinding.h"
 #include "mozilla/dom/ElementInternals.h"
 
+#ifdef ACCESSIBILITY
+#  include "nsAccessibilityService.h"
+#endif
+
 using namespace mozilla;
 using namespace mozilla::dom;
 
@@ -844,24 +848,21 @@ void nsGenericHTMLElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
       }
     } else if (aName == nsGkAtoms::inputmode ||
                aName == nsGkAtoms::enterkeyhint) {
-      nsPIDOMWindowOuter* window = OwnerDoc()->GetWindow();
-      if (window && window->GetFocusedElement() == this) {
-        if (IMEContentObserver* observer =
-                IMEStateManager::GetActiveContentObserver()) {
-          if (const nsPresContext* presContext =
-                  GetPresContext(eForComposedDoc)) {
-            if (observer->IsManaging(*presContext, this)) {
-              if (RefPtr<EditorBase> editor =
-                      nsContentUtils::GetActiveEditor(window)) {
-                IMEState newState;
-                editor->GetPreferredIMEState(&newState);
-                OwningNonNull<nsGenericHTMLElement> kungFuDeathGrip(*this);
-                IMEStateManager::UpdateIMEState(
-                    newState, kungFuDeathGrip, *editor,
-                    {IMEStateManager::UpdateIMEStateOption::ForceUpdate,
-                     IMEStateManager::UpdateIMEStateOption::
-                         DontCommitComposition});
-              }
+      if (nsFocusManager::GetFocusedElementStatic() == this) {
+        if (const nsPresContext* presContext =
+                GetPresContext(eForComposedDoc)) {
+          IMEContentObserver* observer =
+              IMEStateManager::GetActiveContentObserver();
+          if (observer && observer->IsObserving(*presContext, this)) {
+            if (RefPtr<EditorBase> editorBase = GetEditorWithoutCreation()) {
+              IMEState newState;
+              editorBase->GetPreferredIMEState(&newState);
+              OwningNonNull<nsGenericHTMLElement> kungFuDeathGrip(*this);
+              IMEStateManager::UpdateIMEState(
+                  newState, kungFuDeathGrip, *editorBase,
+                  {IMEStateManager::UpdateIMEStateOption::ForceUpdate,
+                   IMEStateManager::UpdateIMEStateOption::
+                       DontCommitComposition});
             }
           }
         }
@@ -2289,6 +2290,8 @@ void nsGenericHTMLElement::Click(CallerType aCallerType) {
 
 bool nsGenericHTMLElement::IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
                                            int32_t* aTabIndex) {
+  MOZ_ASSERT(aIsFocusable);
+  MOZ_ASSERT(aTabIndex);
   if (ShadowRoot* root = GetShadowRoot()) {
     if (root->DelegatesFocus()) {
       *aIsFocusable = false;
@@ -2296,24 +2299,18 @@ bool nsGenericHTMLElement::IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
     }
   }
 
-  Document* doc = GetComposedDoc();
-  if (!doc || IsInDesignMode()) {
+  if (!IsInComposedDoc() || IsInDesignMode()) {
     // In designMode documents we only allow focusing the document.
-    if (aTabIndex) {
-      *aTabIndex = -1;
-    }
-
+    *aTabIndex = -1;
     *aIsFocusable = false;
-
     return true;
   }
 
-  int32_t tabIndex = TabIndex();
+  *aTabIndex = TabIndex();
   bool disabled = false;
   bool disallowOverridingFocusability = true;
   Maybe<int32_t> attrVal = GetTabIndexAttrValue();
-
-  if (IsEditableRoot()) {
+  if (IsEditingHost()) {
     // Editable roots should always be focusable.
     disallowOverridingFocusability = true;
 
@@ -2322,7 +2319,7 @@ bool nsGenericHTMLElement::IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
     if (attrVal.isNothing()) {
       // The default value for tabindex should be 0 for editable
       // contentEditable roots.
-      tabIndex = 0;
+      *aTabIndex = 0;
     }
   } else {
     disallowOverridingFocusability = false;
@@ -2330,18 +2327,13 @@ bool nsGenericHTMLElement::IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
     // Just check for disabled attribute on form controls
     disabled = IsDisabled();
     if (disabled) {
-      tabIndex = -1;
+      *aTabIndex = -1;
     }
   }
 
-  if (aTabIndex) {
-    *aTabIndex = tabIndex;
-  }
-
   // If a tabindex is specified at all, or the default tabindex is 0, we're
-  // focusable
-  *aIsFocusable = (tabIndex >= 0 || (!disabled && attrVal.isSome()));
-
+  // focusable.
+  *aIsFocusable = (*aTabIndex >= 0 || (!disabled && attrVal.isSome()));
   return disallowOverridingFocusability;
 }
 
@@ -2471,24 +2463,6 @@ void nsGenericHTMLElement::SyncEditorsOnSubtree(nsIContent* content) {
        child = child->GetNextSibling()) {
     SyncEditorsOnSubtree(child);
   }
-}
-
-bool nsGenericHTMLElement::IsEditableRoot() const {
-  if (!IsInComposedDoc()) {
-    return false;
-  }
-
-  if (IsInDesignMode()) {
-    return false;
-  }
-
-  if (GetContentEditableValue() != eTrue) {
-    return false;
-  }
-
-  nsIContent* parent = GetParent();
-
-  return !parent || !parent->HasFlag(NODE_IS_EDITABLE);
 }
 
 static void MakeContentDescendantsEditable(nsIContent* aContent) {
@@ -2728,7 +2702,7 @@ bool nsGenericHTMLFormControlElement::DoesReadOnlyApply() const {
 void nsGenericHTMLFormControlElement::SetFormInternal(HTMLFormElement* aForm,
                                                       bool aBindToTree) {
   if (aForm) {
-    BeforeSetForm(aBindToTree);
+    BeforeSetForm(aForm, aBindToTree);
   }
 
   // keep a *weak* ref to the form here
@@ -2883,14 +2857,28 @@ void nsGenericHTMLFormControlElementWithState::HandlePopoverTargetAction() {
 
   bool canHide = action == PopoverTargetAction::Hide ||
                  action == PopoverTargetAction::Toggle;
+  bool shouldHide = canHide && target->IsPopoverOpen();
   bool canShow = action == PopoverTargetAction::Show ||
                  action == PopoverTargetAction::Toggle;
+  bool shouldShow = canShow && !target->IsPopoverOpen();
 
-  if (canHide && target->IsPopoverOpen()) {
+  if (shouldHide) {
     target->HidePopover(IgnoreErrors());
-  } else if (canShow && !target->IsPopoverOpen()) {
+  } else if (shouldShow) {
     target->ShowPopoverInternal(this, IgnoreErrors());
   }
+#ifdef ACCESSIBILITY
+  // Notify the accessibility service about the change.
+  if (shouldHide || shouldShow) {
+    if (RefPtr<Document> doc = GetComposedDoc()) {
+      if (PresShell* presShell = doc->GetPresShell()) {
+        if (nsAccessibilityService* accService = GetAccService()) {
+          accService->PopovertargetMaybeChanged(presShell, this);
+        }
+      }
+    }
+  }
+#endif
 }
 
 void nsGenericHTMLFormControlElementWithState::GetInvokeAction(

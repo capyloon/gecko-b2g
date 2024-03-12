@@ -26,31 +26,25 @@
 #include "base/basictypes.h"
 #include "GonkAudioSink.h"
 
-namespace mozilla {
+namespace android {
 
 /**
- * Stripped version of Android KK MediaPlayerService::AudioOutput class
- * Android MediaPlayer uses AudioOutput as a wrapper to handle
- * Android::AudioTrack
- * Similarly to ease handling offloaded tracks, part of AudioOutput is used here
+ * Stripped version of Android MediaPlayerService::AudioOutput class. Android
+ * MediaPlayer uses AudioOutput as a wrapper to handle AudioTrack. Similarly to
+ * ease handling offloaded tracks, part of AudioOutput is used here
  */
 class AudioOutput : public GonkAudioSink {
-  typedef android::Mutex Mutex;
-  typedef android::String8 String8;
-  typedef android::status_t status_t;
-  typedef android::AudioTrack AudioTrack;
-
-  class CallbackData;
+  class AudioTrackCallback;
+  class AudioTrackCallbackBase;
 
  public:
-  AudioOutput(audio_session_t aSessionId, int aUid,
-              audio_stream_type_t aStreamType);
+  AudioOutput(audio_session_t aSessionId, audio_stream_type_t aStreamType);
   virtual ~AudioOutput();
 
   ssize_t FrameSize() const override;
   status_t GetPosition(uint32_t* aPosition) const override;
   status_t SetVolume(float aVolume) override;
-  status_t SetPlaybackRate(const android::AudioPlaybackRate& aRate) override;
+  status_t SetPlaybackRate(const AudioPlaybackRate& aRate) override;
   status_t SetParameters(const String8& aKeyValuePairs) override;
 
   // Creates an offloaded audio track with the given parameters
@@ -69,43 +63,14 @@ class AudioOutput : public GonkAudioSink {
   void Close() override;
 
  private:
-  static void CallbackWrapper(int aEvent, void* aMe, void* aInfo);
-  friend android::AudioTrack;
-  friend android::AudioTrack::Buffer;
-
-  android::sp<AudioTrack> mTrack;
+  sp<AudioTrack> mTrack;
+  sp<AudioTrackCallback> mTrackCallback;
   void* mCallbackCookie;
   AudioCallback mCallback;
-  CallbackData* mCallbackData;
-
-  // Uid of the current process, need to create audio track
-  int mUid;
-
-  // Session id given by Android::AudioSystem and used to create audio track
   audio_session_t mSessionId;
-
   audio_stream_type_t mStreamType;
-
-  // CallbackData is what is passed to the AudioTrack as the "user" data.
-  // We need to be able to target this to a different Output on the fly,
-  // so we can't use the Output itself for this.
-  class CallbackData {
-   public:
-    CallbackData(AudioOutput* aCookie) { mData = aCookie; }
-    AudioOutput* GetOutput() { return mData; }
-    void SetOutput(AudioOutput* aNewcookie) { mData = aNewcookie; }
-    // Lock/Unlock are used by the callback before accessing the payload of
-    // this object
-    void Lock() { mLock.lock(); }
-    void Unlock() { mLock.unlock(); }
-
-   private:
-    AudioOutput* mData;
-    mutable Mutex mLock;
-    DISALLOW_EVIL_CONSTRUCTORS(CallbackData);
-  };
 };  // AudioOutput
 
-}  // namespace mozilla
+}  // namespace android
 
 #endif /* AUDIOOUTPUT_H_ */

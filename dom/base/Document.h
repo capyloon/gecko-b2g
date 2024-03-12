@@ -54,6 +54,7 @@
 #include "mozilla/dom/TreeOrderedArray.h"
 #include "mozilla/dom/ViewportMetaData.h"
 #include "mozilla/dom/LargestContentfulPaint.h"
+#include "mozilla/dom/WakeLockBinding.h"
 #include "mozilla/glean/GleanMetrics.h"
 #include "nsAtom.h"
 #include "nsCOMArray.h"
@@ -277,6 +278,7 @@ class Touch;
 class TouchList;
 class TreeWalker;
 enum class ViewportFitType : uint8_t;
+class WakeLockSentinel;
 class WindowContext;
 class WindowGlobalChild;
 class WindowProxyHolder;
@@ -992,6 +994,12 @@ class Document : public nsINode,
    * Ask this document whether it's the initial document in its window.
    */
   bool IsInitialDocument() const { return mIsInitialDocumentInWindow; }
+
+  /**
+   * Ask this document whether it has ever been a initial document in its
+   * window.
+   */
+  bool IsEverInitialDocument() const { return mIsEverInitialDocumentInWindow; }
 
   /**
    * Tell this document that it's the initial document in its window.  See
@@ -1900,7 +1908,7 @@ class Document : public nsINode,
    * in the in-process document tree. Returns nullptr if the document isn't
    * fullscreen.
    */
-  Document* GetFullscreenRoot();
+  Document* GetFullscreenRoot() const { return mFullscreenRoot; }
 
   size_t CountFullscreenElements() const;
 
@@ -1908,7 +1916,7 @@ class Document : public nsINode,
    * Sets the fullscreen root to aRoot. This stores a weak reference to aRoot
    * in this document.
    */
-  void SetFullscreenRoot(Document* aRoot);
+  void SetFullscreenRoot(Document* aRoot) { mFullscreenRoot = aRoot; }
 
   /**
    * Synchronously cleans up the fullscreen state on the given document.
@@ -3033,6 +3041,7 @@ class Document : public nsINode,
 
   DocumentTimeline* Timeline();
   LinkedList<DocumentTimeline>& Timelines() { return mTimelines; }
+  void UpdateHiddenByContentVisibilityForAnimations();
 
   SVGSVGElement* GetSVGRootElement() const;
 
@@ -3537,6 +3546,10 @@ class Document : public nsINode,
   // https://drafts.csswg.org/cssom-view/#evaluate-media-queries-and-report-changes
   void EvaluateMediaQueriesAndReportChanges(bool aRecurse);
 
+  nsTHashSet<RefPtr<WakeLockSentinel>>& ActiveWakeLocks(WakeLockType aType);
+
+  void UnlockAllWakeLocks(WakeLockType aType);
+
   // ParentNode
   nsIHTMLCollection* Children();
   uint32_t ChildElementCount();
@@ -3775,7 +3788,8 @@ class Document : public nsINode,
   void SetNotifyFetchSuccess(bool aShouldNotify);
 
   // When this is set, removing a form or a password field from DOM
-  // sends a Chrome-only event. This is now only used by the password manager.
+  // sends a Chrome-only event. This is now only used by the password manager
+  // and formautofill.
   void SetNotifyFormOrPasswordRemoved(bool aShouldNotify);
 
   // This function is used by HTMLFormElement and HTMLInputElement to determin
@@ -3858,6 +3872,9 @@ class Document : public nsINode,
    * Returns whether the document allows localization.
    */
   bool AllowsL10n() const;
+
+  void SetAllowDeclarativeShadowRoots(bool aAllowDeclarativeShadowRoots);
+  bool AllowsDeclarativeShadowRoots() const;
 
  protected:
   RefPtr<DocumentL10n> mDocumentL10n;
@@ -4073,6 +4090,7 @@ class Document : public nsINode,
   class HighlightRegistry& HighlightRegistry();
 
   bool ShouldResistFingerprinting(RFPTarget aTarget) const;
+  bool IsInPrivateBrowsing() const;
 
   const Maybe<RFPTarget>& GetOverriddenFingerprintingSettings() const {
     return mOverriddenFingerprintingSettings;
@@ -4086,6 +4104,8 @@ class Document : public nsINode,
   void RecordFontFingerprinting();
 
   bool MayHaveDOMActivateListeners() const;
+
+  void DropStyleSet();
 
  protected:
   // Returns the WindowContext for the document that we will contribute
@@ -4543,6 +4563,11 @@ class Document : public nsINode,
   // document in it.
   bool mIsInitialDocumentInWindow : 1;
 
+  // True if this document has ever been the initial document for a window. This
+  // is useful to determine if a document that was the initial document at one
+  // point, and became non-initial later.
+  bool mIsEverInitialDocumentInWindow : 1;
+
   bool mIgnoreDocGroupMismatches : 1;
 
   // True if we're loaded as data and therefor has any dangerous stuff, such
@@ -4818,8 +4843,13 @@ class Document : public nsINode,
   // Whether we should resist fingerprinting.
   bool mShouldResistFingerprinting : 1;
 
+  // Whether we are in private browsing mode.
+  bool mIsInPrivateBrowsing : 1;
+
   // Whether we're cloning the contents of an SVG use element.
   bool mCloningForSVGUse : 1;
+
+  bool mAllowDeclarativeShadowRoots : 1;
 
   // The fingerprinting protections overrides for this document. The value will
   // override the default enabled fingerprinting protections for this document.
@@ -5126,7 +5156,7 @@ class Document : public nsINode,
 
   // The root of the doc tree in which this document is in. This is only
   // non-null when this document is in fullscreen mode.
-  nsWeakPtr mFullscreenRoot;
+  WeakPtr<Document> mFullscreenRoot;
 
   RefPtr<DOMImplementation> mDOMImplementation;
 
@@ -5165,6 +5195,10 @@ class Document : public nsINode,
   // 1)  We have no script global object.
   // 2)  We haven't had Destroy() called on us yet.
   nsCOMPtr<nsILayoutHistoryState> mLayoutHistoryState;
+
+  // Mapping of wake lock types to sets of wake locks sentinels
+  // https://w3c.github.io/screen-wake-lock/#internal-slots
+  nsTHashMap<WakeLockType, nsTHashSet<RefPtr<WakeLockSentinel>>> mActiveLocks;
 
   // The parsed viewport metadata of the last modified <meta name=viewport>
   // element.
@@ -5331,6 +5365,9 @@ class Document : public nsINode,
   void LoadEventFired();
 
   RadioGroupContainer& OwnedRadioGroupContainer();
+
+  static already_AddRefed<Document> ParseHTMLUnsafe(GlobalObject& aGlobal,
+                                                    const nsAString& aHTML);
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(Document, NS_IDOCUMENT_IID)

@@ -143,6 +143,7 @@ nsCocoaWindow::nsCocoaWindow()
       mPopupContentView(nil),
       mFullscreenTransitionAnimation(nil),
       mShadowStyle(StyleWindowShadow::Default),
+      mIsShadowStyleSet(NO),
       mBackingScaleFactor(0.0),
       mAnimationType(nsIWidget::eGenericWindowAnimation),
       mWindowMadeHere(false),
@@ -617,7 +618,7 @@ nsresult nsCocoaWindow::CreateNativeWindow(const NSRect& aRect,
 
   if (mWindowType == WindowType::Popup) {
     SetPopupWindowLevel();
-    [mWindow setBackgroundColor:[NSColor clearColor]];
+    [mWindow setBackgroundColor:NSColor.clearColor];
     [mWindow setOpaque:NO];
 
     // When multiple spaces are in use and the browser is assigned to a
@@ -1231,22 +1232,18 @@ TransparencyMode nsCocoaWindow::GetTransparencyMode() {
 void nsCocoaWindow::SetTransparencyMode(TransparencyMode aMode) {
   NS_OBJC_BEGIN_TRY_IGNORE_BLOCK;
 
-  // Only respect calls for popup windows and always-on-top dialogs.
-  // We don't want to enable transparency for all dialogs, as it breaks some
-  // system dialogs like the profile selection (and possibly some extensions).
-  BOOL isAlwaysOnTopDialog =
-      (mWindowType == WindowType::Dialog && mAlwaysOnTop);
-  if (!mWindow || (mWindowType != WindowType::Popup && !isAlwaysOnTopDialog)) {
+  if (!mWindow) {
     return;
   }
 
   BOOL isTransparent = aMode == TransparencyMode::Transparent;
-  BOOL currentTransparency = ![mWindow isOpaque];
-  if (isTransparent != currentTransparency) {
-    [mWindow setOpaque:!isTransparent];
-    [mWindow setBackgroundColor:(isTransparent ? [NSColor clearColor]
-                                               : [NSColor whiteColor])];
+  BOOL currentTransparency = !mWindow.isOpaque;
+  if (isTransparent == currentTransparency) {
+    return;
   }
+  [mWindow setOpaque:!isTransparent];
+  [mWindow setBackgroundColor:(isTransparent ? NSColor.clearColor
+                                             : NSColor.whiteColor)];
 
   NS_OBJC_END_TRY_IGNORE_BLOCK;
 }
@@ -2688,6 +2685,10 @@ bool nsCocoaWindow::HasPendingInputEvent() {
 void nsCocoaWindow::SetWindowShadowStyle(StyleWindowShadow aStyle) {
   NS_OBJC_BEGIN_TRY_IGNORE_BLOCK;
 
+  if (mShadowStyle == aStyle && mIsShadowStyleSet) {
+    return;
+  }
+
   mShadowStyle = aStyle;
 
   if (!mWindow || mWindowType != WindowType::Popup) {
@@ -2695,8 +2696,9 @@ void nsCocoaWindow::SetWindowShadowStyle(StyleWindowShadow aStyle) {
   }
 
   mWindow.shadowStyle = mShadowStyle;
-  [mWindow setUseMenuStyle:mShadowStyle == StyleWindowShadow::Menu];
+  [mWindow setEffectViewWrapperForStyle:mShadowStyle];
   [mWindow setHasShadow:aStyle != StyleWindowShadow::None];
+  mIsShadowStyleSet = YES;
 
   NS_OBJC_END_TRY_IGNORE_BLOCK;
 }
@@ -3581,7 +3583,6 @@ static NSMutableSet* gSwizzledFrameViewClasses = nil;
   mDirtyRect = NSZeroRect;
   mBeingShown = NO;
   mDrawTitle = NO;
-  mUseMenuStyle = NO;
   mTouchBar = nil;
   mIsAnimationSuppressed = NO;
   [self updateTrackingArea];
@@ -3591,21 +3592,20 @@ static NSMutableSet* gSwizzledFrameViewClasses = nil;
 
 // Returns an autoreleased NSImage.
 static NSImage* GetMenuMaskImage() {
-  CGFloat radius = 4.0f;
-  NSEdgeInsets insets = {5, 5, 5, 5};
-  NSSize maskSize = {12, 12};
-  NSImage* maskImage = [NSImage
-       imageWithSize:maskSize
-             flipped:YES
-      drawingHandler:^BOOL(NSRect dstRect) {
-        NSBezierPath* path = [NSBezierPath bezierPathWithRoundedRect:dstRect
-                                                             xRadius:radius
-                                                             yRadius:radius];
-        [[NSColor colorWithDeviceWhite:1.0 alpha:1.0] set];
-        [path fill];
-        return YES;
-      }];
-  [maskImage setCapInsets:insets];
+  const CGFloat radius = 8.0f;
+  const NSSize maskSize = {radius * 3.0f, radius * 3.0f};
+  NSImage* maskImage = [NSImage imageWithSize:maskSize
+                                      flipped:FALSE
+                               drawingHandler:^BOOL(NSRect dstRect) {
+                                 NSBezierPath* path = [NSBezierPath
+                                     bezierPathWithRoundedRect:dstRect
+                                                       xRadius:radius
+                                                       yRadius:radius];
+                                 [NSColor.blackColor set];
+                                 [path fill];
+                                 return YES;
+                               }];
+  maskImage.capInsets = NSEdgeInsetsMake(radius, radius, radius, radius);
   return maskImage;
 }
 
@@ -3618,22 +3618,27 @@ static NSImage* GetMenuMaskImage() {
   [super setContentView:aNewWrapper];
 }
 
-- (void)setUseMenuStyle:(BOOL)aValue {
-  if (aValue && !mUseMenuStyle) {
-    // Turn on rounded corner masking.
-    NSView* effectView =
-        VibrancyManager::CreateEffectView(VibrancyType::MENU, YES);
-    [effectView setMaskImage:GetMenuMaskImage()];
+- (void)setEffectViewWrapperForStyle:(StyleWindowShadow)aStyle {
+  if (aStyle == StyleWindowShadow::Menu ||
+      aStyle == StyleWindowShadow::Tooltip) {
+    // Add an effect view wrapper so that the OS draws the appropriate
+    // vibrancy effect and window border.
+    BOOL isMenu = aStyle == StyleWindowShadow::Menu;
+    NSView* effectView = VibrancyManager::CreateEffectView(
+        isMenu ? VibrancyType::MENU : VibrancyType::TOOLTIP, YES);
+    if (isMenu) {
+      // Turn on rounded corner masking.
+      [effectView setMaskImage:GetMenuMaskImage()];
+    }
     [self swapOutChildViewWrapper:effectView];
     [effectView release];
-  } else if (mUseMenuStyle && !aValue) {
-    // Turn off rounded corner masking.
+  } else {
+    // Remove the existing wrapper.
     NSView* wrapper = [[NSView alloc] initWithFrame:NSZeroRect];
     [wrapper setWantsLayer:YES];
     [self swapOutChildViewWrapper:wrapper];
     [wrapper release];
   }
-  mUseMenuStyle = aValue;
 }
 
 - (NSTouchBar*)makeTouchBar {

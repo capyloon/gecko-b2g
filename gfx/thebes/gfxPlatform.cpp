@@ -950,6 +950,10 @@ void gfxPlatform::Init() {
   }
 #endif
 
+  mozilla::glean::gpu_process::feature_status.Set(
+      gfxConfig::GetFeature(Feature::GPU_PROCESS)
+          .GetStatusAndFailureIdString());
+
   if (gfxConfig::IsEnabled(Feature::GPU_PROCESS)) {
     GPUProcessManager* gpu = GPUProcessManager::Get();
     Unused << gpu->LaunchGPUProcess();
@@ -1079,8 +1083,6 @@ void gfxPlatform::ReportTelemetry() {
                          uint32_t(rect.Height()));
     Telemetry::ScalarSet(Telemetry::ScalarID::GFX_DISPLAY_PRIMARY_WIDTH,
                          uint32_t(rect.Width()));
-    mozilla::glean::fog_validation::gvsv_primary_height.Set(rect.Height());
-    mozilla::glean::fog_validation::gvsv_primary_width.Set(rect.Width());
   }
 
   nsString adapterDesc;
@@ -1210,7 +1212,8 @@ bool gfxPlatform::IsHeadless() {
 
 /* static */
 bool gfxPlatform::UseRemoteCanvas() {
-  return XRE_IsContentProcess() && gfx::gfxVars::RemoteCanvasEnabled();
+  return XRE_IsContentProcess() && (gfx::gfxVars::RemoteCanvasEnabled() ||
+                                    gfx::gfxVars::UseAcceleratedCanvas2D());
 }
 
 /* static */
@@ -3073,7 +3076,7 @@ void gfxPlatform::InitWebGLConfig() {
   gfxVars::SetUseCanvasRenderThread(feature.IsEnabled());
 
   bool webglOopAsyncPresentForceSync =
-      !gfxVars::UseCanvasRenderThread() ||
+      (threadsafeGL && !gfxVars::UseCanvasRenderThread()) ||
       StaticPrefs::webgl_out_of_process_async_present_force_sync();
   gfxVars::SetWebglOopAsyncPresentForceSync(webglOopAsyncPresentForceSync);
 
@@ -3274,6 +3277,12 @@ static void AcceleratedCanvas2DPrefChangeCallback(const char*, void*) {
   if (!gfxPlatform::IsGfxInfoStatusOkay(
           nsIGfxInfo::FEATURE_ACCELERATED_CANVAS2D, &message, failureId)) {
     feature.Disable(FeatureStatus::Blocklisted, message.get(), failureId);
+  }
+
+  if (StaticPrefs::gfx_canvas_remote_worker_threads_AtStartup() != 0) {
+    feature.ForceDisable(FeatureStatus::Failed,
+                         "Disabled with non-zero canvas worker threads",
+                         "FEATURE_FAILURE_DISABLE_BY_CANVAS_WORKER_THREADS"_ns);
   }
 
   gfxVars::SetUseAcceleratedCanvas2D(feature.IsEnabled());
@@ -3893,13 +3902,18 @@ void gfxPlatform::DisableGPUProcess() {
 }
 
 /* static */ void gfxPlatform::DisableRemoteCanvas() {
-  if (!gfxVars::RemoteCanvasEnabled()) {
-    return;
+  if (gfxVars::RemoteCanvasEnabled()) {
+    gfxConfig::ForceDisable(Feature::REMOTE_CANVAS, FeatureStatus::Failed,
+                            "Disabled by runtime error",
+                            "FEATURE_REMOTE_CANVAS_RUNTIME_ERROR"_ns);
+    gfxVars::SetRemoteCanvasEnabled(false);
   }
-  gfxConfig::ForceDisable(Feature::REMOTE_CANVAS, FeatureStatus::Failed,
-                          "Disabled by runtime error",
-                          "FEATURE_REMOTE_CANVAS_RUNTIME_ERROR"_ns);
-  gfxVars::SetRemoteCanvasEnabled(false);
+  if (gfxVars::UseAcceleratedCanvas2D()) {
+    gfxConfig::ForceDisable(Feature::ACCELERATED_CANVAS2D,
+                            FeatureStatus::Failed, "Disabled by runtime error",
+                            "FEATURE_ACCELERATED_CANVAS2D_RUNTIME_ERROR"_ns);
+    gfxVars::SetUseAcceleratedCanvas2D(false);
+  }
 }
 
 void gfxPlatform::ImportCachedContentDeviceData() {

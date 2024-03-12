@@ -15,6 +15,7 @@
 #include "PerformanceRecorder.h"
 #include "VideoFrameUtils.h"
 
+#include "common/browser_logging/WebRtcLog.h"
 #include "mozilla/AppShutdown.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/BasePrincipal.h"
@@ -1302,6 +1303,12 @@ ipc::IPCResult CamerasParent::RecvPCamerasConstructor() {
   if (!mVideoCaptureThread) {
     return Send__delete__(this) ? IPC_OK() : IPC_FAIL(this, "Failed to send");
   }
+
+  NS_DispatchToMainThread(
+      NS_NewRunnableFunction(__func__, [this, self = RefPtr(this)] {
+        mLogHandle = new nsMainThreadPtrHolder<WebrtcLogSinkHandle>(
+            "CamerasParent::mLogHandle", EnsureWebrtcLogging());
+      }));
 
   MOZ_ASSERT(mEngines);
 

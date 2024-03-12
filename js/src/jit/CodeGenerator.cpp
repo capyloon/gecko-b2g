@@ -4236,6 +4236,20 @@ void CodeGenerator::visitGuardShape(LGuardShape* guard) {
   bailoutFrom(&bail, guard->snapshot());
 }
 
+void CodeGenerator::visitGuardFuse(LGuardFuse* guard) {
+  Register temp = ToRegister(guard->temp0());
+  Label bail;
+
+  // Bake specific fuse address for Ion code, because we won't share this code
+  // across realms.
+  GuardFuse* fuse =
+      mirGen().realm->realmFuses().getFuseByIndex(guard->mir()->fuseIndex());
+  masm.loadPtr(AbsoluteAddress(fuse->fuseRef()), temp);
+  masm.branchPtr(Assembler::NotEqual, temp, ImmPtr(nullptr), &bail);
+
+  bailoutFrom(&bail, guard->snapshot());
+}
+
 void CodeGenerator::visitGuardMultipleShapes(LGuardMultipleShapes* guard) {
   Register obj = ToRegister(guard->object());
   Register shapeList = ToRegister(guard->shapeList());
@@ -13646,6 +13660,24 @@ void CodeGenerator::visitArrayJoin(LArrayJoin* lir) {
   using Fn = JSString* (*)(JSContext*, HandleObject, HandleString);
   callVM<Fn, jit::ArrayJoin>(lir);
   masm.bind(&skipCall);
+}
+
+void CodeGenerator::visitObjectKeys(LObjectKeys* lir) {
+  Register object = ToRegister(lir->object());
+
+  pushArg(object);
+
+  using Fn = JSObject* (*)(JSContext*, HandleObject);
+  callVM<Fn, jit::ObjectKeys>(lir);
+}
+
+void CodeGenerator::visitObjectKeysLength(LObjectKeysLength* lir) {
+  Register object = ToRegister(lir->object());
+
+  pushArg(object);
+
+  using Fn = bool (*)(JSContext*, HandleObject, int32_t*);
+  callVM<Fn, jit::ObjectKeysLength>(lir);
 }
 
 void CodeGenerator::visitGetIteratorCache(LGetIteratorCache* lir) {

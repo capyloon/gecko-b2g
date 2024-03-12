@@ -254,6 +254,7 @@ macosx-arm64-custom-car:
             is_official_build=true,
             symbol_level=0,
             target_cpu="arm64",
+            use_v8_context_snapshot=false,
             v8_symbol_level=0
         ]
         toolchain-artifact: public/build/car_macosx_arm.tar.zst
@@ -380,6 +381,7 @@ wrench-deps:
         script: wrench-deps-vendoring.sh
         sparse-profile: null
         resources:
+            - 'gfx/wr/**/Cargo.toml'
             - 'gfx/wr/Cargo.lock'
             - 'gfx/wr/ci-scripts/install-meson.sh'
         toolchain-artifact: public/build/wrench-deps.tar.zst

@@ -8,7 +8,9 @@
 #include <d3d11.h>
 #include "GLContextEGL.h"
 #include "GLLibraryEGL.h"
+#include "mozilla/gfx/D3D11Checks.h"
 #include "mozilla/gfx/DeviceManagerDx.h"
+#include "mozilla/gfx/FileHandleWrapper.h"
 #include "mozilla/layers/LayersSurfaces.h"  // for SurfaceDescriptor, etc
 
 namespace mozilla {
@@ -74,7 +76,8 @@ SharedSurface_ANGLEShareHandle::Create(const SharedSurfaceDesc& desc) {
   CD3D11_TEXTURE2D_DESC texDesc(
       format, desc.size.width, desc.size.height, 1, 1,
       D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET);
-  texDesc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
+  texDesc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_NTHANDLE |
+                      D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
 
   RefPtr<ID3D11Texture2D> texture2D;
   auto hr =
@@ -83,18 +86,20 @@ SharedSurface_ANGLEShareHandle::Create(const SharedSurfaceDesc& desc) {
     return nullptr;
   }
 
-  HANDLE shareHandle = nullptr;
-  RefPtr<IDXGIResource> texDXGI;
-  hr = texture2D->QueryInterface(__uuidof(IDXGIResource),
+  RefPtr<IDXGIResource1> texDXGI;
+  hr = texture2D->QueryInterface(__uuidof(IDXGIResource1),
                                  getter_AddRefs(texDXGI));
   if (FAILED(hr)) {
     return nullptr;
   }
 
-  hr = texDXGI->GetSharedHandle(&shareHandle);
-  if (FAILED(hr)) {
-    return nullptr;
-  }
+  HANDLE sharedHandle = nullptr;
+  texDXGI->CreateSharedHandle(
+      nullptr, DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE, nullptr,
+      &sharedHandle);
+
+  RefPtr<gfx::FileHandleWrapper> handle =
+      new gfx::FileHandleWrapper(UniqueFileHandle(sharedHandle));
 
   RefPtr<IDXGIKeyedMutex> keyedMutex;
   texture2D->QueryInterface((IDXGIKeyedMutex**)getter_AddRefs(keyedMutex));
@@ -109,18 +114,18 @@ SharedSurface_ANGLEShareHandle::Create(const SharedSurfaceDesc& desc) {
       CreatePBufferSurface(egl.get(), config, desc.size, texture2D);
   if (!pbuffer) return nullptr;
 
-  return AsUnique(new SharedSurface_ANGLEShareHandle(desc, egl, pbuffer,
-                                                     shareHandle, keyedMutex));
+  return AsUnique(new SharedSurface_ANGLEShareHandle(
+      desc, egl, pbuffer, std::move(handle), keyedMutex));
 }
 
 SharedSurface_ANGLEShareHandle::SharedSurface_ANGLEShareHandle(
     const SharedSurfaceDesc& desc, const std::weak_ptr<EglDisplay>& egl,
-    EGLSurface pbuffer, HANDLE shareHandle,
+    EGLSurface pbuffer, RefPtr<gfx::FileHandleWrapper>&& aSharedHandle,
     const RefPtr<IDXGIKeyedMutex>& keyedMutex)
     : SharedSurface(desc, nullptr),
       mEGL(egl),
       mPBuffer(pbuffer),
-      mShareHandle(shareHandle),
+      mSharedHandle(std::move(aSharedHandle)),
       mKeyedMutex(keyedMutex) {}
 
 SharedSurface_ANGLEShareHandle::~SharedSurface_ANGLEShareHandle() {
@@ -142,11 +147,9 @@ void SharedSurface_ANGLEShareHandle::LockProdImpl() {
 
 void SharedSurface_ANGLEShareHandle::UnlockProdImpl() {}
 
-void SharedSurface_ANGLEShareHandle::ProducerAcquireImpl() {
+bool SharedSurface_ANGLEShareHandle::ProducerAcquireImpl() {
   HRESULT hr = mKeyedMutex->AcquireSync(0, 10000);
-  if (hr == WAIT_TIMEOUT) {
-    MOZ_CRASH("GFX: ANGLE share handle timeout");
-  }
+  return gfx::D3D11Checks::DidAcquireSyncSucceed(__func__, hr);
 }
 
 void SharedSurface_ANGLEShareHandle::ProducerReleaseImpl() {
@@ -158,8 +161,8 @@ void SharedSurface_ANGLEShareHandle::ProducerReleaseImpl() {
   mKeyedMutex->ReleaseSync(0);
 }
 
-void SharedSurface_ANGLEShareHandle::ProducerReadAcquireImpl() {
-  ProducerAcquireImpl();
+bool SharedSurface_ANGLEShareHandle::ProducerReadAcquireImpl() {
+  return ProducerAcquireImpl();
 }
 
 void SharedSurface_ANGLEShareHandle::ProducerReadReleaseImpl() {
@@ -170,9 +173,10 @@ Maybe<layers::SurfaceDescriptor>
 SharedSurface_ANGLEShareHandle::ToSurfaceDescriptor() {
   const auto format = gfx::SurfaceFormat::B8G8R8A8;
   return Some(layers::SurfaceDescriptorD3D10(
-      (WindowsHandle)mShareHandle, /* gpuProcessTextureId */ Nothing(),
+      mSharedHandle, /* gpuProcessTextureId */ Nothing(),
       /* arrayIndex */ 0, format, mDesc.size, mDesc.colorSpace,
-      gfx::ColorRange::FULL, /* hasKeyedMutex */ true));
+      gfx::ColorRange::FULL, /* hasKeyedMutex */ true,
+      /* fenceInfo */ Nothing()));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

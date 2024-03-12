@@ -111,7 +111,7 @@ void GonkCameraHardware::postData(int32_t aMsgType, const sp<IMemory>& aDataPtr,
     case CAMERA_MSG_COMPRESSED_IMAGE:
       if (aDataPtr != nullptr) {
         OnTakePictureComplete(mTarget,
-                              static_cast<uint8_t*>(aDataPtr->MEM_POINTER),
+                              static_cast<uint8_t*>(IMEMORY_POINTER(aDataPtr)),
                               aDataPtr->size());
       } else {
         OnTakePictureError(mTarget);
@@ -210,11 +210,12 @@ nsresult GonkCameraHardware::Init() {
 
 #ifdef MOZ_WIDGET_GONK
   CameraInfo info;
-  int rv = Camera::getCameraInfo(mCameraId,
 #  if ANDROID_VERSION >= 33
-                                 false /* overrideToPortrait */,
+  int rv =
+      Camera::getCameraInfo(mCameraId, /* overrideToPortrait */ false, &info);
+#  else
+  int rv = Camera::getCameraInfo(mCameraId, &info);
 #  endif
-                                 &info);
   if (rv != 0) {
     DOM_CAMERA_LOGE("%s: failed to get CameraInfo mCameraId %d\n", __func__,
                     mCameraId);
@@ -298,8 +299,7 @@ sp<GonkCameraHardware> GonkCameraHardware::Connect(
         String16(String8::format("%d", aCameraId)),
         hardware::ICameraService::API_VERSION_2, &isCameraAPI2Supported);
 
-// TODO: probably should use a better switch here.
-#  if ANDROID_VERSION < 33
+#  if ANDROID_VERSION < 31
     // tmp solution to force using connect_legacy for QCOM platform.
     char value[PROPERTY_VALUE_MAX];
     property_get("ro.product.manufacturer", value, "");
@@ -315,32 +315,17 @@ sp<GonkCameraHardware> GonkCameraHardware::Connect(
     gCameraService->notifySystemEvent(event, args);
 
     ProcessState::self()->startThreadPool();
-    if (isCameraAPI2Supported) {
-      camera = Camera::connect(
-          aCameraId,
-          /* clientPackageName */ String16("gonk.camera"),
-          Camera::USE_CALLING_UID, Camera::USE_CALLING_PID
-#  if ANDROID_VERSION >= 33
-          ,
-          /* targetSdkVersion, overrideToPortrait, forceSlowJpegMode */
-          ANDROID_VERSION, false, false
-#  endif
-      );
-    } else {
-#  if ANDROID_VERSION >= 33
-      DOM_CAMERA_LOGE("Camera API is not supported!\n");
-      return nullptr;
-#  else
-      Camera::connectLegacy(aCameraId, 0x100,
-                            /* clientPackageName */ String16("gonk.camera"),
-                            Camera::USE_CALLING_UID, camera);
-#  endif
-    }
     /* bug-82626: Retry Camera::connect each 2 ms delay since there is a chance
      * that EVENT_USER_SWITCHED being handled after Camera::connect. */
-    while (camera.get() == nullptr) {
-      usleep(CAMERA_CONNECT_DELAY);
-      DOM_CAMERA_LOGW("Camera::connect failed. Retrying...\n");
+    while (true) {
+#  if ANDROID_VERSION >= 31
+      camera = Camera::connect(aCameraId,
+                               /* clientPackageName */ String16("gonk.camera"),
+                               Camera::USE_CALLING_UID, Camera::USE_CALLING_PID,
+                               /* targetSdkVersion */ 29,
+                               /* overrideToPortrait */ false,
+                               /* forceSlowJpegMode */ false);
+#  else
       if (isCameraAPI2Supported) {
         camera = Camera::connect(
             aCameraId,
@@ -363,6 +348,12 @@ sp<GonkCameraHardware> GonkCameraHardware::Connect(
                               Camera::USE_CALLING_UID, camera);
 #  endif
       }
+#  endif
+      if (camera) {
+        break;
+      }
+      usleep(CAMERA_CONNECT_DELAY);
+      DOM_CAMERA_LOGW("Camera::connect failed. Retrying...\n");
     }
 #endif
 

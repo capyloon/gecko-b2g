@@ -316,13 +316,15 @@ void AutoRedirectVetoNotifier::ReportRedirectResult(nsresult aRv) {
 //-----------------------------------------------------------------------------
 
 nsHttpChannel::nsHttpChannel() : HttpAsyncAborter<nsHttpChannel>(this) {
-  LOG(("Creating nsHttpChannel [this=%p]\n", this));
+  LOG(("Creating nsHttpChannel [this=%p, nsIChannel=%p]\n", this,
+       static_cast<nsIChannel*>(this)));
   mChannelCreationTime = PR_Now();
   mChannelCreationTimestamp = TimeStamp::Now();
 }
 
 nsHttpChannel::~nsHttpChannel() {
-  LOG(("Destroying nsHttpChannel [this=%p]\n", this));
+  LOG(("Destroying nsHttpChannel [this=%p, nsIChannel=%p]\n", this,
+       static_cast<nsIChannel*>(this)));
 
   if (LOG_ENABLED()) {
     nsCString webExtension;
@@ -1374,6 +1376,10 @@ nsresult nsHttpChannel::SetupTransaction() {
     if (NS_WARN_IF(!gIOService->SocketProcessReady())) {
       return NS_ERROR_NOT_AVAILABLE;
     }
+    SocketProcessParent* socketProcess = SocketProcessParent::GetSingleton();
+    if (!socketProcess->CanSend()) {
+      return NS_ERROR_NOT_AVAILABLE;
+    }
 
     nsCOMPtr<nsIParentChannel> parentChannel;
     NS_QueryNotificationCallbacks(this, parentChannel);
@@ -1395,11 +1401,10 @@ nsresult nsHttpChannel::SetupTransaction() {
     transParent->SetRedirectTimestamp(mRedirectStartTimeStamp,
                                       mRedirectEndTimeStamp);
 
-    SocketProcessParent* socketProcess = SocketProcessParent::GetSingleton();
     if (socketProcess) {
-      Unused << socketProcess->SendPHttpTransactionConstructor(transParent);
+      MOZ_ALWAYS_TRUE(
+          socketProcess->SendPHttpTransactionConstructor(transParent));
     }
-
     mTransaction = transParent;
   } else {
     mTransaction = new nsHttpTransaction();

@@ -21,6 +21,7 @@
 #include <dxgi1_2.h>
 #include <d3d10_1.h>
 #include <d3d11.h>
+#include <d3d11_1.h>
 
 namespace mozilla {
 namespace gfx {
@@ -56,7 +57,8 @@ bool D3D11Checks::DoesRenderTargetViewNeedRecreating(ID3D11Device* aDevice) {
   offscreenTextureDesc.BindFlags =
       D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
   offscreenTextureDesc.CPUAccessFlags = 0;
-  offscreenTextureDesc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
+  offscreenTextureDesc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_NTHANDLE |
+                                   D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
 
   HRESULT hr = aDevice->CreateTexture2D(&offscreenTextureDesc, NULL,
                                         getter_AddRefs(offscreenTexture));
@@ -87,14 +89,20 @@ bool D3D11Checks::DoesRenderTargetViewNeedRecreating(ID3D11Device* aDevice) {
   {
     // Acquire and clear
     HRESULT hr;
-    AutoTextureLock lock(keyedMutex, hr, INFINITE);
+    AutoTextureLock lock(__func__, keyedMutex, hr, INFINITE);
+    if (NS_WARN_IF(!lock.Succeeded())) {
+      return false;
+    }
     FLOAT color1[4] = {1, 1, 0.5, 1};
     deviceContext->ClearRenderTargetView(offscreenRTView, color1);
   }
 
   {
     HRESULT hr;
-    AutoTextureLock lock(keyedMutex, hr, INFINITE);
+    AutoTextureLock lock(__func__, keyedMutex, hr, INFINITE);
+    if (NS_WARN_IF(!lock.Succeeded())) {
+      return false;
+    }
     FLOAT color2[4] = {1, 1, 0, 1};
 
     deviceContext->ClearRenderTargetView(offscreenRTView, color2);
@@ -236,7 +244,8 @@ static bool DoesTextureSharingWorkInternal(ID3D11Device* device,
   desc.SampleDesc.Quality = 0;
   desc.Usage = D3D11_USAGE_DEFAULT;
   desc.CPUAccessFlags = 0;
-  desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
+  desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_NTHANDLE |
+                   D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
   desc.BindFlags = bindflags;
 
   uint32_t color[texture_size * texture_size];
@@ -254,42 +263,57 @@ static bool DoesTextureSharingWorkInternal(ID3D11Device* device,
   RefPtr<IDXGIKeyedMutex> sourceSharedMutex;
   texture->QueryInterface(__uuidof(IDXGIKeyedMutex),
                           (void**)getter_AddRefs(sourceSharedMutex));
-  if (FAILED(sourceSharedMutex->AcquireSync(0, 30 * 1000))) {
-    gfxCriticalError() << "DoesD3D11TextureSharingWork_SourceMutexTimeout";
-    // only wait for 30 seconds
+  if (NS_WARN_IF(!sourceSharedMutex)) {
+    gfxCriticalNote << "DoesD3D11TextureSharingWork_QueryInterfaceKeyedMutex";
     return false;
   }
 
   RefPtr<ID3D11DeviceContext> deviceContext;
-  device->GetImmediateContext(getter_AddRefs(deviceContext));
 
-  int stride = texture_size * 4;
-  deviceContext->UpdateSubresource(texture, 0, nullptr, color, stride,
-                                   stride * texture_size);
+  {
+    HRESULT hr;
+    AutoTextureLock lock(__func__, sourceSharedMutex, hr, 30 * 1000);
+    if (NS_WARN_IF(!lock.Succeeded())) {
+      // only wait for 30 seconds
+      return false;
+    }
 
-  if (FAILED(sourceSharedMutex->ReleaseSync(0))) {
-    gfxCriticalError()
-        << "DoesD3D11TextureSharingWork_SourceReleaseSyncTimeout";
-    return false;
+    device->GetImmediateContext(getter_AddRefs(deviceContext));
+
+    int stride = texture_size * 4;
+    deviceContext->UpdateSubresource(texture, 0, nullptr, color, stride,
+                                     stride * texture_size);
   }
 
-  HANDLE shareHandle;
-  RefPtr<IDXGIResource> otherResource;
-  if (FAILED(texture->QueryInterface(__uuidof(IDXGIResource),
+  RefPtr<IDXGIResource1> otherResource;
+  if (FAILED(texture->QueryInterface(__uuidof(IDXGIResource1),
                                      getter_AddRefs(otherResource)))) {
     gfxCriticalError() << "DoesD3D11TextureSharingWork_GetResourceFailure";
     return false;
   }
 
-  if (FAILED(otherResource->GetSharedHandle(&shareHandle))) {
+  HANDLE sharedHandle;
+  if (FAILED(otherResource->CreateSharedHandle(
+          nullptr, DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE,
+          nullptr, &sharedHandle))) {
     gfxCriticalError() << "DoesD3D11TextureSharingWork_GetSharedTextureFailure";
+    return false;
+  }
+
+  auto handle = ipc::FileDescriptor(UniqueFileHandle(sharedHandle));
+
+  RefPtr<ID3D11Device1> device1;
+  device->QueryInterface((ID3D11Device1**)getter_AddRefs(device1));
+  if (!device1) {
+    gfxCriticalNoteOnce << "Failed to get ID3D11Device1";
     return false;
   }
 
   RefPtr<ID3D11Resource> sharedResource;
   RefPtr<ID3D11Texture2D> sharedTexture;
-  if (FAILED(device->OpenSharedResource(shareHandle, __uuidof(ID3D11Resource),
-                                        getter_AddRefs(sharedResource)))) {
+  auto raw = handle.TakePlatformHandle();
+  if (FAILED(device1->OpenSharedResource1(raw.get(), __uuidof(ID3D11Resource),
+                                          getter_AddRefs(sharedResource)))) {
     gfxCriticalError(CriticalLog::DefaultOptions(false))
         << "OpenSharedResource failed for format " << format;
     return false;
@@ -318,8 +342,8 @@ static bool DoesTextureSharingWorkInternal(ID3D11Device* device,
                                  (void**)getter_AddRefs(sharedMutex));
   {
     HRESULT hr;
-    AutoTextureLock lock(sharedMutex, hr, 30 * 1000);
-    if (FAILED(hr)) {
+    AutoTextureLock lock(__func__, sharedMutex, hr, 30 * 1000);
+    if (!lock.Succeeded()) {
       gfxCriticalError() << "DoesD3D11TextureSharingWork_AcquireSyncTimeout";
       // only wait for 30 seconds
       return false;
@@ -327,9 +351,6 @@ static bool DoesTextureSharingWorkInternal(ID3D11Device* device,
 
     // Copy to the cpu texture so that we can readback
     deviceContext->CopyResource(cpuTexture, sharedTexture);
-
-    // We only need to hold on to the mutex during the copy.
-    sharedMutex->ReleaseSync(0);
   }
 
   D3D11_MAPPED_SUBRESOURCE mapped;
@@ -484,6 +505,24 @@ bool D3D11Checks::DoesRemotePresentWork(IDXGIAdapter* adapter) {
     options += VideoFormatOption::P016;
   }
   return options;
+}
+
+/* static */ bool D3D11Checks::DidAcquireSyncSucceed(const char* aCaller,
+                                                     HRESULT aResult) {
+  MOZ_ASSERT(aCaller);
+  if (aResult == WAIT_TIMEOUT) {
+    gfxCriticalNote << aCaller << " AcquireSync timed out";
+    return false;
+  }
+  if (aResult == WAIT_ABANDONED) {
+    gfxCriticalNote << aCaller << " AcquireSync abandoned";
+    return false;
+  }
+  if (FAILED(aResult)) {
+    gfxCriticalNote << aCaller << " AcquireSync failed " << gfx::hexa(aResult);
+    return false;
+  }
+  return true;
 }
 
 }  // namespace gfx

@@ -141,6 +141,7 @@
 #include "mozilla/dom/Nullable.h"
 #include "mozilla/dom/PartitionedLocalStorage.h"
 #include "mozilla/dom/Performance.h"
+#include "mozilla/dom/PerformanceMainThread.h"
 #include "mozilla/dom/PopStateEvent.h"
 #include "mozilla/dom/PopStateEventBinding.h"
 #include "mozilla/dom/PopupBlocker.h"
@@ -1270,6 +1271,13 @@ void nsGlobalWindowInner::FreeInnerObjects() {
     mLocalStorage = nullptr;
   }
   mSessionStorage = nullptr;
+  if (mPerformance) {
+    // Since window is dying, nothing is going to be painted
+    // with meaningful sizes, so these temp data for LCP is
+    // no longer needed.
+    static_cast<PerformanceMainThread*>(mPerformance.get())
+        ->ClearGeneratedTempDataForLCP();
+  }
   mPerformance = nullptr;
 
   mContentMediaController = nullptr;
@@ -6057,6 +6065,19 @@ nsIPrincipal* nsGlobalWindowInner::GetClientPrincipal() {
   return mClientSource ? mClientSource->GetPrincipal() : nullptr;
 }
 
+bool nsGlobalWindowInner::IsInFullScreenTransition() {
+  if (!mIsChrome) {
+    return false;
+  }
+
+  nsGlobalWindowOuter* outerWindow = GetOuterWindowInternal();
+  if (!outerWindow) {
+    return false;
+  }
+
+  return outerWindow->mIsInFullScreenTransition;
+}
+
 //*****************************************************************************
 // nsGlobalWindowInner: Timeout Functions
 //*****************************************************************************
@@ -6713,21 +6734,20 @@ void nsGlobalWindowInner::AddSizeOfIncludingThis(
 void nsGlobalWindowInner::RegisterDataDocumentForMemoryReporting(
     Document* aDocument) {
   aDocument->SetAddedToMemoryReportAsDataDocument();
-  mDataDocumentsForMemoryReporting.AppendElement(
-      do_GetWeakReference(aDocument));
+  mDataDocumentsForMemoryReporting.AppendElement(aDocument);
 }
 
 void nsGlobalWindowInner::UnregisterDataDocumentForMemoryReporting(
     Document* aDocument) {
-  nsWeakPtr doc = do_GetWeakReference(aDocument);
-  MOZ_ASSERT(mDataDocumentsForMemoryReporting.Contains(doc));
-  mDataDocumentsForMemoryReporting.RemoveElement(doc);
+  DebugOnly<bool> found =
+      mDataDocumentsForMemoryReporting.RemoveElement(aDocument);
+  MOZ_ASSERT(found);
 }
 
 void nsGlobalWindowInner::CollectDOMSizesForDataDocuments(
     nsWindowSizes& aSize) const {
-  for (const nsWeakPtr& ptr : mDataDocumentsForMemoryReporting) {
-    if (nsCOMPtr<Document> doc = do_QueryReferent(ptr)) {
+  for (Document* doc : mDataDocumentsForMemoryReporting) {
+    if (doc) {
       doc->DocAddSizeOfIncludingThis(aSize);
     }
   }

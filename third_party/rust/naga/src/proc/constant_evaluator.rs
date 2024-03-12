@@ -141,8 +141,8 @@ pub enum ConstantEvaluatorError {
     InvalidAccessIndexTy,
     #[error("Constants don't support array length expressions")]
     ArrayLength,
-    #[error("Cannot cast type")]
-    InvalidCastArg,
+    #[error("Cannot cast type `{from}` to `{to}`")]
+    InvalidCastArg { from: String, to: String },
     #[error("Cannot apply the unary op to the argument")]
     InvalidUnaryOpArg,
     #[error("Cannot apply the binary op to the arguments")]
@@ -167,6 +167,15 @@ pub enum ConstantEvaluatorError {
     NotImplemented(String),
     #[error("{0} operation overflowed")]
     Overflow(String),
+    #[error(
+        "the concrete type `{to_type}` cannot represent the abstract value `{value}` accurately"
+    )]
+    AutomaticConversionLossy {
+        value: String,
+        to_type: &'static str,
+    },
+    #[error("abstract floating-point values cannot be automatically converted to integers")]
+    AutomaticConversionFloatToInt { to_type: &'static str },
     #[error("Division by zero")]
     DivisionByZero,
     #[error("Remainder by zero")]
@@ -265,6 +274,17 @@ impl<'a> ConstantEvaluator<'a> {
                 emitter,
                 block,
             }),
+        }
+    }
+
+    pub fn to_ctx(&self) -> crate::proc::GlobalCtx {
+        crate::proc::GlobalCtx {
+            types: self.types,
+            constants: self.constants,
+            const_expressions: match self.function_local_data {
+                Some(ref data) => data.const_expressions,
+                None => self.expressions,
+            },
         }
     }
 
@@ -968,6 +988,22 @@ impl<'a> ConstantEvaluator<'a> {
 
         let expr = self.eval_zero_value(expr, span)?;
 
+        let make_error = || -> Result<_, ConstantEvaluatorError> {
+            let ty = self.resolve_type(expr)?;
+
+            #[cfg(feature = "wgsl-in")]
+            let from = ty.to_wgsl(&self.to_ctx());
+            #[cfg(feature = "wgsl-in")]
+            let to = target.to_wgsl();
+
+            #[cfg(not(feature = "wgsl-in"))]
+            let from = format!("{ty:?}");
+            #[cfg(not(feature = "wgsl-in"))]
+            let to = format!("{target:?}");
+
+            Err(ConstantEvaluatorError::InvalidCastArg { from, to })
+        };
+
         let expr = match self.expressions[expr] {
             Expression::Literal(literal) => {
                 let literal = match target {
@@ -977,8 +1013,10 @@ impl<'a> ConstantEvaluator<'a> {
                         Literal::F32(v) => v as i32,
                         Literal::Bool(v) => v as i32,
                         Literal::F64(_) | Literal::I64(_) => {
-                            return Err(ConstantEvaluatorError::InvalidCastArg)
+                            return make_error();
                         }
+                        Literal::AbstractInt(v) => i32::try_from_abstract(v)?,
+                        Literal::AbstractFloat(v) => i32::try_from_abstract(v)?,
                     }),
                     Sc::U32 => Literal::U32(match literal {
                         Literal::I32(v) => v as u32,
@@ -986,8 +1024,10 @@ impl<'a> ConstantEvaluator<'a> {
                         Literal::F32(v) => v as u32,
                         Literal::Bool(v) => v as u32,
                         Literal::F64(_) | Literal::I64(_) => {
-                            return Err(ConstantEvaluatorError::InvalidCastArg)
+                            return make_error();
                         }
+                        Literal::AbstractInt(v) => u32::try_from_abstract(v)?,
+                        Literal::AbstractFloat(v) => u32::try_from_abstract(v)?,
                     }),
                     Sc::F32 => Literal::F32(match literal {
                         Literal::I32(v) => v as f32,
@@ -995,19 +1035,48 @@ impl<'a> ConstantEvaluator<'a> {
                         Literal::F32(v) => v,
                         Literal::Bool(v) => v as u32 as f32,
                         Literal::F64(_) | Literal::I64(_) => {
-                            return Err(ConstantEvaluatorError::InvalidCastArg)
+                            return make_error();
                         }
+                        Literal::AbstractInt(v) => f32::try_from_abstract(v)?,
+                        Literal::AbstractFloat(v) => f32::try_from_abstract(v)?,
+                    }),
+                    Sc::F64 => Literal::F64(match literal {
+                        Literal::I32(v) => v as f64,
+                        Literal::U32(v) => v as f64,
+                        Literal::F32(v) => v as f64,
+                        Literal::F64(v) => v,
+                        Literal::Bool(v) => v as u32 as f64,
+                        Literal::I64(_) => return make_error(),
+                        Literal::AbstractInt(v) => f64::try_from_abstract(v)?,
+                        Literal::AbstractFloat(v) => f64::try_from_abstract(v)?,
                     }),
                     Sc::BOOL => Literal::Bool(match literal {
                         Literal::I32(v) => v != 0,
                         Literal::U32(v) => v != 0,
                         Literal::F32(v) => v != 0.0,
                         Literal::Bool(v) => v,
-                        Literal::F64(_) | Literal::I64(_) => {
-                            return Err(ConstantEvaluatorError::InvalidCastArg)
+                        Literal::F64(_)
+                        | Literal::I64(_)
+                        | Literal::AbstractInt(_)
+                        | Literal::AbstractFloat(_) => {
+                            return make_error();
                         }
                     }),
-                    _ => return Err(ConstantEvaluatorError::InvalidCastArg),
+                    Sc::ABSTRACT_FLOAT => Literal::AbstractFloat(match literal {
+                        Literal::AbstractInt(v) => {
+                            // Overflow is forbidden, but inexact conversions
+                            // are fine. The range of f64 is far larger than
+                            // that of i64, so we don't have to check anything
+                            // here.
+                            v as f64
+                        }
+                        Literal::AbstractFloat(v) => v,
+                        _ => return make_error(),
+                    }),
+                    _ => {
+                        log::debug!("Constant evaluator refused to convert value to {target:?}");
+                        return make_error();
+                    }
                 };
                 Expression::Literal(literal)
             }
@@ -1025,7 +1094,7 @@ impl<'a> ConstantEvaluator<'a> {
                         rows,
                         scalar: target,
                     },
-                    _ => return Err(ConstantEvaluatorError::InvalidCastArg),
+                    _ => return make_error(),
                 };
 
                 let mut components = src_components.clone();
@@ -1051,10 +1120,68 @@ impl<'a> ConstantEvaluator<'a> {
                     value: cast_value,
                 }
             }
-            _ => return Err(ConstantEvaluatorError::InvalidCastArg),
+            _ => return make_error(),
         };
 
         self.register_evaluated_expr(expr, span)
+    }
+
+    /// Convert the scalar leaves of  `expr` to `target`, handling arrays.
+    ///
+    /// `expr` must be a `Compose` expression whose type is a scalar, vector,
+    /// matrix, or nested arrays of such.
+    ///
+    /// This is basically the same as the [`cast`] method, except that that
+    /// should only handle Naga [`As`] expressions, which cannot convert arrays.
+    ///
+    /// Treat `span` as the location of the resulting expression.
+    ///
+    /// [`cast`]: ConstantEvaluator::cast
+    /// [`As`]: crate::Expression::As
+    pub fn cast_array(
+        &mut self,
+        expr: Handle<Expression>,
+        target: crate::Scalar,
+        span: Span,
+    ) -> Result<Handle<Expression>, ConstantEvaluatorError> {
+        let Expression::Compose { ty, ref components } = self.expressions[expr] else {
+            return self.cast(expr, target, span);
+        };
+
+        let crate::TypeInner::Array { base: _, size, stride: _ } = self.types[ty].inner else {
+            return self.cast(expr, target, span);
+        };
+
+        let mut components = components.clone();
+        for component in &mut components {
+            *component = self.cast_array(*component, target, span)?;
+        }
+
+        let first = components.first().unwrap();
+        let new_base = match self.resolve_type(*first)? {
+            crate::proc::TypeResolution::Handle(ty) => ty,
+            crate::proc::TypeResolution::Value(inner) => {
+                self.types.insert(Type { name: None, inner }, span)
+            }
+        };
+        let new_base_stride = self.types[new_base].inner.size(self.to_ctx());
+        let new_array_ty = self.types.insert(
+            Type {
+                name: None,
+                inner: TypeInner::Array {
+                    base: new_base,
+                    size,
+                    stride: new_base_stride,
+                },
+            },
+            span,
+        );
+
+        let compose = Expression::Compose {
+            ty: new_array_ty,
+            components,
+        };
+        self.register_evaluated_expr(compose, span)
     }
 
     fn unary_op(
@@ -1234,10 +1361,105 @@ impl<'a> ConstantEvaluator<'a> {
                 }
                 Expression::Compose { ty, components }
             }
+            (
+                &Expression::Compose {
+                    components: ref left_components,
+                    ty: left_ty,
+                },
+                &Expression::Compose {
+                    components: ref right_components,
+                    ty: right_ty,
+                },
+            ) => {
+                // We have to make a copy of the component lists, because the
+                // call to `binary_op_vector` needs `&mut self`, but `self` owns
+                // the component lists.
+                let left_flattened = crate::proc::flatten_compose(
+                    left_ty,
+                    left_components,
+                    self.expressions,
+                    self.types,
+                );
+                let right_flattened = crate::proc::flatten_compose(
+                    right_ty,
+                    right_components,
+                    self.expressions,
+                    self.types,
+                );
+
+                // `flatten_compose` doesn't return an `ExactSizeIterator`, so
+                // make a reasonable guess of the capacity we'll need.
+                let mut flattened = Vec::with_capacity(left_components.len());
+                flattened.extend(left_flattened.zip(right_flattened));
+
+                match (&self.types[left_ty].inner, &self.types[right_ty].inner) {
+                    (
+                        &TypeInner::Vector {
+                            size: left_size, ..
+                        },
+                        &TypeInner::Vector {
+                            size: right_size, ..
+                        },
+                    ) if left_size == right_size => {
+                        self.binary_op_vector(op, left_size, &flattened, left_ty, span)?
+                    }
+                    _ => return Err(ConstantEvaluatorError::InvalidBinaryOpArgs),
+                }
+            }
             _ => return Err(ConstantEvaluatorError::InvalidBinaryOpArgs),
         };
 
         self.register_evaluated_expr(expr, span)
+    }
+
+    fn binary_op_vector(
+        &mut self,
+        op: BinaryOperator,
+        size: crate::VectorSize,
+        components: &[(Handle<Expression>, Handle<Expression>)],
+        left_ty: Handle<Type>,
+        span: Span,
+    ) -> Result<Expression, ConstantEvaluatorError> {
+        let ty = match op {
+            // Relational operators produce vectors of booleans.
+            BinaryOperator::Equal
+            | BinaryOperator::NotEqual
+            | BinaryOperator::Less
+            | BinaryOperator::LessEqual
+            | BinaryOperator::Greater
+            | BinaryOperator::GreaterEqual => self.types.insert(
+                Type {
+                    name: None,
+                    inner: TypeInner::Vector {
+                        size,
+                        scalar: crate::Scalar::BOOL,
+                    },
+                },
+                span,
+            ),
+
+            // Other operators produce the same type as their left
+            // operand.
+            BinaryOperator::Add
+            | BinaryOperator::Subtract
+            | BinaryOperator::Multiply
+            | BinaryOperator::Divide
+            | BinaryOperator::Modulo
+            | BinaryOperator::And
+            | BinaryOperator::ExclusiveOr
+            | BinaryOperator::InclusiveOr
+            | BinaryOperator::LogicalAnd
+            | BinaryOperator::LogicalOr
+            | BinaryOperator::ShiftLeft
+            | BinaryOperator::ShiftRight => left_ty,
+        };
+
+        let components = components
+            .iter()
+            .map(|&(left, right)| self.binary_op(op, left, right, span))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Expression::Compose { ty, components })
     }
 
     /// Deep copy `expr` from `expressions` into `self.expressions`.
@@ -1310,6 +1532,28 @@ impl<'a> ConstantEvaluator<'a> {
         } else {
             Ok(self.expressions.append(expr, span))
         }
+    }
+
+    fn resolve_type(
+        &self,
+        expr: Handle<Expression>,
+    ) -> Result<crate::proc::TypeResolution, ConstantEvaluatorError> {
+        use crate::proc::TypeResolution as Tr;
+        use crate::Expression as Ex;
+        let resolution = match self.expressions[expr] {
+            Ex::Literal(ref literal) => Tr::Value(literal.ty_inner()),
+            Ex::Constant(c) => Tr::Handle(self.constants[c].ty),
+            Ex::ZeroValue(ty) | Ex::Compose { ty, .. } => Tr::Handle(ty),
+            Ex::Splat { size, value } => {
+                let Tr::Value(TypeInner::Scalar(scalar)) = self.resolve_type(value)? else {
+                    return Err(ConstantEvaluatorError::SplatScalarOnly);
+                };
+                Tr::Value(TypeInner::Vector { scalar, size })
+            }
+            _ => return Err(ConstantEvaluatorError::SubexpressionsAreNotConstant),
+        };
+
+        Ok(resolution)
     }
 }
 
@@ -1818,5 +2062,94 @@ mod tests {
         if !pass {
             panic!("unexpected evaluation result")
         }
+    }
+}
+
+/// Trait for conversions of abstract values to concrete types.
+trait TryFromAbstract<T>: Sized {
+    /// Convert an abstract literal `value` to `Self`.
+    ///
+    /// Since Naga's `AbstractInt` and `AbstractFloat` exist to support
+    /// WGSL, we follow WGSL's conversion rules here:
+    ///
+    /// - WGSL §6.1.2. Conversion Rank says that automatic conversions
+    ///   to integers are either lossless or an error.
+    ///
+    /// - WGSL §14.6.4 Floating Point Conversion says that conversions
+    ///   to floating point in constant expressions and override
+    ///   expressions are errors if the value is out of range for the
+    ///   destination type, but rounding is okay.
+    ///
+    /// [`AbstractInt`]: crate::Literal::AbstractInt
+    /// [`Float`]: crate::Literal::Float
+    fn try_from_abstract(value: T) -> Result<Self, ConstantEvaluatorError>;
+}
+
+impl TryFromAbstract<i64> for i32 {
+    fn try_from_abstract(value: i64) -> Result<i32, ConstantEvaluatorError> {
+        i32::try_from(value).map_err(|_| ConstantEvaluatorError::AutomaticConversionLossy {
+            value: format!("{value:?}"),
+            to_type: "i32",
+        })
+    }
+}
+
+impl TryFromAbstract<i64> for u32 {
+    fn try_from_abstract(value: i64) -> Result<u32, ConstantEvaluatorError> {
+        u32::try_from(value).map_err(|_| ConstantEvaluatorError::AutomaticConversionLossy {
+            value: format!("{value:?}"),
+            to_type: "u32",
+        })
+    }
+}
+
+impl TryFromAbstract<i64> for f32 {
+    fn try_from_abstract(value: i64) -> Result<Self, ConstantEvaluatorError> {
+        let f = value as f32;
+        // The range of `i64` is roughly ±18 × 10¹⁸, whereas the range of
+        // `f32` is roughly ±3.4 × 10³⁸, so there's no opportunity for
+        // overflow here.
+        Ok(f)
+    }
+}
+
+impl TryFromAbstract<f64> for f32 {
+    fn try_from_abstract(value: f64) -> Result<f32, ConstantEvaluatorError> {
+        let f = value as f32;
+        if f.is_infinite() {
+            return Err(ConstantEvaluatorError::AutomaticConversionLossy {
+                value: format!("{value:?}"),
+                to_type: "f32",
+            });
+        }
+        Ok(f)
+    }
+}
+
+impl TryFromAbstract<i64> for f64 {
+    fn try_from_abstract(value: i64) -> Result<Self, ConstantEvaluatorError> {
+        let f = value as f64;
+        // The range of `i64` is roughly ±18 × 10¹⁸, whereas the range of
+        // `f64` is roughly ±1.8 × 10³⁰⁸, so there's no opportunity for
+        // overflow here.
+        Ok(f)
+    }
+}
+
+impl TryFromAbstract<f64> for f64 {
+    fn try_from_abstract(value: f64) -> Result<f64, ConstantEvaluatorError> {
+        Ok(value)
+    }
+}
+
+impl TryFromAbstract<f64> for i32 {
+    fn try_from_abstract(_: f64) -> Result<Self, ConstantEvaluatorError> {
+        Err(ConstantEvaluatorError::AutomaticConversionFloatToInt { to_type: "i32" })
+    }
+}
+
+impl TryFromAbstract<f64> for u32 {
+    fn try_from_abstract(_: f64) -> Result<Self, ConstantEvaluatorError> {
+        Err(ConstantEvaluatorError::AutomaticConversionFloatToInt { to_type: "u32" })
     }
 }

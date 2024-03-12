@@ -87,47 +87,18 @@ const EXCLUDED_TAGS = new Set([
   "TEXTAREA",
 ]);
 
-// Tags that are treated as assumed inline. This list has been created by heuristics
-// and excludes some commonly inline tags, due to how they are used practically.
-//
-// An actual list of inline elements is available here:
-// https://developer.mozilla.org/en-US/docs/Web/HTML/Inline_elements#list_of_inline_elements
-const INLINE_TAGS = new Set([
-  "ABBR",
-  "B",
-  "CODE",
-  "DEL",
-  "EM",
-  "I",
-  "INS",
-  "KBD",
-  "MARK",
-  "MATH",
-  "OUTPUT",
-  "Q",
-  "RUBY",
-  "SMALL",
-  "STRONG",
-  "SUB",
-  "SUP",
-  "TIME",
-  "U",
-  "VAR",
-  "WBR",
-
-  // These are not really inline, but bergamot-translator treats these as
-  // sentence-breaking.
-  "BR",
-  "TD",
-  "TH",
-  "LI",
-]);
+/**
+ * Attributes to be translated
+ */
+const TRANSLATABLE_ATTRIBUTES = ["title", "placeholder"];
 
 /**
- * Tags that can't reliably be assumed to be inline or block elements. They default
- * to inline, but are often used as block elements.
+ * Selector to get all the attributes
+ *  ["[attribute1]", "[attribute2]", ...];
  */
-const GENERIC_TAGS = new Set(["A", "SPAN"]);
+const TRANSLATABLE_ATTRIBUTES_SELECTOR = TRANSLATABLE_ATTRIBUTES.map(
+  attribute => "[" + attribute + "]"
+);
 
 /**
  * Options used by the mutation observer
@@ -136,6 +107,8 @@ const MUTATION_OBSERVER_OPTIONS = {
   characterData: true,
   childList: true,
   subtree: true,
+  attributes: true,
+  attributeFilter: TRANSLATABLE_ATTRIBUTES,
 };
 
 /**
@@ -162,6 +135,7 @@ export class TranslationsDocument {
    * with translations.
    */
   #updateTimeout = null;
+  #attributeUpdateTimeout = null;
 
   /**
    * The nodes that need translations. They are queued when the document tree is walked,
@@ -171,6 +145,15 @@ export class TranslationsDocument {
    * @type {Map<Node, NodeVisibility>}
    */
   #queuedNodes = new Map();
+
+  /**
+   * The nodes that need Attribute translations. They are queued when the document tree is walked,
+   * and then they are dispatched for translation based on their visibility. The viewport
+   * nodes are given the highest priority.
+   *
+   * @type  {Map<Node, { attributeList: string[], visibility: NodeVisibility }>}
+   */
+  #queuedAttributeNodes = new Map();
 
   /**
    * The count of how many pending translations have been sent to the translations
@@ -185,6 +168,14 @@ export class TranslationsDocument {
    * @type {Set<{ node: Node, translatedHTML: string }}
    */
   #nodesWithTranslatedHTML = new Set();
+
+  /**
+   * The list of nodes that need updating with the translated Attribute HTML. These are batched
+   * into an update.
+   *
+   * @type {Set<{ node: Node, translation: string, attribute: string }}
+   */
+  #nodesWithTranslatedAttributes = new Set();
 
   /**
    * The set of nodes that have been subdivided and processed for translation. They
@@ -291,11 +282,20 @@ export class TranslationsDocument {
             for (const node of mutation.addedNodes) {
               this.#processedNodes.delete(node);
               this.subdivideNodeForTranslations(node);
+              if (node.nodeType === Node.ELEMENT_NODE) {
+                this.translateAttributes(node);
+              }
             }
             break;
           case "characterData":
             this.#processedNodes.delete(mutation);
             this.subdivideNodeForTranslations(mutation.target);
+            break;
+          case "attributes":
+            this.queueAttributeNodeForTranslation(mutation.target, [
+              mutation.attributeName,
+            ]);
+            this.dispatchQueuedAttributeTranslations();
             break;
           default:
             break;
@@ -329,6 +329,22 @@ export class TranslationsDocument {
       // The defaultView may not be there on tests.
       document.defaultView?.location.href
     );
+  }
+
+  /**
+   * Queue a node for translation of attributes.
+   * @param {Node} node
+   * @param {Array<String>}
+   */
+  queueAttributeNodeForTranslation(node, attributeList) {
+    /** @type {NodeVisibility} */
+    let visibility = "out-of-viewport";
+    if (isNodeHidden(node)) {
+      visibility = "hidden";
+    } else if (isNodeInViewport(node)) {
+      visibility = "in-viewport";
+    }
+    this.#queuedAttributeNodes.set(node, { attributeList, visibility });
   }
 
   /**
@@ -419,10 +435,17 @@ export class TranslationsDocument {
 
     this.#rootNodes.add(node);
 
-    this.subdivideNodeForTranslations(node);
+    let viewportNodeTranslations = this.subdivideNodeForTranslations(node);
+    let viewportAttributeTranslations = this.translateAttributes(node);
+
+    if (!this.viewportTranslated) {
+      this.viewportTranslated = Promise.allSettled([
+        ...(viewportNodeTranslations ?? []),
+        ...(viewportAttributeTranslations ?? []),
+      ]);
+    }
 
     this.observer.observe(node, MUTATION_OBSERVER_OPTIONS);
-
     this.addShadowRootsToObserver(node);
   }
 
@@ -518,6 +541,31 @@ export class TranslationsDocument {
       this.reportWordsInViewport();
     }
     this.dispatchQueuedTranslations();
+  }
+
+  /**
+   * Get all the nodes which have selected attributes
+   * from the node/document and queue them.
+   * Call the translate function on these nodes
+   * @param {Node} node
+   * @returns {Array<Promise<void>> | null}
+   */
+  translateAttributes(node) {
+    const attributeList = getTranslatableAttributes(node);
+    if (attributeList.length) {
+      // Queue the root node if it has any attributes
+      // Because querySelectorAll searches only child nodes.
+      this.queueAttributeNodeForTranslation(node, attributeList);
+    }
+    // Get all attributes in child nodes at once
+    const nodesWithTranslatableAttributes = node.querySelectorAll(
+      TRANSLATABLE_ATTRIBUTES_SELECTOR
+    );
+    for (const node of nodesWithTranslatableAttributes) {
+      const attributeList = getTranslatableAttributes(node);
+      this.queueAttributeNodeForTranslation(node, attributeList);
+    }
+    return this.dispatchQueuedAttributeTranslations();
   }
 
   /**
@@ -666,13 +714,14 @@ export class TranslationsDocument {
 
   /**
    * Submit the translations giving priority to nodes in the viewport.
+   * @returns {Array<Promise<void>> | null}
    */
-  async dispatchQueuedTranslations() {
+  dispatchQueuedTranslations() {
     let inViewportCounts = 0;
     let outOfViewportCounts = 0;
     let hiddenCounts = 0;
 
-    let inViewportTranslations;
+    let inViewportTranslations = null;
     if (!this.viewportTranslated) {
       inViewportTranslations = [];
     }
@@ -709,12 +758,150 @@ export class TranslationsDocument {
     );
 
     this.#queuedNodes.clear();
+    return inViewportTranslations;
+  }
 
-    if (!this.viewportTranslated && inViewportTranslations) {
-      // Provide a promise that can be used to determine when the initial viewport has
-      // been translated. This is a key user-visible metric.
-      this.viewportTranslated = Promise.allSettled(inViewportTranslations);
+  /**
+   * Submit the Attribute translations giving priority to nodes in the viewport.
+   * @returns {Array<Promise<void>> | null}
+   */
+  dispatchQueuedAttributeTranslations() {
+    let inViewportCounts = 0;
+    let outOfViewportCounts = 0;
+    let hiddenCounts = 0;
+
+    let inViewportTranslations = null;
+    if (!this.viewportTranslated) {
+      inViewportTranslations = [];
     }
+    // Submit the nodes with attrbutes to be translated.
+    for (const [node, { attributeList, visibility }] of this
+      .#queuedAttributeNodes) {
+      if (visibility === "in-viewport") {
+        inViewportCounts++;
+        const promise = this.submitAttributeTranslation(node, attributeList);
+        if (inViewportTranslations) {
+          inViewportTranslations.push(promise);
+        }
+      }
+    }
+    for (const [node, { attributeList, visibility }] of this
+      .#queuedAttributeNodes) {
+      if (visibility === "out-of-viewport") {
+        outOfViewportCounts++;
+        this.submitAttributeTranslation(node, attributeList);
+      }
+    }
+    for (const [node, { attributeList, visibility }] of this
+      .#queuedAttributeNodes) {
+      if (visibility === "hidden") {
+        hiddenCounts++;
+        this.submitAttributeTranslation(node, attributeList);
+      }
+    }
+
+    ChromeUtils.addProfilerMarker(
+      "Attribute Translations",
+      { innerWindowId: this.innerWindowId },
+      `Attribute Translate ${this.#queuedAttributeNodes.size} nodes.\n\n` +
+        `In viewport: ${inViewportCounts}\n` +
+        `Out of viewport: ${outOfViewportCounts}\n` +
+        `Hidden: ${hiddenCounts}\n`
+    );
+
+    this.#queuedAttributeNodes.clear();
+
+    return inViewportTranslations;
+  }
+
+  /**
+   * Submit a node for Attribute translation to the translations engine.
+   *
+   * @param {Node} node
+   * @returns {Promise<void>}
+   */
+  async submitAttributeTranslation(node, attributeList) {
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      for (const attribute of attributeList) {
+        const text = node.getAttribute(attribute);
+
+        if (text.trim().length === 0) {
+          continue;
+        }
+        const translation = await this.maybeTranslate(
+          node,
+          text,
+          false /*isHTML*/
+        );
+        if (translation != null) {
+          this.scheduleNodeUpdateWithTranslationAttribute(
+            node,
+            translation,
+            attribute
+          );
+        }
+      }
+    }
+  }
+
+  /**
+   * Schedule a node to be updated with a translation.
+   *
+   * @param {Node} node
+   * @param {string} translation
+   */
+  scheduleNodeUpdateWithTranslationAttribute(node, translation, attribute) {
+    // Add the nodes to be populated with the next translation update.
+    this.#nodesWithTranslatedAttributes.add({
+      node,
+      translation,
+      attribute,
+    });
+
+    if (this.#pendingTranslationsCount === 0) {
+      // No translations are pending, update the node.
+      this.updateNodesWithTranslationsAttributes();
+    } else if (!this.#attributeUpdateTimeout) {
+      // Schedule an update.
+      this.#attributeUpdateTimeout = lazy.setTimeout(
+        this.updateNodesWithTranslationsAttributes.bind(this),
+        DOM_UPDATE_INTERVAL_MS
+      );
+    } else {
+      // An update has been previously scheduled, do nothing here.
+    }
+  }
+
+  /**
+   * This is called every `DOM_UPDATE_INTERVAL_MS` ms with translations
+   * for attributes in the nodes.
+   *
+   * This function is called asynchronously, so nodes may already be dead. Before
+   * accessing a node make sure and run `Cu.isDeadWrapper` to check that it is alive.
+   */
+  updateNodesWithTranslationsAttributes() {
+    // Stop the mutations so that the updates won't trigger observations.
+
+    this.pauseMutationObserverAndRun(() => {
+      for (const { node, translation, attribute } of this
+        .#nodesWithTranslatedAttributes) {
+        if (Cu.isDeadWrapper(node)) {
+          // The node is no longer alive.
+          ChromeUtils.addProfilerMarker(
+            "Translations",
+            { innerWindowId: this.innerWindowId },
+            "Node is no long alive."
+          );
+          continue;
+        }
+        // Update the attribute of the node with translated attribute
+        if (attribute) {
+          node.setAttribute(attribute, translation);
+        }
+      }
+      this.#nodesWithTranslatedAttributes.clear();
+      this.#attributeUpdateTimeout = null;
+    });
   }
 
   /**
@@ -786,24 +973,31 @@ export class TranslationsDocument {
     // Mark this node as not to be translated again unless the contents are changed
     // (which the observer will pick up on)
     this.#processedNodes.add(node);
+    const translatedHTML = await this.maybeTranslate(node, text, isHTML);
+    if (translatedHTML != null) {
+      this.scheduleNodeUpdateWithTranslation(node, translatedHTML);
+    }
+  }
 
+  /**
+   * A single function to update pendingTranslationsCount while
+   * calling the translate function
+   * @param {Node} node
+   * @param {string} text
+   * @prop {boolean} isHTML
+   * @returns {Promise<string | null>}
+   */
+  async maybeTranslate(node, text, isHTML) {
     this.#pendingTranslationsCount++;
     try {
-      const translatedHTML = await this.translator.translate(
-        node,
-        text,
-        isHTML
-      );
-      this.#pendingTranslationsCount--;
-      // The translatedHTML is null when the request is stale, for instance when multiple
-      // translations have been queued for the same node.
-      if (translatedHTML != null) {
-        this.scheduleNodeUpdateWithTranslation(node, translatedHTML);
-      }
+      const translation = await this.translator.translate(node, text, isHTML);
+      return translation;
     } catch (error) {
+      lazy.console.log("Translation failed", error);
+    } finally {
       this.#pendingTranslationsCount--;
-      lazy.console.error("Translation failed", error);
     }
+    return null;
   }
 
   /**
@@ -841,44 +1035,52 @@ export class TranslationsDocument {
    */
   updateNodesWithTranslations() {
     // Stop the mutations so that the updates won't trigger observations.
-    this.stopMutationObserver();
-
-    for (const { node, translatedHTML } of this.#nodesWithTranslatedHTML) {
-      if (Cu.isDeadWrapper(node)) {
-        // The node is no longer alive.
-        ChromeUtils.addProfilerMarker(
-          "Translations",
-          { innerWindowId: this.innerWindowId },
-          "Node is no long alive."
-        );
-        continue;
-      }
-      switch (node.nodeType) {
-        case Node.TEXT_NODE: {
-          if (translatedHTML.trim().length !== 0) {
-            // Only update the node if there is new text.
-            node.textContent = translatedHTML;
-          }
-          break;
-        }
-        case Node.ELEMENT_NODE: {
-          // TODO (Bug 1820625) - This is slow compared to the original implementation
-          // in the addon which set the innerHTML directly. We can't set the innerHTML
-          // here, but perhaps there is another way to get back some of the performance.
-          const translationsDocument = this.domParser.parseFromString(
-            `<!DOCTYPE html><div>${translatedHTML}</div>`,
-            "text/html"
+    this.pauseMutationObserverAndRun(() => {
+      for (const { node, translatedHTML } of this.#nodesWithTranslatedHTML) {
+        if (Cu.isDeadWrapper(node)) {
+          // The node is no longer alive.
+          ChromeUtils.addProfilerMarker(
+            "Translations",
+            { innerWindowId: this.innerWindowId },
+            "Node is no long alive."
           );
-          updateElement(translationsDocument, node);
-          break;
+          continue;
+        }
+        switch (node.nodeType) {
+          case Node.TEXT_NODE: {
+            if (translatedHTML.trim().length !== 0) {
+              // Only update the node if there is new text.
+              node.textContent = translatedHTML;
+            }
+            break;
+          }
+          case Node.ELEMENT_NODE: {
+            // TODO (Bug 1820625) - This is slow compared to the original implementation
+            // in the addon which set the innerHTML directly. We can't set the innerHTML
+            // here, but perhaps there is another way to get back some of the performance.
+            const translationsDocument = this.domParser.parseFromString(
+              `<!DOCTYPE html><div>${translatedHTML}</div>`,
+              "text/html"
+            );
+            updateElement(translationsDocument, node);
+            break;
+          }
         }
       }
-    }
 
-    this.#nodesWithTranslatedHTML.clear();
-    this.#updateTimeout = null;
+      this.#nodesWithTranslatedHTML.clear();
+      this.#updateTimeout = null;
+    });
+  }
 
-    // Done mutating the DOM.
+  /**
+   * Stop the mutations so that the updates of the translations
+   * in the nodes won't trigger observations.
+   * @param {Function} run The function to update translations
+   */
+  pauseMutationObserverAndRun(run) {
+    this.stopMutationObserver();
+    run();
     this.startMutationObserver();
   }
 
@@ -932,6 +1134,20 @@ export class TranslationsDocument {
       return false;
     }
   }
+}
+
+/**
+ * Get the list of attributes that need to be translated
+ * in a given node.
+ * @returns Array<string>
+ */
+function getTranslatableAttributes(node) {
+  if (node.nodeType !== Node.ELEMENT_NODE) {
+    return [];
+  }
+  return TRANSLATABLE_ATTRIBUTES.filter(attribute =>
+    node.hasAttribute(attribute)
+  );
 }
 
 /**
@@ -1094,7 +1310,7 @@ function updateElement(translationsDocument, element) {
     }
 
     // The translated tree dictates the order.
-    const translatedNodes = translatedTree.childNodes;
+    const translatedNodes = [...translatedTree.childNodes];
     for (
       let translatedIndex = 0;
       translatedIndex < translatedNodes.length;
@@ -1360,44 +1576,24 @@ function isNodeQueued(node, queuedNodes) {
 }
 
 /**
- * Test whether this node should be treated as a wrapper of text, e.g.
- * a `<p>`, or as a wrapper for block elements, e.g. `<div>`, based on
- * its ratio of assumed inline elements, and assumed "block" elements. If it is a wrapper
- * of block elements, then it needs more subdividing. This algorithm is based on
- * heuristics and is a best effort attempt at sorting contents without actually computing
- * the style of every element.
+ * Reads the elements computed style and determines if the element is inline or not.
  *
- * If it's a Text node, it's inline and doesn't need subdividing.
- *
- *  "Lorem ipsum"
- *
- * If it is mostly filled with assumed "inline" elements, treat it as inline.
- *   <p>
- *     Lorem ipsum dolor sit amet, consectetur adipiscing elit.
- *     <b>Nullam ut finibus nibh</b>, at tincidunt tellus.
- *   </p>
- *
- *   Since it has 3 "inline" elements.
- *     1. "Lorem ipsum dolor sit amet, consectetur adipiscing elit."
- *     2. <b>Nullam ut finibus nibh</b>
- *     3. ", at tincidunt tellus."
- *
- * If it's mostly filled with block elements, do not treat it as inline, as it will
- * need more subdividing.
- *
- *   <section>
- *     Lorem ipsum <strong>dolor sit amet.</strong>
- *     <div>Nullam ut finibus nibh, at tincidunt tellus.</div>
- *     <div>Morbi pharetra mauris sed nisl mollis molestie.</div>
- *     <div>Donec et nibh sit amet velit tincidunt auctor.</div>
- *   </section>
- *
- *   This node has 2 presumed "inline" elements:
- *       1 "Lorem ipsum"
- *       2. <strong>dolor sit amet.</strong>.
- *
- *   And the 3 div "block" elements. Since 3 "block" elements > 2 "inline" elements,
- *   it is presumed to be "inline".
+ * @param {Element} element
+ */
+function getIsInline(element) {
+  const win = element.ownerGlobal;
+  if (element.namespaceURI === "http://www.w3.org/2000/svg") {
+    // SVG elements will report as inline, but there is no block layout in SVG.
+    // Treat every SVG element as being block so that every node will be subdivided.
+    return false;
+  }
+  return win.getComputedStyle(element).display === "inline";
+}
+
+/**
+ * Determine if this element is an inline element or a block element. Inline elements
+ * should be sent as a contiguous chunk of text, while block elements should be further
+ * subdivided before sending them in for translation.
  *
  * @param {Node} node
  * @returns {boolean}
@@ -1408,51 +1604,28 @@ function nodeNeedsSubdividing(node) {
     return false;
   }
 
-  let inlineElements = 0;
-  let blockElements = 0;
-
-  if (node.nodeName === "TR") {
-    // TR elements always need subdividing, since the cells are the individual "inline"
-    // units. For instance the following would be invalid markup:
-    //
-    //   <tr>
-    //     This is <b>invalid</b>
-    //   </tr>
-    //
-    // You will always have the following, which will need more subdividing.
-    //
-    //   <tr>
-    //     <td>This is <b>valid</b>.</td>
-    //     <td>This is still valid.</td>
-    //   </tr>
-    return true;
+  if (getIsInline(node)) {
+    return false;
   }
 
   for (let child of node.childNodes) {
     switch (child.nodeType) {
       case Node.TEXT_NODE:
-        if (!isNodeTextEmpty(child)) {
-          inlineElements += 1;
-        }
-        break;
+        // Keep checking for more inline or text nodes.
+        continue;
       case Node.ELEMENT_NODE: {
-        // Property access can be expensive, so destructure the required properties.
-        const { nodeName } = child;
-        if (INLINE_TAGS.has(nodeName)) {
-          inlineElements += 1;
-        } else if (GENERIC_TAGS.has(nodeName) && !nodeNeedsSubdividing(child)) {
-          inlineElements += 1;
-        } else {
-          blockElements += 1;
+        if (getIsInline(child)) {
+          // Keep checking for more inline or text nodes.
+          continue;
         }
-        break;
+        // A child element is not inline, so subdivide this node further.
+        return true;
       }
       default:
-        break;
+        return true;
     }
   }
-
-  return inlineElements < blockElements;
+  return false;
 }
 
 /**

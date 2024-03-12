@@ -302,11 +302,23 @@ pub enum SystemColor {
     MozHeaderbarinactivetext,
 
     /// Foreground color of default buttons.
+    #[parse(condition = "ParserContext::chrome_rules_enabled")]
     MozMacDefaultbuttontext,
     /// Ring color around text fields and lists.
+    #[parse(condition = "ParserContext::chrome_rules_enabled")]
     MozMacFocusring,
     /// Text color of disabled text on toolbars.
+    #[parse(condition = "ParserContext::chrome_rules_enabled")]
     MozMacDisabledtoolbartext,
+    /// The background of a sidebar.
+    #[parse(condition = "ParserContext::chrome_rules_enabled")]
+    MozSidebar,
+    /// The foreground color of a sidebar.
+    #[parse(condition = "ParserContext::chrome_rules_enabled")]
+    MozSidebartext,
+    /// The border color of a sidebar.
+    #[parse(condition = "ParserContext::chrome_rules_enabled")]
+    MozSidebarborder,
 
     /// Theme accent color.
     /// https://drafts.csswg.org/css-color-4/#valdef-system-color-accentcolor
@@ -320,12 +332,12 @@ pub enum SystemColor {
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
     MozAutofillBackground,
 
-    /// Hyperlink color extracted from the system, not affected by the
-    /// browser.anchor_color user pref.
+    /// Hyperlink color extracted from the system, not affected by the browser.anchor_color user
+    /// pref.
     ///
-    /// There is no OS-specified safe background color for this text, but it is
-    /// used regularly within Windows and the Gnome DE on Dialog and Window
-    /// colors.
+    /// There is no OS-specified safe background color for this text, but it is used regularly
+    /// within Windows and the Gnome DE on Dialog and Window colors.
+    #[css(skip)]
     MozNativehyperlinktext,
 
     /// As above, but visited link color.
@@ -341,9 +353,17 @@ pub enum SystemColor {
 
     /// Color of tree column headers
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
+    MozColheader,
+    #[parse(condition = "ParserContext::chrome_rules_enabled")]
     MozColheadertext,
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
+    MozColheaderhover,
+    #[parse(condition = "ParserContext::chrome_rules_enabled")]
     MozColheaderhovertext,
+    #[parse(condition = "ParserContext::chrome_rules_enabled")]
+    MozColheaderactive,
+    #[parse(condition = "ParserContext::chrome_rules_enabled")]
+    MozColheaderactivetext,
 
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
     TextSelectDisabledBackground,

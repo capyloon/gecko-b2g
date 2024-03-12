@@ -592,6 +592,10 @@ pocketNewtab:
       type: string
       fallbackPref: browser.newtabpage.activity-stream.discoverystream.spoc-topsites-positions
       description: CSV string of spoc position indexes on newtab topsites section
+    contileTopsitesPositions:
+      type: string
+      fallbackPref: browser.newtabpage.activity-stream.discoverystream.contile-topsites-positions
+      description: CSV string of contile position indexes on newtab topsites section
     spocAdTypes:
       type: string
       fallbackPref: browser.newtabpage.activity-stream.discoverystream.spocAdTypes
@@ -1168,6 +1172,23 @@ backgroundTaskMessage:
     path: "browser/components/newtab/content-src/asrouter/schemas/BackgroundTaskMessagingExperiment.schema.json"
   variables: {}
 
+backgroundUpdateAutomaticRestart:
+  description: "Whether to automatically restart when the background update task could make more progress."
+  owner: nalexander@mozilla.com
+  applications:
+    - firefox-desktop-background-task
+  hasExposure: false
+  isEarlyStartup: false
+  variables:
+    enabled:
+      type: boolean
+      fallbackPref: app.update.background.automaticRestartEnabled
+      description: >-
+        When true, make the background update task restart when the final update state is `READY_FOR_RESTART`.
+        Generally, this will finish applying a staged update, completing the update earlier than it
+        otherwise would have been completed.
+
+
 pictureinpicture:
   description: Message for first time Picture-in-Picture users
   owner: nbaumgardner@mozilla.com
@@ -1419,6 +1440,10 @@ networking:
       description: Whether we can send OnDataFinished in the content process
       type: boolean
       setPref: "network.send_OnDataFinished"
+    sendOnDataFinshedFromInputStreamPump:
+      description: Whether we can send OnDataFinished to the content process from InputStreamPump
+      type: boolean
+      setPref: "network.send_OnDataFinished.nsInputStreamPump"
     sendOnDataFinishedToHtml5parser:
       description: Whether we can send OnDataFinished to the html5parser in content process
       type: boolean
@@ -1486,6 +1511,12 @@ fxaButtonVisibility:
       description: True if the Firefox Accounts toolbar button should be visible when not signed in.
       type: boolean
       setPref: identity.fxaccounts.toolbar.defaultVisible
+    pxiToolbarEnabled:
+      description: >-
+        True if we're enabling the PXI dropdown menu for the FxA toolbar button instead of
+        taking the user straight to login
+      type: boolean
+      setPref: identity.fxaccounts.toolbar.pxiToolbarEnabled
 
 legacyHeartbeat:
   description: Normandy Heartbeat exposed to Nimbus
@@ -2011,6 +2042,10 @@ phc:
       description: Whether to enable PHC
       type: boolean
       setPref: memory.phc.enabled
+    phcMinRamMB:
+      description: The minimum amount of RAM required to enable PHC
+      type: int
+      setPref: memory.phc.min_ram_mb
 
 mailto:
   description: Prefs to control aspects of the mailto handler

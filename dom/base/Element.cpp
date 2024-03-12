@@ -31,6 +31,7 @@
 #include "mozilla/ContentEvents.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/DeclarationBlock.h"
+#include "mozilla/EditorBase.h"
 #include "mozilla/EffectCompositor.h"
 #include "mozilla/EffectSet.h"
 #include "mozilla/ElementAnimationData.h"
@@ -40,6 +41,7 @@
 #include "mozilla/EventStateManager.h"
 #include "mozilla/FloatingPoint.h"
 #include "mozilla/FullscreenChange.h"
+#include "mozilla/HTMLEditor.h"
 #include "mozilla/InternalMutationEvent.h"
 #include "mozilla/Likely.h"
 #include "mozilla/LinkedList.h"
@@ -61,6 +63,7 @@
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/StaticPrefs_full_screen_api.h"
 #include "mozilla/TextControlElement.h"
+#include "mozilla/TextEditor.h"
 #include "mozilla/TextEvents.h"
 #include "mozilla/Try.h"
 #include "mozilla/TypedEnumBits.h"
@@ -699,27 +702,36 @@ bool Element::CheckVisibility(const CheckVisibilityOptions& aOptions) {
     return false;
   }
 
-  if (f->IsHiddenByContentVisibilityOnAnyAncestor(
-          nsIFrame::IncludeContentVisibility::Hidden)) {
+  EnumSet includeContentVisibility = {
+      nsIFrame::IncludeContentVisibility::Hidden};
+  if (aOptions.mContentVisibilityAuto) {
+    includeContentVisibility += nsIFrame::IncludeContentVisibility::Auto;
+  }
+  // Steps 2 and 5
+  if (f->IsHiddenByContentVisibilityOnAnyAncestor(includeContentVisibility)) {
     // 2. If a shadow-including ancestor of this has content-visibility: hidden,
     // return false.
+    // 5. If a shadow-including ancestor of this skips its content due to
+    // has content-visibility: auto, return false.
     return false;
   }
 
-  if (aOptions.mCheckOpacity && f->Style()->IsInOpacityZeroSubtree()) {
+  if ((aOptions.mOpacityProperty || aOptions.mCheckOpacity) &&
+      f->Style()->IsInOpacityZeroSubtree()) {
     // 3. If the checkOpacity dictionary member of options is true, and this, or
     // a shadow-including ancestor of this, has a computed opacity value of 0,
     // return false.
     return false;
   }
 
-  if (aOptions.mCheckVisibilityCSS && !f->StyleVisibility()->IsVisible()) {
+  if ((aOptions.mVisibilityProperty || aOptions.mCheckVisibilityCSS) &&
+      !f->StyleVisibility()->IsVisible()) {
     // 4. If the checkVisibilityCSS dictionary member of options is true, and
     // this is invisible, return false.
     return false;
   }
 
-  // 5. Return true
+  // 6. Return true
   return true;
 }
 
@@ -1249,8 +1261,9 @@ bool Element::CanAttachShadowDOM() const {
 }
 
 // https://dom.spec.whatwg.org/commit-snapshots/1eadf0a4a271acc92013d1c0de8c730ac96204f9/#dom-element-attachshadow
-already_AddRefed<ShadowRoot> Element::AttachShadow(const ShadowRootInit& aInit,
-                                                   ErrorResult& aError) {
+already_AddRefed<ShadowRoot> Element::AttachShadow(
+    const ShadowRootInit& aInit, ErrorResult& aError,
+    ShadowRootDeclarative aNewShadowIsDeclarative) {
   /**
    * Step 1, 2, and 3.
    */
@@ -1260,25 +1273,41 @@ already_AddRefed<ShadowRoot> Element::AttachShadow(const ShadowRootInit& aInit,
   }
 
   /**
-   * 4. If this is a shadow host, then throw a "NotSupportedError" DOMException.
+   * 4. If element is a shadow host, then:
    */
-  if (GetShadowRoot()) {
-    aError.Throw(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
-    return nullptr;
+  if (RefPtr<ShadowRoot> root = GetShadowRoot()) {
+    /*
+     * 1. If element’s shadow root’s declarative is false, then throw an
+     *    "NotSupportedError" DOMException.
+     */
+    if (!root->IsDeclarative()) {
+      aError.Throw(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
+      return nullptr;
+    }
+    // https://github.com/whatwg/dom/issues/1235
+    root->SetIsDeclarative(aNewShadowIsDeclarative);
+    /*
+     * 2. Otherwise, remove all of element’s shadow root’s children, in tree
+     *    order, and return.
+     */
+    root->ReplaceChildren(nullptr, aError);
+    return root.forget();
   }
 
   if (StaticPrefs::dom_webcomponents_shadowdom_report_usage()) {
     OwnerDoc()->ReportShadowDOMUsage();
   }
 
-  return AttachShadowWithoutNameChecks(aInit.mMode,
-                                       DelegatesFocus(aInit.mDelegatesFocus),
-                                       aInit.mSlotAssignment);
+  return AttachShadowWithoutNameChecks(
+      aInit.mMode, DelegatesFocus(aInit.mDelegatesFocus), aInit.mSlotAssignment,
+      ShadowRootClonable(aInit.mClonable),
+      ShadowRootDeclarative(aNewShadowIsDeclarative));
 }
 
 already_AddRefed<ShadowRoot> Element::AttachShadowWithoutNameChecks(
     ShadowRootMode aMode, DelegatesFocus aDelegatesFocus,
-    SlotAssignmentMode aSlotAssignment) {
+    SlotAssignmentMode aSlotAssignment, ShadowRootClonable aClonable,
+    ShadowRootDeclarative aDeclarative) {
   nsAutoScriptBlocker scriptBlocker;
 
   auto* nim = mNodeInfo->NodeInfoManager();
@@ -1302,8 +1331,9 @@ already_AddRefed<ShadowRoot> Element::AttachShadowWithoutNameChecks(
    *    context object's node document, host is context object,
    *    and mode is init's mode.
    */
-  RefPtr<ShadowRoot> shadowRoot = new (nim) ShadowRoot(
-      this, aMode, aDelegatesFocus, aSlotAssignment, nodeInfo.forget());
+  RefPtr<ShadowRoot> shadowRoot =
+      new (nim) ShadowRoot(this, aMode, aDelegatesFocus, aSlotAssignment,
+                           aClonable, aDeclarative, nodeInfo.forget());
 
   if (NodeOrAncestorHasDirAuto()) {
     shadowRoot->SetAncestorHasDirAuto();
@@ -4996,6 +5026,36 @@ bool Element::Translate() const {
     return parent->Translate();
   }
   return true;
+}
+
+EditorBase* Element::GetEditorWithoutCreation() const {
+  if (!IsInComposedDoc()) {
+    return nullptr;
+  }
+  const bool isInDesignMode = IsInDesignMode();
+  // Even if a text control element is an editing host, TextEditor handles
+  // user input.  Therefore, we should return TextEditor (or nullptr) in this
+  // case.  Note that text control element in the design mode does not work as
+  // a text control.  Therefore, in that case, we should return HTMLEditor.
+  if (!isInDesignMode) {
+    if (const auto* textControlElement = TextControlElement::FromNode(this)) {
+      if (textControlElement->IsSingleLineTextControlOrTextArea()) {
+        return static_cast<const TextControlElement*>(this)
+            ->GetTextEditorWithoutCreation();
+      }
+    }
+  }
+
+  if (!isInDesignMode && !IsEditable()) {
+    return nullptr;
+  }
+  // FYI: This never creates HTMLEditor immediately.
+  nsDocShell* docShell = nsDocShell::Cast(OwnerDoc()->GetDocShell());
+  return docShell ? docShell->GetHTMLEditorInternal() : nullptr;
+}
+
+void Element::SetHTMLUnsafe(const nsAString& aHTML) {
+  nsContentUtils::SetHTMLUnsafe(this, this, aHTML);
 }
 
 }  // namespace mozilla::dom

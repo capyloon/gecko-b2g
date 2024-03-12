@@ -92,13 +92,25 @@ class MOZ_NON_TEMPORARY_CLASS ExternalStringCache {
     inlineEntries_ = {};
   }
 
+  MOZ_ALWAYS_INLINE JSExternalString* lookupExternal(
+      const JS::Latin1Char* chars, size_t len) const;
   MOZ_ALWAYS_INLINE JSExternalString* lookupExternal(const char16_t* chars,
                                                      size_t len) const;
   MOZ_ALWAYS_INLINE void putExternal(JSExternalString* s);
 
+  MOZ_ALWAYS_INLINE JSInlineString* lookupInline(const JS::Latin1Char* chars,
+                                                 size_t len) const;
   MOZ_ALWAYS_INLINE JSInlineString* lookupInline(const char16_t* chars,
                                                  size_t len) const;
   MOZ_ALWAYS_INLINE void putInline(JSInlineString* s);
+
+ private:
+  template <typename CharT>
+  MOZ_ALWAYS_INLINE JSExternalString* lookupExternalImpl(const CharT* chars,
+                                                         size_t len) const;
+  template <typename CharT>
+  MOZ_ALWAYS_INLINE JSInlineString* lookupInlineImpl(const CharT* chars,
+                                                     size_t len) const;
 };
 
 class MOZ_NON_TEMPORARY_CLASS FunctionToStringCache {
@@ -181,12 +193,6 @@ class Zone : public js::ZoneAllocator, public js::gc::GraphNodeBase<JS::Zone> {
 
   // Per-zone data for use by an embedder.
   js::MainThreadData<void*> data;
-
-  js::MainThreadData<uint32_t> tenuredBigInts;
-
-  // Number of marked/finalized JSStrings/JSFatInlineStrings during major GC.
-  js::MainThreadOrGCTaskData<size_t> markedStrings;
-  js::MainThreadOrGCTaskData<size_t> finalizedStrings;
 
   // When true, skip calling the metadata callback. We use this:
   // - to avoid invoking the callback recursively;

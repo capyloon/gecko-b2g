@@ -11,12 +11,10 @@ use crate::custom_properties::CustomPropertiesBuilder;
 use crate::dom::TElement;
 use crate::font_metrics::FontMetricsOrientation;
 use crate::logical_geometry::WritingMode;
-use crate::properties::declaration_block::{DeclarationImportanceIterator, Importance};
-use crate::properties::generated::{
-    CSSWideKeyword, ComputedValues, LonghandId, LonghandIdSet, PrioritaryPropertyId,
-    PropertyDeclaration, PropertyDeclarationId, PropertyFlags,
-    ShorthandsWithPropertyReferencesCache, StyleBuilder, CASCADE_PROPERTY,
-    PRIORITARY_PROPERTY_COUNT,
+use crate::properties::{
+    property_counts, CSSWideKeyword, ComputedValues, DeclarationImportanceIterator, Importance,
+    LonghandId, LonghandIdSet, PrioritaryPropertyId, PropertyDeclaration, PropertyDeclarationId,
+    PropertyFlags, ShorthandsWithPropertyReferencesCache, StyleBuilder, CASCADE_PROPERTY,
 };
 use crate::rule_cache::{RuleCache, RuleCacheConditions};
 use crate::rule_tree::{CascadeLevel, StrongRuleNode};
@@ -558,7 +556,7 @@ struct Declarations<'a> {
     /// A list of all the applicable longhand declarations.
     longhand_declarations: SmallVec<[Declaration<'a>; 32]>,
     /// The prioritary property position data.
-    prioritary_positions: [PrioritaryDeclarationPosition; PRIORITARY_PROPERTY_COUNT],
+    prioritary_positions: [PrioritaryDeclarationPosition; property_counts::PRIORITARY],
 }
 
 impl<'a> Declarations<'a> {

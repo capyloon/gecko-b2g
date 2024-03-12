@@ -7,6 +7,8 @@ support-files = [
 
 ["browser_keyboard_navigation.js"]
 
+["browser_tab_key_order.js"]
+
 ["browser_parent_menuitems.js"]
 
 ["browser_reason_dropdown.js"]
@@ -15,8 +17,14 @@ support-files = [
 
 ["browser_report_site_issue_fallback.js"]
 
+["browser_site_not_working_fallback.js"]
+
 ["browser_send_more_info.js"]
 
 ["browser_back_buttons.js"]
 
+["browser_error_messages.js"]
+
 ["browser_tab_switch_handling.js"]
+
+["browser_prefers_contrast.js"]

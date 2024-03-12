@@ -303,7 +303,8 @@ bool ReflowInput::ShouldReflowAllKids() const {
   // frames NS_FRAME_CONTAINS_RELATIVE_BSIZE is marked on.
   return mFrame->HasAnyStateBits(NS_FRAME_IS_DIRTY) || IsIResize() ||
          (IsBResize() &&
-          mFrame->HasAnyStateBits(NS_FRAME_CONTAINS_RELATIVE_BSIZE));
+          mFrame->HasAnyStateBits(NS_FRAME_CONTAINS_RELATIVE_BSIZE)) ||
+         mFlags.mIsInLastColumnBalancingReflow;
 }
 
 void ReflowInput::SetComputedISize(nscoord aComputedISize,
@@ -2076,6 +2077,11 @@ LogicalSize ReflowInput::ComputeContainingBlockRectangle(
 
   if (aContainingBlockRI->mFlags.mTreatBSizeAsIndefinite) {
     cbSize.BSize(wm) = NS_UNCONSTRAINEDSIZE;
+  } else if (aContainingBlockRI->mPercentageBasisInBlockAxis) {
+    MOZ_ASSERT(cbSize.BSize(wm) == NS_UNCONSTRAINEDSIZE,
+               "Why provide a percentage basis when the containing block's "
+               "block-size is definite?");
+    cbSize.BSize(wm) = *aContainingBlockRI->mPercentageBasisInBlockAxis;
   }
 
   if (((mFrame->HasAnyStateBits(NS_FRAME_OUT_OF_FLOW) &&
@@ -2359,34 +2365,16 @@ void ReflowInput::InitConstraints(
       }
 
       nsIFrame* alignCB = mFrame->GetParent();
-      if (alignCB->IsTableWrapperFrame() && alignCB->GetParent()) {
-        // XXX grid-specific for now; maybe remove this check after we address
-        // bug 799725
-        if (alignCB->GetParent()->IsGridContainerFrame()) {
-          alignCB = alignCB->GetParent();
+      if (alignCB->IsTableWrapperFrame()) {
+        nsIFrame* alignCBParent = alignCB->GetParent();
+        if (alignCBParent && alignCBParent->IsGridContainerFrame()) {
+          alignCB = alignCBParent;
         }
       }
-      if (alignCB->IsGridContainerFrame()) {
-        // Shrink-wrap grid items that will be aligned (rather than stretched)
-        // in its inline axis.
-        auto inlineAxisAlignment =
-            wm.IsOrthogonalTo(cbwm)
-                ? mStylePosition->UsedAlignSelf(alignCB->Style())._0
-                : mStylePosition->UsedJustifySelf(alignCB->Style())._0;
-        if ((inlineAxisAlignment != StyleAlignFlags::STRETCH &&
-             inlineAxisAlignment != StyleAlignFlags::NORMAL) ||
-            mStyleMargin->mMargin.GetIStart(wm).IsAuto() ||
-            mStyleMargin->mMargin.GetIEnd(wm).IsAuto()) {
-          mComputeSizeFlags += ComputeSizeFlag::ShrinkWrap;
-        }
-      } else {
+      if (!alignCB->IsGridContainerFrame()) {
         // Shrink-wrap blocks that are orthogonal to their container.
         if (isBlockLevel && mCBReflowInput &&
             mCBReflowInput->GetWritingMode().IsOrthogonalTo(mWritingMode)) {
-          mComputeSizeFlags += ComputeSizeFlag::ShrinkWrap;
-        }
-
-        if (alignCB->IsFlexContainerFrame()) {
           mComputeSizeFlags += ComputeSizeFlag::ShrinkWrap;
         }
       }

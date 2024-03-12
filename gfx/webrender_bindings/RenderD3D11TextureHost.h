@@ -7,24 +7,31 @@
 #ifndef MOZILLA_GFX_RENDERD3D11TEXTUREHOST_H
 #define MOZILLA_GFX_RENDERD3D11TEXTUREHOST_H
 
-#include "GLTypes.h"
-#include "RenderTextureHostSWGL.h"
-
 #include <d3d11.h>
+
+#include "GLTypes.h"
+#include "mozilla/gfx/FileHandleWrapper.h"
+#include "RenderTextureHostSWGL.h"
 
 struct ID3D11Texture2D;
 struct IDXGIKeyedMutex;
 
 namespace mozilla {
 
+namespace layers {
+class FenceD3D11;
+}  // namespace layers
+
 namespace wr {
 
 class RenderDXGITextureHost final : public RenderTextureHostSWGL {
  public:
   RenderDXGITextureHost(
-      HANDLE aHandle, Maybe<layers::GpuProcessTextureId>& aGpuProcessTextureId,
+      RefPtr<gfx::FileHandleWrapper> aHandle,
+      Maybe<layers::GpuProcessTextureId>& aGpuProcessTextureId,
       uint32_t aArrayIndex, gfx::SurfaceFormat aFormat, gfx::ColorSpace2,
-      gfx::ColorRange aColorRange, gfx::IntSize aSize, bool aHasKeyedMutex);
+      gfx::ColorRange aColorRange, gfx::IntSize aSize, bool aHasKeyedMutex,
+      gfx::FenceInfo& aAcquireFenceInfo);
 
   wr::WrExternalImage Lock(uint8_t aChannelIndex, gl::GLContext* aGL) override;
   void Unlock() override;
@@ -93,7 +100,7 @@ class RenderDXGITextureHost final : public RenderTextureHostSWGL {
 
   RefPtr<gl::GLContext> mGL;
 
-  HANDLE mHandle;
+  RefPtr<gfx::FileHandleWrapper> mHandle;
   Maybe<layers::GpuProcessTextureId> mGpuProcessTextureId;
   RefPtr<ID3D11Texture2D> mTexture;
   uint32_t mArrayIndex = 0;
@@ -113,12 +120,15 @@ class RenderDXGITextureHost final : public RenderTextureHostSWGL {
 
   bool mIsSoftwareDecodedVideo = false;
 
+  RefPtr<layers::FenceD3D11> mAcquireFence;
+
  public:
   const gfx::SurfaceFormat mFormat;
   const gfx::ColorSpace2 mColorSpace;
   const gfx::ColorRange mColorRange;
   const gfx::IntSize mSize;
   const bool mHasKeyedMutex;
+  const gfx::FenceInfo mAcquireFenceInfo;
 
  private:
   bool mLocked;
@@ -126,12 +136,10 @@ class RenderDXGITextureHost final : public RenderTextureHostSWGL {
 
 class RenderDXGIYCbCrTextureHost final : public RenderTextureHostSWGL {
  public:
-  explicit RenderDXGIYCbCrTextureHost(HANDLE (&aHandles)[3],
-                                      gfx::YUVColorSpace aYUVColorSpace,
-                                      gfx::ColorDepth aColorDepth,
-                                      gfx::ColorRange aColorRange,
-                                      gfx::IntSize aSizeY,
-                                      gfx::IntSize aSizeCbCr);
+  explicit RenderDXGIYCbCrTextureHost(
+      RefPtr<gfx::FileHandleWrapper> (&aHandles)[3],
+      gfx::YUVColorSpace aYUVColorSpace, gfx::ColorDepth aColorDepth,
+      gfx::ColorRange aColorRange, gfx::IntSize aSizeY, gfx::IntSize aSizeCbCr);
 
   RenderDXGIYCbCrTextureHost* AsRenderDXGIYCbCrTextureHost() override {
     return this;
@@ -189,7 +197,7 @@ class RenderDXGIYCbCrTextureHost final : public RenderTextureHostSWGL {
 
   RefPtr<gl::GLContext> mGL;
 
-  HANDLE mHandles[3];
+  RefPtr<gfx::FileHandleWrapper> mHandles[3];
   RefPtr<ID3D11Texture2D> mTextures[3];
   RefPtr<IDXGIKeyedMutex> mKeyedMutexs[3];
 

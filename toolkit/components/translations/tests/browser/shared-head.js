@@ -23,6 +23,8 @@ const SPANISH_PAGE_URL_DOT_ORG =
   URL_ORG_PREFIX + DIR_PATH + "translations-tester-es.html";
 const NO_LANGUAGE_URL =
   URL_COM_PREFIX + DIR_PATH + "translations-tester-no-tag.html";
+const EMPTY_PDF_URL =
+  URL_COM_PREFIX + DIR_PATH + "translations-tester-empty-pdf-file.pdf";
 
 const PIVOT_LANGUAGE = "en";
 const LANGUAGE_PAIRS = [
@@ -759,6 +761,14 @@ function createRecordsForLanguagePair(fromLang, toLang) {
     { fileType: "vocab", name: `vocab.${lang}.spm` },
   ];
 
+  const attachment = {
+    hash: `${crypto.randomUUID()}`,
+    size: `123`,
+    filename: `model.${lang}.intgemm.alphas.bin`,
+    location: `main-workspace/translations-models/${crypto.randomUUID()}.bin`,
+    mimetype: "application/octet-stream",
+  };
+
   if (models.length !== FILES_PER_LANGUAGE_PAIR) {
     throw new Error("Files per language pair was wrong.");
   }
@@ -773,6 +783,7 @@ function createRecordsForLanguagePair(fromLang, toLang) {
       version: TranslationsParent.LANGUAGE_MODEL_MAJOR_VERSION + ".0",
       last_modified: Date.now(),
       schema: Date.now(),
+      attachment,
     });
   }
   return records;

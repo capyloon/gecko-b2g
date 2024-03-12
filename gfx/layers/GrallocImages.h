@@ -6,8 +6,6 @@
 #ifndef GRALLOCIMAGES_H
 #define GRALLOCIMAGES_H
 
-#ifdef MOZ_WIDGET_GONK
-
 #include "ImageContainer.h"
 #include "mozilla/gfx/Point.h"
 #include "mozilla/layers/AtomicRefCountedWithFinalize.h"
@@ -20,11 +18,6 @@ namespace mozilla {
 namespace layers {
 
 class TextureClient;
-
-already_AddRefed<gfx::DataSourceSurface>
-GetDataSourceSurfaceFrom(android::sp<android::GraphicBuffer>& aGraphicBuffer,
-                         gfx::IntSize aSize,
-                         const layers::PlanarYCbCrData& aYcbcrData);
 
 /**
  * The YUV format supported by Android HAL
@@ -47,11 +40,8 @@ GetDataSourceSurfaceFrom(android::sp<android::GraphicBuffer>& aGraphicBuffer,
  * mPicX, mPicY and mPicSize. The size of the rendered image is
  * mPicSize, not mYSize or mCbCrSize.
  */
-class GrallocImage : public RecyclingPlanarYCbCrImage
-{
-  typedef PlanarYCbCrData Data;
-  static int32_t sColorIdMap[];
-public:
+class GrallocImage : public RecyclingPlanarYCbCrImage {
+ public:
   GrallocImage();
 
   virtual ~GrallocImage();
@@ -60,7 +50,7 @@ public:
    * This makes a copy of the data buffers, in order to support functioning
    * in all different layer managers.
    */
-  virtual bool SetData(const Data& aData);
+  bool SetData(const PlanarYCbCrData& aData);
 
   using RecyclingPlanarYCbCrImage::AdoptData;
   /**
@@ -72,81 +62,46 @@ public:
 #if defined(PRODUCT_MANUFACTURER_SPRD)
   /* From vendor/sprd/external/drivers/gpu/utgard/include/gralloc_ext_sprd.h */
   enum {
-    /* OEM specific HAL formats */
-    HAL_PIXEL_FORMAT_YCbCr_420_P  = 0x13,
-    HAL_PIXEL_FORMAT_YCbCr_420_SP = 0x15, /*OMX_COLOR_FormatYUV420SemiPlanar*/
-    HAL_PIXEL_FORMAT_YCrCb_422_SP = 0x1B,
-    HAL_PIXEL_FORMAT_YCrCb_420_P  = 0x1C,
+      /* OEM specific HAL formats */
+      HAL_PIXEL_FORMAT_YCbCr_420_P = 0x13,
+      HAL_PIXEL_FORMAT_YCbCr_420_SP = 0x15, /*OMX_COLOR_FormatYUV420SemiPlanar*/
+      HAL_PIXEL_FORMAT_YCrCb_422_SP = 0x1B,
+      HAL_PIXEL_FORMAT_YCrCb_420_P = 0x1C,
 
-    // To be compatible with old GrallocImage enum
-    HAL_PIXEL_FORMAT_YCbCr_422_P            = 0x102,
-    HAL_PIXEL_FORMAT_YCrCb_420_SP_ADRENO    = 0x10A,
-    HAL_PIXEL_FORMAT_YCbCr_420_SP_TILED     = 0x7FA30C03,
-    HAL_PIXEL_FORMAT_YCbCr_420_SP_VENUS     = 0x7FA30C04,
+      // To be compatible with old GrallocImage enum
+      HAL_PIXEL_FORMAT_YCbCr_422_P = 0x102,
+      HAL_PIXEL_FORMAT_YCrCb_420_SP_ADRENO = 0x10A,
+      HAL_PIXEL_FORMAT_YCbCr_420_SP_TILED = 0x7FA30C03,
+      HAL_PIXEL_FORMAT_YCbCr_420_SP_VENUS = 0x7FA30C04,
   };
 #else
   // From [android 4.0.4]/hardware/msm7k/libgralloc-qsd8k/gralloc_priv.h
   enum {
     /* OEM specific HAL formats */
-    HAL_PIXEL_FORMAT_YCbCr_422_P            = 0x102,
-    HAL_PIXEL_FORMAT_YCbCr_420_P            = 0x103,
-    HAL_PIXEL_FORMAT_YCbCr_420_SP           = 0x109,
-    HAL_PIXEL_FORMAT_YCrCb_420_SP_ADRENO    = 0x10A,
-    HAL_PIXEL_FORMAT_YCbCr_420_SP_TILED     = 0x7FA30C03,
-    HAL_PIXEL_FORMAT_YCbCr_420_SP_VENUS     = 0x7FA30C04,
+    HAL_PIXEL_FORMAT_YCbCr_422_P = 0x102,
+    HAL_PIXEL_FORMAT_YCbCr_420_P = 0x103,
+    HAL_PIXEL_FORMAT_YCbCr_420_SP = 0x109,
+    HAL_PIXEL_FORMAT_YCrCb_420_SP_ADRENO = 0x10A,
+    HAL_PIXEL_FORMAT_YCbCr_420_SP_TILED = 0x7FA30C03,
+    HAL_PIXEL_FORMAT_YCbCr_420_SP_VENUS = 0x7FA30C04,
   };
 #endif
 
-  enum {
-    GRALLOC_SW_UAGE = android::GraphicBuffer::USAGE_SOFTWARE_MASK,
-  };
-
-  virtual already_AddRefed<gfx::SourceSurface> GetAsSourceSurface() override;
+  already_AddRefed<gfx::SourceSurface> GetAsSourceSurface() override;
 
   android::sp<android::GraphicBuffer> GetGraphicBuffer() const;
 
-  void* GetNativeBuffer();
+  bool IsValid() const override { return !!mTextureClient; }
 
-  virtual bool IsValid() const override { return !!mTextureClient; }
+  TextureClient* GetTextureClient(KnowsCompositor* aForwarder) override;
 
-  virtual TextureClient* GetTextureClient(KnowsCompositor* aForwarder) override;
+  GrallocImage* AsGrallocImage() override { return this; }
 
-  virtual GrallocImage* AsGrallocImage() override
-  {
-    return this;
-  }
-
-  virtual uint8_t* GetBuffer()
-  {
-    return static_cast<uint8_t*>(GetNativeBuffer());
-  }
-
-  int GetUsage()
-  {
-    return (static_cast<ANativeWindowBuffer*>(GetNativeBuffer()))->usage;
-  }
-
-  static int GetOmxFormat(int aFormat)
-  {
-    uint32_t omxFormat = 0;
-
-    for (int i = 0; sColorIdMap[i]; i += 2) {
-      if (sColorIdMap[i] == aFormat) {
-        omxFormat = sColorIdMap[i + 1];
-        break;
-      }
-    }
-
-    return omxFormat;
-  }
-
-private:
+ private:
   RefPtr<TextureClient> mTextureClient;
 };
 
-} // namespace layers
-} // namespace mozilla
-
-#endif
+}  // namespace layers
+}  // namespace mozilla
 
 #endif /* GRALLOCIMAGES_H */

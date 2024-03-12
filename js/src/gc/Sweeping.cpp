@@ -138,19 +138,14 @@ inline size_t Arena::finalize(JS::GCContext* gcx, AllocKind thingKind,
     }
   }
 
-  if constexpr (std::is_same_v<T, JSObject>) {
+  if constexpr (std::is_same_v<T, JSObject> || std::is_same_v<T, JSString> ||
+                std::is_same_v<T, JS::BigInt>) {
     if (isNewlyCreated_) {
       zone->pretenuring.updateCellCountsInNewlyCreatedArenas(
           nmarked + nfinalized, nmarked);
     }
   }
   isNewlyCreated_ = 0;
-
-  if (thingKind == AllocKind::STRING ||
-      thingKind == AllocKind::FAT_INLINE_STRING) {
-    zone->markedStrings += nmarked;
-    zone->finalizedStrings += nfinalized;
-  }
 
   if (nmarked == 0) {
     // Do nothing. The caller will update the arena appropriately.
@@ -1195,7 +1190,7 @@ class ImmediateSweepWeakCacheTask : public GCParallelTask {
     AutoUnlockHelperThreadState unlock(lock);
     AutoSetThreadIsSweeping threadIsSweeping(zone);
     SweepingTracer trc(gc->rt);
-    cache.traceWeak(&trc, &gc->storeBuffer());
+    cache.traceWeak(&trc, JS::detail::WeakCacheBase::LockStoreBuffer);
   }
 };
 
@@ -1266,7 +1261,7 @@ void GCRuntime::sweepWeakMaps() {
 
     // Lock the storebuffer since this may access it when rehashing or resizing
     // the tables.
-    AutoLockStoreBuffer lock(&storeBuffer());
+    AutoLockStoreBuffer lock(rt);
     zone->sweepWeakMaps(&trc);
   }
 }
@@ -1298,7 +1293,7 @@ void GCRuntime::sweepFinalizationObserversOnMainThread() {
   gcstats::AutoPhase ap2(stats(),
                          gcstats::PhaseKind::SWEEP_FINALIZATION_OBSERVERS);
   SweepingTracer trc(rt);
-  AutoLockStoreBuffer lock(&storeBuffer());
+  AutoLockStoreBuffer lock(rt);
   for (SweepGroupZonesIter zone(this); !zone.done(); zone.next()) {
     traceWeakFinalizationObserverEdges(&trc, zone);
   }
@@ -1324,7 +1319,7 @@ void GCRuntime::joinTask(GCParallelTask& task,
 
 void GCRuntime::sweepDebuggerOnMainThread(JS::GCContext* gcx) {
   SweepingTracer trc(rt);
-  AutoLockStoreBuffer lock(&storeBuffer());
+  AutoLockStoreBuffer lock(rt);
 
   // Detach unreachable debuggers and global objects from each other.
   // This can modify weakmaps and so must happen before weakmap sweeping.
@@ -1472,7 +1467,7 @@ static void SweepAllWeakCachesOnMainThread(JSRuntime* rt) {
     if (cache->needsIncrementalBarrier()) {
       cache->setIncrementalBarrierTracer(nullptr);
     }
-    cache->traceWeak(&trc, &rt->gc.storeBuffer());
+    cache->traceWeak(&trc, JS::detail::WeakCacheBase::LockStoreBuffer);
     return true;
   });
 }
@@ -1480,7 +1475,7 @@ static void SweepAllWeakCachesOnMainThread(JSRuntime* rt) {
 void GCRuntime::sweepEmbeddingWeakPointers(JS::GCContext* gcx) {
   using namespace gcstats;
 
-  AutoLockStoreBuffer lock(&storeBuffer());
+  AutoLockStoreBuffer lock(rt);
 
   AutoPhase ap(stats(), PhaseKind::FINALIZE_START);
   callFinalizeCallbacks(gcx, JSFINALIZE_GROUP_PREPARE);
@@ -1667,7 +1662,7 @@ IncrementalProgress GCRuntime::endSweepingSweepGroup(JS::GCContext* gcx,
 
   {
     gcstats::AutoPhase ap(stats(), gcstats::PhaseKind::FINALIZE_END);
-    AutoLockStoreBuffer lock(&storeBuffer());
+    AutoLockStoreBuffer lock(rt);
     callFinalizeCallbacks(gcx, JSFINALIZE_GROUP_END);
   }
 
@@ -1882,7 +1877,8 @@ static size_t IncrementalSweepWeakCache(GCRuntime* gc,
   MOZ_ASSERT(cache->needsIncrementalBarrier());
 
   SweepingTracer trc(gc->rt);
-  size_t steps = cache->traceWeak(&trc, &gc->storeBuffer());
+  size_t steps =
+      cache->traceWeak(&trc, JS::detail::WeakCacheBase::LockStoreBuffer);
   cache->setIncrementalBarrierTracer(nullptr);
 
   return steps;
@@ -2392,7 +2388,7 @@ void GCRuntime::endSweepPhase(bool destroyingRuntime) {
 
   {
     gcstats::AutoPhase ap(stats(), gcstats::PhaseKind::FINALIZE_END);
-    AutoLockStoreBuffer lock(&storeBuffer());
+    AutoLockStoreBuffer lock(rt);
     callFinalizeCallbacks(rt->gcContext(), JSFINALIZE_COLLECTION_END);
 
     if (allCCVisibleZonesWereCollected()) {

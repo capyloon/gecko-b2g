@@ -12,6 +12,7 @@
 #include "mozilla/Assertions.h"  // for MOZ_ASSERT, etc
 #include "mozilla/Attributes.h"  // for override
 #include "mozilla/RefPtr.h"      // for RefPtr, already_AddRefed, etc
+#include "mozilla/dom/ipc/IdType.h"
 #include "mozilla/gfx/Logging.h"
 #include "mozilla/gfx/Matrix.h"
 #include "mozilla/gfx/Point.h"  // for IntSize, IntPoint
@@ -20,6 +21,7 @@
 #include "mozilla/ipc/FileDescriptor.h"
 #include "mozilla/layers/CompositorTypes.h"  // for TextureFlags, etc
 #include "mozilla/layers/LayersTypes.h"      // for LayerRenderState, etc
+#include "mozilla/layers/LayersMessages.h"
 #include "mozilla/layers/LayersSurfaces.h"
 #include "mozilla/layers/TextureSourceProvider.h"
 #include "mozilla/mozalloc.h"  // for operator delete
@@ -34,11 +36,6 @@
 #include "nsTraceRefcnt.h"  // for MOZ_COUNT_CTOR, etc
 #include "nscore.h"         // for nsACString
 #include "mozilla/layers/AtomicRefCountedWithFinalize.h"
-
-#ifdef MOZ_WIDGET_GONK
-#  include "mozilla/layers/FenceUtils.h"
-#  include "mozilla/layers/LayerRenderState.h"
-#endif
 
 class MacIOSurface;
 namespace mozilla {
@@ -537,8 +534,8 @@ class TextureHost : public AtomicRefCountedWithFinalize<TextureHost> {
   static PTextureParent* CreateIPDLActor(
       HostIPCAllocator* aAllocator, const SurfaceDescriptor& aSharedData,
       ReadLockDescriptor&& aDescriptor, LayersBackend aLayersBackend,
-      TextureFlags aFlags, uint64_t aSerial,
-      const wr::MaybeExternalImageId& aExternalImageId);
+      TextureFlags aFlags, const dom::ContentParentId& aContentId,
+      uint64_t aSerial, const wr::MaybeExternalImageId& aExternalImageId);
   static bool DestroyIPDLActor(PTextureParent* actor);
 
   /**
@@ -554,6 +551,8 @@ class TextureHost : public AtomicRefCountedWithFinalize<TextureHost> {
   static TextureHost* AsTextureHost(PTextureParent* actor);
 
   static uint64_t GetTextureSerial(PTextureParent* actor);
+
+  static dom::ContentParentId GetTextureContentId(PTextureParent* actor);
 
   /**
    * Return a pointer to the IPDLActor.
@@ -693,21 +692,6 @@ class TextureHost : public AtomicRefCountedWithFinalize<TextureHost> {
 
   virtual bool NeedsYFlip() const;
 
-#ifdef MOZ_WIDGET_GONK
-  virtual void WaitAcquireFenceHandleSyncComplete() {};
-
-  /**
-   * Specific to B2G's Composer2D
-   * XXX - more doc here
-   */
-  virtual LayerRenderState GetRenderState()
-  {
-    // By default we return an empty render state, this should be overridden
-    // by the TextureHost implementations that are used on B2G with Composer2D
-    return LayerRenderState();
-  }
-#endif
-
   virtual void SetAcquireFence(mozilla::ipc::FileDescriptor&& aFenceFd) {}
 
   virtual void SetReleaseFence(mozilla::ipc::FileDescriptor&& aFenceFd) {}
@@ -778,11 +762,6 @@ class TextureHost : public AtomicRefCountedWithFinalize<TextureHost> {
   uint64_t mFwdTransactionId;
   bool mReadLocked;
   wr::MaybeExternalImageId mExternalImageId;
-
-#ifdef MOZ_WIDGET_GONK
-  FenceHandle mReleaseFenceHandle;
-  FenceHandle mAcquireFenceHandle;
-#endif
 
   std::function<void()> mDestroyedCallback;
 

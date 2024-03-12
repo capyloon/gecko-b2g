@@ -208,6 +208,12 @@ class HTMLEditUtils final {
   [[nodiscard]] static bool IsDisplayInsideFlowRoot(const Element& aElement);
 
   /**
+   * Return true if aElement is a flex item or a grid item.  This works only
+   * when aElement has a primary frame.
+   */
+  [[nodiscard]] static bool IsFlexOrGridItem(const Element& aElement);
+
+  /**
    * IsRemovableInlineStyleElement() returns true if aElement is an inline
    * element and can be removed or split to in order to modifying inline
    * styles.
@@ -598,13 +604,13 @@ class HTMLEditUtils final {
    * @param aOptions        You can specify which type of elements are visible
    *                        and/or whether this can access layout information.
    * @param aSeenBR         [Out] Set to true if this meets an <br> element
-   *                        before meething visible things.
+   *                        before meeting visible things.
    */
   enum class EmptyCheckOption {
     TreatSingleBRElementAsVisible,
     TreatListItemAsVisible,
     TreatTableCellAsVisible,
-    IgnoreEditableState,  // TODO: Change to "TreatNonEditableContentAsVisible"
+    TreatNonEditableContentAsInvisible,
     SafeToAskLayout,
   };
   using EmptyCheckOptions = EnumSet<EmptyCheckOption, uint32_t>;
@@ -654,7 +660,7 @@ class HTMLEditUtils final {
         if (foundListItem) {
           return false;  // 2 list items found.
         }
-        if (!IsEmptyNode(*child, {EmptyCheckOption::IgnoreEditableState})) {
+        if (!IsEmptyNode(*child, {})) {
           return false;  // found non-empty list item.
         }
         foundListItem = true;
@@ -739,7 +745,9 @@ class HTMLEditUtils final {
         continue;
       }
       if (!HTMLEditUtils::IsEmptyInlineContainer(
-              content, {EmptyCheckOption::TreatSingleBRElementAsVisible},
+              content,
+              {EmptyCheckOption::TreatSingleBRElementAsVisible,
+               EmptyCheckOption::TreatNonEditableContentAsInvisible},
               aBlockInlineCheck)) {
         return false;
       }

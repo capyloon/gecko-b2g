@@ -172,7 +172,7 @@ typedef struct _drmDevice {
 static int x_error_handler(Display*, XErrorEvent* ev) {
   record_error(
       "X error, error_code=%d, "
-      "request_code=%d, minor_code=%d\n",
+      "request_code=%d, minor_code=%d",
       ev->error_code, ev->request_code, ev->minor_code);
   record_flush();
   _exit(EXIT_FAILURE);
@@ -192,9 +192,11 @@ extern "C" {
 static void get_pci_status() {
   log("GLX_TEST: get_pci_status start\n");
 
+#if !defined(XP_FREEBSD) && !defined(XP_NETBSD) && !defined(XP_OPENBSD) && \
+    !defined(XP_SOLARIS)
   if (access("/sys/bus/pci/", F_OK) != 0 &&
       access("/sys/bus/pci_express/", F_OK) != 0) {
-    record_warning("cannot access /sys/bus/pci");
+    log("GLX_TEST: get_pci_status failed: cannot access /sys/bus/pci\n");
     return;
   }
 
@@ -272,6 +274,7 @@ static void get_pci_status() {
   }
 
   pci_cleanup(pacc);
+#endif
 
   log("GLX_TEST: get_pci_status finished\n");
 }

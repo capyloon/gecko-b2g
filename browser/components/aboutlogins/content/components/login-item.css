@@ -53,9 +53,9 @@ form {
   flex-grow: 1;
 }
 
-:host([data-editing]) .edit-button,
-:host([data-editing]) .copy-button,
-:host([data-is-new-login]) .delete-button,
+:host([data-editing]) edit-button,
+:host([data-editing]) :is(.copy-button, .copied-button),
+:host([data-is-new-login]) delete-button,
 :host([data-is-new-login]) .origin-saved-value,
 :host([data-is-new-login]) login-timeline,
 :host([data-is-new-login]) .login-item-title,
@@ -152,7 +152,7 @@ input[name = "password"]:focus ~ password-warning {
   grid-column: 1;
 }
 
-.detail-grid > .detail-row > .copy-button {
+.detail-grid > .detail-row > :is(.copy-button, .copied-button) {
   grid-column: 2;
   margin-inline-start: 0; /* Reset button's margin so it doesn't affect the overall grid's width */
   justify-self: start;
@@ -186,22 +186,14 @@ moz-button-group,
   box-sizing: border-box;
 }
 
-.copy-button {
+.copy-button,
+.copied-button {
   margin-bottom: 0; /* Align button at the bottom of the row */
 }
 
-.copy-button:not([data-copied]) .copied-button-text,
-.copy-button[data-copied] .copy-button-text {
-  display: none;
-}
-
-.copy-button[data-copied]:-moz-focusring {
+.copied-button[data-copied]:focus-visible {
   outline-width: 0;
   box-shadow: none;
-}
-
-.copied-button-text:dir(rtl) {
-  background-position-x: right;
 }
 
 input.password-display,
@@ -210,29 +202,26 @@ input[name="password"] {
 }
 
 .reveal-password-checkbox {
-  /* !important is needed to override common.css styling for checkboxes */
-  background-color: transparent !important;
-  border-width: 0 !important;
-  background-image: url("resource://gre-resources/password.svg") !important;
-  margin-inline: 10px 0 !important;
+  appearance: none;
+  background-image: url("resource://gre-resources/password.svg");
+  margin-inline: 10px 0;
   cursor: pointer;
   -moz-context-properties: fill;
-  fill: currentColor !important;
-  color: inherit !important;
+  fill: currentColor;
+  color: inherit;
   opacity: var(--reveal-checkbox-opacity);
-  flex-shrink: 0;
-}
 
-.reveal-password-checkbox:hover {
-  opacity: var(--reveal-checkbox-opacity-hover);
-}
+  &:hover {
+    opacity: var(--reveal-checkbox-opacity-hover);
 
-.reveal-password-checkbox:hover:active {
-  opacity: var(--reveal-checkbox-opacity-active);
-}
+    &:active {
+      opacity: var(--reveal-checkbox-opacity-active);
+    }
+  }
 
-.reveal-password-checkbox:checked {
-  background-image: url("resource://gre-resources/password-hide.svg") !important;
+  &:checked {
+    background-image: url("resource://gre-resources/password-hide.svg");
+  }
 }
 
 .login-item-favicon {

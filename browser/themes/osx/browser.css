@@ -8,12 +8,7 @@
 @namespace html url("http://www.w3.org/1999/xhtml");
 
 :root {
-  appearance: none;
-
   --arrowpanel-field-background: light-dark(rgba(249, 249, 250, .3), rgba(12, 12, 13, .3));
-
-  --sidebar-border-color: hsla(240, 5%, 5%, .1);
-  --sidebar-background-color: light-dark(#f6f6f6, #2d2d2d);
 }
 
 #browser,
@@ -64,27 +59,6 @@
 
 :root[chromehidden~="toolbar"][chromehidden~="location"][chromehidden~="directories"] {
   border-top: 1px solid rgba(0,0,0,0.65);
-}
-
-.browser-toolbar {
-  appearance: none;
-
-  &:not(.titlebar-color) {
-    background: var(--toolbar-bgcolor);
-    color: var(--toolbar-color);
-  }
-}
-
-/* Draw the bottom border of the tabs toolbar when titlebar isn't using vibrancy */
-:root:not([inFullscreen], [tabsintitlebar]) #nav-bar:not([tabs-hidden="true"]),
-#nav-bar:not([tabs-hidden="true"]):-moz-lwtheme {
-  box-shadow: 0 calc(-1 * var(--tabs-navbar-shadow-size)) 0 var(--lwt-tabs-border-color, rgba(0,0,0,.3));
-}
-
-#nav-bar:not([tabs-hidden="true"]) {
-  /* The toolbar buttons that animate are only visible when the #TabsToolbar is not collapsed.
-     The animations use position:absolute and require a positioned #nav-bar. */
-  position: relative;
 }
 
 /* ----- BOOKMARK TOOLBAR ----- */
