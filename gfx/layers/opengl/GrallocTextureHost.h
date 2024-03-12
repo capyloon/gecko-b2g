@@ -5,7 +5,6 @@
 
 #ifndef MOZILLA_GFX_GRALLOCTEXTUREHOST_H
 #define MOZILLA_GFX_GRALLOCTEXTUREHOST_H
-#ifdef MOZ_WIDGET_GONK
 
 #include "mozilla/layers/CompositorOGL.h"
 #include "mozilla/layers/TextureHostOGL.h"
@@ -15,69 +14,59 @@
 namespace mozilla {
 namespace layers {
 
-class GrallocTextureHostOGL : public TextureHost
-{
+class GrallocTextureHostOGL : public TextureHost {
   friend class GrallocBufferActor;
-public:
+
+ public:
   GrallocTextureHostOGL(TextureFlags aFlags,
                         const SurfaceDescriptorGralloc& aDescriptor);
 
   virtual ~GrallocTextureHostOGL();
 
-  virtual void DeallocateSharedData() override;
+  void DeallocateSharedData() override;
 
-  virtual void ForgetSharedData() override;
+  void ForgetSharedData() override;
 
-  virtual void DeallocateDeviceData() override;
+  void DeallocateDeviceData() override;
 
-  virtual gfx::SurfaceFormat GetFormat() const override;
+  gfx::SurfaceFormat GetFormat() const override;
 
-  virtual void CreateRenderTexture(
+  void CreateRenderTexture(
       const wr::ExternalImageId& aExternalImageId) override;
 
-  virtual void PushResourceUpdates(
-      wr::TransactionBuilder& aResources,
-      ResourceUpdateOp aOp,
-      const Range<wr::ImageKey>& aImageKeys,
-      const wr::ExternalImageId& aExtID) override;
+  void PushResourceUpdates(wr::TransactionBuilder& aResources,
+                           ResourceUpdateOp aOp,
+                           const Range<wr::ImageKey>& aImageKeys,
+                           const wr::ExternalImageId& aExtID) override;
 
-  virtual void PushDisplayItems(
-      wr::DisplayListBuilder& aBuilder,
-      const wr::LayoutRect& aBounds,
-      const wr::LayoutRect& aClip, wr::ImageRendering aFilter,
-      const Range<wr::ImageKey>& aImageKeys,
-      PushDisplayItemFlagSet aFlags) override;
+  void PushDisplayItems(wr::DisplayListBuilder& aBuilder,
+                        const wr::LayoutRect& aBounds,
+                        const wr::LayoutRect& aClip, wr::ImageRendering aFilter,
+                        const Range<wr::ImageKey>& aImageKeys,
+                        PushDisplayItemFlagSet aFlags) override;
 
-  virtual gfx::IntSize GetSize() const override { return mCropSize; }
+  gfx::IntSize GetSize() const override { return mCropSize; }
 
-  virtual LayerRenderState GetRenderState() override;
+  already_AddRefed<gfx::DataSourceSurface> GetAsSurface() override;
 
-  virtual already_AddRefed<gfx::DataSourceSurface> GetAsSurface() override;
+  void SetReleaseFence(ipc::FileDescriptor&& aFenceFd) override;
 
-  virtual void WaitAcquireFenceHandleSyncComplete() override;
+  ipc::FileDescriptor GetAndResetReleaseFence() override;
 
-  virtual void SetCropRect(nsIntRect aCropRect) override;
+  bool NeedsDeferredDeletion() const override { return false; }
 
-  bool IsValid() const;
+  void SetCropRect(nsIntRect aCropRect) override;
 
-  virtual const char* Name() override { return "GrallocTextureHostOGL"; }
+  bool IsValid() override;
 
-  gl::GLContext* GetGLContext() const { return mCompositor ? mCompositor->gl() : nullptr; }
+  const char* Name() override { return "GrallocTextureHostOGL"; }
 
-  bool NeedsFenceHandle()
-  {
-#if defined(MOZ_WIDGET_GONK)
-    return true;
-#else
-    return false;
-#endif
-  }
+  GrallocTextureHostOGL* AsGrallocTextureHostOGL() override { return this; }
 
-  virtual GrallocTextureHostOGL* AsGrallocTextureHostOGL() override { return this; }
-
-private:
+ private:
   void CreateEGLImage();
   void DestroyEGLImage();
+  android::sp<android::GraphicBuffer> GetGraphicBuffer();
 
   SurfaceDescriptorGralloc mGrallocHandle;
   RefPtr<GLTextureSource> mGLTextureSource;
@@ -91,10 +80,10 @@ private:
   EGLImage mEGLImage;
   bool mIsOpaque;
   wr::MaybeExternalImageId mExternalImageId;
+  ipc::FileDescriptor mReleaseFenceFd;
 };
 
-} // namespace layers
-} // namespace mozilla
+}  // namespace layers
+}  // namespace mozilla
 
-#endif
 #endif

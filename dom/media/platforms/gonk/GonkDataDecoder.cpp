@@ -11,6 +11,7 @@
 #include "GonkMediaCodec.h"
 #include "GonkMediaUtils.h"
 #include "ImageContainer.h"
+#include "mozilla/layers/TextureClient.h"
 #include "mozilla/StaticPrefs_media.h"
 
 #ifdef B2G_MEDIADRM
@@ -236,6 +237,14 @@ RefPtr<GonkDataDecoder::DecodePromise> GonkDataDecoder::Decode(
 
   mInputQueue.Push(aSample);
   mCodec->InputUpdated();
+
+  // 1. If the input queue level is low, resolve promise immediately to request
+  //    more samples.
+  // 2. If there are pending output buffers, return them immediately to avoid
+  //    being late for rendering.
+  if (mInputQueue.GetSize() < 2 || mOutputQueue.GetSize() > 0) {
+    return DecodePromise::CreateAndResolve(FetchOutput(), __func__);
+  }
   return mDecodePromise.Ensure(__func__);
 }
 
@@ -482,7 +491,8 @@ void GonkDataDecoder::Output(const sp<MediaCodecBuffer>& aBuffer,
 void GonkDataDecoder::Output(layers::TextureClient* aBuffer,
                              const sp<RefBase>& aInputInfo, int64_t aTimeUs) {
   MOZ_ASSERT(IsVideo());
-  LOGV("%p output graphic buffer timestamp %" PRId64, this, aTimeUs);
+  LOGV("%p output texture #%" PRIu64 ", timestamp %" PRId64, this,
+       aBuffer ? aBuffer->GetSerial() : uint64_t(-1), aTimeUs);
 
   if (!aBuffer) {
     LOGE("%p empty output buffer", this);
