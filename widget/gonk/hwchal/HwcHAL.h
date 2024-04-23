@@ -20,20 +20,25 @@
 #define mozilla_HwcHAL
 
 #include "HwcHALBase.h"
-#include "android_10/HWC2.h"
-#include "android_10/ComposerHal.h"
+
+#if ANDROID_VERSION >= 33
+#  include "HWC2Wrapper.h"
+#else
+#  include "android_10/HWC2.h"
+#  include "android_10/ComposerHal.h"
+#endif
 
 namespace mozilla {
 
-using HwcDevice = HWC2::Device;
-
 class HwcHAL final : public HwcHALBase {
+  using HwcDevice = HWC2::Device;
+
  public:
   explicit HwcHAL();
 
-  virtual ~HwcHAL();
+  virtual ~HwcHAL() = default;
 
-  virtual bool HasHwc() const override { return static_cast<bool>(mHwc); }
+  virtual bool HasHwc() const override { return !!mHwcDevice; }
 
   virtual void SetEGLInfo(hwc_display_t aDpy, hwc_surface_t aSur) override {}
 
@@ -61,16 +66,13 @@ class HwcHAL final : public HwcHALBase {
   uint32_t GetAPIVersion() const;
 
  private:
-  HwcDevice* mHwc = nullptr;
+  HwcDevice* mHwcDevice = nullptr;
 };
 
 }  // namespace mozilla
 
 extern "C" MOZ_EXPORT __attribute__((weak)) HWC2::Display* hwc2_getDisplayById(
     HWC2::Device* p, hwc2_display_t id);
-
-extern "C" MOZ_EXPORT __attribute__((weak)) void hwc2_registerCallback(
-    HWC2::Device* p, HWC2::ComposerCallback* callback, int32_t sequenceId);
 
 extern "C" MOZ_EXPORT __attribute__((weak)) HWC2::Error hwc2_setVsyncEnabled(
     HWC2::Display* p, HWC2::Vsync enabled);

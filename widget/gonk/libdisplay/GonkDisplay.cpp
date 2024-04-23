@@ -18,19 +18,19 @@
 #  error "Only ANDROID_VERSION >= 29 devices are supported"
 #endif
 
+#include <cutils/properties.h>
 #include <gui/Surface.h>
 #include <gui/IProducerListener.h>
 #include <hardware/hardware.h>
 #include <hardware/hwcomposer.h>
-#include <hardware/power.h>
 #include <suspend/autosuspend.h>
+#include <ui/Fence.h>
 
 #if ANDROID_VERSION >= 30
 #  include <android/hardware/power/Mode.h>
-#  include "binder/IServiceManager.h"
+#  include <binder/IServiceManager.h>
 #endif
 
-#include "cutils/properties.h"
 #include "FramebufferSurface.h"
 #include "GonkDisplayP.h"
 #include "mozilla/Preferences.h"
@@ -40,134 +40,182 @@
 #  define LOG_TAG "GonkDisplay"
 #endif
 
-#define DEFAULT_XDPI 75.0
+#if ANDROID_VERSION >= 30
+namespace power = android::hardware::power;
+#endif
 
-using namespace android;
-using namespace android::hardware;
+using android::BufferQueue;
+using android::Fence;
+using android::FloatRect;
+using android::FramebufferSurface;
+using android::IGraphicBufferConsumer;
+using android::IProducerListener;
+using android::Rect;
+using android::Region;
+using android::Surface;
+
+#if ANDROID_VERSION >= 33
+using android::to_string;
+using DummyProducerListener = android::StubProducerListener;
+#else
+using android::DummyProducerListener;
+#endif
 
 /* global variables */
 std::mutex hotplugMutex;
 std::condition_variable hotplugCv;
 
-typedef mozilla::GonkDisplay::GonkDisplayVsyncCBFun GonkDisplayVsyncCBFun;
-typedef mozilla::GonkDisplay::GonkDisplayInvalidateCBFun
-    GonkDisplayInvalidateCBFun;
-
-class HWComposerCallback : public HWC2::ComposerCallback {
+class HWComposerCallback final : public HWC2::ComposerCallback {
  public:
-  HWComposerCallback(HWC2::Device* device);
+  HWComposerCallback(HWC2::Device* aDevice) : mHwcDevice(aDevice) {}
 
+#if ANDROID_VERSION >= 33
+  void onComposerHalHotplug(HWC2::hal::HWDisplayId display,
+                            HWC2::hal::Connection connection) override {
+    OnHotplug(display, connection);
+  }
+
+  void onComposerHalRefresh(HWC2::hal::HWDisplayId display) override {
+    OnRefresh(display);
+  }
+
+  void onComposerHalVsync(HWC2::hal::HWDisplayId display, int64_t timestamp,
+                          std::optional<HWC2::hal::VsyncPeriodNanos>) override {
+    OnVsync(display, timestamp);
+  }
+
+  void onComposerHalVsyncPeriodTimingChanged(
+      HWC2::hal::HWDisplayId,
+      const HWC2::hal::VsyncPeriodChangeTimeline&) override {}
+
+  void onComposerHalSeamlessPossible(HWC2::hal::HWDisplayId) override {}
+
+  void onComposerHalVsyncIdle(HWC2::hal::HWDisplayId) override {}
+
+#else
   void onVsyncReceived(int32_t sequenceId, hwc2_display_t display,
-                       int64_t timestamp) override;
+                       int64_t timestamp) override {
+    OnVsync(display, timestamp);
+  }
 
   void onHotplugReceived(int32_t sequenceId, hwc2_display_t display,
-                         HWC2::Connection connection) override;
+                         HWC2::Connection connection) override {
+    OnHotplug(display, connection);
+  }
 
-  void onRefreshReceived(int32_t sequenceId, hwc2_display_t display) override;
+  void onRefreshReceived(int32_t sequenceId, hwc2_display_t display) override {
+    OnRefresh(display);
+  }
+#endif
 
  private:
-  HWC2::Device* hwcDevice;
+  void OnVsync(hwc2_display_t aDisplay, int64_t aTimestamp) {
+    if (auto callback = mozilla::GetGonkDisplay()->getVsyncCallBack()) {
+      callback(aDisplay, aTimestamp);
+    }
+  }
+
+  void OnHotplug(hwc2_display_t aDisplay, HWC2::Connection aConnection) {
+    ALOGI("HWComposerCallback::OnHotplug, %" PRIu64 " %d", aDisplay,
+          (int)aConnection);
+    {
+      std::lock_guard<std::mutex> lock(hotplugMutex);
+      mHwcDevice->onHotplug(aDisplay, aConnection);
+    }
+    hotplugCv.notify_all();
+  }
+
+  void OnRefresh(hwc2_display_t aDisplay) {
+    ALOGI("HWComposerCallback::OnRefresh, %" PRIu64, aDisplay);
+    if (auto callback = mozilla::GetGonkDisplay()->getInvalidateCallBack()) {
+      callback();
+    }
+  }
+
+  HWC2::Device* mHwcDevice = nullptr;
 };
 
-HWComposerCallback::HWComposerCallback(HWC2::Device* device) {
-  hwcDevice = device;
-}
+class GonkDisplayConfig {
+ public:
+#if ANDROID_VERSION >= 33
+  static std::unique_ptr<GonkDisplayConfig> LoadActiveConfig(
+      HWC2::Device* aHwcDevice) {
+    using Config = android::Hwc2::Config;
+    using Error = android::Hwc2::Error;
+    using IComposerClient = android::Hwc2::IComposerClient;
 
-void HWComposerCallback::onVsyncReceived(int32_t sequenceId,
-                                         hwc2_display_t display,
-                                         int64_t timestamp) {
-  // ALOGI("onVsyncReceived(%d, %" PRIu64 ", %" PRId64 ")",
-  //        sequenceId, display,timestamp);
-  (void)sequenceId;
-
-  GonkDisplayVsyncCBFun func = mozilla::GetGonkDisplay()->getVsyncCallBack();
-  if (func) {
-    func(display, timestamp);
+    auto* composer = aHwcDevice->getComposer();
+    auto displayId = aHwcDevice->getDefaultDisplayId();
+    Config config;
+    if (composer->getActiveConfig(displayId, &config) != Error::NONE) {
+      ALOGE("getActiveConfig failed");
+      return nullptr;
+    }
+    auto data = std::make_unique<GonkDisplayConfig>();
+    (void)composer->getDisplayAttribute(
+        displayId, config, IComposerClient::Attribute::WIDTH, &data->width);
+    (void)composer->getDisplayAttribute(
+        displayId, config, IComposerClient::Attribute::HEIGHT, &data->height);
+    (void)composer->getDisplayAttribute(
+        displayId, config, IComposerClient::Attribute::DPI_X, &data->dpiX);
+    (void)composer->getDisplayAttribute(
+        displayId, config, IComposerClient::Attribute::DPI_Y, &data->dpiY);
+    (void)composer->getDisplayAttribute(
+        displayId, config, IComposerClient::Attribute::VSYNC_PERIOD,
+        &data->vsyncPeriod);
+    return data;
   }
-}
+#else
+  static std::unique_ptr<GonkDisplayConfig> LoadActiveConfig(
+      HWC2::Device* aHwcDevice) {
+    auto* hwcDisplay =
+        aHwcDevice->getDisplayById(aHwcDevice->getDefaultDisplayId());
+    std::shared_ptr<const HWC2::Display::Config> config;
+    if (hwcDisplay->getActiveConfig(&config) != HWC2::Error::None) {
+      ALOGE("getActiveConfig failed");
+      return nullptr;
+    }
 
-void HWComposerCallback::onHotplugReceived(int32_t sequenceId,
-                                           hwc2_display_t display,
-                                           HWC2::Connection connection) {
-  {
-    std::lock_guard<std::mutex> lock(hotplugMutex);
-    ALOGI("HWComposerCallback::onHotplugReceived %d %llu %d", sequenceId,
-          (unsigned long long)display, (uint32_t)connection);
-    hwcDevice->onHotplug(display, connection);
+    auto data = std::make_unique<GonkDisplayConfig>();
+    data->width = config->getWidth();
+    data->height = config->getHeight();
+    data->dpiX = config->getDpiX();
+    data->dpiY = config->getDpiY();
+    data->vsyncPeriod = config->getVsyncPeriod();
+    return data;
   }
+#endif
 
-  hotplugCv.notify_all();
-}
+  int32_t getWidth() { return width; }
+  int32_t getHeight() { return height; }
+  int32_t getDpiX() { return dpiX; }
+  int32_t getDpiY() { return dpiY; }
+  int32_t getVsyncPeriod() { return vsyncPeriod; }
 
-void HWComposerCallback::onRefreshReceived(int32_t sequenceId,
-                                           hwc2_display_t display) {
-  ALOGI("onRefreshReceived(%d, %" PRIu64 ")", sequenceId, display);
-
-  GonkDisplayInvalidateCBFun func =
-      mozilla::GetGonkDisplay()->getInvalidateCallBack();
-  if (func) {
-    func();
-  }
-}
-
-std::shared_ptr<const HWC2::Display::Config> getActiveConfig(
-    HWC2::Display* hwcDisplay, int32_t displayId) {
-  std::shared_ptr<const HWC2::Display::Config> config;
-  auto error = hwcDisplay->getActiveConfig(&config);
-  if (error == HWC2::Error::BadConfig) {
-    fprintf(stderr, "getActiveConfig: No config active, returning null");
-    return nullptr;
-  } else if (error != HWC2::Error::None) {
-    fprintf(stderr, "getActiveConfig failed for display %d: %s (%d)", displayId,
-            to_string(error).c_str(), static_cast<int32_t>(error));
-    return nullptr;
-  } else if (!config) {
-    fprintf(stderr, "getActiveConfig returned an unknown config for display %d",
-            displayId);
-    return nullptr;
-  }
-
-  return config;
-}
+ private:
+  int32_t width = -1;
+  int32_t height = -1;
+  int32_t dpiX = -1;
+  int32_t dpiY = -1;
+  int32_t vsyncPeriod = -1;
+};
 
 namespace mozilla {
-__attribute__((visibility("default"))) void HookSetVsyncAlwaysEnabled(
-    bool aAlways);
-}
 
-// ----------------------------------------------------------------------------
-namespace mozilla {
-// ----------------------------------------------------------------------------
+void HookSetVsyncAlwaysEnabled(bool aAlways);
 
-static GonkDisplayP* sGonkDisplay = nullptr;
-static android::Mutex sMutex;
-
-GonkDisplayP::GonkDisplayP()
-    : mHwc(nullptr),
-      mFBDevice(nullptr),
-      mExtFBDevice(nullptr),
-      mPowerModule(nullptr),
-      mList(nullptr),
-      mEnabledCallback(nullptr),
-      mEnableHWCPower(false),
-      mFBEnabled(
-          true)  // Initial value should sync with hal::GetScreenEnabled()
-      ,
-      mExtFBEnabled(
-          true)  // Initial value should sync with hal::GetExtScreenEnabled()
-      ,
-      mHwcDisplay(nullptr) {
+GonkDisplayP::GonkDisplayP() {
   char serviceName[PROPERTY_VALUE_MAX] = {};
   property_get("debug.sf.hwc_service_name", serviceName, "default");
   ALOGI("Using HWComposer service: '%s'", serviceName);
-  mHwc = std::make_unique<HWC2::Device>(
-      std::make_unique<Hwc2::impl::Composer>(std::string(serviceName)));
-  assert(mHwc);
-  mHwc->registerCallback(new HWComposerCallback(mHwc.get()), 0);
+  mHwcDevice = std::make_unique<HWC2::Device>(std::string(serviceName));
+  mHwcCallback = std::make_unique<HWComposerCallback>(mHwcDevice.get());
+  mHwcDevice->registerCallback(mHwcCallback.get(), 0);
 
   std::unique_lock<std::mutex> lock(hotplugMutex);
   HWC2::Display* hwcDisplay;
-  while (!(hwcDisplay = mHwc->getDisplayById(mHwc->getDefaultDisplayId()))) {
+  while (!(hwcDisplay =
+               mHwcDevice->getDisplayById(mHwcDevice->getDefaultDisplayId()))) {
     /* Wait at most 5s for hotplug events */
     hotplugCv.wait_for(lock, std::chrono::seconds(5));
   }
@@ -177,8 +225,7 @@ GonkDisplayP::GonkDisplayP()
   (void)hwcDisplay->setPowerMode(HWC2::PowerMode::On);
   mHwcDisplay = hwcDisplay;
 
-  std::shared_ptr<const HWC2::Display::Config> config;
-  config = getActiveConfig(hwcDisplay, 0);
+  auto config = GonkDisplayConfig::LoadActiveConfig(mHwcDevice.get());
 
   char lcd_density_str[PROPERTY_VALUE_MAX] = "0";
   property_get("ro.sf.lcd_density", lcd_density_str, "0");
@@ -186,7 +233,7 @@ GonkDisplayP::GonkDisplayP()
 
   mEnableHWCPower = property_get_bool("persist.hwc.powermode", false);
 
-  ALOGI("width: %i, height: %i, dpi: %f, lcd: %d, vsync: %lu\n",
+  ALOGI("width: %d, height: %d, dpi: %d, lcd: %d, vsync: %d",
         config->getWidth(), config->getHeight(), config->getDpiX(), lcd_density,
         config->getVsyncPeriod());
 
@@ -202,16 +249,7 @@ GonkDisplayP::GonkDisplayP()
     /*TODO: need to discuss with vendor to check this format issue.*/
     dispData.mSurfaceformat = HAL_PIXEL_FORMAT_RGB_565;
   }
-  (void)hwcDisplay->createLayer(&mlayer);
-
-  Rect r = {0, 0, config->getWidth(), config->getHeight()};
-  (void)mlayer->setCompositionType(HWC2::Composition::Client);
-  (void)mlayer->setBlendMode(HWC2::BlendMode::None);
-  (void)mlayer->setSourceCrop(
-      FloatRect(0.0f, 0.0f, config->getWidth(), config->getHeight()));
-  (void)mlayer->setDisplayFrame(r);
-  (void)mlayer->setVisibleRegion(Region(r));
-  (void)mPowerModule;
+  mLayer = CreateLayer(config->getWidth(), config->getHeight());
 
   ALOGI("created native window\n");
   native_gralloc_initialize(0);
@@ -235,13 +273,7 @@ GonkDisplayP::GonkDisplayP()
                            config->getHeight(), dispData.mSurfaceformat,
                            displayUtils, false);
 
-  (void)hwcDisplay->createLayer(&mlayerBootAnim);
-  (void)mlayerBootAnim->setCompositionType(HWC2::Composition::Client);
-  (void)mlayerBootAnim->setBlendMode(HWC2::BlendMode::None);
-  (void)mlayerBootAnim->setSourceCrop(
-      FloatRect(0.0f, 0.0f, config->getWidth(), config->getHeight()));
-  (void)mlayerBootAnim->setDisplayFrame(r);
-  (void)mlayerBootAnim->setVisibleRegion(Region(r));
+  mBootAnimLayer = CreateLayer(config->getWidth(), config->getHeight());
 
   CreateFramebufferSurface(mBootAnimSTClient, mBootAnimDispSurface,
                            config->getWidth(), config->getHeight(),
@@ -252,11 +284,7 @@ GonkDisplayP::GonkDisplayP()
     // dequeueBuffer() / queueBuffer(). We connect it here for use
     // later or it will be failed to queue buffers.
     Surface* surface = static_cast<Surface*>(mBootAnimSTClient.get());
-#if ANDROID_VERSION < 33
     static sp<IProducerListener> listener = new DummyProducerListener();
-#else
-    static sp<IProducerListener> listener = new StubProducerListener();
-#endif
     surface->connect(NATIVE_WINDOW_API_CPU, listener);
   }
 
@@ -295,11 +323,7 @@ GonkDisplayP::GonkDisplayP()
         // dequeueBuffer() / queueBuffer(). We connect it here for use
         // later or it will be failed to queue buffers.
         Surface* surface = static_cast<Surface*>(mExtSTClient.get());
-#if ANDROID_VERSION < 33
         static sp<IProducerListener> listener = new DummyProducerListener();
-#else
-        static sp<IProducerListener> listener = new StubProducerListener();
-#endif
         surface->connect(NATIVE_WINDOW_API_CPU, listener);
       }
     } else {
@@ -314,11 +338,7 @@ GonkDisplayP::GonkDisplayP()
   }
 }
 
-GonkDisplayP::~GonkDisplayP() {
-  if (mList) {
-    free(mList);
-  }
-}
+GonkDisplayP::~GonkDisplayP() {}
 
 void GonkDisplayP::CreateFramebufferSurface(sp<ANativeWindow>& nativeWindow,
                                             sp<DisplaySurface>& displaySurface,
@@ -352,6 +372,40 @@ void GonkDisplayP::CreateVirtualDisplaySurface(
   #endif*/
 }
 
+std::shared_ptr<HWC2::Layer> GonkDisplayP::CreateLayer(int32_t aWidth,
+                                                       int32_t aHeight) {
+#if ANDROID_VERSION >= 33
+  auto expected = mHwcDisplay->createLayer();
+  if (!expected.has_value()) {
+    return nullptr;
+  }
+  auto layer = expected.value();
+#else
+  HWC2::Layer* layerPtr = nullptr;
+  (void)mHwcDisplay->createLayer(&layerPtr);
+  if (!layerPtr) {
+    return nullptr;
+  }
+  // See OutputLayer::initialize(). The shared_ptr deleter should call
+  // Display::destroyLayer().
+  auto layer = std::shared_ptr<HWC2::Layer>(
+      layerPtr, [display = mHwcDisplay](auto* aLayer) {
+        (void)display->destroyLayer(aLayer);
+      });
+#endif
+  auto compositionType = HWC2::Composition::Client;
+  auto blendMode = HWC2::BlendMode::None;
+  auto rect = Rect{0, 0, aWidth, aHeight};
+  auto fRect = FloatRect(0.0f, 0.0f, aWidth, aHeight);
+
+  (void)layer->setCompositionType(compositionType);
+  (void)layer->setBlendMode(blendMode);
+  (void)layer->setSourceCrop(fRect);
+  (void)layer->setDisplayFrame(rect);
+  (void)layer->setVisibleRegion(Region(rect));
+  return layer;
+}
+
 void GonkDisplayP::SetEnabled(bool enabled) {
   android::Mutex::Autolock lock(mPrimaryScreenLock);
   if (enabled) {
@@ -367,7 +421,7 @@ void GonkDisplayP::SetEnabled(bool enabled) {
 #endif
       }
 
-      if (mHwc && mEnableHWCPower) {
+      if (mEnableHWCPower) {
         SetHwcPowerMode(enabled);
       } else if (mFBDevice && mFBDevice->enableScreen) {
         mFBDevice->enableScreen(mFBDevice, enabled);
@@ -388,7 +442,7 @@ void GonkDisplayP::SetEnabled(bool enabled) {
     }
 
     if (!mExtFBEnabled) {
-      if (mHwc && mEnableHWCPower) {
+      if (mEnableHWCPower) {
         SetHwcPowerMode(enabled);
       } else if (mFBDevice && mFBDevice->enableScreen) {
         mFBDevice->enableScreen(mFBDevice, enabled);
@@ -467,7 +521,8 @@ void GonkDisplayP::SetExtEnabled(bool enabled) {
 
 HWC2::Error GonkDisplayP::SetHwcPowerMode(bool enabled) {
   HWC2::PowerMode mode = (enabled ? HWC2::PowerMode::On : HWC2::PowerMode::Off);
-  HWC2::Display* hwcDisplay = mHwc->getDisplayById(mHwc->getDefaultDisplayId());
+  HWC2::Display* hwcDisplay =
+      mHwcDevice->getDisplayById(mHwcDevice->getDefaultDisplayId());
 
   auto error = hwcDisplay->setPowerMode(mode);
   if (error != HWC2::Error::None) {
@@ -490,7 +545,7 @@ void GonkDisplayP::OnEnabled(OnEnabledCallbackType callback) {
   mEnabledCallback = callback;
 }
 
-void* GonkDisplayP::GetHWCDevice() { return mHwc.get(); }
+void* GonkDisplayP::GetHWCDevice() { return mHwcDevice.get(); }
 
 bool GonkDisplayP::IsExtFBDeviceEnabled() { return !!mExtFBDevice; }
 
@@ -608,11 +663,7 @@ void GonkDisplayP::UpdateDispSurface(EGLDisplay dpy, EGLSurface sur) {
 void GonkDisplayP::NotifyBootAnimationStopped() {
   if (mBootAnimSTClient.get()) {
     ALOGI("[%s] NotifyBootAnimationStopped \n", __func__);
-    if (mlayerBootAnim) {
-      (void)mHwcDisplay->destroyLayer(mlayerBootAnim);
-      mlayerBootAnim = nullptr;
-    }
-
+    mBootAnimLayer = nullptr;
     mBootAnimSTClient = nullptr;
     mBootAnimDispSurface = nullptr;
   }
@@ -623,21 +674,6 @@ void GonkDisplayP::NotifyBootAnimationStopped() {
   if (mExtSTClient.get()) {
     Surface* surface = static_cast<Surface*>(mExtSTClient.get());
     surface->disconnect(NATIVE_WINDOW_API_CPU);
-  }
-}
-
-void GonkDisplayP::PowerOnDisplay(int displayId) {
-  if (mHwc) {
-    HWC2::Display* hwcDisplay =
-        mHwc->getDisplayById(mHwc->getDefaultDisplayId());
-    auto error = hwcDisplay->setPowerMode(HWC2::PowerMode::On);
-    if (error != HWC2::Error::None) {
-      ALOGE(
-          "setPowerMode: Unable to set power mode %s for "
-          "display %d: %s (%d)",
-          to_string(HWC2::PowerMode::On).c_str(), displayId,
-          to_string(error).c_str(), static_cast<int32_t>(error));
-    }
   }
 }
 
@@ -688,17 +724,15 @@ sp<GraphicBuffer> GonkDisplayP::GetFrameBuffer(DisplayType displayType) {
   return nullptr;
 }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wignored-attributes"
-__attribute__((visibility("weak"))) GonkDisplay* GetGonkDisplay() {
-  android::Mutex::Autolock _l(sMutex);
+GonkDisplay* GetGonkDisplay() {
+  static GonkDisplay* sGonkDisplay = nullptr;
+  static android::Mutex sMutex;
+
+  android::Mutex::Autolock lock(sMutex);
   if (!sGonkDisplay) {
     sGonkDisplay = new GonkDisplayP();
   }
   return sGonkDisplay;
 }
-#pragma clang diagnostic pop
 
-// ----------------------------------------------------------------------------
 }  // namespace mozilla
-// ----------------------------------------------------------------------------

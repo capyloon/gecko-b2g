@@ -18,73 +18,75 @@
 #define GONKDISPLAYP_H
 
 #include <gui/BufferQueue.h>
+#if ANDROID_VERSION >= 30
+#  include <android/hardware/power/IPower.h>
+#else
+#  include <android/hardware/power/1.0/IPower.h>
+#endif
 
 #include "HwcHAL.h"
 #include "DisplaySurface.h"
 #include "GonkDisplay.h"
-#include "hardware/hwcomposer.h"
-#include "hardware/power.h"
-#if ANDROID_VERSION >= 30
-#include <android/hardware/power/IPower.h>
-#else
-#include <android/hardware/power/1.0/IPower.h>
-#endif
 #include "NativeFramebufferDevice.h"
 #include "NativeGralloc.h"
-#include "ui/Fence.h"
-#include "utils/RefBase.h"
 
-// ----------------------------------------------------------------------------
+class HWComposerCallback;
+
 namespace mozilla {
-// ----------------------------------------------------------------------------
 
-using namespace android;
+using android::DisplaySurface;
+using android::DisplayUtils;
+using android::GraphicBuffer;
+using android::IGraphicBufferProducer;
+using android::sp;
+
 #if ANDROID_VERSION >= 30
 using ::android::hardware::power::IPower;
 #else
 using ::android::hardware::power::V1_0::IPower;
 #endif
+
 class MOZ_EXPORT GonkDisplayP : public GonkDisplay {
  public:
   GonkDisplayP();
   ~GonkDisplayP();
 
-  virtual void SetEnabled(bool enabled);
+  void SetEnabled(bool enabled) override;
 
-  virtual void SetExtEnabled(bool enabled);
+  void SetExtEnabled(bool enabled) override;
 
-  virtual void SetDisplayVisibility(bool visibility);
+  void SetDisplayVisibility(bool visibility) override;
 
-  virtual void OnEnabled(OnEnabledCallbackType callback);
+  void OnEnabled(OnEnabledCallbackType callback) override;
 
-  virtual void* GetHWCDevice();
+  void* GetHWCDevice() override;
 
-  virtual bool IsExtFBDeviceEnabled();
+  bool IsExtFBDeviceEnabled() override;
 
-  virtual bool SwapBuffers(DisplayType aDisplayType);
+  bool SwapBuffers(DisplayType aDisplayType) override;
 
-  virtual ANativeWindowBuffer* DequeueBuffer(DisplayType aDisplayType);
+  ANativeWindowBuffer* DequeueBuffer(DisplayType aDisplayType) override;
 
-  virtual bool QueueBuffer(ANativeWindowBuffer* buf, DisplayType aDisplayType);
+  bool QueueBuffer(ANativeWindowBuffer* buf, DisplayType aDisplayType) override;
 
-  virtual void UpdateDispSurface(EGLDisplay aDisplayType, EGLSurface sur);
+  void UpdateDispSurface(EGLDisplay aDisplayType, EGLSurface sur) override;
 
-  bool Post(buffer_handle_t buf, int fence, DisplayType aDisplayType);
+  NativeData GetNativeData(DisplayType aDisplayType,
+                           IGraphicBufferProducer* aSink = nullptr) override;
 
-  virtual NativeData GetNativeData(DisplayType aDisplayType,
-                                   IGraphicBufferProducer* aSink = nullptr);
+  void NotifyBootAnimationStopped() override;
 
-  virtual void NotifyBootAnimationStopped();
+  int TryLockScreen() override;
 
-  virtual int TryLockScreen();
+  void UnlockScreen() override;
 
-  virtual void UnlockScreen();
+  sp<ANativeWindow> GetSurface(DisplayType aDisplayType) override;
 
-  virtual sp<ANativeWindow> GetSurface(DisplayType aDisplayType);
-
-  virtual sp<GraphicBuffer> GetFrameBuffer(DisplayType aDisplayType);
+  sp<GraphicBuffer> GetFrameBuffer(DisplayType aDisplayType) override;
 
  private:
+  bool Post(buffer_handle_t buf, int fence, DisplayType aDisplayType);
+
   void CreateFramebufferSurface(sp<ANativeWindow>& aNativeWindow,
                                 sp<DisplaySurface>& aDisplaySurface,
                                 uint32_t aWidth, uint32_t aHeight,
@@ -95,18 +97,18 @@ class MOZ_EXPORT GonkDisplayP : public GonkDisplay {
                                    sp<ANativeWindow>& aNativeWindow,
                                    sp<DisplaySurface>& aDisplaySurface);
 
-  void PowerOnDisplay(int aDpy);
+  std::shared_ptr<HWC2::Layer> CreateLayer(int32_t aWidth, int32_t aHeight);
 
   int DoQueueBuffer(ANativeWindowBuffer* buf, DisplayType aDisplayType);
 
   HWC2::Error SetHwcPowerMode(bool enabled);
 
-  std::unique_ptr<HWC2::Device> mHwc;
-  framebuffer_device_t* mFBDevice;
-  NativeFramebufferDevice* mExtFBDevice;
-  power_module_t* mPowerModule;
-  HWC2::Layer* mlayer;
-  HWC2::Layer* mlayerBootAnim;
+  std::unique_ptr<HWC2::Device> mHwcDevice;
+  std::unique_ptr<HWComposerCallback> mHwcCallback;
+  framebuffer_device_t* mFBDevice = nullptr;
+  NativeFramebufferDevice* mExtFBDevice = nullptr;
+  std::shared_ptr<HWC2::Layer> mLayer;
+  std::shared_ptr<HWC2::Layer> mBootAnimLayer;
   sp<DisplaySurface> mDispSurface;
   sp<ANativeWindow> mSTClient;
   sp<DisplaySurface> mExtDispSurface;
@@ -114,17 +116,16 @@ class MOZ_EXPORT GonkDisplayP : public GonkDisplay {
   sp<DisplaySurface> mBootAnimDispSurface;
   sp<ANativeWindow> mBootAnimSTClient;
   sp<IPower> mPower;
-  hwc_display_contents_1_t* mList;
-  OnEnabledCallbackType mEnabledCallback;
-  bool mEnableHWCPower;
-  bool mFBEnabled;
-  bool mExtFBEnabled;
+  OnEnabledCallbackType mEnabledCallback = nullptr;
+  bool mEnableHWCPower = false;
+  // Initial value should sync with hal::GetScreenEnabled()
+  bool mFBEnabled = true;
+  // Initial value should sync with hal::GetExtScreenEnabled()
+  bool mExtFBEnabled = true;
   android::Mutex mPrimaryScreenLock;
-  HWC2::Display* mHwcDisplay;
+  HWC2::Display* mHwcDisplay = nullptr;
 };
 
-// ----------------------------------------------------------------------------
 }  // namespace mozilla
-// ----------------------------------------------------------------------------
 
 #endif /* GONKDISPLAYP_H */
