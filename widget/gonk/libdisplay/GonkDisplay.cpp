@@ -464,7 +464,10 @@ void GonkDisplayP::SetEnabled(bool enabled) {
 }
 
 void GonkDisplayP::setDisplayBrightness(uint32_t display, float brightness) {
-  mHwc->getComposer()->setDisplayBrightness(display, brightness);
+  auto options = android::Hwc2::Composer::DisplayBrightnessOptions {
+    .applyImmediately = true
+  };
+  mHwcDevice->getComposer()->setDisplayBrightness(display, brightness, 0, options);
 }
 
 int GonkDisplayP::TryLockScreen() {
