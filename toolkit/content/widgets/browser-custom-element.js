@@ -1424,6 +1424,15 @@
       });
     }
 
+    webViewSetSelectionMode(selectionMode) {
+      const mm = this.messageManager;
+      if (!mm) {
+        return;
+      }
+      console.log(`webViewSetSelectionMode: ${selectionMode}`);
+      mm.sendAsyncMessage("WebView::SetSelectionMode", { selectionMode });
+    }
+
     webViewCreateChannel(url) {
       let uri = Services.io.newURI(url);
       let channel = lazy.NetUtil.newChannel({

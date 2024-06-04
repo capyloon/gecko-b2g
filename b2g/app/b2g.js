@@ -292,6 +292,8 @@ pref("layers.async-pan-zoom.enabled", true);
 // Web Notifications
 pref("notification.feature.enabled", true);
 
+pref("media.autoplay.default", 0);
+
 // prevent video elements from preloading too much data
 pref("media.preload.default", 1); // default to preload none
 pref("media.preload.auto", 2);    // preload metadata if preload=auto
@@ -967,6 +969,13 @@ pref("layout.accessiblecaret.transition-duration", "0");
 pref("layout.accessiblecaret.bar.enabled", true);
 pref("layout.accessiblecaret.bar.cursor_enabled", true);
 
+pref("layout.accessiblecaret.custom_behavior_with_virtual_cursor.enabled", true);
+// For behavior design of "custom_behavior_with_virtual_cursor", we use
+// mousemove events to control the selection and show carets during
+// selecting. (2: kScriptAlwaysShow)
+pref("layout.accessiblecaret.hide_carets_for_mouse_input", false);
+pref("layout.accessiblecaret.script_change_update_mode", 2);
+
 // Enable mapped array buffer.
 #ifndef XP_WIN
 pref("dom.mapped_arraybuffer.enabled", true);
@@ -1249,9 +1258,6 @@ pref("font.name-list.emoji", "KaiOS Emoji");
 
 // Disable the path check in file system.
 pref("dom.filesystem.pathcheck.disabled", true);
-
-// Enable or disable the native font source of freetype.
-pref("gfx.font_rendering.native_font_source_none", false);
 
 // MVS feature
 #if B2G_CCUSTOM_MODULES == C001
