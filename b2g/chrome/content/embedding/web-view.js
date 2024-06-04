@@ -949,6 +949,22 @@ const { AboutReaderParent } = ChromeUtils.importESModule(
       return this.browser.webViewGetCursorEnabled();
     }
 
+    enterSelectionMode() {
+      this.browser.webViewSetSelectionMode("active");
+    }
+
+    exitSelectionMode() {
+      this.browser.webViewSetSelectionMode("none");
+    }
+
+    startSelection() {
+      this.browser.webViewSetSelectionMode("start");
+    }
+
+    stopSelection() {
+      this.browser.webViewSetSelectionMode("stop");
+    }
+
     set fullZoom(val) {
       if (this.browser) {
         this.browser.fullZoom = val;

@@ -35,6 +35,10 @@ The <web-view> element supports the following attributes:
 - `toggleReaderMode() : void` : toggles the reader mode view of the current page if possible.
 - `saveAsPDF() : { filename, filePath, promise }` : prints the current page to a PDF document, returning the downloaded document file name and a promise that will resolve or reject once the document is ready.
 - `savePage() : void` : Download the page with all its assets.
+- `enterSelectionMode() : void` : Switch the virtual cursor to selection mode, virtual cursor must be enabled.
+- `exitSelectionMode() : void` : Exit the virtual cursor from selection mode.
+- `startSelection() : void` : Start selecting contents, virtual cursor must be enabled.
+- `stopSelection() : void` : Stop selecting contents, clear the selection, virtual cursor must be enabled.
 
 ## Properties
 
