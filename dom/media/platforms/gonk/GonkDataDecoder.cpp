@@ -47,98 +47,24 @@ static mozilla::LazyLogModule sCodecLog("GonkDataDecoder");
 #define LOGD(...) MOZ_LOG(sCodecLog, mozilla::LogLevel::Debug, (__VA_ARGS__))
 #define LOGV(...) MOZ_LOG(sCodecLog, mozilla::LogLevel::Verbose, (__VA_ARGS__))
 
-// A promise-like async reply that dispatches the result to target thread.
-class GonkDataDecoder::CodecReply final : public GonkMediaCodec::Reply {
+class GonkDataDecoder::CodecReplyDispatcher {
  public:
-  using Func = std::function<void(status_t)>;
+  using Callable = GonkMediaCodec::Reply::Callable;
 
-  static sp<CodecReply> Create(nsISerialEventTarget* aThread) {
-    return new CodecReply(aThread);
-  }
+  CodecReplyDispatcher(nsISerialEventTarget* aThread, Callable&& aCallable)
+      : mThread(aThread), mCallable(std::move(aCallable)) {}
 
-  void Invoke(status_t aErr) override {
-    MutexAutoLock lock(mMutex);
-    if (mInvoked) {
-      return;
-    }
-    mInvoked = true;
-    mErr = aErr;
-    MaybeDispatch();
-  }
-
-  void Then(const Func& aFunc) {
-    MutexAutoLock lock(mMutex);
-    if (mFunc) {
-      return;
-    }
-    mFunc = aFunc;
-    MaybeDispatch();
-  }
-
- private:
-  CodecReply(nsISerialEventTarget* aThread)
-      : mThread(aThread), mMutex("CodecReply Mutex") {}
-
-  void MaybeDispatch() {
-    if (!mInvoked || !mFunc) {
-      return;
-    }
-
-    nsresult rv = mThread->Dispatch(
-        NS_NewRunnableFunction("CodecReply::MaybeDispatch",
-                               [func = mFunc, err = mErr]() { func(err); }));
+  void operator()(status_t aErr) {
+    nsresult rv = mThread->Dispatch(NS_NewRunnableFunction(
+        "CodecReplyDispatcher::operator()",
+        [callable = mCallable, aErr]() { callable(aErr); }));
     MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
     Unused << rv;
   }
 
-  nsCOMPtr<nsISerialEventTarget> mThread;
-  Mutex mMutex;
-  Func mFunc;
-  bool mInvoked = false;
-  status_t mErr = android::OK;
-};
-
-class GonkDataDecoder::CodecCallback final : public GonkMediaCodec::Callback {
- public:
-  static sp<CodecCallback> Create(GonkDataDecoder* aOwner) {
-    return new CodecCallback(aOwner);
-  }
-
-  bool FetchInput(const sp<MediaCodecBuffer>& aBuffer, sp<RefBase>* aInputInfo,
-                  sp<GonkCryptoInfo>* aCryptoInfo, int64_t* aTimeUs,
-                  uint32_t* aFlags) override {
-    return mOwner->FetchInput(aBuffer, aInputInfo, aCryptoInfo, aTimeUs,
-                              aFlags);
-  }
-
-  void Output(const sp<MediaCodecBuffer>& aBuffer,
-              const sp<RefBase>& aInputInfo, int64_t aTimeUs) override {
-    mOwner->Output(aBuffer, aInputInfo, aTimeUs);
-  }
-
-  void Output(layers::TextureClient* aBuffer, const sp<RefBase>& aInputInfo,
-              int64_t aTimeUs) override {
-    mOwner->Output(aBuffer, aInputInfo, aTimeUs);
-  }
-
-  void NotifyOutputEnded() override { mOwner->NotifyOutputEnded(); }
-
-  void NotifyOutputFormat(const sp<AMessage>& aFormat) override {
-    mOwner->NotifyOutputFormat(aFormat);
-  }
-
-  void NotifyCodecDetails(const sp<AMessage>& aDetails) override {
-    mOwner->NotifyCodecDetails(aDetails);
-  }
-
-  void NotifyError(status_t aErr, int32_t aActionCode) override {
-    mOwner->NotifyError(aErr, aActionCode);
-  }
-
  private:
-  CodecCallback(GonkDataDecoder* aOwner) : mOwner(aOwner) {}
-
-  GonkDataDecoder* mOwner = nullptr;
+  nsCOMPtr<nsISerialEventTarget> mThread;
+  Callable mCallable;
 };
 
 GonkDataDecoder::GonkDataDecoder(const CreateDecoderParams& aParams,
@@ -154,6 +80,8 @@ GonkDataDecoder::GonkDataDecoder(const CreateDecoderParams& aParams,
 GonkDataDecoder::~GonkDataDecoder() { LOGD("%p destructor", this); }
 
 RefPtr<GonkDataDecoder::InitPromise> GonkDataDecoder::Init() {
+  using CodecCallback = GonkMediaCodec::CallbackProxy<GonkDataDecoder>;
+
   LOGD("%p initializing", this);
   if (mCodec) {
     LOGE("%p already initialized", this);
@@ -175,26 +103,26 @@ RefPtr<GonkDataDecoder::InitPromise> GonkDataDecoder::Init() {
   mCodec = new GonkMediaCodec();
   mCodec->Init();
 
-  auto reply = CodecReply::Create(mThread);
-  mCodec->Configure(reply, CodecCallback::Create(this),
-                    GonkMediaUtils::GetMediaCodecConfig(mConfig.get()),
-                    GetCrypto(), false);
-
-  reply->Then([self = Self(), this](status_t aErr) {
-    if (aErr == android::OK) {
-      LOGD("%p configure completed", this);
-      mInitPromise.ResolveIfExists(mConfig->GetType(), __func__);
-    } else {
-      LOGE("%p configure failed", this);
-      mCodec = nullptr;
-      mInputQueue.Reset();
-      mOutputQueue.Reset();
-      mPushListener.Disconnect();
-      mFinishListener.Disconnect();
-      mThread = nullptr;
-      mInitPromise.RejectIfExists(NS_ERROR_DOM_MEDIA_FATAL_ERR, __func__);
-    }
-  });
+  mCodec
+      ->Configure(CodecCallback::Create(this),
+                  GonkMediaUtils::GetMediaCodecConfig(mConfig.get()),
+                  GetCrypto(), false)
+      ->Then(CodecReplyDispatcher(mThread, [self = Self(),
+                                            this](status_t aErr) {
+        if (aErr == android::OK) {
+          LOGD("%p configure completed", this);
+          mInitPromise.ResolveIfExists(mConfig->GetType(), __func__);
+        } else {
+          LOGE("%p configure failed", this);
+          mCodec = nullptr;
+          mInputQueue.Reset();
+          mOutputQueue.Reset();
+          mPushListener.Disconnect();
+          mFinishListener.Disconnect();
+          mThread = nullptr;
+          mInitPromise.RejectIfExists(NS_ERROR_DOM_MEDIA_FATAL_ERR, __func__);
+        }
+      }));
   return mInitPromise.Ensure(__func__);
 }
 
@@ -209,19 +137,17 @@ RefPtr<ShutdownPromise> GonkDataDecoder::Shutdown() {
     return ShutdownPromise::CreateAndReject(false, __func__);
   }
 
-  auto reply = CodecReply::Create(mThread);
-  mCodec->Shutdown(reply);
-
-  reply->Then([self = Self(), this](status_t aErr) {
-    LOGD("%p shut down completed", this);
-    mCodec = nullptr;
-    mInputQueue.Reset();
-    mOutputQueue.Reset();
-    mPushListener.Disconnect();
-    mFinishListener.Disconnect();
-    mThread = nullptr;
-    mShutdownPromise.ResolveIfExists(true, __func__);
-  });
+  mCodec->Shutdown()->Then(
+      CodecReplyDispatcher(mThread, [self = Self(), this](status_t aErr) {
+        LOGD("%p shut down completed", this);
+        mCodec = nullptr;
+        mInputQueue.Reset();
+        mOutputQueue.Reset();
+        mPushListener.Disconnect();
+        mFinishListener.Disconnect();
+        mThread = nullptr;
+        mShutdownPromise.ResolveIfExists(true, __func__);
+      }));
   return mShutdownPromise.Ensure(__func__);
 }
 
@@ -282,14 +208,12 @@ RefPtr<GonkDataDecoder::FlushPromise> GonkDataDecoder::Flush() {
   mDrainPromise.RejectIfExists(NS_ERROR_DOM_MEDIA_CANCELED, __func__);
   mInputQueue.Reset();
 
-  auto reply = CodecReply::Create(mThread);
-  mCodec->Flush(reply);
-
-  reply->Then([self = Self(), this](status_t aErr) {
-    LOGD("%p flush completed", this);
-    mOutputQueue.Reset();
-    mFlushPromise.ResolveIfExists(true, __func__);
-  });
+  mCodec->Flush()->Then(
+      CodecReplyDispatcher(mThread, [self = Self(), this](status_t aErr) {
+        LOGD("%p flush completed", this);
+        mOutputQueue.Reset();
+        mFlushPromise.ResolveIfExists(true, __func__);
+      }));
   return mFlushPromise.Ensure(__func__);
 }
 
@@ -350,7 +274,9 @@ bool GonkDataDecoder::FetchInput(const sp<MediaCodecBuffer>& aBuffer,
     LOGD("%p fetch input EOS", this);
     return true;
   }
-  if (mInputQueue.GetSize() == 0) {
+
+  RefPtr<MediaRawData> sample = mInputQueue.PopFront();
+  if (!sample) {
     nsresult rv = mThread->Dispatch(NS_NewRunnableFunction(
         "GonkDataDecoder::FetchInput", [self = Self(), this]() {
           if (!mDecodePromise.IsEmpty()) {
@@ -363,7 +289,6 @@ bool GonkDataDecoder::FetchInput(const sp<MediaCodecBuffer>& aBuffer,
     return false;
   }
 
-  RefPtr<MediaRawData> sample = mInputQueue.PopFront();
   GonkBufferWriter writer(aBuffer);
   writer.Clear();
   if (!writer.Append(sample->Data(), sample->Size())) {
@@ -395,14 +320,25 @@ bool GonkDataDecoder::FetchInput(const sp<MediaCodecBuffer>& aBuffer,
 };
 
 void GonkDataDecoder::Output(const sp<MediaCodecBuffer>& aBuffer,
-                             const sp<RefBase>& aInputInfo, int64_t aTimeUs) {
+                             const sp<RefBase>& aInputInfo, int64_t aTimeUs,
+                             uint32_t aFlags) {
+  using android::GonkImageUtils;
   using android::MediaImage2;
-  LOGV("%p output timestamp %" PRId64, this, aTimeUs);
+
+  auto checkEosOnExit = MakeScopeExit([this, aFlags]() {
+    if (aFlags & MediaCodec::BUFFER_FLAG_EOS) {
+      LOGD("%p saw output EOS", this);
+      mOutputQueue.Finish();
+    }
+  });
 
   if (!aBuffer || aBuffer->size() == 0) {
-    LOGE("%p empty output buffer", this);
+    // GonkMediaCodec may notify EOS with an empty buffer.
     return;
   }
+
+  LOGV("%p output timestamp %" PRId64, this, aTimeUs);
+
   if (!aInputInfo) {
     LOGE("%p null input info", this);
     return;
@@ -410,60 +346,12 @@ void GonkDataDecoder::Output(const sp<MediaCodecBuffer>& aBuffer,
 
   sp<SampleInfo> sampleInfo = static_cast<SampleInfo*>(aInputInfo.get());
   if (IsVideo()) {
-    // See the usage of image-data in MediaCodec_sanity_test.cpp.
-    sp<ABuffer> imgBuf;
-    if (!aBuffer->meta()->findBuffer("image-data", &imgBuf)) {
-      LOGE("%p, failed to find image-data", this);
-      return;
-    }
+    auto image = GonkImageUtils::CreateI420ImageCopy(mImageContainer, aBuffer);
 
-    auto* img = reinterpret_cast<MediaImage2*>(imgBuf->data());
-    if (img->mType != img->MEDIA_IMAGE_TYPE_YUV) {
-      LOGE("%p only support YUV format", this);
-      return;
-    }
-
-    CHECK_EQ(img->mWidth, static_cast<uint32_t>(mVideoOutputFormat.mWidth));
-    CHECK_EQ(img->mHeight, static_cast<uint32_t>(mVideoOutputFormat.mHeight));
-    CHECK_EQ(img->mPlane[img->Y].mRowInc, mVideoOutputFormat.mStride);
-
-    VideoData::YCbCrBuffer yuv;
-    const static int srcIndices[] = {MediaImage2::Y, MediaImage2::U,
-                                     MediaImage2::V};
-    for (int i = 0; i < 3; i++) {
-      auto& dstPlane = yuv.mPlanes[i];
-      auto& srcPlane = img->mPlane[srcIndices[i]];
-      CHECK_GE(srcPlane.mHorizSubsampling, 1u);
-      CHECK_GE(srcPlane.mVertSubsampling, 1u);
-      CHECK_GE(srcPlane.mColInc, 1);
-      dstPlane.mData = aBuffer->data() + srcPlane.mOffset;
-      dstPlane.mWidth = img->mWidth / srcPlane.mHorizSubsampling;
-      dstPlane.mHeight = img->mHeight / srcPlane.mVertSubsampling;
-      dstPlane.mStride = srcPlane.mRowInc;
-      dstPlane.mSkip = srcPlane.mColInc - 1;
-    }
-
-    auto uSubsampling = std::make_pair(img->mPlane[img->U].mHorizSubsampling,
-                                       img->mPlane[img->U].mVertSubsampling);
-    auto vSubsampling = std::make_pair(img->mPlane[img->V].mHorizSubsampling,
-                                       img->mPlane[img->V].mVertSubsampling);
-    CHECK(uSubsampling == vSubsampling);
-    if (uSubsampling == std::make_pair(1u, 1u)) {
-      yuv.mChromaSubsampling = gfx::ChromaSubsampling::FULL;
-    } else if (uSubsampling == std::make_pair(2u, 1u)) {
-      yuv.mChromaSubsampling = gfx::ChromaSubsampling::HALF_WIDTH;
-    } else if (uSubsampling == std::make_pair(2u, 2u)) {
-      yuv.mChromaSubsampling = gfx::ChromaSubsampling::HALF_WIDTH_AND_HEIGHT;
-    } else {
-      TRESPASS();
-    }
-    yuv.mYUVColorSpace = gfx::YUVColorSpace::Default;
-
-    RefPtr<MediaData> data = VideoData::CreateAndCopyData(
-        *mConfig->GetAsVideoInfo(), mImageContainer, sampleInfo->mOffset,
-        media::TimeUnit::FromMicroseconds(aTimeUs), sampleInfo->mDuration, yuv,
-        sampleInfo->mKeyframe, sampleInfo->mTimecode, mVideoOutputFormat.mCrop,
-        mImageAllocator);
+    RefPtr<MediaData> data = VideoData::CreateFromImage(
+        mConfig->GetAsVideoInfo()->mDisplay, sampleInfo->mOffset,
+        media::TimeUnit::FromMicroseconds(aTimeUs), sampleInfo->mDuration,
+        image, sampleInfo->mKeyframe, sampleInfo->mTimecode);
 
     mOutputQueue.Push(data);
   } else {
@@ -486,16 +374,26 @@ void GonkDataDecoder::Output(const sp<MediaCodecBuffer>& aBuffer,
   }
 }
 
-void GonkDataDecoder::Output(layers::TextureClient* aBuffer,
-                             const sp<RefBase>& aInputInfo, int64_t aTimeUs) {
-  MOZ_ASSERT(IsVideo());
-  LOGV("%p output texture #%" PRIu64 ", timestamp %" PRId64, this,
-       aBuffer ? aBuffer->GetSerial() : uint64_t(-1), aTimeUs);
+void GonkDataDecoder::OutputTexture(layers::TextureClient* aTexture,
+                                    const sp<RefBase>& aInputInfo,
+                                    int64_t aTimeUs, uint32_t aFlags) {
+  CHECK(IsVideo());
 
-  if (!aBuffer) {
-    LOGE("%p empty output buffer", this);
+  auto checkEosOnExit = MakeScopeExit([this, aFlags]() {
+    if (aFlags & MediaCodec::BUFFER_FLAG_EOS) {
+      LOGD("%p saw output EOS", this);
+      mOutputQueue.Finish();
+    }
+  });
+
+  if (!aTexture) {
+    // GonkMediaCodec may notify EOS with null texture.
     return;
   }
+
+  LOGV("%p output texture #%" PRIu64 ", timestamp %" PRId64, this,
+       aTexture->GetSerial(), aTimeUs);
+
   if (!aInputInfo) {
     LOGE("%p null input info", this);
     return;
@@ -506,12 +404,10 @@ void GonkDataDecoder::Output(layers::TextureClient* aBuffer,
   RefPtr<VideoData> data = VideoData::CreateAndCopyData(
       *mConfig->GetAsVideoInfo(), mImageContainer, sampleInfo->mOffset,
       media::TimeUnit::FromMicroseconds(aTimeUs), sampleInfo->mDuration,
-      aBuffer, sampleInfo->mKeyframe, sampleInfo->mTimecode,
+      aTexture, sampleInfo->mKeyframe, sampleInfo->mTimecode,
       mVideoOutputFormat.mCrop);
   mOutputQueue.Push(data);
 }
-
-void GonkDataDecoder::NotifyOutputEnded() { mOutputQueue.Finish(); }
 
 void GonkDataDecoder::NotifyOutputFormat(const sp<AMessage>& aFormat) {
   if (IsVideo()) {

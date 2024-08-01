@@ -9,19 +9,95 @@
 #include <media/MediaCodecBuffer.h>
 #include <media/stagefright/foundation/AMessage.h>
 #include <media/stagefright/foundation/AString.h>
-#include <media/stagefright/foundation/MediaDefs.h>
+#include <media/stagefright/MediaDefs.h>
+#include <system/graphics.h>
+#include <ui/GraphicBuffer.h>
 #include <utils/RefBase.h>
 
+#include <list>
 #include <vector>
 
 #include "AudioSampleFormat.h"
+#include "mozilla/RefPtr.h"
 
 namespace mozilla {
 class MediaRawData;
 class TrackInfo;
 }  // namespace mozilla
 
+namespace mozilla::layers {
+class Image;
+class ImageContainer;
+}  // namespace mozilla::layers
+
+namespace rtc {
+template <class T>
+class scoped_refptr;
+}
+
+namespace webrtc {
+class VideoFrameBuffer;
+}
+
 namespace android {
+
+// A thread-safe queue that is typically queued by one thread and dequeued by
+// another. Each element is managed by android::sp.
+template <class T>
+class GonkDataQueue final {
+ public:
+  size_t Size() {
+    Mutex::Autolock lock(mMutex);
+    return mQueue.size();
+  }
+
+  bool Empty() {
+    Mutex::Autolock lock(mMutex);
+    return mQueue.empty();
+  }
+
+  sp<T> Pop() {
+    Mutex::Autolock lock(mMutex);
+    if (mQueue.empty()) {
+      return nullptr;
+    }
+    auto element = mQueue.front();
+    mQueue.pop_front();
+    return element;
+  }
+
+  void Push(const sp<T>& aElement) {
+    Mutex::Autolock lock(mMutex);
+    mQueue.push_back(aElement);
+  }
+
+  void Clear() {
+    Mutex::Autolock lock(mMutex);
+    mQueue.clear();
+  }
+
+ private:
+  Mutex mMutex;
+  std::list<sp<T>> mQueue;
+};
+
+// A template wrapper class that allows any object to be managed by android::sp.
+template <class T>
+class GonkObjectHolder : public RefBase {
+ public:
+  template <class U>
+  static sp<GonkObjectHolder> Create(U&& aObj) {
+    return new GonkObjectHolder(std::forward<U>(aObj));
+  }
+
+  T& Get() { return mObj; }
+
+ private:
+  template <class U>
+  GonkObjectHolder(U&& aObj) : mObj(std::forward<U>(aObj)) {}
+
+  T mObj;
+};
 
 class GonkCryptoInfo : public RefBase {
  public:
@@ -44,6 +120,102 @@ class GonkBufferWriter {
   sp<MediaCodecBuffer> mBuffer;
 };
 
+class GonkImageHandle final : public RefBase {
+ public:
+  static sp<GonkImageHandle> From(const sp<GraphicBuffer>& aBuffer,
+                                  bool aWrite = false);
+
+  static sp<GonkImageHandle> From(const sp<MediaCodecBuffer>& aBuffer,
+                                  bool aWrite = false);
+
+  static sp<GonkImageHandle> From(const RefPtr<mozilla::layers::Image>& aImage,
+                                  bool aWrite = false);
+
+  static sp<GonkImageHandle> From(
+      const rtc::scoped_refptr<webrtc::VideoFrameBuffer>& aBuffer,
+      bool aWrite = false);
+
+  enum class ColorFormat : int32_t {
+    Unknown,
+    Unsupported,
+    I420,
+    NV12,
+    NV21,
+  };
+
+  bool Writable() { return mWrite; }
+  ColorFormat Format() { return mFormat; }
+  std::string FormatString();
+  uint32_t Width(size_t aPlane = 0) { return Plane(aPlane).mWidth; }
+  uint32_t Height(size_t aPlane = 0) { return Plane(aPlane).mHeight; }
+  uint32_t Step(size_t aPlane) { return Plane(aPlane).mStep; }
+  uint32_t Stride(size_t aPlane) { return Plane(aPlane).mStride; }
+  uint32_t HSubsampling(size_t aPlane) { return Plane(aPlane).mHSubsampling; }
+  uint32_t VSubsampling(size_t aPlane) { return Plane(aPlane).mVSubsampling; }
+  uint8_t* Data(size_t aPlane) { return Plane(aPlane).mData; }
+
+ private:
+  struct PlaneInfo {
+    uint32_t mWidth = 0;
+    uint32_t mHeight = 0;
+    uint32_t mStep = 0;
+    uint32_t mStride = 0;
+    uint32_t mHSubsampling = 0;
+    uint32_t mVSubsampling = 0;
+    uint8_t* mData = nullptr;
+  };
+
+  GonkImageHandle() = default;
+  virtual ~GonkImageHandle();
+  status_t InitCheck();
+  void GuessUnknownFormat();
+  PlaneInfo& Plane(size_t aIndex);
+
+  bool mWrite = false;
+  ColorFormat mFormat = ColorFormat::Unknown;
+  PlaneInfo mPlanes[3];
+  std::function<void()> mOnDestruction;
+};
+
+class GonkImageUtils {
+  using Image = mozilla::layers::Image;
+  using ImageContainer = mozilla::layers::ImageContainer;
+
+ public:
+  static RefPtr<Image> CreateI420Image(ImageContainer* aContainer,
+                                       uint32_t aWidth, uint32_t aHeight);
+
+  template <class S>
+  static RefPtr<Image> CreateI420ImageCopy(ImageContainer* aContainer,
+                                           S&& aSrcBuffer, int aDegrees = 0) {
+    auto srcHandle = GonkImageHandle::From(std::forward<S>(aSrcBuffer), false);
+    return CreateI420ImageCopyImpl(aContainer, srcHandle, aDegrees);
+  }
+
+  template <class S, class D>
+  static status_t CopyImage(S&& aSrcBuffer, D&& aDstBuffer, int aDegrees = 0) {
+    auto srcHandle = GonkImageHandle::From(std::forward<S>(aSrcBuffer), false);
+    auto dstHandle = GonkImageHandle::From(std::forward<D>(aDstBuffer), true);
+    return CopyImageImpl(srcHandle, dstHandle, aDegrees);
+  }
+
+ private:
+  static RefPtr<Image> CreateI420ImageCopyImpl(
+      ImageContainer* aContainer, const sp<GonkImageHandle>& aSrcHandle,
+      int aDegrees);
+
+  static status_t CopyImageImpl(const sp<GonkImageHandle>& aSrcHandle,
+                                const sp<GonkImageHandle>& aDstHandle,
+                                int aDegrees);
+
+  static status_t ConvertImage(const sp<GonkImageHandle>& aSrcHandle,
+                               const sp<GonkImageHandle>& aDstHandle);
+
+  static status_t RotateImage(const sp<GonkImageHandle>& aSrcHandle,
+                              const sp<GonkImageHandle>& aDstHandle,
+                              int aDegrees);
+};
+
 class GonkMediaUtils {
   using AudioDataValue = mozilla::AudioDataValue;
   using PcmCopy = std::function<uint32_t(AudioDataValue*, uint32_t)>;
@@ -61,7 +233,8 @@ class GonkMediaUtils {
   static sp<GonkCryptoInfo> GetCryptoInfo(const mozilla::MediaRawData* aSample);
 
   static std::vector<AString> FindMatchingCodecs(const char* aMime,
-                                                 bool aEncoder);
+                                                 bool aEncoder,
+                                                 bool aAllowSoftware = true);
 };
 
 }  // namespace android

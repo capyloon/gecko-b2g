@@ -7,15 +7,24 @@
 #ifndef WifiNative_h
 #define WifiNative_h
 
+#if ANDROID_VERSION >= 34
+#  define AIDL_WIFI_HAL
+#endif
+
 #include "PasspointHandler.h"
 #include "WifiEventCallback.h"
-#include "WifiHalManager.h"
-#include "WificondControl.h"
-#include "SoftapManager.h"
-#if ANDROID_VERSION >= 33
-#include "supplicant/aidl/SupplicantStaManager.h"
+#ifdef AIDL_WIFI_HAL
+#include "aidl/WifiHalManager.h"
 #else
-#include "supplicant/hidl/SupplicantStaManager.h"
+#include "hidl/WifiHalManager.h"
+#endif
+#include "WificondControl.h"
+#if ANDROID_VERSION >= 33
+#include "aidl/SoftapManager.h"
+#include "aidl/SupplicantStaManager.h"
+#else
+#include "hidl/SoftapManager.h"
+#include "hidl/SupplicantStaManager.h"
 #endif
 #include "nsString.h"
 #include "nsWifiElement.h"

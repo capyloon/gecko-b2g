@@ -724,6 +724,13 @@ void SandboxBrokerPolicyFactory::InitContentPolicy() {
   policy->AddPath(rdonly, "/dev/dma_heap/system-uncached");
   policy->AddPath(rdonly, "/dev/ion");
 #endif
+#if ANDROID_VERSION >= 34
+#if defined(PRODUCT_MANUFACTURER_QUALCOMM)
+  // See GetChipsetVersion() in
+  // vendor/qcom/proprietary/camx/src/mapperutils/extformatutil/camxformatutilexternal.cpp
+  policy->AddPath(rdonly, "/sys/devices/soc0/soc_id");
+#endif
+#endif
 #endif // MOZ_WIDGET_GONK
 
 #if !defined(MOZ_WIDGET_GONK) && defined(MOZ_B2G)

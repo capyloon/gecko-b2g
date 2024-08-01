@@ -1328,3 +1328,7 @@ pref("extensions.webapi.enabled", true);
 pref("apz.overscroll.enabled", true);
 
 pref("privacy.globalprivacycontrol.functionality.enabled",  true);
+
+#if ANDROID_VERSION == 34
+pref("layout.frame_rate", 60);
+#endif
